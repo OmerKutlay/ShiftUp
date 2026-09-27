@@ -1,3 +1,7 @@
+# KiroCrew agent instruction files (local only)
+AGENTS.md
+CLAUDE.md
+
 # dependencies
 /node_modules
 /.pnp
