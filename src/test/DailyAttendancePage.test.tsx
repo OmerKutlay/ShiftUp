@@ -37,10 +37,12 @@ function makeShiftEntry(overrides: Partial<DailyShiftEntry> = {}): DailyShiftEnt
     shiftAssignment: {
       id: 'shift-001',
       employee_id: 'emp-001',
+      shift_template_id: null,
       work_date: '2026-09-28',
       start_time: '09:00',
       end_time: '18:00',
       created_at: '2026-09-28T00:00:00Z',
+      updated_at: '2026-09-28T00:00:00Z',
     },
     attendanceRecord: null,
     ...overrides,

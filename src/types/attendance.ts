@@ -28,10 +28,12 @@ export interface Employee {
 export interface ShiftAssignment {
   id: string
   employee_id: string
-  work_date: string   // 'YYYY-MM-DD'
-  start_time: string  // 'HH:MM'
-  end_time: string    // 'HH:MM'
+  shift_template_id: string | null  // FAZ 4: template referansı (SET NULL on delete)
+  work_date: string    // 'YYYY-MM-DD'
+  start_time: string   // 'HH:MM' veya 'HH:MM:SS'
+  end_time: string     // 'HH:MM' veya 'HH:MM:SS'
   created_at: string
+  updated_at: string
 }
 
 export interface AttendanceRecord {

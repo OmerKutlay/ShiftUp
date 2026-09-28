@@ -52,10 +52,12 @@ export async function fetchDailyShifts(date: Date): Promise<DailyShiftEntry[]> {
     shiftAssignment: {
       id: assignment.id,
       employee_id: assignment.employee_id,
+      shift_template_id: assignment.shift_template_id ?? null,
       work_date: assignment.work_date,
       start_time: assignment.start_time,
       end_time: assignment.end_time,
       created_at: assignment.created_at,
+      updated_at: assignment.updated_at ?? assignment.created_at,
     },
     attendanceRecord: recordsByShiftId.get(assignment.id) ?? null,
   }))
