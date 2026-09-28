@@ -1,0 +1,219 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import type { EmployeeWithRole, Role } from '@/types/employee'
+
+// ============================================================
+// Supabase mock — gerçek DB çağrısı yapılmaz
+// ============================================================
+vi.mock('@/lib/supabase', () => ({
+  supabase: {
+    from: vi.fn(),
+  },
+}))
+
+import {
+  fetchEmployees,
+  fetchActiveEmployees,
+  fetchRoles,
+  createEmployee,
+  updateEmployee,
+  deactivateEmployee,
+} from '@/lib/employeeRepository'
+import { supabase } from '@/lib/supabase'
+
+// ============================================================
+// Yardımcı factory fonksiyonlar
+// ============================================================
+function makeRole(overrides: Partial<Role> = {}): Role {
+  return {
+    id: 'role-001',
+    name: 'Çalışan',
+    description: 'Standart çalışan',
+    created_at: '2026-09-28T00:00:00Z',
+    ...overrides,
+  }
+}
+
+function makeEmployee(overrides: Partial<EmployeeWithRole> = {}): EmployeeWithRole {
+  return {
+    id: 'emp-001',
+    full_name: 'Ahmet Kaya',
+    role: 'Kasiyer',
+    role_id: 'role-001',
+    active: true,
+    created_at: '2026-09-28T00:00:00Z',
+    updated_at: '2026-09-28T00:00:00Z',
+    roles: makeRole(),
+    ...overrides,
+  }
+}
+
+// Chainable Supabase builder helper
+function buildChain(terminal: Record<string, unknown>) {
+  const chain: Record<string, unknown> = {}
+  const methods = ['select', 'eq', 'order', 'insert', 'update', 'single', 'maybeSingle']
+  methods.forEach((m) => {
+    chain[m] = vi.fn(() => ({ ...chain, ...terminal }))
+  })
+  return { ...chain, ...terminal }
+}
+
+// ============================================================
+// fetchRoles
+// ============================================================
+describe('employeeRepository — fetchRoles', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('rolleri döner', async () => {
+    const roles = [makeRole()]
+    ;(supabase.from as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      buildChain({ data: roles, error: null })
+    )
+    const result = await fetchRoles()
+    expect(result).toHaveLength(1)
+    expect(result[0].name).toBe('Çalışan')
+  })
+
+  it('hata durumunda fırlatır', async () => {
+    ;(supabase.from as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      buildChain({ data: null, error: { message: 'DB hatası' } })
+    )
+    await expect(fetchRoles()).rejects.toThrow('Roller yüklenemedi')
+  })
+})
+
+// ============================================================
+// fetchEmployees
+// ============================================================
+describe('employeeRepository — fetchEmployees', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('1. Çalışan listesi yüklenebiliyor', async () => {
+    const emps = [makeEmployee(), makeEmployee({ id: 'emp-002', full_name: 'Ayşe Demir' })]
+    ;(supabase.from as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      buildChain({ data: emps, error: null })
+    )
+    const result = await fetchEmployees()
+    expect(result).toHaveLength(2)
+    expect(result[0].full_name).toBe('Ahmet Kaya')
+  })
+
+  it('boş liste döndürür (çalışan yok)', async () => {
+    ;(supabase.from as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      buildChain({ data: [], error: null })
+    )
+    const result = await fetchEmployees()
+    expect(result).toHaveLength(0)
+  })
+})
+
+// ============================================================
+// fetchActiveEmployees
+// ============================================================
+describe('employeeRepository — fetchActiveEmployees', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('5. Pasif çalışan aktif listede görünmez — sadece aktifler döner', async () => {
+    const activeOnly = [makeEmployee({ active: true })]
+    ;(supabase.from as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      buildChain({ data: activeOnly, error: null })
+    )
+    const result = await fetchActiveEmployees()
+    expect(result.every((e) => e.active)).toBe(true)
+  })
+})
+
+// ============================================================
+// createEmployee
+// ============================================================
+describe('employeeRepository — createEmployee', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('2. Çalışan oluşturulabiliyor', async () => {
+    const newEmp = makeEmployee({ id: 'emp-new' })
+    ;(supabase.from as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+      insert: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValue({ data: newEmp, error: null }),
+    })
+
+    const result = await createEmployee({
+      full_name: 'Ahmet Kaya',
+      role: 'Kasiyer',
+      role_id: 'role-001',
+      active: true,
+    })
+
+    expect(result.id).toBe('emp-new')
+    expect(result.full_name).toBe('Ahmet Kaya')
+  })
+
+  it('hata durumunda fırlatır', async () => {
+    ;(supabase.from as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+      insert: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValue({ data: null, error: { message: 'unique ihlali' } }),
+    })
+    await expect(
+      createEmployee({ full_name: 'X', role: 'Y', role_id: null, active: true })
+    ).rejects.toThrow('Çalışan oluşturulamadı')
+  })
+})
+
+// ============================================================
+// updateEmployee
+// ============================================================
+describe('employeeRepository — updateEmployee', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('3. Çalışan düzenlenebiliyor', async () => {
+    const updated = makeEmployee({ full_name: 'Ahmet Güncellendi' })
+    ;(supabase.from as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+      update: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValue({ data: updated, error: null }),
+    })
+
+    const result = await updateEmployee('emp-001', { full_name: 'Ahmet Güncellendi' })
+    expect(result.full_name).toBe('Ahmet Güncellendi')
+  })
+})
+
+// ============================================================
+// deactivateEmployee
+// ============================================================
+describe('employeeRepository — deactivateEmployee', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('4. Pasif çalışan aktif:false olarak döner', async () => {
+    const deactivated = makeEmployee({ active: false })
+    ;(supabase.from as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+      update: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValue({ data: deactivated, error: null }),
+    })
+
+    const result = await deactivateEmployee('emp-001')
+    expect(result.active).toBe(false)
+  })
+})
+
+// ============================================================
+// Çalışan-Rol ilişkisi
+// ============================================================
+describe('employeeRepository — rol ilişkisi', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('5b. Çalışan ile rol ilişkisi doğru geliyor', async () => {
+    const empWithRole = makeEmployee({
+      roles: makeRole({ name: 'Mağaza Müdürü' }),
+    })
+    ;(supabase.from as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      buildChain({ data: [empWithRole], error: null })
+    )
+
+    const result = await fetchEmployees()
+    expect(result[0].roles?.name).toBe('Mağaza Müdürü')
+  })
+})

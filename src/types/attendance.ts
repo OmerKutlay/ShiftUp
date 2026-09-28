@@ -18,9 +18,11 @@ export const ATTENDANCE_STATUS_LABELS: Record<AttendanceStatus, string> = {
 export interface Employee {
   id: string
   full_name: string
-  role: string
+  role: string        // pozisyon/unvan serbest metin (eski vardiya sistemiyle uyumluluk)
+  role_id: string | null
   active: boolean
   created_at: string
+  updated_at: string
 }
 
 export interface ShiftAssignment {
