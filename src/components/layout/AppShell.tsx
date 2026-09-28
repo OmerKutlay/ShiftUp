@@ -20,6 +20,8 @@ import TodayIcon from '@mui/icons-material/Today'
 import PeopleIcon from '@mui/icons-material/People'
 import ScheduleIcon from '@mui/icons-material/Schedule'
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth'
+import QrCode2Icon from '@mui/icons-material/QrCode2'
+import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner'
 import MenuIcon from '@mui/icons-material/Menu'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 
@@ -37,6 +39,8 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Çalışanlar', href: '/employees', icon: <PeopleIcon /> },
   { label: 'Vardiya Şablonları', href: '/shift-templates', icon: <ScheduleIcon /> },
   { label: 'Haftalık Plan', href: '/schedule', icon: <CalendarMonthIcon /> },
+  { label: 'QR Kiosk', href: '/qr-kiosk', icon: <QrCode2Icon /> },
+  { label: 'QR Tara', href: '/attendance/scan', icon: <QrCodeScannerIcon /> },
 ]
 
 interface Props {

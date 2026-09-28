@@ -21,8 +21,11 @@
     "@mui/icons-material": "^7.1.0",
     "@mui/material": "^7.1.0",
     "@supabase/supabase-js": "^2.49.0",
+    "@types/qrcode": "^1.5.6",
     "date-fns": "^4.1.0",
+    "html5-qrcode": "^2.3.8",
     "next": "15.3.6",
+    "qrcode": "^1.5.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
