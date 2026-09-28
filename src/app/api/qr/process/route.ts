@@ -1,10 +1,10 @@
 /**
  * POST /api/qr/process
- * QR token'ı doğrular ve attendance kaydını günceller.
- * Tüm kritik doğrulamalar server-side gerçekleşir.
+ * QR token'ı doğrular, konum kontrolü yapar ve attendance kaydını günceller.
+ * Tüm kritik doğrulamalar server-side gerçekleşir (FAZ 5 + FAZ 6).
  *
- * Body: { qr_data, employee_id }
- * Response: ProcessQrResponse
+ * Body: { qr_data, employee_id, location? }
+ * location: { latitude, longitude, accuracy } — FAZ 6 ile eklendi
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAndConsumeToken, QrTokenError } from '@/lib/qrTokenService'
@@ -14,6 +14,9 @@ import type { AttendanceAction } from '@/lib/attendanceStateMachine'
 import type { AttendanceRecord, AttendanceStatus } from '@/types/attendance'
 import type { ProcessQrRequest, ProcessQrResponse } from '@/types/qr'
 import { QR_TO_ATTENDANCE_ACTION, QR_ACTION_LABELS } from '@/types/qr'
+import { validateLocationServerSide } from '@/lib/locationService'
+import { LocationError } from '@/types/location'
+import type { LocationPayload } from '@/types/location'
 import { format } from 'date-fns'
 
 // Türkiye saatinde HH:mm formatı
@@ -30,9 +33,14 @@ function toTurkeyTime(isoString: string): string {
   }
 }
 
+// FAZ 6 ile genişletilmiş request tipi
+interface ProcessQrRequestV2 extends ProcessQrRequest {
+  location?: LocationPayload
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as Partial<ProcessQrRequest>
+    const body = (await req.json()) as Partial<ProcessQrRequestV2>
 
     // 1. Input validation
     if (!body.qr_data || typeof body.qr_data !== 'string') {
@@ -82,7 +90,40 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // 5. Bugünkü vardiyayı bul
+    // 5. Konum doğrulaması — location gönderilmişse server-side validate et
+    if (body.location) {
+      const loc = body.location
+      if (
+        typeof loc.latitude !== 'number' ||
+        typeof loc.longitude !== 'number' ||
+        typeof loc.accuracy !== 'number'
+      ) {
+        return NextResponse.json(
+          { error: 'Konum verisi eksik veya hatalı.', code: 'LOCATION_VALIDATION_FAILED' },
+          { status: 400 }
+        )
+      }
+
+      const geofenceResult = await validateLocationServerSide({
+        latitude: loc.latitude,
+        longitude: loc.longitude,
+        accuracy: loc.accuracy,
+      })
+
+      if (!geofenceResult.allowed) {
+        return NextResponse.json(
+          {
+            error: geofenceResult.message,
+            code: 'LOCATION_OUT_OF_RANGE',
+            distance_meters: geofenceResult.distance_meters,
+            accuracy_meters: geofenceResult.accuracy_meters,
+          },
+          { status: 403 }
+        )
+      }
+    }
+
+    // 6. Bugünkü vardiyayı bul
     const today = format(new Date(), 'yyyy-MM-dd')
     const { data: shiftAssignments, error: shiftError } = await admin
       .from('shift_assignments')
@@ -106,7 +147,7 @@ export async function POST(req: NextRequest) {
 
     const shift = shiftAssignments[0]
 
-    // 6. Mevcut attendance kaydını bul
+    // 7. Mevcut attendance kaydını bul
     const { data: existingRecord } = await admin
       .from('attendance_records')
       .select('*')
@@ -117,7 +158,7 @@ export async function POST(req: NextRequest) {
     const attendanceAction = QR_TO_ATTENDANCE_ACTION[qrToken.action_type] as AttendanceAction
     const currentStatus: AttendanceStatus = (existingRecord?.status ?? 'shift_waiting') as AttendanceStatus
 
-    // 7. State machine kontrolü
+    // 8. State machine kontrolü
     let nextStatus: AttendanceStatus
     try {
       nextStatus = applyAction(currentStatus, attendanceAction)
@@ -133,11 +174,13 @@ export async function POST(req: NextRequest) {
 
     const now = new Date().toISOString()
 
-    // 8. Attendance kaydı oluştur veya güncelle
+    // Verification method: konum doğrulandıysa 'qr_location', sadece QR ise 'qr'
+    const verificationMethod = body.location ? 'qr_location' : 'qr'
+
+    // 9. Attendance kaydı oluştur veya güncelle
     let updatedRecord: AttendanceRecord
 
     if (attendanceAction === 'clock_in' && !existingRecord) {
-      // Yeni kayıt oluştur
       const { data: created, error: createError } = await admin
         .from('attendance_records')
         .insert({
@@ -145,7 +188,7 @@ export async function POST(req: NextRequest) {
           shift_assignment_id: shift.id,
           status: nextStatus,
           clock_in_at: now,
-          verification_method: 'qr',
+          verification_method: verificationMethod,
         })
         .select()
         .single()
@@ -158,11 +201,10 @@ export async function POST(req: NextRequest) {
       }
       updatedRecord = created as AttendanceRecord
     } else if (existingRecord) {
-      // Mevcut kaydı güncelle
       const patch = buildFieldPatch(currentStatus, attendanceAction, now)
       const { data: updated, error: updateError } = await admin
         .from('attendance_records')
-        .update({ ...patch, verification_method: 'qr' })
+        .update({ ...patch, verification_method: verificationMethod })
         .eq('id', existingRecord.id)
         .select()
         .single()
@@ -181,7 +223,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // 9. Başarılı yanıt
+    // 10. Başarılı yanıt
     const actionLabel = QR_ACTION_LABELS[qrToken.action_type]
     const timeStr = toTurkeyTime(now)
 
@@ -198,6 +240,9 @@ export async function POST(req: NextRequest) {
     if (err instanceof QrTokenError) {
       const statusCode = err.code === 'QR_EXPIRED' ? 410 : 400
       return NextResponse.json({ error: err.message, code: err.code }, { status: statusCode })
+    }
+    if (err instanceof LocationError) {
+      return NextResponse.json({ error: err.message, code: err.code }, { status: 403 })
     }
     console.error('[/api/qr/process]', err)
     return NextResponse.json(

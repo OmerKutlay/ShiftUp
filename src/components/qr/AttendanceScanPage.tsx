@@ -9,23 +9,26 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
-  Alert,
   CircularProgress,
   Chip,
   Divider,
   Stack,
   SelectChangeEvent,
+  Alert,
 } from '@mui/material'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
+import LocationOnIcon from '@mui/icons-material/LocationOn'
+import LocationOffIcon from '@mui/icons-material/LocationOff'
 import PersonIcon from '@mui/icons-material/Person'
 import type { EmployeeWithRole } from '@/types/employee'
 import type { ProcessQrResponse } from '@/types/qr'
 import { QR_ACTION_LABELS } from '@/types/qr'
+import type { GpsCoordinates } from '@/types/location'
 import { fetchActiveEmployees } from '@/lib/employeeRepository'
 import { QrScanner } from './QrScanner'
 
-type ScanState = 'idle' | 'processing' | 'success' | 'error'
+type ScanState = 'idle' | 'getting_location' | 'processing' | 'success' | 'error'
 
 const ATTENDANCE_STATUS_TR: Record<string, string> = {
   shift_waiting: 'Vardiya Bekleniyor',
@@ -42,6 +45,41 @@ const STATUS_COLORS: Record<string, string> = {
   clocked_out: '#818cf8',
 }
 
+// GPS koordinatlarını al
+function getCurrentPosition(): Promise<GpsCoordinates> {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error('Tarayıcınız konum özelliğini desteklemiyor.'))
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        resolve({
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+        })
+      },
+      (err) => {
+        switch (err.code) {
+          case err.PERMISSION_DENIED:
+            reject(new Error('Konum izni reddedildi. Attendance için konum erişimine izin vermelisin.'))
+            break
+          case err.POSITION_UNAVAILABLE:
+            reject(new Error('GPS bilgisi alınamadı. Lütfen tekrar dene.'))
+            break
+          case err.TIMEOUT:
+            reject(new Error('Konum alınırken zaman aşımı oluştu. Lütfen tekrar dene.'))
+            break
+          default:
+            reject(new Error('Konum alınamadı.'))
+        }
+      },
+      { timeout: 10000, maximumAge: 30000, enableHighAccuracy: true }
+    )
+  })
+}
+
 export function AttendanceScanPage() {
   const [employees, setEmployees] = useState<EmployeeWithRole[]>([])
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('')
@@ -51,6 +89,7 @@ export function AttendanceScanPage() {
   const [result, setResult] = useState<ProcessQrResponse | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [scannerActive, setScannerActive] = useState(true)
+  const [locationStatus, setLocationStatus] = useState<string | null>(null)
 
   // Çalışanları yükle
   useEffect(() => {
@@ -66,19 +105,45 @@ export function AttendanceScanPage() {
         setErrorMsg('Lütfen önce çalışanı seçin.')
         return
       }
-      if (scanState === 'processing') return
+      if (scanState !== 'idle') return
 
-      // Tarayıcıyı durdur
       setScannerActive(false)
-      setScanState('processing')
       setResult(null)
       setErrorMsg(null)
+
+      // Konum alma
+      setScanState('getting_location')
+      setLocationStatus('Konum doğrulanıyor...')
+
+      let location: GpsCoordinates | undefined
+      try {
+        location = await getCurrentPosition()
+        setLocationStatus(`Konum alındı (±${Math.round(location.accuracy)}m)`)
+      } catch (locErr) {
+        const msg = locErr instanceof Error ? locErr.message : 'Konum alınamadı.'
+        setErrorMsg(msg)
+        setLocationStatus(null)
+        setScanState('error')
+        setTimeout(() => {
+          setScanState('idle')
+          setErrorMsg(null)
+          setLocationStatus(null)
+          setScannerActive(true)
+        }, 4000)
+        return
+      }
+
+      setScanState('processing')
 
       try {
         const res = await fetch('/api/qr/process', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ qr_data: qrData, employee_id: selectedEmployeeId }),
+          body: JSON.stringify({
+            qr_data: qrData,
+            employee_id: selectedEmployeeId,
+            location,
+          }),
         })
 
         const data = await res.json() as ProcessQrResponse & { error?: string }
@@ -89,22 +154,23 @@ export function AttendanceScanPage() {
 
         setResult(data)
         setScanState('success')
+        setLocationStatus(null)
 
-        // 4 saniye sonra tekrar taramaya hazır
         setTimeout(() => {
           setScanState('idle')
           setResult(null)
+          setLocationStatus(null)
           setScannerActive(true)
         }, 4000)
       } catch (err) {
         setErrorMsg(err instanceof Error ? err.message : 'Bilinmeyen hata.')
         setScanState('error')
-        // 3 saniye sonra tekrar dene
+        setLocationStatus(null)
         setTimeout(() => {
           setScanState('idle')
           setErrorMsg(null)
           setScannerActive(true)
-        }, 3000)
+        }, 3500)
       }
     },
     [selectedEmployeeId, scanState]
@@ -153,7 +219,7 @@ export function AttendanceScanPage() {
         {/* Çalışan seçimi */}
         <FormControl fullWidth disabled={loadingEmployees} sx={{ mb: 3 }}>
           <InputLabel id="scan-employee-label">
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
               <PersonIcon sx={{ fontSize: 16 }} /> Çalışan
             </Box>
           </InputLabel>
@@ -176,7 +242,6 @@ export function AttendanceScanPage() {
 
         <Divider sx={{ mb: 3, borderColor: 'rgba(255,255,255,0.08)' }} />
 
-        {/* İçerik alanı */}
         <Stack spacing={2} alignItems="center">
           {/* İşlem durumu */}
           {scanState === 'idle' && (
@@ -186,41 +251,46 @@ export function AttendanceScanPage() {
                   Taramaya başlamak için çalışan seçin.
                 </Alert>
               ) : (
-                <Typography variant="caption" color="text.secondary" textAlign="center">
-                  QR kodu kameranın önüne tutun
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.5 }}>
+                  <LocationOnIcon sx={{ fontSize: 14, color: 'primary.main' }} />
+                  <Typography variant="caption" color="text.secondary">
+                    Konum doğrulaması aktif — QR tarandıktan sonra konum alınır
+                  </Typography>
+                </Box>
               )}
             </>
           )}
 
-          {scanState === 'processing' && (
-            <Box
-              sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 1.5,
-                py: 2,
-              }}
-            >
-              <CircularProgress color="primary" size={48} />
+          {scanState === 'getting_location' && (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5, py: 2 }}>
+              <CircularProgress color="primary" size={40} />
               <Typography variant="subtitle2" fontWeight={600}>
-                İşleniyor...
+                {locationStatus ?? 'Konum alınıyor...'}
               </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <LocationOnIcon sx={{ fontSize: 14, color: 'primary.main' }} />
+                <Typography variant="caption" color="text.secondary">
+                  GPS konum izni istenebilir
+                </Typography>
+              </Box>
+            </Box>
+          )}
+
+          {scanState === 'processing' && (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5, py: 2 }}>
+              <CircularProgress color="primary" size={48} />
+              <Typography variant="subtitle2" fontWeight={600}>İşleniyor...</Typography>
+              {locationStatus && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <LocationOnIcon sx={{ fontSize: 13, color: '#10b981' }} />
+                  <Typography variant="caption" color="text.secondary">{locationStatus}</Typography>
+                </Box>
+              )}
             </Box>
           )}
 
           {scanState === 'success' && result && (
-            <Box
-              sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 1.5,
-                py: 1,
-                width: '100%',
-              }}
-            >
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5, py: 1, width: '100%' }}>
               <CheckCircleIcon sx={{ fontSize: 56, color: '#10b981' }} />
               <Typography variant="h6" fontWeight={800} color="#10b981" textAlign="center">
                 {result.message}
@@ -240,24 +310,22 @@ export function AttendanceScanPage() {
                   fontWeight: 700,
                 }}
               />
-              <Typography variant="caption" color="text.disabled">
-                {QR_ACTION_LABELS[result.action_type]} — {result.timestamp}
-              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <LocationOnIcon sx={{ fontSize: 13, color: '#10b981' }} />
+                <Typography variant="caption" color="text.disabled">
+                  {QR_ACTION_LABELS[result.action_type]} — {result.timestamp}
+                </Typography>
+              </Box>
             </Box>
           )}
 
           {scanState === 'error' && (
-            <Box
-              sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 1.5,
-                py: 1,
-                width: '100%',
-              }}
-            >
-              <ErrorOutlineIcon sx={{ fontSize: 48, color: 'error.main' }} />
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5, py: 1, width: '100%' }}>
+              {errorMsg?.toLowerCase().includes('konum') || errorMsg?.toLowerCase().includes('location') ? (
+                <LocationOffIcon sx={{ fontSize: 48, color: 'error.main' }} />
+              ) : (
+                <ErrorOutlineIcon sx={{ fontSize: 48, color: 'error.main' }} />
+              )}
               <Typography variant="subtitle2" fontWeight={700} color="error.main" textAlign="center">
                 {errorMsg ?? 'İşlem başarısız.'}
               </Typography>
@@ -267,13 +335,13 @@ export function AttendanceScanPage() {
             </Box>
           )}
 
-          {/* QR Scanner — sadece idle'da aktif */}
-          {selectedEmployeeId && scanState !== 'processing' && (
-            <Box sx={{ mt: scanState === 'idle' ? 1 : 2 }}>
+          {/* QR Scanner */}
+          {selectedEmployeeId && (scanState === 'idle') && (
+            <Box sx={{ mt: 1 }}>
               <QrScanner
                 onScan={handleScan}
                 onError={(e) => setErrorMsg(e)}
-                active={scannerActive && scanState === 'idle'}
+                active={scannerActive}
               />
             </Box>
           )}
