@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import {
   Box,
@@ -15,6 +15,9 @@ import {
   useTheme,
   Divider,
   Tooltip,
+  Select,
+  MenuItem,
+  FormControl,
 } from '@mui/material'
 import TodayIcon from '@mui/icons-material/Today'
 import PeopleIcon from '@mui/icons-material/People'
@@ -28,13 +31,12 @@ import DashboardIcon from '@mui/icons-material/Dashboard'
 import SettingsIcon from '@mui/icons-material/Settings'
 import MenuIcon from '@mui/icons-material/Menu'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
+import PersonIcon from '@mui/icons-material/Person'
+import GroupsIcon from '@mui/icons-material/Groups'
 
 import { ErrorBoundary } from './ErrorBoundary'
 import { NotificationBell } from '@/components/notifications/NotificationBell'
-
-// Demo: mevcut auth yokken ilk aktif çalışan ID'si kullanılır.
-// Gerçek auth entegrasyonu yapıldığında burası session'dan okunacak.
-const DEMO_EMPLOYEE_ID = null as string | null
+import { useActiveEmployee } from '@/context/ActiveEmployeeContext'
 
 const DRAWER_WIDTH = 220
 const DRAWER_COLLAPSED = 64
@@ -54,9 +56,15 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'QR Kiosk', href: '/qr-kiosk', icon: <QrCode2Icon /> },
   { label: 'QR Tara', href: '/attendance/scan', icon: <QrCodeScannerIcon /> },
   { label: 'İzin Talepleri', href: '/leave', icon: <BeachAccessIcon /> },
+  { label: 'İş Gücü', href: '/workforce', icon: <GroupsIcon /> },
   { label: 'Raporlar', href: '/reports', icon: <BarChartIcon /> },
   { label: 'Ayarlar', href: '/settings', icon: <SettingsIcon /> },
 ]
+
+interface EmployeeOption {
+  id: string
+  full_name: string
+}
 
 interface Props {
   children: React.ReactNode
@@ -69,6 +77,24 @@ export function AppShell({ children }: Props) {
   const [collapsed, setCollapsed] = useState(false)
   const pathname = usePathname()
   const router = useRouter()
+  const { activeEmployee, setActiveEmployee } = useActiveEmployee()
+  const [employees, setEmployees] = useState<EmployeeOption[]>([])
+
+  // Aktif çalışanlar listesini yükle (selector için)
+  useEffect(() => {
+    fetch('/api/employees?active=true')
+      .then((r) => r.ok ? r.json() : { employees: [] })
+      .then((json: { employees?: EmployeeOption[] }) => {
+        const list = json.employees ?? []
+        setEmployees(list)
+        // İlk açılışta seçili yoksa ilk çalışanı otomatik seç
+        if (list.length > 0 && !activeEmployee) {
+          setActiveEmployee({ id: list[0].id, full_name: list[0].full_name })
+        }
+      })
+      .catch(() => { /* sessiz hata */ })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const drawerWidth = collapsed && !isMobile ? DRAWER_COLLAPSED : DRAWER_WIDTH
 
@@ -179,27 +205,64 @@ export function AppShell({ children }: Props) {
         })}
       </List>
 
-      {/* Bildirim alanı — sidebar alt kısmı */}
       <Divider sx={{ borderColor: 'divider' }} />
-      <Box
-        sx={{
-          px: collapsed && !isMobile ? 1 : 2,
-          py: 1,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: collapsed && !isMobile ? 'center' : 'space-between',
-          minHeight: 52,
-        }}
-      >
-        {(!collapsed || isMobile) && (
-          <Typography variant="caption" color="text.secondary" fontWeight={500}>
-            Bildirimler
-          </Typography>
+
+      {/* Aktif çalışan seçici + bildirim */}
+      <Box sx={{ px: collapsed && !isMobile ? 0.5 : 1.5, py: 1.25 }}>
+        {(!collapsed || isMobile) ? (
+          <>
+            {/* Çalışan seçici */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.75 }}>
+              <PersonIcon sx={{ fontSize: 14, color: 'text.secondary', flexShrink: 0 }} />
+              <Typography variant="caption" color="text.secondary" fontWeight={500} noWrap>
+                Aktif çalışan
+              </Typography>
+            </Box>
+            <FormControl fullWidth size="small" sx={{ mb: 0.5 }}>
+              <Select
+                value={activeEmployee?.id ?? ''}
+                onChange={(e) => {
+                  const emp = employees.find((x) => x.id === e.target.value)
+                  if (emp) setActiveEmployee({ id: emp.id, full_name: emp.full_name })
+                }}
+                displayEmpty
+                sx={{
+                  fontSize: '0.78rem',
+                  bgcolor: 'rgba(255,255,255,0.04)',
+                  '& .MuiSelect-select': { py: 0.75 },
+                  '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+                }}
+              >
+                <MenuItem value="" disabled sx={{ fontSize: '0.78rem' }}>
+                  Çalışan seçin...
+                </MenuItem>
+                {employees.map((emp) => (
+                  <MenuItem key={emp.id} value={emp.id} sx={{ fontSize: '0.78rem' }}>
+                    {emp.full_name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            {/* Bildirim satırı */}
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Typography variant="caption" color="text.secondary" fontWeight={500}>
+                Bildirimler
+              </Typography>
+              <NotificationBell
+                employeeId={activeEmployee?.id ?? null}
+                collapsed={false}
+              />
+            </Box>
+          </>
+        ) : (
+          /* Collapsed: sadece bildirim ikonu */
+          <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+            <NotificationBell
+              employeeId={activeEmployee?.id ?? null}
+              collapsed={true}
+            />
+          </Box>
         )}
-        <NotificationBell
-          employeeId={DEMO_EMPLOYEE_ID}
-          collapsed={collapsed && !isMobile}
-        />
       </Box>
     </Box>
   )
@@ -212,7 +275,6 @@ export function AppShell({ children }: Props) {
           onClick={() => setMobileOpen(true)}
           sx={{
             position: 'fixed',
-            // safe-area-inset-top: iOS notch altına yerleşir
             top: 'calc(12px + env(safe-area-inset-top))',
             left: 'calc(12px + env(safe-area-inset-left))',
             zIndex: 1300,
@@ -222,7 +284,6 @@ export function AppShell({ children }: Props) {
             color: 'text.primary',
             WebkitTapHighlightColor: 'transparent',
           }}
-          // size prop'u kaldırıldı → theme override ile 44×44 garantili
         >
           <MenuIcon />
         </IconButton>
@@ -277,7 +338,6 @@ export function AppShell({ children }: Props) {
           ml: isMobile ? 0 : `${drawerWidth}px`,
           transition: 'margin-left 0.2s',
           minHeight: '100dvh',
-          // Mobile: hamburger button (44px) + safe-area-inset-top kadar boşluk
           pt: isMobile ? 'calc(68px + env(safe-area-inset-top))' : 0,
         }}
       >

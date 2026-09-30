@@ -25,23 +25,22 @@ import EventAvailableIcon from '@mui/icons-material/EventAvailableOutlined'
 import EventBusyIcon from '@mui/icons-material/EventBusyOutlined'
 import BuildIcon from '@mui/icons-material/Build'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
+import PersonIcon from '@mui/icons-material/Person'
 import { formatDistanceToNow, format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { useNotifications } from '@/hooks/useNotifications'
+import { useActiveEmployee } from '@/context/ActiveEmployeeContext'
 import type { Notification, NotificationType } from '@/types/notification'
-
-// Demo employee ID — auth entegrasyonu sonrası session'dan okunacak
-const DEMO_EMPLOYEE_ID = null as string | null
 
 const TYPE_META: Record<
   NotificationType,
   { icon: React.ReactNode; color: string; label: string }
 > = {
-  shift_reminder:     { icon: <AccessTimeIcon />,           color: '#14b8a6', label: 'Vardiya Hatırlatması' },
-  leave_submitted:    { icon: <EventAvailableIcon />,        color: '#60a5fa', label: 'İzin Talebi' },
-  leave_approved:     { icon: <CheckCircleOutlineIcon />,    color: '#10b981', label: 'İzin Onaylandı' },
-  leave_rejected:     { icon: <EventBusyIcon />,             color: '#ef4444', label: 'İzin Reddedildi' },
-  attendance_override:{ icon: <BuildIcon />,                 color: '#f59e0b', label: 'Devam Düzeltmesi' },
+  shift_reminder:      { icon: <AccessTimeIcon />,            color: '#14b8a6', label: 'Vardiya Hatırlatması' },
+  leave_submitted:     { icon: <EventAvailableIcon />,         color: '#60a5fa', label: 'İzin Talebi' },
+  leave_approved:      { icon: <CheckCircleOutlineIcon />,     color: '#10b981', label: 'İzin Onaylandı' },
+  leave_rejected:      { icon: <EventBusyIcon />,              color: '#ef4444', label: 'İzin Reddedildi' },
+  attendance_override: { icon: <BuildIcon />,                  color: '#f59e0b', label: 'Devam Düzeltmesi' },
 }
 
 function NotificationItem({
@@ -72,34 +71,18 @@ function NotificationItem({
           bgcolor: notification.is_read ? 'transparent' : 'rgba(20,184,166,0.06)',
           borderRadius: 1,
           '&:hover': {
-            bgcolor: notification.is_read
-              ? 'rgba(255,255,255,0.04)'
-              : 'rgba(20,184,166,0.1)',
+            bgcolor: notification.is_read ? 'rgba(255,255,255,0.04)' : 'rgba(20,184,166,0.1)',
           },
         }}
       >
-        {/* Tip ikonu */}
-        <Box
-          sx={{
-            flexShrink: 0,
-            mt: 0.5,
-            color: meta.color,
-            display: 'flex',
-            alignItems: 'center',
-          }}
-        >
+        <Box sx={{ flexShrink: 0, mt: 0.5, color: meta.color, display: 'flex', alignItems: 'center' }}>
           {meta.icon}
         </Box>
 
-        {/* İçerik */}
         <ListItemText
           primary={
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-              <Typography
-                variant="body2"
-                fontWeight={notification.is_read ? 400 : 700}
-                color="text.primary"
-              >
+              <Typography variant="body2" fontWeight={notification.is_read ? 400 : 700} color="text.primary">
                 {notification.title}
               </Typography>
               <Chip
@@ -153,8 +136,9 @@ function NotificationItem({
 }
 
 export function NotificationsPage() {
+  const { activeEmployee } = useActiveEmployee()
   const { notifications, unreadCount, loading, error, markAsRead, markAllAsRead, refresh } =
-    useNotifications(DEMO_EMPLOYEE_ID)
+    useNotifications(activeEmployee?.id ?? null)
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 720, mx: 'auto' }}>
@@ -165,6 +149,14 @@ export function NotificationsPage() {
           <Typography variant="h6" fontWeight={800}>
             Bildirimler
           </Typography>
+          {activeEmployee && (
+            <Chip
+              icon={<PersonIcon sx={{ fontSize: '14px !important' }} />}
+              label={activeEmployee.full_name}
+              size="small"
+              sx={{ bgcolor: 'rgba(20,184,166,0.12)', color: 'primary.main', fontWeight: 600 }}
+            />
+          )}
           {unreadCount > 0 && (
             <Chip
               label={`${unreadCount} okunmamış`}
@@ -195,6 +187,12 @@ export function NotificationsPage() {
         </Box>
       </Box>
 
+      {!activeEmployee && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Bildirimleri görmek için sol menüden aktif çalışanı seçin.
+        </Alert>
+      )}
+
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {error}
@@ -218,7 +216,7 @@ export function NotificationsPage() {
           <Box sx={{ py: 6, textAlign: 'center' }}>
             <WarningAmberIcon sx={{ color: 'text.secondary', opacity: 0.3, fontSize: 48, mb: 1 }} />
             <Typography variant="body1" color="text.secondary">
-              Henüz bildirim bulunmuyor
+              {activeEmployee ? 'Henüz bildirim bulunmuyor' : 'Çalışan seçilmedi'}
             </Typography>
             <Typography variant="caption" color="text.secondary" sx={{ opacity: 0.7 }}>
               Vardiya hatırlatmaları ve izin bildirimleri burada görünecek
@@ -237,13 +235,6 @@ export function NotificationsPage() {
           </List>
         )}
       </Paper>
-
-      {!DEMO_EMPLOYEE_ID && (
-        <Alert severity="info" sx={{ mt: 2 }}>
-          Bildirimler auth entegrasyonu tamamlandığında aktif çalışana göre filtrelenecek.
-          Şu an geliştirme modunda çalışıyor.
-        </Alert>
-      )}
     </Box>
   )
 }
