@@ -7,7 +7,7 @@
  * Kullanıcı sidebar'dan çalışan seçer → bu ID tüm app'te kullanılır.
  * Gerçek auth entegre edildiğinde sadece bu context değiştirilir.
  */
-import { createContext, useContext, useState, useCallback, ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react'
 
 interface ActiveEmployee {
   id: string
@@ -25,16 +25,15 @@ const ActiveEmployeeContext = createContext<ActiveEmployeeContextValue>({
 })
 
 export function ActiveEmployeeProvider({ children }: { children: ReactNode }) {
-  const [activeEmployee, setActiveEmployeeState] = useState<ActiveEmployee | null>(() => {
-    // sessionStorage'dan kurtarma — sayfa yenilemede seçimi koru
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = sessionStorage.getItem('activeEmployee')
-        if (saved) return JSON.parse(saved) as ActiveEmployee
-      } catch { /* ignore */ }
-    }
-    return null
-  })
+  const [activeEmployee, setActiveEmployeeState] = useState<ActiveEmployee | null>(null)
+
+  // sessionStorage okuma client-only — useEffect'te yapılır, SSR/client tutarlılığı sağlanır
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem('activeEmployee')
+      if (saved) setActiveEmployeeState(JSON.parse(saved) as ActiveEmployee)
+    } catch { /* ignore */ }
+  }, [])
 
   const setActiveEmployee = useCallback((emp: ActiveEmployee | null) => {
     setActiveEmployeeState(emp)
