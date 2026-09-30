@@ -25,7 +25,6 @@ import { formatTime } from '@/types/shiftTemplate'
 import {
   fetchWeeklyAssignments,
   getWeekDays,
-  getWeekRange,
   createShiftAssignment,
   updateShiftAssignment,
   deleteShiftAssignment,
@@ -66,10 +65,6 @@ export function WeeklySchedulePage() {
     setLoading(true)
     setError(null)
     try {
-      const { start, end } = getWeekRange(currentWeek)
-      const startStr = format(start, 'yyyy-MM-dd')
-      const endStr = format(end, 'yyyy-MM-dd')
-
       const [emps, tmpls, asgns, leavesRes] = await Promise.all([
         fetchActiveEmployees(),
         fetchActiveShiftTemplates(),
@@ -82,17 +77,20 @@ export function WeeklySchedulePage() {
       setAssignments(asgns)
 
       // Onaylı izinleri employee_id:YYYY-MM-DD Set'ine dönüştür
+      // Tüm onaylı izinleri yükle — hafta filtresi yok, schedule grid zaten o haftayı gösterir
       const leaveSet = new Set<string>()
       for (const lr of leavesRes.requests ?? []) {
-        // İzin tarih aralığını gün gün döngüyle ekle
-        const cur = new Date(lr.start_date + 'T00:00:00')
-        const endD = new Date(lr.end_date + 'T00:00:00')
-        while (cur <= endD) {
-          const d = format(cur, 'yyyy-MM-dd')
-          if (d >= startStr && d <= endStr) {
-            leaveSet.add(`${lr.employee_id}:${d}`)
-          }
-          cur.setDate(cur.getDate() + 1)
+        // ISO date string'i doğrudan parse et, timezone kayması olmaması için slice kullan
+        const startParts = lr.start_date.slice(0, 10).split('-').map(Number) as [number, number, number]
+        const endParts   = lr.end_date.slice(0, 10).split('-').map(Number) as [number, number, number]
+        const curD = new Date(startParts[0], startParts[1] - 1, startParts[2])
+        const endD = new Date(endParts[0],   endParts[1] - 1,   endParts[2])
+        while (curD <= endD) {
+          const y = curD.getFullYear()
+          const m = String(curD.getMonth() + 1).padStart(2, '0')
+          const d = String(curD.getDate()).padStart(2, '0')
+          leaveSet.add(`${lr.employee_id}:${y}-${m}-${d}`)
+          curD.setDate(curD.getDate() + 1)
         }
       }
       setApprovedLeaveMap(leaveSet)

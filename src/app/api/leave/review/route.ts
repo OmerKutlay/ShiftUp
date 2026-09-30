@@ -77,16 +77,14 @@ export async function POST(req: NextRequest) {
     // FAZ 12: Onay durumunda çakışan shift_assignment'ları is_on_leave = true işaretle.
     // Vardiya silinmez — Weekly Schedule'da "İzinli" olarak gösterilir.
     if (body.status === 'approved') {
-      try {
-        await admin
-          .from('shift_assignments')
-          .update({ is_on_leave: true })
-          .eq('employee_id', data.employee_id)
-          .gte('work_date', data.start_date)
-          .lte('work_date', data.end_date)
-      } catch (leaveMarkErr) {
-        // İşaretleme hatası onay işlemini geri almaz
-        console.error('[POST /api/leave/review] is_on_leave işaretlenemedi:', leaveMarkErr)
+      const { error: leaveMarkErr } = await admin
+        .from('shift_assignments')
+        .update({ is_on_leave: true })
+        .eq('employee_id', data.employee_id)
+        .gte('work_date', data.start_date)
+        .lte('work_date', data.end_date)
+      if (leaveMarkErr) {
+        console.error('[POST /api/leave/review] is_on_leave işaretlenemedi:', leaveMarkErr.message)
       }
     }
 
