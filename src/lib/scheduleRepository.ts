@@ -44,6 +44,7 @@ export async function fetchWeeklyAssignments(
       work_date,
       start_time,
       end_time,
+      is_on_leave,
       created_at,
       updated_at,
       shift_templates (

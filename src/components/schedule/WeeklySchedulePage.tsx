@@ -25,6 +25,7 @@ import { formatTime } from '@/types/shiftTemplate'
 import {
   fetchWeeklyAssignments,
   getWeekDays,
+  getWeekRange,
   createShiftAssignment,
   updateShiftAssignment,
   deleteShiftAssignment,
@@ -47,6 +48,8 @@ export function WeeklySchedulePage() {
   const [employees, setEmployees] = useState<EmployeeWithRole[]>([])
   const [templates, setTemplates] = useState<ShiftTemplate[]>([])
   const [assignments, setAssignments] = useState<ShiftAssignmentWithDetails[]>([])
+  // FAZ 12: key = `${employee_id}:${work_date}` → true (approved leave vardır)
+  const [approvedLeaveMap, setApprovedLeaveMap] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -63,14 +66,36 @@ export function WeeklySchedulePage() {
     setLoading(true)
     setError(null)
     try {
-      const [emps, tmpls, asgns] = await Promise.all([
+      const { start, end } = getWeekRange(currentWeek)
+      const startStr = format(start, 'yyyy-MM-dd')
+      const endStr = format(end, 'yyyy-MM-dd')
+
+      const [emps, tmpls, asgns, leavesRes] = await Promise.all([
         fetchActiveEmployees(),
         fetchActiveShiftTemplates(),
         fetchWeeklyAssignments(currentWeek),
+        // FAZ 12: Hafta içindeki onaylı izinleri çek
+        fetch(`/api/leave?status=approved`).then((r) => r.ok ? r.json() : { requests: [] }) as Promise<{ requests: Array<{ employee_id: string; start_date: string; end_date: string }> }>,
       ])
       setEmployees(emps)
       setTemplates(tmpls)
       setAssignments(asgns)
+
+      // Onaylı izinleri employee_id:YYYY-MM-DD Set'ine dönüştür
+      const leaveSet = new Set<string>()
+      for (const lr of leavesRes.requests ?? []) {
+        // İzin tarih aralığını gün gün döngüyle ekle
+        const cur = new Date(lr.start_date + 'T00:00:00')
+        const endD = new Date(lr.end_date + 'T00:00:00')
+        while (cur <= endD) {
+          const d = format(cur, 'yyyy-MM-dd')
+          if (d >= startStr && d <= endStr) {
+            leaveSet.add(`${lr.employee_id}:${d}`)
+          }
+          cur.setDate(cur.getDate() + 1)
+        }
+      }
+      setApprovedLeaveMap(leaveSet)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Yükleme hatası.')
     } finally {
@@ -100,7 +125,6 @@ export function WeeklySchedulePage() {
       weekDays.map((d) => [d, assignmentMap.get(`${emp.id}:${d}`) ?? null])
     ),
   }))
-
   // Dialog handlers
   const openAssignDialog = (emp: EmployeeWithRole, date: string) => {
     const existing = assignmentMap.get(`${emp.id}:${date}`) ?? null
@@ -163,6 +187,7 @@ export function WeeklySchedulePage() {
       currentWeek={currentWeek}
       onWeekChange={handleWeekChange}
       onCellClick={openAssignDialog}
+      approvedLeaveMap={approvedLeaveMap}
       dialogOpen={dialogOpen}
       dialogEmployee={dialogEmployee}
       dialogDate={dialogDate}
@@ -301,11 +326,14 @@ export function WeeklySchedulePage() {
               {weekDays.map((d) => {
                 const asgn = entry.dayAssignments[d]
                 const isToday = d === format(new Date(), 'yyyy-MM-dd')
+                // FAZ 12: shift is_on_leave VEYA approved leave set'inde varsa izinli
+                const isOnLeave = asgn?.is_on_leave === true || approvedLeaveMap.has(`${entry.employee.id}:${d}`)
                 return (
                   <ShiftCell
                     key={d}
                     assignment={asgn}
                     isToday={isToday}
+                    isOnLeave={isOnLeave}
                     onClick={() => openAssignDialog(entry.employee, d)}
                   />
                 )
@@ -337,12 +365,48 @@ export function WeeklySchedulePage() {
 function ShiftCell({
   assignment,
   isToday,
+  isOnLeave,
   onClick,
 }: {
   assignment: ShiftAssignmentWithDetails | null
   isToday: boolean
+  isOnLeave: boolean
   onClick: () => void
 }) {
+  // FAZ 12: İzinli (shift var veya yok)
+  if (isOnLeave) {
+    return (
+      <Tooltip title={assignment ? `İzin onaylandı (${formatTime(assignment.start_time)}–${formatTime(assignment.end_time)})` : 'İzin onaylandı'} placement="top">
+        <Box
+          onClick={onClick}
+          sx={{
+            borderLeft: '1px solid',
+            borderColor: 'divider',
+            bgcolor: 'rgba(251,191,36,0.08)',
+            p: 0.75,
+            minHeight: 64,
+            cursor: 'pointer',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            alignItems: 'center',
+            gap: 0.4,
+            '&:hover': { bgcolor: 'rgba(251,191,36,0.14)' },
+          }}
+        >
+          <Typography variant="caption" fontWeight={700} color="warning.main" fontSize="0.7rem">
+            İzinli
+          </Typography>
+          {assignment && (
+            <Typography variant="caption" color="text.disabled" fontSize="0.6rem">
+              {formatTime(assignment.start_time)}–{formatTime(assignment.end_time)}
+            </Typography>
+          )}
+        </Box>
+      </Tooltip>
+    )
+  }
+
   if (!assignment) {
     return (
       <Box
@@ -367,38 +431,6 @@ function ShiftCell({
           sx={{ fontSize: 16, color: 'text.disabled', opacity: 0, transition: 'opacity 0.15s' }}
         />
       </Box>
-    )
-  }
-
-  // FAZ 12: İzinli vardiya
-  if (assignment.is_on_leave) {
-    return (
-      <Tooltip title="İzin onaylandı — bu gün için izinli" placement="top">
-        <Box
-          onClick={onClick}
-          sx={{
-            borderLeft: '1px solid',
-            borderColor: 'divider',
-            bgcolor: 'rgba(251,191,36,0.08)',
-            p: 0.75,
-            minHeight: 64,
-            cursor: 'pointer',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center',
-            alignItems: 'center',
-            gap: 0.4,
-            '&:hover': { bgcolor: 'rgba(251,191,36,0.14)' },
-          }}
-        >
-          <Typography variant="caption" fontWeight={700} color="warning.main" fontSize="0.7rem">
-            İzinli
-          </Typography>
-          <Typography variant="caption" color="text.disabled" fontSize="0.6rem">
-            {formatTime(assignment.start_time)}–{formatTime(assignment.end_time)}
-          </Typography>
-        </Box>
-      </Tooltip>
     )
   }
 
@@ -451,6 +483,7 @@ interface MobileViewProps {
   currentWeek: Date
   onWeekChange: (d: Date) => void
   onCellClick: (emp: EmployeeWithRole, date: string) => void
+  approvedLeaveMap: Set<string>
   dialogOpen: boolean
   dialogEmployee: EmployeeWithRole | null
   dialogDate: string
@@ -464,7 +497,7 @@ interface MobileViewProps {
 
 function MobileScheduleView({
   scheduleEntries, weekDays, loading, error, currentWeek, onWeekChange,
-  onCellClick, dialogOpen, dialogEmployee, dialogDate, dialogExisting,
+  onCellClick, approvedLeaveMap, dialogOpen, dialogEmployee, dialogDate, dialogExisting,
   templates, saving, onSave, onDelete, onDialogClose,
 }: MobileViewProps) {
   return (
@@ -493,6 +526,7 @@ function MobileScheduleView({
             {weekDays.map((d, i) => {
               const asgn = entry.dayAssignments[d]
               const isToday = d === format(new Date(), 'yyyy-MM-dd')
+              const isOnLeave = asgn?.is_on_leave === true || approvedLeaveMap.has(`${entry.employee.id}:${d}`)
               return (
                 <Box
                   key={d}
@@ -502,11 +536,11 @@ function MobileScheduleView({
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     px: 2,
-                    py: 1.5,          // py:1 → 1.5 (≈44px touch target)
-                    minHeight: 44,     // WCAG touch target
+                    py: 1.5,
+                    minHeight: 44,
                     borderBottom: i < 6 ? '1px solid' : 'none',
                     borderColor: 'divider',
-                    bgcolor: isToday ? 'rgba(20,184,166,0.04)' : 'transparent',
+                    bgcolor: isOnLeave ? 'rgba(251,191,36,0.04)' : isToday ? 'rgba(20,184,166,0.04)' : 'transparent',
                     cursor: 'pointer',
                     WebkitTapHighlightColor: 'transparent',
                     '&:active': { bgcolor: 'rgba(255,255,255,0.06)' },
@@ -516,21 +550,26 @@ function MobileScheduleView({
                   <Typography variant="caption" fontWeight={isToday ? 700 : 400} color={isToday ? 'primary.main' : 'text.secondary'} sx={{ width: 32 }}>
                     {DAY_LABELS[i]}
                   </Typography>
-                  {asgn ? (
+                  {isOnLeave ? (
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      {asgn.is_on_leave ? (
-                        <Chip
-                          label="İzinli"
-                          size="small"
-                          sx={{ height: 20, fontSize: '0.65rem', bgcolor: 'rgba(251,191,36,0.15)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.3)' }}
-                        />
-                      ) : (
-                        <Chip
-                          label={asgn.shift_templates?.name ?? '—'}
-                          size="small"
-                          sx={{ height: 20, fontSize: '0.65rem', bgcolor: 'rgba(99,102,241,0.15)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.3)' }}
-                        />
+                      <Chip
+                        label="İzinli"
+                        size="small"
+                        sx={{ height: 20, fontSize: '0.65rem', bgcolor: 'rgba(251,191,36,0.15)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.3)' }}
+                      />
+                      {asgn && (
+                        <Typography variant="caption" color="text.disabled">
+                          {formatTime(asgn.start_time)}–{formatTime(asgn.end_time)}
+                        </Typography>
                       )}
+                    </Box>
+                  ) : asgn ? (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Chip
+                        label={asgn.shift_templates?.name ?? '—'}
+                        size="small"
+                        sx={{ height: 20, fontSize: '0.65rem', bgcolor: 'rgba(99,102,241,0.15)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.3)' }}
+                      />
                       <Typography variant="caption" color="text.disabled">
                         {formatTime(asgn.start_time)}–{formatTime(asgn.end_time)}
                       </Typography>

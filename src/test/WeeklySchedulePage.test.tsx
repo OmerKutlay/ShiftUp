@@ -107,6 +107,11 @@ function setupMocks(
   vi.mocked(empRepo.fetchActiveEmployees).mockResolvedValue(employees)
   vi.mocked(tplRepo.fetchActiveShiftTemplates).mockResolvedValue(templates)
   vi.mocked(scheduleRepo.fetchWeeklyAssignments).mockResolvedValue(assignments)
+  // FAZ 12: /api/leave fetch mock — test ortamında relative URL çalışmaz
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ requests: [] }),
+  }))
 }
 
 function renderPage() {
