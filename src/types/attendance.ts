@@ -32,6 +32,7 @@ export interface ShiftAssignment {
   work_date: string    // 'YYYY-MM-DD'
   start_time: string   // 'HH:MM' veya 'HH:MM:SS'
   end_time: string     // 'HH:MM' veya 'HH:MM:SS'
+  is_on_leave: boolean // FAZ 12: izin onaylanınca true olur, vardiya silinmez
   created_at: string
   updated_at: string
 }

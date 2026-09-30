@@ -15,16 +15,20 @@ export async function fetchDailyShifts(date: Date): Promise<DailyShiftEntry[]> {
     .select(`
       id,
       employee_id,
+      shift_template_id,
       work_date,
       start_time,
       end_time,
       created_at,
+      updated_at,
       employees (
         id,
         full_name,
         role,
+        role_id,
         active,
-        created_at
+        created_at,
+        updated_at
       )
     `)
     .eq('work_date', dateStr)
@@ -56,6 +60,7 @@ export async function fetchDailyShifts(date: Date): Promise<DailyShiftEntry[]> {
       work_date: assignment.work_date,
       start_time: assignment.start_time,
       end_time: assignment.end_time,
+      is_on_leave: assignment.is_on_leave ?? false,
       created_at: assignment.created_at,
       updated_at: assignment.updated_at ?? assignment.created_at,
     },

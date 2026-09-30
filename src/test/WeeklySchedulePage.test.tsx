@@ -79,6 +79,7 @@ function makeAssignment(overrides: Partial<ShiftAssignmentWithDetails> = {}): Sh
     work_date: '2026-09-28',
     start_time: '09:00',
     end_time: '18:00',
+    is_on_leave: false,
     created_at: '2026-09-28T00:00:00Z',
     updated_at: '2026-09-28T00:00:00Z',
     shift_templates: makeTemplate(),

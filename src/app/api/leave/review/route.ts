@@ -1,6 +1,6 @@
 /**
  * POST /api/leave/review
- * Manager tarafından izin talebi onaylama/reddetme — FAZ 9 + FAZ 10 (bildirim).
+ * Manager tarafından izin talebi onaylama/reddetme — FAZ 9 + FAZ 10 (bildirim) + FAZ 12 (is_on_leave).
  *
  * Body: { request_id, status: 'approved'|'rejected', reviewer_note? }
  */
@@ -72,6 +72,22 @@ export async function POST(req: NextRequest) {
       })
     } catch (notifErr) {
       console.error('[POST /api/leave/review] bildirim gönderilemedi:', notifErr)
+    }
+
+    // FAZ 12: Onay durumunda çakışan shift_assignment'ları is_on_leave = true işaretle.
+    // Vardiya silinmez — Weekly Schedule'da "İzinli" olarak gösterilir.
+    if (body.status === 'approved') {
+      try {
+        await admin
+          .from('shift_assignments')
+          .update({ is_on_leave: true })
+          .eq('employee_id', data.employee_id)
+          .gte('work_date', data.start_date)
+          .lte('work_date', data.end_date)
+      } catch (leaveMarkErr) {
+        // İşaretleme hatası onay işlemini geri almaz
+        console.error('[POST /api/leave/review] is_on_leave işaretlenemedi:', leaveMarkErr)
+      }
     }
 
     return NextResponse.json({ request: data })

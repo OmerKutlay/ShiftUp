@@ -176,7 +176,7 @@ export function WeeklySchedulePage() {
   }
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100vh', bgcolor: '#0f172a', color: 'text.primary' }}>
+    <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: '#0f172a', color: 'text.primary' }}>
       {/* Header */}
       <Box sx={{ mb: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
@@ -370,6 +370,38 @@ function ShiftCell({
     )
   }
 
+  // FAZ 12: İzinli vardiya
+  if (assignment.is_on_leave) {
+    return (
+      <Tooltip title="İzin onaylandı — bu gün için izinli" placement="top">
+        <Box
+          onClick={onClick}
+          sx={{
+            borderLeft: '1px solid',
+            borderColor: 'divider',
+            bgcolor: 'rgba(251,191,36,0.08)',
+            p: 0.75,
+            minHeight: 64,
+            cursor: 'pointer',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            alignItems: 'center',
+            gap: 0.4,
+            '&:hover': { bgcolor: 'rgba(251,191,36,0.14)' },
+          }}
+        >
+          <Typography variant="caption" fontWeight={700} color="warning.main" fontSize="0.7rem">
+            İzinli
+          </Typography>
+          <Typography variant="caption" color="text.disabled" fontSize="0.6rem">
+            {formatTime(assignment.start_time)}–{formatTime(assignment.end_time)}
+          </Typography>
+        </Box>
+      </Tooltip>
+    )
+  }
+
   const tpl = assignment.shift_templates
   const name = tpl?.name ?? '—'
   const start = formatTime(assignment.start_time)
@@ -436,7 +468,7 @@ function MobileScheduleView({
   templates, saving, onSave, onDelete, onDialogClose,
 }: MobileViewProps) {
   return (
-    <Box sx={{ p: 2, minHeight: '100vh', bgcolor: '#0f172a', color: 'text.primary' }}>
+    <Box sx={{ p: 2, minHeight: '100dvh', bgcolor: '#0f172a', color: 'text.primary' }}>
       <Box sx={{ mb: 3 }}>
         <Typography variant="h6" fontWeight={800} mb={1.5}>Haftalık Plan</Typography>
         <WeekNavigator currentWeek={currentWeek} onChange={onWeekChange} />
@@ -470,11 +502,14 @@ function MobileScheduleView({
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     px: 2,
-                    py: 1,
+                    py: 1.5,          // py:1 → 1.5 (≈44px touch target)
+                    minHeight: 44,     // WCAG touch target
                     borderBottom: i < 6 ? '1px solid' : 'none',
                     borderColor: 'divider',
                     bgcolor: isToday ? 'rgba(20,184,166,0.04)' : 'transparent',
                     cursor: 'pointer',
+                    WebkitTapHighlightColor: 'transparent',
+                    '&:active': { bgcolor: 'rgba(255,255,255,0.06)' },
                     '&:hover': { bgcolor: 'rgba(255,255,255,0.03)' },
                   }}
                 >
@@ -483,11 +518,19 @@ function MobileScheduleView({
                   </Typography>
                   {asgn ? (
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Chip
-                        label={asgn.shift_templates?.name ?? '—'}
-                        size="small"
-                        sx={{ height: 20, fontSize: '0.65rem', bgcolor: 'rgba(99,102,241,0.15)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.3)' }}
-                      />
+                      {asgn.is_on_leave ? (
+                        <Chip
+                          label="İzinli"
+                          size="small"
+                          sx={{ height: 20, fontSize: '0.65rem', bgcolor: 'rgba(251,191,36,0.15)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.3)' }}
+                        />
+                      ) : (
+                        <Chip
+                          label={asgn.shift_templates?.name ?? '—'}
+                          size="small"
+                          sx={{ height: 20, fontSize: '0.65rem', bgcolor: 'rgba(99,102,241,0.15)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.3)' }}
+                        />
+                      )}
                       <Typography variant="caption" color="text.disabled">
                         {formatTime(asgn.start_time)}–{formatTime(asgn.end_time)}
                       </Typography>
