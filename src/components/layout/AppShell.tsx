@@ -22,8 +22,19 @@ import ScheduleIcon from '@mui/icons-material/Schedule'
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth'
 import QrCode2Icon from '@mui/icons-material/QrCode2'
 import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner'
+import BarChartIcon from '@mui/icons-material/BarChart'
+import BeachAccessIcon from '@mui/icons-material/BeachAccess'
+import DashboardIcon from '@mui/icons-material/Dashboard'
+import SettingsIcon from '@mui/icons-material/Settings'
 import MenuIcon from '@mui/icons-material/Menu'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
+
+import { ErrorBoundary } from './ErrorBoundary'
+import { NotificationBell } from '@/components/notifications/NotificationBell'
+
+// Demo: mevcut auth yokken ilk aktif çalışan ID'si kullanılır.
+// Gerçek auth entegrasyonu yapıldığında burası session'dan okunacak.
+const DEMO_EMPLOYEE_ID = null as string | null
 
 const DRAWER_WIDTH = 220
 const DRAWER_COLLAPSED = 64
@@ -35,12 +46,16 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
+  { label: 'Genel Bakış', href: '/dashboard', icon: <DashboardIcon /> },
   { label: 'Günlük Operasyon', href: '/', icon: <TodayIcon /> },
   { label: 'Çalışanlar', href: '/employees', icon: <PeopleIcon /> },
   { label: 'Vardiya Şablonları', href: '/shift-templates', icon: <ScheduleIcon /> },
   { label: 'Haftalık Plan', href: '/schedule', icon: <CalendarMonthIcon /> },
   { label: 'QR Kiosk', href: '/qr-kiosk', icon: <QrCode2Icon /> },
   { label: 'QR Tara', href: '/attendance/scan', icon: <QrCodeScannerIcon /> },
+  { label: 'İzin Talepleri', href: '/leave', icon: <BeachAccessIcon /> },
+  { label: 'Raporlar', href: '/reports', icon: <BarChartIcon /> },
+  { label: 'Ayarlar', href: '/settings', icon: <SettingsIcon /> },
 ]
 
 interface Props {
@@ -163,26 +178,51 @@ export function AppShell({ children }: Props) {
           )
         })}
       </List>
+
+      {/* Bildirim alanı — sidebar alt kısmı */}
+      <Divider sx={{ borderColor: 'divider' }} />
+      <Box
+        sx={{
+          px: collapsed && !isMobile ? 1 : 2,
+          py: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: collapsed && !isMobile ? 'center' : 'space-between',
+          minHeight: 52,
+        }}
+      >
+        {(!collapsed || isMobile) && (
+          <Typography variant="caption" color="text.secondary" fontWeight={500}>
+            Bildirimler
+          </Typography>
+        )}
+        <NotificationBell
+          employeeId={DEMO_EMPLOYEE_ID}
+          collapsed={collapsed && !isMobile}
+        />
+      </Box>
     </Box>
   )
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}>
+    <Box sx={{ display: 'flex', minHeight: '100dvh', bgcolor: 'background.default' }}>
       {/* Mobile hamburger */}
       {isMobile && (
         <IconButton
           onClick={() => setMobileOpen(true)}
           sx={{
             position: 'fixed',
-            top: 12,
-            left: 12,
+            // safe-area-inset-top: iOS notch altına yerleşir
+            top: 'calc(12px + env(safe-area-inset-top))',
+            left: 'calc(12px + env(safe-area-inset-left))',
             zIndex: 1300,
             bgcolor: 'rgba(30,41,59,0.9)',
             border: '1px solid',
             borderColor: 'divider',
             color: 'text.primary',
+            WebkitTapHighlightColor: 'transparent',
           }}
-          size="small"
+          // size prop'u kaldırıldı → theme override ile 44×44 garantili
         >
           <MenuIcon />
         </IconButton>
@@ -204,7 +244,7 @@ export function AppShell({ children }: Props) {
               position: 'fixed',
               top: 0,
               left: 0,
-              height: '100vh',
+              height: '100dvh',
               transition: 'width 0.2s',
               overflow: 'hidden',
             }}
@@ -236,10 +276,12 @@ export function AppShell({ children }: Props) {
           minWidth: 0,
           ml: isMobile ? 0 : `${drawerWidth}px`,
           transition: 'margin-left 0.2s',
-          minHeight: '100vh',
+          minHeight: '100dvh',
+          // Mobile: hamburger button (44px) + safe-area-inset-top kadar boşluk
+          pt: isMobile ? 'calc(68px + env(safe-area-inset-top))' : 0,
         }}
       >
-        {children}
+        <ErrorBoundary>{children}</ErrorBoundary>
       </Box>
     </Box>
   )
