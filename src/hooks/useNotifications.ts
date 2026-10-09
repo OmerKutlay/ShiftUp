@@ -3,18 +3,15 @@
 /**
  * useNotifications hook — FAZ 10
  * Seçili employee_id'ye ait bildirimleri yönetir.
- * Polling: her 30 saniyede bir yeniler.
+ * Yükleme: ilk mount + employeeId değişimi. Polling yok.
  */
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import type { Notification } from '@/types/notification'
-
-const POLL_INTERVAL_MS = 30_000
 
 export function useNotifications(employeeId: string | null) {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const fetch = useCallback(async () => {
     if (!employeeId) {
@@ -22,7 +19,9 @@ export function useNotifications(employeeId: string | null) {
       return
     }
     try {
-      const res = await window.fetch(`/api/notifications?employee_id=${employeeId}&limit=30`)
+      const res = await window.fetch(`/api/notifications?employee_id=${employeeId}&limit=30`, {
+        credentials: 'same-origin',
+      })
       if (!res.ok) return
       const json = await res.json() as { notifications: Notification[] }
       setNotifications(json.notifications ?? [])
@@ -37,11 +36,6 @@ export function useNotifications(employeeId: string | null) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true)
     fetch().finally(() => setLoading(false))
-
-    timerRef.current = setInterval(fetch, POLL_INTERVAL_MS)
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current)
-    }
   }, [employeeId, fetch])
 
   const unreadCount = notifications.filter((n) => !n.is_read).length
@@ -57,6 +51,7 @@ export function useNotifications(employeeId: string | null) {
         await window.fetch('/api/notifications/read', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
           body: JSON.stringify({ notification_id: notificationId, employee_id: employeeId }),
         })
       } catch {
@@ -75,6 +70,7 @@ export function useNotifications(employeeId: string | null) {
       await window.fetch('/api/notifications/read-all', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({ employee_id: employeeId }),
       })
     } catch {

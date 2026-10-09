@@ -1,11 +1,15 @@
 /**
- * GET /api/attendance/current-status?employee_id=xxx
+ * GET /api/attendance/current-status
  * Çalışanın bugünkü vardiya + attendance durumunu ve önerilen next action'ı döner.
- * QrKioskPage'de smart action detection için kullanılır — FAZ 7.
+ *
+ * employee_id querystring parametresi opsiyoneldir.
+ * Verilmezse authenticated session'daki çalışan kullanılır (buton tabanlı devam takibi).
+ * Verilirse (kiosk ekran modu) o çalışan için sorgu yapılır.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { getAllowedActions } from '@/lib/attendanceStateMachine'
+import { requireAuth } from '@/lib/auth'
 import type { AttendanceStatus } from '@/types/attendance'
 import type { QrActionType } from '@/types/qr'
 import { format } from 'date-fns'
@@ -20,13 +24,14 @@ const ATTENDANCE_TO_QR_ACTION: Record<string, QrActionType> = {
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
-  const employeeId = searchParams.get('employee_id')
+  const queryEmployeeId = searchParams.get('employee_id')
 
+  // employee_id parametresi yoksa session'dan al
+  let employeeId = queryEmployeeId
   if (!employeeId) {
-    return NextResponse.json(
-      { error: 'employee_id gereklidir.', code: 'VALIDATION_ERROR' },
-      { status: 400 }
-    )
+    const auth = await requireAuth(req)
+    if ('response' in auth) return auth.response
+    employeeId = auth.employee.id
   }
 
   try {

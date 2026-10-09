@@ -8,6 +8,10 @@ export type NotificationType =
   | 'leave_approved'
   | 'leave_rejected'
   | 'attendance_override'
+  | 'open_shift_available'
+  | 'time_correction_submitted'
+  | 'time_correction_approved'
+  | 'time_correction_rejected'
 
 export interface Notification {
   id: string

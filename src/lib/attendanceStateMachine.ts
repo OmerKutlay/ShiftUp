@@ -70,6 +70,9 @@ function getRuleViolationMessage(status: AttendanceStatus, action: AttendanceAct
   if (action === 'end_break' && status !== 'on_break') {
     return 'Mola başlamadan mola bitirilemez.'
   }
+  if (action === 'clock_out' && status === 'on_break') {
+    return 'Molada iken çıkış yapılamaz. Önce moladan dönün.'
+  }
   if (action === 'clock_out' && status === 'shift_waiting') {
     return 'Giriş yapılmadan çıkış yapılamaz.'
   }

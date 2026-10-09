@@ -19,14 +19,14 @@ export interface WeeklyScheduleEntry {
 // Vardiya atama payload
 export interface CreateShiftAssignmentPayload {
   employee_id: string
-  shift_template_id: string
+  shift_template_id: string | null  // null → özel saat (template'siz)
   work_date: string    // 'YYYY-MM-DD'
-  start_time: string   // 'HH:MM' — template'den kopyalanır (immutable copy)
+  start_time: string   // 'HH:MM'
   end_time: string     // 'HH:MM'
 }
 
 export interface UpdateShiftAssignmentPayload {
-  shift_template_id?: string
+  shift_template_id?: string | null
   start_time?: string
   end_time?: string
 }

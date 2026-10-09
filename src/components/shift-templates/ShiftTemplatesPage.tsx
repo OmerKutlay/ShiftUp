@@ -81,7 +81,7 @@ export function ShiftTemplatesPage() {
   const activeCount = templates.filter((t) => t.active).length
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100vh', bgcolor: '#0f172a', color: 'text.primary' }}>
+    <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: '#0f172a', color: 'text.primary' }}>
       {/* Header */}
       <Box
         sx={{

@@ -17,17 +17,26 @@ import {
   InputAdornment,
   ToggleButton,
   ToggleButtonGroup,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
 } from '@mui/material'
 import PeopleIcon from '@mui/icons-material/People'
 import AddIcon from '@mui/icons-material/Add'
 import EditIcon from '@mui/icons-material/Edit'
+import DeleteIcon from '@mui/icons-material/Delete'
 import SearchIcon from '@mui/icons-material/Search'
+import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import type { EmployeeWithRole, Role, CreateEmployeePayload, UpdateEmployeePayload } from '@/types/employee'
 import {
   fetchEmployees,
   fetchRoles,
   createEmployee,
   updateEmployee,
+  deleteEmployee,
+  deactivateEmployee,
 } from '@/lib/employeeRepository'
 import { EmployeeFormDialog } from './EmployeeFormDialog'
 import { EmployeeStatusChip } from './EmployeeStatusChip'
@@ -40,10 +49,15 @@ export function EmployeesPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Dialog
+  // Edit/Create dialog
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<EmployeeWithRole | null>(null)
   const [saving, setSaving] = useState(false)
+
+  // Delete confirmation dialog
+  const [deleteTarget, setDeleteTarget] = useState<EmployeeWithRole | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<{ message: string; isFkViolation: boolean } | null>(null)
 
   // Filters
   const [search, setSearch] = useState('')
@@ -64,7 +78,7 @@ export function EmployeesPage() {
   }, [])
 
   useEffect(() => {
-    void load() // eslint-disable-line react-hooks/set-state-in-effect
+    void load()
   }, [load])
 
   const openCreate = () => {
@@ -75,6 +89,17 @@ export function EmployeesPage() {
   const openEdit = (emp: EmployeeWithRole) => {
     setEditTarget(emp)
     setDialogOpen(true)
+  }
+
+  const openDelete = (emp: EmployeeWithRole) => {
+    setDeleteError(null)
+    setDeleteTarget(emp)
+  }
+
+  const closeDelete = () => {
+    if (deleting) return
+    setDeleteTarget(null)
+    setDeleteError(null)
   }
 
   const handleSave = async (payload: CreateEmployeePayload | UpdateEmployeePayload) => {
@@ -89,6 +114,41 @@ export function EmployeesPage() {
       await load()
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      await deleteEmployee(deleteTarget.id)
+      setDeleteTarget(null)
+      await load()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Bir hata oluştu.'
+      const isFk = (err as { code?: string }).code === 'FK_VIOLATION'
+      setDeleteError({ message: msg, isFkViolation: isFk })
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const handleDeactivateInstead = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      await deactivateEmployee(deleteTarget.id)
+      setDeleteTarget(null)
+      await load()
+    } catch (err) {
+      setDeleteError({
+        message: err instanceof Error ? err.message : 'Pasifleştirme başarısız.',
+        isFkViolation: false,
+      })
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -108,7 +168,7 @@ export function EmployeesPage() {
   const activeCount = employees.filter((e) => e.active).length
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100vh', bgcolor: '#0f172a', color: 'text.primary' }}>
+    <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: '#0f172a', color: 'text.primary' }}>
       {/* Header */}
       <Box sx={{ mb: 3, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
         <Box>
@@ -138,7 +198,7 @@ export function EmployeesPage() {
       </Box>
 
       {/* Filters */}
-      <Box sx={{ mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+      <Box sx={{ mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center', flexDirection: { xs: 'column', sm: 'row' } }}>
         <TextField
           size="small"
           placeholder="İsim veya pozisyon ara…"
@@ -151,7 +211,7 @@ export function EmployeesPage() {
               </InputAdornment>
             ),
           }}
-          sx={{ minWidth: 240 }}
+          sx={{ minWidth: { xs: 'auto', sm: 240 }, width: { xs: '100%', sm: 'auto' } }}
         />
 
         <ToggleButtonGroup
@@ -159,10 +219,11 @@ export function EmployeesPage() {
           exclusive
           onChange={(_, v) => { if (v) setFilter(v as Filter) }}
           size="small"
+          sx={{ width: { xs: '100%', sm: 'auto' } }}
         >
-          <ToggleButton value="all">Tümü ({employees.length})</ToggleButton>
-          <ToggleButton value="active">Aktif ({activeCount})</ToggleButton>
-          <ToggleButton value="inactive">Pasif ({employees.length - activeCount})</ToggleButton>
+          <ToggleButton value="all" sx={{ flex: { xs: 1, sm: 'none' } }}>Tümü ({employees.length})</ToggleButton>
+          <ToggleButton value="active" sx={{ flex: { xs: 1, sm: 'none' } }}>Aktif ({activeCount})</ToggleButton>
+          <ToggleButton value="inactive" sx={{ flex: { xs: 1, sm: 'none' } }}>Pasif ({employees.length - activeCount})</ToggleButton>
         </ToggleButtonGroup>
       </Box>
 
@@ -192,12 +253,12 @@ export function EmployeesPage() {
       {!loading && !error && filtered.length > 0 && (
         <Stack spacing={1}>
           {filtered.map((emp) => (
-            <EmployeeCard key={emp.id} employee={emp} onEdit={openEdit} />
+            <EmployeeCard key={emp.id} employee={emp} onEdit={openEdit} onDelete={openDelete} />
           ))}
         </Stack>
       )}
 
-      {/* Form Dialog */}
+      {/* Edit/Create Form Dialog */}
       <EmployeeFormDialog
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
@@ -206,6 +267,67 @@ export function EmployeesPage() {
         roles={roles}
         loading={saving}
       />
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={!!deleteTarget}
+        onClose={closeDelete}
+        maxWidth="xs"
+        fullWidth
+        aria-labelledby="delete-dialog-title"
+      >
+        <DialogTitle id="delete-dialog-title" sx={{ display: 'flex', alignItems: 'center', gap: 1, fontWeight: 700 }}>
+          <WarningAmberIcon sx={{ color: 'error.main' }} />
+          Çalışanı Sil
+        </DialogTitle>
+        <DialogContent>
+          {deleteError ? (
+            <Alert
+              severity={deleteError.isFkViolation ? 'warning' : 'error'}
+              sx={{ mb: deleteError.isFkViolation ? 2 : 0 }}
+            >
+              {deleteError.message}
+            </Alert>
+          ) : (
+            <DialogContentText>
+              <strong>{deleteTarget?.full_name}</strong> adlı çalışan kalıcı olarak silinecek.
+              Bu işlem geri alınamaz.
+            </DialogContentText>
+          )}
+
+          {deleteError?.isFkViolation && (
+            <DialogContentText sx={{ mt: 1 }}>
+              Bunun yerine çalışanı <strong>pasifleştirebilirsiniz</strong> — geçmiş kayıtlar korunur, yeni vardiyalara dahil edilmez.
+            </DialogContentText>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
+          <Button onClick={closeDelete} disabled={deleting} color="inherit">
+            İptal
+          </Button>
+
+          {deleteError?.isFkViolation ? (
+            <Button
+              variant="contained"
+              color="warning"
+              onClick={handleDeactivateInstead}
+              disabled={deleting}
+            >
+              {deleting ? 'İşleniyor…' : 'Pasifleştir'}
+            </Button>
+          ) : (
+            <Button
+              variant="contained"
+              color="error"
+              startIcon={<DeleteIcon />}
+              onClick={handleDeleteConfirm}
+              disabled={deleting}
+            >
+              {deleting ? 'Siliniyor…' : 'Evet, Sil'}
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }
@@ -216,9 +338,11 @@ export function EmployeesPage() {
 function EmployeeCard({
   employee,
   onEdit,
+  onDelete,
 }: {
   employee: EmployeeWithRole
   onEdit: (emp: EmployeeWithRole) => void
+  onDelete: (emp: EmployeeWithRole) => void
 }) {
   return (
     <Paper
@@ -263,6 +387,11 @@ function EmployeeCard({
           <Typography variant="subtitle2" fontWeight={700} color="text.primary">
             {employee.full_name}
           </Typography>
+          {employee.email && (
+            <Typography variant="caption" color="text.disabled" fontSize="0.68rem" noWrap>
+              {employee.email}
+            </Typography>
+          )}
           <Box sx={{ display: 'flex', gap: 0.75, mt: 0.3, flexWrap: 'wrap' }}>
             <Chip
               label={employee.role}
@@ -300,7 +429,7 @@ function EmployeeCard({
       </Box>
 
       {/* Right: actions */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
         {/* Mobile status */}
         <Box sx={{ display: { xs: 'block', md: 'none' } }}>
           <EmployeeStatusChip active={employee.active} />
@@ -310,8 +439,19 @@ function EmployeeCard({
             size="small"
             onClick={() => onEdit(employee)}
             sx={{ color: 'text.secondary', '&:hover': { color: 'primary.main' } }}
+            aria-label={`${employee.full_name} düzenle`}
           >
             <EditIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="Sil">
+          <IconButton
+            size="small"
+            onClick={() => onDelete(employee)}
+            sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}
+            aria-label={`${employee.full_name} sil`}
+          >
+            <DeleteIcon fontSize="small" />
           </IconButton>
         </Tooltip>
       </Box>

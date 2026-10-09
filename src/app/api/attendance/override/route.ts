@@ -12,6 +12,7 @@ import { createAdminClient } from '@/lib/supabaseAdmin'
 import type { ManualAttendanceOverride } from '@/types/report'
 import type { AttendanceStatus } from '@/types/attendance'
 import { createNotification } from '@/lib/notificationRepository'
+import { requireMinRole, ROLES } from '@/lib/auth'
 
 const VALID_STATUSES: AttendanceStatus[] = [
   'shift_waiting',
@@ -29,6 +30,10 @@ function isValidIso(val: unknown): boolean {
 }
 
 export async function POST(req: NextRequest) {
+  // Authorization: en az Müdür Yardımcısı yetkisi gerekir
+  const auth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
+  if ('response' in auth) return auth.response
+
   try {
     const body = (await req.json()) as Partial<ManualAttendanceOverride>
 

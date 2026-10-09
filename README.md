@@ -1,36 +1,198 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ShiftUp — Mağaza Vardiya Yönetim Sistemi
 
-## Getting Started
+Next.js 15 + Supabase tabanlı vardiya ve devam takip uygulaması.
 
-First, run the development server:
+## Gereksinimler
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+`.env.local` dosyasını oluşturun (`.env.example` şablonunu kullanın):
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Geliştirme Ortamı
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm install
+npm run dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Uygulama `http://localhost:3000` adresinde açılır (port meşgulse Next.js otomatik olarak bir sonraki boş porta geçer).
 
-## Learn More
+## Komutlar
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm run dev          # Geliştirme sunucusu
+npm run build        # Production build
+npm run typecheck    # TypeScript kontrolü
+npm run test         # Testleri çalıştır
+npm run lint         # Lint kontrolü
+npm run format       # Prettier formatla
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+---
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Gerçek Telefonla QR Test (Cloudflare Tunnel)
 
-## Deploy on Vercel
+Localde çalışan uygulamayı telefonda test etmek için Cloudflare Tunnel kullanın.
+**Bu sadece geliştirme amaçlıdır — production deployment değildir.**
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Adım 1 — cloudflared binary'yi indirin (tek seferlik)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Proje klasöründe bir kez çalıştırın:
+
+```powershell
+Invoke-WebRequest `
+  -Uri "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" `
+  -OutFile "cloudflared.exe"
+```
+
+İndirme tamamlandığında şunu görmelisiniz:
+
+```
+cloudflared.exe   ~53 MB
+```
+
+Doğrulamak için:
+
+```powershell
+.\cloudflared.exe --version
+# cloudflared version 2026.x.x ...
+```
+
+---
+
+### Adım 2 — Geliştirme sunucusunu başlatın
+
+**Yeni bir terminal açın** ve çalıştırın:
+
+```powershell
+npm run dev
+```
+
+Çıktıdan portu not edin:
+
+```
+▲ Next.js 15.x.x
+- Local: http://localhost:3004   ← bu port numarasını not edin
+```
+
+> Port 3000 meşgulse Next.js otomatik başka bir port seçer (3001, 3002 ... 3004 gibi).
+
+---
+
+### Adım 3 — Tunnel'ı açın ve URL'yi alın
+
+**İkinci bir terminal açın** ve aşağıdaki komutu çalıştırın.
+`3004` yazan yeri bir önceki adımda not ettiğiniz port numarasıyla değiştirin:
+
+```powershell
+.\cloudflared.exe tunnel --protocol http2 --url http://localhost:3004
+```
+
+Birkaç saniye sonra terminalde şu kutuyu görürsünüz:
+
+```
++--------------------------------------------------------------------------------------------+
+|  Your quick Tunnel has been created! Visit it at (it may take some time to be reachable):  |
+|  https://xxxx-xxxx-xxxx-xxxx.trycloudflare.com                                             |
++--------------------------------------------------------------------------------------------+
+```
+
+**`https://xxxx-xxxx-xxxx-xxxx.trycloudflare.com`** satırındaki URL sizin tunnel adresinizdir.
+Bu URL'yi kopyalayın — telefonda bu adresi kullanacaksınız.
+
+> ⚠️ Her tunnel başlatmada URL değişir. `cloudflared.exe` kapatılınca eski URL geçersiz olur.
+
+---
+
+### Adım 4 — QR Test Senaryosu
+
+#### PC tarafı (admin/kiosk):
+
+1. Tarayıcıdan şu adrese gidin (tunnel URL'nizi kullanın):
+   ```
+   https://xxxx-xxxx-xxxx-xxxx.trycloudflare.com/qr-kiosk
+   ```
+2. Bir çalışan seçin
+3. İşlem tipi `Giriş` seçili olarak QR kodu ekranda görünür
+
+#### Telefon tarafı (çalışan):
+
+4. Telefon tarayıcısında şu adrese gidin:
+   ```
+   https://xxxx-xxxx-xxxx-xxxx.trycloudflare.com/attendance/scan
+   ```
+   > **Safari:** İlk açılışta Cloudflare "güvenlik uyarısı" çıkabilir. Sayfanın altındaki
+   > küçük linke tıklayarak devam edin.
+
+5. Çalışan seçin → **kameraya izin verin**
+
+6. PC ekranındaki QR kodu telefon kamerasıyla okutun
+
+7. QR okunduktan sonra ekranda **"GPS Konumu Alınıyor"** loading ekranı çıkar — telefonu indirip bekleyin, kamerayı tutmaya devam etmenize gerek yok
+
+8. Konum izni penceresi açılırsa **"İzin Ver"** seçin
+
+9. ✅ `Giriş başarılı — HH:MM` mesajı görünür
+
+---
+
+### Safari / iOS Konum İzni
+
+Safari'de konum "İzin Ver" seçmiş olsanız bile hata alıyorsanız:
+
+**Yöntem 1 — Adres çubuğundan:**
+1. Adres çubuğundaki **AA** harflerine dokunun
+2. **Site Ayarları** → **Konum** → **İzin Ver**
+3. Sayfayı yenileyin (`Yenile` tuşuna basın)
+
+**Yöntem 2 — Sistem Ayarlarından:**
+1. iPhone **Ayarlar** → **Gizlilik ve Güvenlik** → **Konum Servisleri**
+2. **Safari** → **Uygulamayı Kullanırken**
+
+**Yöntem 3 — Safari Ayarlarından:**
+1. iPhone **Ayarlar** → **Uygulamalar** → **Safari** → **Konum** → **Sor**
+
+---
+
+### Önemli Notlar
+
+| Konu | Durum |
+|------|-------|
+| HTTPS | ✅ Cloudflare otomatik sağlar — mixed-content sorunu yok |
+| CORS | ✅ Same-origin (tunnel frontend + API aynı domain) |
+| Konum (GPS) | ✅ HTTPS zorunluluğu Cloudflare ile karşılanıyor |
+| QR içeriği | Relative path değil — QR payload içinde URL yok, sadece token |
+| Tunnel süresi | Geçici — process kapatılınca tunnel sona erer, URL değişir |
+| Rate limit | 10 QR/dakika per employee (generate), 30 işlem/dakika (process) |
+
+---
+
+## Mimari
+
+```
+src/
+├── app/
+│   ├── api/
+│   │   ├── qr/generate/        # POST — QR token üretimi
+│   │   ├── qr/process/         # POST — QR işleme + attendance güncelleme
+│   │   ├── attendance/
+│   │   │   ├── override/       # POST — Manuel attendance düzeltme
+│   │   │   ├── current-status/ # GET  — Smart QR action detection
+│   │   │   └── record-id/      # GET  — Override için kayıt ID'si
+│   │   └── store-location/     # GET+POST — Mağaza konumu yönetimi
+│   ├── /                       # Günlük Operasyon
+│   ├── /employees              # Çalışan yönetimi
+│   ├── /shift-templates        # Vardiya şablonları
+│   ├── /schedule               # Haftalık plan
+│   ├── /qr-kiosk               # QR kod üretim ekranı
+│   ├── /attendance/scan        # QR tarama ekranı
+│   ├── /reports                # Devam raporları + CSV export
+│   └── /settings               # Mağaza konum ayarları
+├── components/                 # UI bileşenleri
+├── lib/                        # Repository + Service katmanı
+└── types/                      # TypeScript domain tipleri
+```

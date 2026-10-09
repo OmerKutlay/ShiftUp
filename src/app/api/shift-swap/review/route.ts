@@ -6,8 +6,13 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
+import { requireMinRole, ROLES } from '@/lib/auth'
 
 export async function POST(req: NextRequest) {
+  // Takas onayı manager+ yetkisi gerektirir
+  const auth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
+  if ('response' in auth) return auth.response
+
   try {
     const body = (await req.json()) as {
       swap_id?: string

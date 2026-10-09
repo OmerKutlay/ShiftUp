@@ -39,24 +39,25 @@ export interface QrPayload {
 
 // /api/qr/generate request
 export interface GenerateQrRequest {
-  employee_id: string
-  action_type: QrActionType
-  ttl_seconds?: number  // varsayılan 60
+  employee_id?: string       // kiosk için opsiyonel
+  action_type?: QrActionType // kiosk için opsiyonel
+  ttl_seconds?: number
+  kiosk?: boolean            // true → evrensel kiosk QR üret
 }
 
 // /api/qr/generate response
 export interface GenerateQrResponse {
   token: string
-  action_type: QrActionType
-  employee_id: string
+  action_type: QrActionType | null   // kiosk QR'da null
+  employee_id: string | null          // kiosk QR'da null
   expires_at: string
-  qr_data: string  // JSON.stringify(QrPayload) — QR'a encode edilir
+  qr_data: string
 }
 
 // /api/qr/process request
 export interface ProcessQrRequest {
-  qr_data: string  // QR'dan okunan raw string
-  employee_id: string  // kim taradı (no-auth fallback: kullanıcı seçer)
+  qr_data: string
+  employee_id: string   // session'dan alınır, body'den de accept edilir (geriye dönük uyumluluk)
 }
 
 // /api/qr/process response

@@ -24,6 +24,40 @@ vi.mock('@/lib/supabaseAdmin', () => ({
   createAdminClient: vi.fn(),
 }))
 
+vi.mock('@/lib/auth', () => ({
+  requireAuth: vi.fn().mockResolvedValue({
+    employee: {
+      id: 'emp-001', full_name: 'Ahmet Kaya', email: null,
+      role: 'Kasiyer', role_id: null, role_name: 'Çalışan', active: true,
+    },
+  }),
+  requireMinRole: vi.fn().mockResolvedValue({ employee: { id: 'emp-001' } }),
+  ROLES: { MUDUR_YARDIMCISI: 'Müdür Yardımcısı' },
+}))
+
+vi.mock('@/lib/auth/authorization', () => ({
+  requireAuth: vi.fn().mockResolvedValue({
+    employee: {
+      id: 'emp-001', full_name: 'Ahmet Kaya', email: null,
+      role: 'Kasiyer', role_id: null, role_name: 'Çalışan', active: true,
+    },
+  }),
+  requireMinRole: vi.fn().mockResolvedValue({ employee: { id: 'emp-001' } }),
+  forbidden: vi.fn(),
+  unauthorized: vi.fn(),
+}))
+
+vi.mock('@/lib/auth/session', () => ({
+  getCurrentEmployee: vi.fn().mockResolvedValue(null),
+}))
+
+vi.mock('@/lib/authConfig', () => ({
+  IS_DEV_AUTH: true,
+  DEV_SESSION_COOKIE: 'dev_auth_session',
+  AUTH_MODE: 'development',
+  getDevOtp: () => '12345',
+}))
+
 // attendanceStateMachine'i gerçek haliyle kullan (saf fonksiyonlar)
 // test edilen mantık için mock gerekmez
 
@@ -149,8 +183,9 @@ describe('/api/qr/process — input validation', () => {
     expect(res.status).toBe(400)
   })
 
-  it('employee_id eksikse 400 döner', async () => {
-    const res = await POST(makeRequest({ qr_data: '{}' }))
+  it('employee_id artık body\'de gerekmiyor — session\'dan alınır', async () => {
+    // Bu test sadece qr_data eksikliğini test eder, employee_id body'de artık gerekmez
+    const res = await POST(makeRequest({}))
     expect(res.status).toBe(400)
   })
 })
@@ -190,7 +225,7 @@ describe('/api/qr/process — çalışan doğrulama', () => {
     const qrToken = makeQrToken()
     vi.mocked(qrTokenService.validateAndConsumeToken).mockResolvedValue({
       token: qrToken,
-      payload: { token: 'abc123', action: 'clock_in', employee_id: 'emp-001', exp: 9999999999 },
+      isKiosk: false, payload: { token: 'abc123', action: 'clock_in', employee_id: 'emp-001', exp: 9999999999 },
     })
 
     setupAdminMock({ employee: { id: 'emp-001', full_name: 'Ahmet', active: false } })
@@ -205,7 +240,7 @@ describe('/api/qr/process — çalışan doğrulama', () => {
     const qrToken = makeQrToken()
     vi.mocked(qrTokenService.validateAndConsumeToken).mockResolvedValue({
       token: qrToken,
-      payload: { token: 'abc123', action: 'clock_in', employee_id: 'emp-001', exp: 9999999999 },
+      isKiosk: false, payload: { token: 'abc123', action: 'clock_in', employee_id: 'emp-001', exp: 9999999999 },
     })
 
     // employee null — maybeSingle data:null döner
@@ -229,7 +264,7 @@ describe('/api/qr/process — vardiya doğrulama', () => {
     const qrToken = makeQrToken()
     vi.mocked(qrTokenService.validateAndConsumeToken).mockResolvedValue({
       token: qrToken,
-      payload: { token: 'abc123', action: 'clock_in', employee_id: 'emp-001', exp: 9999999999 },
+      isKiosk: false, payload: { token: 'abc123', action: 'clock_in', employee_id: 'emp-001', exp: 9999999999 },
     })
 
     setupAdminMock({ shiftAssignments: [] })
@@ -248,7 +283,7 @@ describe('/api/qr/process — attendance akışı', () => {
     const qrToken = makeQrToken({ action_type: 'clock_in' })
     vi.mocked(qrTokenService.validateAndConsumeToken).mockResolvedValue({
       token: qrToken,
-      payload: { token: 'abc123', action: 'clock_in', employee_id: 'emp-001', exp: 9999999999 },
+      isKiosk: false, payload: { token: 'abc123', action: 'clock_in', employee_id: 'emp-001', exp: 9999999999 },
     })
 
     setupAdminMock({
@@ -267,7 +302,7 @@ describe('/api/qr/process — attendance akışı', () => {
     const qrToken = makeQrToken({ action_type: 'clock_in' })
     vi.mocked(qrTokenService.validateAndConsumeToken).mockResolvedValue({
       token: qrToken,
-      payload: { token: 'abc123', action: 'clock_in', employee_id: 'emp-001', exp: 9999999999 },
+      isKiosk: false, payload: { token: 'abc123', action: 'clock_in', employee_id: 'emp-001', exp: 9999999999 },
     })
 
     setupAdminMock({
@@ -283,7 +318,7 @@ describe('/api/qr/process — attendance akışı', () => {
     const qrToken = makeQrToken({ action_type: 'break_start' })
     vi.mocked(qrTokenService.validateAndConsumeToken).mockResolvedValue({
       token: qrToken,
-      payload: { token: 'abc123', action: 'break_start', employee_id: 'emp-001', exp: 9999999999 },
+      isKiosk: false, payload: { token: 'abc123', action: 'break_start', employee_id: 'emp-001', exp: 9999999999 },
     })
 
     // existingRecord null = henüz giriş yapılmamış → state: shift_waiting → start_break geçersiz
@@ -299,7 +334,7 @@ describe('/api/qr/process — attendance akışı', () => {
     const qrToken = makeQrToken({ action_type: 'clock_in' })
     vi.mocked(qrTokenService.validateAndConsumeToken).mockResolvedValue({
       token: qrToken,
-      payload: { token: 'abc123', action: 'clock_in', employee_id: 'emp-001', exp: 9999999999 },
+      isKiosk: false, payload: { token: 'abc123', action: 'clock_in', employee_id: 'emp-001', exp: 9999999999 },
     })
 
     // existingRecord null (clocked_out kayıtlar neq filtresiyle gelmiyor)
@@ -317,7 +352,7 @@ describe('/api/qr/process — attendance akışı', () => {
     const qrTokenOut = makeQrToken({ action_type: 'clock_out' })
     vi.mocked(qrTokenService.validateAndConsumeToken).mockResolvedValue({
       token: qrTokenOut,
-      payload: { token: 'abc123', action: 'clock_out', employee_id: 'emp-001', exp: 9999999999 },
+      isKiosk: false, payload: { token: 'abc123', action: 'clock_out', employee_id: 'emp-001', exp: 9999999999 },
     })
 
     // existingRecord = null → state: shift_waiting → clock_out geçersiz
@@ -333,7 +368,7 @@ describe('/api/qr/process — attendance akışı', () => {
     const qrToken = makeQrToken({ action_type: 'break_start' })
     vi.mocked(qrTokenService.validateAndConsumeToken).mockResolvedValue({
       token: qrToken,
-      payload: { token: 'abc123', action: 'break_start', employee_id: 'emp-001', exp: 9999999999 },
+      isKiosk: false, payload: { token: 'abc123', action: 'break_start', employee_id: 'emp-001', exp: 9999999999 },
     })
 
     setupAdminMock({
@@ -346,3 +381,4 @@ describe('/api/qr/process — attendance akışı', () => {
     expect(body.code).toBe('ATTENDANCE_RULE_VIOLATION')
   })
 })
+

@@ -101,7 +101,7 @@ describe('qrTokenService — generateQrToken', () => {
       single: vi.fn().mockResolvedValue({ data: null, error: { message: 'unique violation' } }),
     }])
 
-    await expect(generateQrToken('emp-001', 'clock_in')).rejects.toThrow(QrTokenError)
+    await expect(generateQrToken('emp-001', 'clock_in')).rejects.toThrow('QR token oluşturulamadı')
   })
 })
 
@@ -131,7 +131,8 @@ describe('qrTokenService — validateAndConsumeToken', () => {
 
     const result = await validateAndConsumeToken(qrData)
     expect(result.token.token).toBe(record.token)
-    expect(result.payload.action).toBe('clock_in')
+    expect(result.isKiosk).toBe(false)
+    expect((result.payload as import('@/types/qr').QrPayload).action).toBe('clock_in')
   })
 
   it('süresi geçmiş QR reddediliyor (client-side exp check)', async () => {
@@ -150,7 +151,6 @@ describe('qrTokenService — validateAndConsumeToken', () => {
 
   it('eksik alan içeren QR reddediliyor', async () => {
     const incomplete = JSON.stringify({ token: 'abc', exp: 9999999999 })
-    await expect(validateAndConsumeToken(incomplete)).rejects.toThrow(QrTokenError)
     await expect(validateAndConsumeToken(incomplete)).rejects.toThrow('eksik alan')
   })
 

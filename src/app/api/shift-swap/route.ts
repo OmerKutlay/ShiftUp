@@ -1,17 +1,29 @@
 /**
  * GET  /api/shift-swap?employee_id=xxx&status=pending
  * POST /api/shift-swap
- * FAZ 11
+ * FAZ 11 + FAZ AUTH-2
+ *
+ * GET:  requireAuth → employee kendi swap'larını görür; manager+ herkes
+ * POST: requireAuth → requester_id SESSION'dan alınır
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import type { CreateSwapRequestPayload } from '@/types/workforce'
+import { requireAuth, MANAGER_ROLES } from '@/lib/auth'
 
+// ─── GET ─────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req)
+  if ('response' in auth) return auth.response
+  const { employee: currentEmployee } = auth
+
   try {
     const { searchParams } = new URL(req.url)
-    const employeeId = searchParams.get('employee_id')
     const status = searchParams.get('status')
+
+    const isManager = currentEmployee.role_name
+      ? MANAGER_ROLES.includes(currentEmployee.role_name)
+      : false
 
     const admin = createAdminClient()
     let query = admin
@@ -26,9 +38,10 @@ export async function GET(req: NextRequest) {
       .order('created_at', { ascending: false })
 
     if (status) query = query.eq('status', status)
-    if (employeeId) {
-      // hem talep sahibi hem hedef olarak filtrele
-      query = query.or(`requester_id.eq.${employeeId},target_id.eq.${employeeId}`)
+
+    // Manager+ tümünü görür; çalışan yalnızca kendi taleplerini
+    if (!isManager) {
+      query = query.or(`requester_id.eq.${currentEmployee.id},target_id.eq.${currentEmployee.id}`)
     }
 
     const { data, error } = await query
@@ -40,16 +53,24 @@ export async function GET(req: NextRequest) {
   }
 }
 
+// ─── POST ────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
+  const auth = await requireAuth(req)
+  if ('response' in auth) return auth.response
+  const { employee: currentEmployee } = auth
+
   try {
     const body = (await req.json()) as Partial<CreateSwapRequestPayload>
 
-    if (!body.requester_id) return NextResponse.json({ error: 'requester_id zorunludur.' }, { status: 400 })
-    if (!body.requester_shift_id) return NextResponse.json({ error: 'requester_shift_id zorunludur.' }, { status: 400 })
+    // requester_id SESSION'dan alınır — client değeri yoksayılır
+    const requesterId = currentEmployee.id
+
+    if (!body.requester_shift_id)
+      return NextResponse.json({ error: 'requester_shift_id zorunludur.' }, { status: 400 })
 
     const admin = createAdminClient()
 
-    // Shift varlık kontrolü
+    // Shift gerçekten bu employee'a ait mi?
     const { data: shift } = await admin
       .from('shift_assignments')
       .select('id, employee_id')
@@ -57,10 +78,10 @@ export async function POST(req: NextRequest) {
       .maybeSingle()
 
     if (!shift) return NextResponse.json({ error: 'Vardiya bulunamadı.' }, { status: 404 })
-    if (shift.employee_id !== body.requester_id)
+    if (shift.employee_id !== requesterId)
       return NextResponse.json({ error: 'Bu vardiya size ait değil.' }, { status: 403 })
 
-    // Aynı vardiya için bekleyen talep var mı?
+    // Bekleyen talep kontrolü
     const { data: existing } = await admin
       .from('shift_swap_requests')
       .select('id')
@@ -74,11 +95,11 @@ export async function POST(req: NextRequest) {
     const { data, error } = await admin
       .from('shift_swap_requests')
       .insert({
-        requester_id: body.requester_id,
+        requester_id:       requesterId,
         requester_shift_id: body.requester_shift_id,
-        target_id: body.target_id ?? null,
-        target_shift_id: body.target_shift_id ?? null,
-        requester_note: body.requester_note ?? null,
+        target_id:          body.target_id ?? null,
+        target_shift_id:    body.target_shift_id ?? null,
+        requester_note:     body.requester_note ?? null,
         status: 'pending',
       })
       .select()

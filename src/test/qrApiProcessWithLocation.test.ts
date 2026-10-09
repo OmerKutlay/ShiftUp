@@ -23,6 +23,40 @@ vi.mock('@/lib/supabaseAdmin', () => ({
   createAdminClient: vi.fn(),
 }))
 
+vi.mock('@/lib/auth', () => ({
+  requireAuth: vi.fn().mockResolvedValue({
+    employee: {
+      id: 'emp-001', full_name: 'Ahmet Kaya', email: null,
+      role: 'Kasiyer', role_id: null, role_name: 'Çalışan', active: true,
+    },
+  }),
+  requireMinRole: vi.fn().mockResolvedValue({ employee: { id: 'emp-001' } }),
+  ROLES: { MUDUR_YARDIMCISI: 'Müdür Yardımcısı' },
+}))
+
+vi.mock('@/lib/auth/authorization', () => ({
+  requireAuth: vi.fn().mockResolvedValue({
+    employee: {
+      id: 'emp-001', full_name: 'Ahmet Kaya', email: null,
+      role: 'Kasiyer', role_id: null, role_name: 'Çalışan', active: true,
+    },
+  }),
+  requireMinRole: vi.fn().mockResolvedValue({ employee: { id: 'emp-001' } }),
+  forbidden: vi.fn(),
+  unauthorized: vi.fn(),
+}))
+
+vi.mock('@/lib/auth/session', () => ({
+  getCurrentEmployee: vi.fn().mockResolvedValue(null),
+}))
+
+vi.mock('@/lib/authConfig', () => ({
+  IS_DEV_AUTH: true,
+  DEV_SESSION_COOKIE: 'dev_auth_session',
+  AUTH_MODE: 'development',
+  getDevOtp: () => '12345',
+}))
+
 vi.mock('@/lib/locationService', () => ({
   validateLocationServerSide: vi.fn(),
   fetchActiveStoreLocation: vi.fn(),
@@ -155,7 +189,7 @@ describe('/api/qr/process FAZ 6 — geçerli QR + geçerli konum', () => {
     const qrToken = makeQrToken()
     vi.mocked(qrTokenService.validateAndConsumeToken).mockResolvedValue({
       token: qrToken,
-      payload: { token: 'abc123', action: 'clock_in', employee_id: 'emp-001', exp: 9999999999 },
+      isKiosk: false, payload: { token: 'abc123', action: 'clock_in', employee_id: 'emp-001', exp: 9999999999 },
     })
     vi.mocked(locationServiceModule.validateLocationServerSide).mockResolvedValue(
       makeGeofenceResult(true, 50)
@@ -177,7 +211,7 @@ describe('/api/qr/process FAZ 6 — geçerli QR + geçerli konum', () => {
     const qrToken = makeQrToken()
     vi.mocked(qrTokenService.validateAndConsumeToken).mockResolvedValue({
       token: qrToken,
-      payload: { token: 'abc123', action: 'clock_in', employee_id: 'emp-001', exp: 9999999999 },
+      isKiosk: false, payload: { token: 'abc123', action: 'clock_in', employee_id: 'emp-001', exp: 9999999999 },
     })
     vi.mocked(locationServiceModule.validateLocationServerSide).mockResolvedValue(
       makeGeofenceResult(false, 500)
@@ -243,7 +277,7 @@ describe('/api/qr/process FAZ 6 — location payload validation', () => {
     const qrToken = makeQrToken()
     vi.mocked(qrTokenService.validateAndConsumeToken).mockResolvedValue({
       token: qrToken,
-      payload: { token: 'abc123', action: 'clock_in', employee_id: 'emp-001', exp: 9999999999 },
+      isKiosk: false, payload: { token: 'abc123', action: 'clock_in', employee_id: 'emp-001', exp: 9999999999 },
     })
     ;(supabaseAdminModule.createAdminClient as ReturnType<typeof vi.fn>).mockReturnValue({
       from: vi.fn(() => ({
@@ -269,7 +303,7 @@ describe('/api/qr/process FAZ 6 — location payload validation', () => {
     const qrToken = makeQrToken()
     vi.mocked(qrTokenService.validateAndConsumeToken).mockResolvedValue({
       token: qrToken,
-      payload: { token: 'abc123', action: 'clock_in', employee_id: 'emp-001', exp: 9999999999 },
+      isKiosk: false, payload: { token: 'abc123', action: 'clock_in', employee_id: 'emp-001', exp: 9999999999 },
     })
     setupValidAdminMock()
 
@@ -293,7 +327,7 @@ describe('/api/qr/process FAZ 6 — attendance kaydı ve Günlük Operasyon', ()
     const qrToken = makeQrToken()
     vi.mocked(qrTokenService.validateAndConsumeToken).mockResolvedValue({
       token: qrToken,
-      payload: { token: 'abc123', action: 'clock_in', employee_id: 'emp-001', exp: 9999999999 },
+      isKiosk: false, payload: { token: 'abc123', action: 'clock_in', employee_id: 'emp-001', exp: 9999999999 },
     })
     vi.mocked(locationServiceModule.validateLocationServerSide).mockResolvedValue(
       makeGeofenceResult(false, 800)
@@ -326,7 +360,7 @@ describe('/api/qr/process FAZ 6 — attendance kaydı ve Günlük Operasyon', ()
     const qrToken = makeQrToken()
     vi.mocked(qrTokenService.validateAndConsumeToken).mockResolvedValue({
       token: qrToken,
-      payload: { token: 'abc123', action: 'clock_in', employee_id: 'emp-001', exp: 9999999999 },
+      isKiosk: false, payload: { token: 'abc123', action: 'clock_in', employee_id: 'emp-001', exp: 9999999999 },
     })
     vi.mocked(locationServiceModule.validateLocationServerSide).mockResolvedValue(
       makeGeofenceResult(true, 50)
@@ -345,3 +379,4 @@ describe('/api/qr/process FAZ 6 — attendance kaydı ve Günlük Operasyon', ()
     expect(body.success).toBe(true)
   })
 })
+

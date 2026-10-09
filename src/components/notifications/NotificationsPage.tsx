@@ -29,7 +29,7 @@ import PersonIcon from '@mui/icons-material/Person'
 import { formatDistanceToNow, format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { useNotifications } from '@/hooks/useNotifications'
-import { useActiveEmployee } from '@/context/ActiveEmployeeContext'
+import { useAuth } from '@/context/AuthContext'
 import type { Notification, NotificationType } from '@/types/notification'
 
 const TYPE_META: Record<
@@ -41,6 +41,10 @@ const TYPE_META: Record<
   leave_approved:      { icon: <CheckCircleOutlineIcon />,     color: '#10b981', label: 'İzin Onaylandı' },
   leave_rejected:      { icon: <EventBusyIcon />,              color: '#ef4444', label: 'İzin Reddedildi' },
   attendance_override: { icon: <BuildIcon />,                  color: '#f59e0b', label: 'Devam Düzeltmesi' },
+  open_shift_available:{ icon: <EventAvailableIcon />,         color: '#a78bfa', label: 'Açık Vardiya' },
+  time_correction_submitted: { icon: <AccessTimeIcon />,       color: '#60a5fa', label: 'Mesai Talebi' },
+  time_correction_approved:  { icon: <CheckCircleOutlineIcon />, color: '#10b981', label: 'Mesai Onaylandı' },
+  time_correction_rejected:  { icon: <EventBusyIcon />,        color: '#ef4444', label: 'Mesai Reddedildi' },
 }
 
 function NotificationItem({
@@ -136,9 +140,9 @@ function NotificationItem({
 }
 
 export function NotificationsPage() {
-  const { activeEmployee } = useActiveEmployee()
+  const { employee: authEmployee, status: authStatus } = useAuth()
   const { notifications, unreadCount, loading, error, markAsRead, markAllAsRead, refresh } =
-    useNotifications(activeEmployee?.id ?? null)
+    useNotifications(authEmployee?.id ?? null)
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 720, mx: 'auto' }}>
@@ -149,10 +153,10 @@ export function NotificationsPage() {
           <Typography variant="h6" fontWeight={800}>
             Bildirimler
           </Typography>
-          {activeEmployee && (
+          {authEmployee && (
             <Chip
               icon={<PersonIcon sx={{ fontSize: '14px !important' }} />}
-              label={activeEmployee.full_name}
+              label={authEmployee.full_name}
               size="small"
               sx={{ bgcolor: 'rgba(20,184,166,0.12)', color: 'primary.main', fontWeight: 600 }}
             />
@@ -187,9 +191,9 @@ export function NotificationsPage() {
         </Box>
       </Box>
 
-      {!activeEmployee && (
+      {authStatus === 'unauthenticated' && (
         <Alert severity="info" sx={{ mb: 2 }}>
-          Bildirimleri görmek için sol menüden aktif çalışanı seçin.
+          Bildirimleri görmek için giriş yapmanız gerekiyor.
         </Alert>
       )}
 
@@ -216,7 +220,7 @@ export function NotificationsPage() {
           <Box sx={{ py: 6, textAlign: 'center' }}>
             <WarningAmberIcon sx={{ color: 'text.secondary', opacity: 0.3, fontSize: 48, mb: 1 }} />
             <Typography variant="body1" color="text.secondary">
-              {activeEmployee ? 'Henüz bildirim bulunmuyor' : 'Çalışan seçilmedi'}
+              {authEmployee ? 'Henüz bildirim bulunmuyor' : 'Giriş yapılmadı'}
             </Typography>
             <Typography variant="caption" color="text.secondary" sx={{ opacity: 0.7 }}>
               Vardiya hatırlatmaları ve izin bildirimleri burada görünecek

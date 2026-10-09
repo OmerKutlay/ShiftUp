@@ -5,8 +5,9 @@ import { Box, Typography, CircularProgress } from '@mui/material'
 import QRCode from 'qrcode'
 
 interface Props {
-  data: string         // QR'a encode edilecek veri
-  size?: number        // piksel (varsayılan 240)
+  data: string
+  /** Render çözünürlüğü (px). Canvas bu boyutta üretilir, CSS ile ölçeklenir. Varsayılan 240. */
+  size?: number
   loading?: boolean
   expired?: boolean
 }
@@ -23,7 +24,7 @@ export function QrCodeDisplay({ data, size = 240, loading = false, expired = fal
       width: size,
       margin: 2,
       color: {
-        dark: '#0f172a',  // koyu arka plan rengiyle uyumlu
+        dark: '#0f172a',
         light: '#f8fafc',
       },
       errorCorrectionLevel: 'M',
@@ -36,8 +37,10 @@ export function QrCodeDisplay({ data, size = 240, loading = false, expired = fal
     return (
       <Box
         sx={{
-          width: size,
-          height: size,
+          // Responsive: tam genişlik, maxWidth ile üst sınır
+          width: '100%',
+          maxWidth: size,
+          aspectRatio: '1 / 1',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -56,8 +59,9 @@ export function QrCodeDisplay({ data, size = 240, loading = false, expired = fal
     return (
       <Box
         sx={{
-          width: size,
-          height: size,
+          width: '100%',
+          maxWidth: size,
+          aspectRatio: '1 / 1',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -83,15 +87,26 @@ export function QrCodeDisplay({ data, size = 240, loading = false, expired = fal
   return (
     <Box
       sx={{
+        // Responsive wrapper: Paper içinde her zaman sığar
+        width: '100%',
+        maxWidth: size,
         borderRadius: 2,
         overflow: 'hidden',
         border: '3px solid',
         borderColor: 'primary.main',
         boxShadow: '0 0 20px rgba(20,184,166,0.25)',
-        display: 'inline-block',
       }}
     >
-      <canvas ref={canvasRef} width={size} height={size} />
+      {/*
+       * Canvas: width/height attribute'u piksel çözünürlüğünü belirler.
+       * CSS width:'100%' ile container'a göre scale edilir — mobilde taşmaz.
+       */}
+      <canvas
+        ref={canvasRef}
+        width={size}
+        height={size}
+        style={{ width: '100%', height: 'auto', display: 'block' }}
+      />
     </Box>
   )
 }

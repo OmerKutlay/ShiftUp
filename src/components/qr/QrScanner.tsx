@@ -28,13 +28,18 @@ export function QrScanner({ onScan, onError, active = true }: Props) {
     import('html5-qrcode').then(({ Html5Qrcode }) => {
       if (!mounted || !containerRef.current) return
 
+      // Container gerçek genişliğine göre qrbox hesapla
+      // Minimum 200, maksimum 260 — taşmayı önler
+      const containerWidth = containerRef.current.offsetWidth || 280
+      const qrboxSize = Math.min(Math.floor(containerWidth * 0.78), 260)
+
       const scanner = new Html5Qrcode('qr-scanner-container')
       scannerRef.current = scanner
 
       scanner
         .start(
           { facingMode: 'environment' },
-          { fps: 10, qrbox: { width: 220, height: 220 } },
+          { fps: 10, qrbox: { width: qrboxSize, height: qrboxSize } },
           (decodedText) => {
             onScan(decodedText)
           },
@@ -72,8 +77,10 @@ export function QrScanner({ onScan, onError, active = true }: Props) {
     return (
       <Box
         sx={{
-          width: 280,
-          height: 280,
+          // Responsive: ekran genişliğine göre max 280px
+          width: '100%',
+          maxWidth: 280,
+          aspectRatio: '1 / 1',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -84,6 +91,7 @@ export function QrScanner({ onScan, onError, active = true }: Props) {
           p: 2,
           gap: 1,
           textAlign: 'center',
+          boxSizing: 'border-box',
         }}
       >
         <Typography variant="h4">🚫</Typography>
@@ -99,20 +107,24 @@ export function QrScanner({ onScan, onError, active = true }: Props) {
   }
 
   return (
-    <Box sx={{ position: 'relative', display: 'inline-block' }}>
-      {/* html5-qrcode mount noktası */}
+    // Dış wrapper: tam genişlik, max 280px — scanner her zaman container'a sığar
+    <Box sx={{ width: '100%', maxWidth: 280, position: 'relative' }}>
+      {/* html5-qrcode mount noktası — aspectRatio ile kare korunur */}
       <Box
         id="qr-scanner-container"
         ref={containerRef}
         sx={{
-          width: 280,
-          height: 280,
+          width: '100%',
+          aspectRatio: '1 / 1',
           borderRadius: 2,
           overflow: 'hidden',
           border: '3px solid',
           borderColor: 'primary.main',
           boxShadow: '0 0 20px rgba(20,184,166,0.25)',
           bgcolor: '#000',
+          // html5-qrcode içine enjekte ettiği video/img elementleri için
+          '& video': { width: '100% !important', height: '100% !important', objectFit: 'cover' },
+          '& img': { display: 'none' }, // snapshot preview gizle
         }}
       />
 
@@ -124,8 +136,9 @@ export function QrScanner({ onScan, onError, active = true }: Props) {
             top: '50%',
             left: '50%',
             transform: 'translate(-50%, -50%)',
-            width: 180,
-            height: 180,
+            // Köşe işaretçileri container'ın %65'i kadar
+            width: '65%',
+            height: '65%',
             pointerEvents: 'none',
             '&::before, &::after': {
               content: '""',

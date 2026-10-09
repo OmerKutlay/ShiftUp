@@ -1,7 +1,8 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
+import Script from 'next/script'
+import { AppRouterCacheProvider } from '@mui/material-nextjs/v15-appRouter'
 import { Providers } from './providers'
-import { AppShell } from '@/components/layout/AppShell'
 
 const inter = Inter({ subsets: ['latin'], display: 'swap' })
 
@@ -37,22 +38,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           paddingBottom: 'env(safe-area-inset-bottom)',
         }}
       >
-        <Providers>
-          <AppShell>{children}</AppShell>
-        </Providers>
+        <AppRouterCacheProvider>
+          <Providers>{children}</Providers>
+        </AppRouterCacheProvider>
         {/* PWA Service Worker registration */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
+        <Script id="sw-register" strategy="afterInteractive">{`
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function() {
     navigator.serviceWorker.register('/sw.js', { scope: '/' })
       .catch(function(err) { console.warn('SW registration failed:', err); });
   });
 }
-`.trim(),
-          }}
-        />
+`}</Script>
       </body>
     </html>
   )

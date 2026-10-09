@@ -63,8 +63,9 @@ export function AttendanceActions({ status, loading, onAction }: Props) {
             onClick={() => onAction(action)}
             sx={{
               fontSize: '0.75rem',
-              py: 0.5,
+              py: 0.75,
               px: 1.5,
+              minHeight: 40,    // theme override'ın üzerine: burada 40px yeterli
               minWidth: 'unset',
               whiteSpace: 'nowrap',
             }}

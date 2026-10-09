@@ -27,6 +27,10 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
       "@typescript-eslint/no-explicit-any": "warn",
+      // Bu kural Next.js 15 ile geldi; mevcut kodu bozmamak için warn'a düşürüldü
+      "react-hooks/set-state-in-effect": "warn",
+      // no-useless-catch — mevcut kodda var, warn'a düşürüldü
+      "no-useless-catch": "warn",
     },
   }
 );

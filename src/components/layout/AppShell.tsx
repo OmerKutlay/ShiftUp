@@ -15,9 +15,6 @@ import {
   useTheme,
   Divider,
   Tooltip,
-  Select,
-  MenuItem,
-  FormControl,
 } from '@mui/material'
 import TodayIcon from '@mui/icons-material/Today'
 import PeopleIcon from '@mui/icons-material/People'
@@ -32,11 +29,17 @@ import SettingsIcon from '@mui/icons-material/Settings'
 import MenuIcon from '@mui/icons-material/Menu'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import PersonIcon from '@mui/icons-material/Person'
+import LogoutIcon from '@mui/icons-material/Logout'
 import GroupsIcon from '@mui/icons-material/Groups'
+import WorkIcon from '@mui/icons-material/Work'
+import EventNoteIcon from '@mui/icons-material/EventNote'
+import EditNoteIcon from '@mui/icons-material/EditNote'
 
 import { ErrorBoundary } from './ErrorBoundary'
 import { NotificationBell } from '@/components/notifications/NotificationBell'
 import { useActiveEmployee } from '@/context/ActiveEmployeeContext'
+import { useAuth } from '@/context/AuthContext'
+import { hasRole, MANAGER_ROLES, ADMIN_ROLES } from '@/lib/auth/roles'
 
 const DRAWER_WIDTH = 220
 const DRAWER_COLLAPSED = 64
@@ -45,26 +48,26 @@ interface NavItem {
   label: string
   href: string
   icon: React.ReactNode
+  /** Bu nav item yalnızca belirtilen rollere gösterilir. Undefined = herkese. */
+  requiredRoles?: string[]
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { label: 'Genel Bakış', href: '/dashboard', icon: <DashboardIcon /> },
-  { label: 'Günlük Operasyon', href: '/', icon: <TodayIcon /> },
-  { label: 'Çalışanlar', href: '/employees', icon: <PeopleIcon /> },
-  { label: 'Vardiya Şablonları', href: '/shift-templates', icon: <ScheduleIcon /> },
-  { label: 'Haftalık Plan', href: '/schedule', icon: <CalendarMonthIcon /> },
-  { label: 'QR Kiosk', href: '/qr-kiosk', icon: <QrCode2Icon /> },
-  { label: 'QR Tara', href: '/attendance/scan', icon: <QrCodeScannerIcon /> },
-  { label: 'İzin Talepleri', href: '/leave', icon: <BeachAccessIcon /> },
-  { label: 'İş Gücü', href: '/workforce', icon: <GroupsIcon /> },
-  { label: 'Raporlar', href: '/reports', icon: <BarChartIcon /> },
-  { label: 'Ayarlar', href: '/settings', icon: <SettingsIcon /> },
+  { label: 'Genel Bakış',       href: '/dashboard',       icon: <DashboardIcon /> },
+  { label: 'Günlük Operasyon',  href: '/',                icon: <TodayIcon /> },
+  { label: 'Çalışanlar',        href: '/employees',       icon: <PeopleIcon />,        requiredRoles: MANAGER_ROLES },
+  { label: 'Vardiya Şablonları',href: '/shift-templates', icon: <ScheduleIcon />,      requiredRoles: MANAGER_ROLES },
+  { label: 'Haftalık Plan',     href: '/schedule',        icon: <CalendarMonthIcon /> },
+  { label: 'QR Kiosk',          href: '/qr-kiosk',        icon: <QrCode2Icon />,       requiredRoles: MANAGER_ROLES },
+  { label: 'QR Tara',           href: '/attendance/scan', icon: <QrCodeScannerIcon /> },
+  { label: 'Çalışma Özetim',   href: '/my-schedule',     icon: <EventNoteIcon /> },
+  { label: 'Açık Vardiyalar',   href: '/open-shifts',     icon: <WorkIcon /> },
+  { label: 'İzin Talepleri',    href: '/leave',           icon: <BeachAccessIcon /> },
+  { label: 'Mesai Düzeltme',   href: '/time-correction', icon: <EditNoteIcon /> },
+  { label: 'İş Gücü',           href: '/workforce',       icon: <GroupsIcon />,        requiredRoles: MANAGER_ROLES },
+  { label: 'Raporlar',          href: '/reports',         icon: <BarChartIcon />,      requiredRoles: MANAGER_ROLES },
+  { label: 'Ayarlar',           href: '/settings',        icon: <SettingsIcon />,      requiredRoles: ADMIN_ROLES },
 ]
-
-interface EmployeeOption {
-  id: string
-  full_name: string
-}
 
 interface Props {
   children: React.ReactNode
@@ -72,29 +75,25 @@ interface Props {
 
 export function AppShell({ children }: Props) {
   const theme = useTheme()
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'))
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'), { noSsr: true })
   const [mobileOpen, setMobileOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const pathname = usePathname()
   const router = useRouter()
   const { activeEmployee, setActiveEmployee } = useActiveEmployee()
-  const [employees, setEmployees] = useState<EmployeeOption[]>([])
+  const { employee: authEmployee, signOut, status: authStatus } = useAuth()
+  const authRoleName = authEmployee?.roles?.name ?? authEmployee?.role_name ?? null
 
-  // Aktif çalışanlar listesini yükle (selector için)
+  // Auth'dan gelen employee'ı activeEmployee'a sync et
   useEffect(() => {
-    fetch('/api/employees?active=true')
-      .then((r) => r.ok ? r.json() : { employees: [] })
-      .then((json: { employees?: EmployeeOption[] }) => {
-        const list = json.employees ?? []
-        setEmployees(list)
-        // İlk açılışta seçili yoksa ilk çalışanı otomatik seç
-        if (list.length > 0 && !activeEmployee) {
-          setActiveEmployee({ id: list[0].id, full_name: list[0].full_name })
-        }
-      })
-      .catch(() => { /* sessiz hata */ })
+    if (authEmployee && authEmployee.active) {
+      setActiveEmployee({ id: authEmployee.id, full_name: authEmployee.full_name })
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [authEmployee?.id])
+
+  // Aktif çalışanlar listesini yükle (selector için) — artık auth'dan geliyor
+  // Bu useEffect kaldırıldı; auth employee sync yukarıda yapılıyor
 
   const drawerWidth = collapsed && !isMobile ? DRAWER_COLLAPSED : DRAWER_WIDTH
 
@@ -154,7 +153,9 @@ export function AppShell({ children }: Props) {
 
       {/* Nav items */}
       <List sx={{ flex: 1, px: 1, pt: 1 }}>
-        {NAV_ITEMS.map((item) => {
+        {NAV_ITEMS.filter((item) =>
+          !item.requiredRoles || hasRole(authRoleName, item.requiredRoles as never)
+        ).map((item) => {
           const active = pathname === item.href
           return (
             <Tooltip
@@ -207,60 +208,63 @@ export function AppShell({ children }: Props) {
 
       <Divider sx={{ borderColor: 'divider' }} />
 
-      {/* Aktif çalışan seçici + bildirim */}
+      {/* Aktif çalışan + bildirim */}
       <Box sx={{ px: collapsed && !isMobile ? 0.5 : 1.5, py: 1.25 }}>
         {(!collapsed || isMobile) ? (
           <>
-            {/* Çalışan seçici */}
+            {/* Auth bilgisi */}
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.75 }}>
               <PersonIcon sx={{ fontSize: 14, color: 'text.secondary', flexShrink: 0 }} />
-              <Typography variant="caption" color="text.secondary" fontWeight={500} noWrap>
-                Aktif çalışan
+              <Typography variant="caption" color="text.secondary" fontWeight={500} noWrap sx={{ flex: 1 }}>
+                {authStatus === 'authenticated' && authEmployee
+                  ? authEmployee.full_name
+                  : 'Giriş yapılmadı'}
               </Typography>
             </Box>
-            <FormControl fullWidth size="small" sx={{ mb: 0.5 }}>
-              <Select
-                value={activeEmployee?.id ?? ''}
-                onChange={(e) => {
-                  const emp = employees.find((x) => x.id === e.target.value)
-                  if (emp) setActiveEmployee({ id: emp.id, full_name: emp.full_name })
-                }}
-                displayEmpty
-                sx={{
-                  fontSize: '0.78rem',
-                  bgcolor: 'rgba(255,255,255,0.04)',
-                  '& .MuiSelect-select': { py: 0.75 },
-                  '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                }}
-              >
-                <MenuItem value="" disabled sx={{ fontSize: '0.78rem' }}>
-                  Çalışan seçin...
-                </MenuItem>
-                {employees.map((emp) => (
-                  <MenuItem key={emp.id} value={emp.id} sx={{ fontSize: '0.78rem' }}>
-                    {emp.full_name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            {/* Bildirim satırı */}
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Typography variant="caption" color="text.secondary" fontWeight={500}>
-                Bildirimler
+            {authStatus === 'authenticated' && authEmployee && (
+              <Typography variant="caption" color="text.disabled" noWrap sx={{ display: 'block', mb: 0.75, pl: 2.75 }}>
+                {authEmployee.roles?.name ?? authEmployee.role}
               </Typography>
+            )}
+            {/* Bildirim + logout satırı */}
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <NotificationBell
-                employeeId={activeEmployee?.id ?? null}
+                employeeId={authEmployee?.id ?? null}
                 collapsed={false}
               />
+              {authStatus === 'authenticated' && (
+                <Tooltip title="Çıkış Yap">
+                  <IconButton
+                    size="small"
+                    onClick={signOut}
+                    sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}
+                    aria-label="Çıkış Yap"
+                  >
+                    <LogoutIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              )}
             </Box>
           </>
         ) : (
-          /* Collapsed: sadece bildirim ikonu */
-          <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+          /* Collapsed: bildirim ikonu + logout */
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5 }}>
             <NotificationBell
-              employeeId={activeEmployee?.id ?? null}
+              employeeId={authEmployee?.id ?? null}
               collapsed={true}
             />
+            {authStatus === 'authenticated' && (
+              <Tooltip title="Çıkış Yap" placement="right">
+                <IconButton
+                  size="small"
+                  onClick={signOut}
+                  sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}
+                  aria-label="Çıkış Yap"
+                >
+                  <LogoutIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            )}
           </Box>
         )}
       </Box>

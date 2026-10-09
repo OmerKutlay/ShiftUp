@@ -11,8 +11,8 @@
  * - /, /dashboard, /attendance/scan, /qr-kiosk, /leave, /schedule, /workforce
  */
 
-const CACHE_NAME = 'shiftup-v1'
-const STATIC_CACHE = 'shiftup-static-v1'
+const CACHE_NAME = 'shiftup-v2'
+const STATIC_CACHE = 'shiftup-static-v2'
 
 // API path'leri — bunlar asla cache'lenmez
 const API_NO_CACHE_PATTERNS = [

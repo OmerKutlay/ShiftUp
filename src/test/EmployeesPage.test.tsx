@@ -43,9 +43,12 @@ function makeEmployee(overrides: Partial<EmployeeWithRole> = {}): EmployeeWithRo
   return {
     id: 'emp-001',
     full_name: 'Ahmet Kaya',
+    email: null,
     role: 'Kasiyer',
     role_id: 'role-001',
     active: true,
+    employment_type: 'full_time',
+    auth_user_id: null,
     created_at: '2026-09-28T00:00:00Z',
     updated_at: '2026-09-28T00:00:00Z',
     roles: makeRole(),

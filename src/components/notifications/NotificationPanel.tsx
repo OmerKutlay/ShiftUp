@@ -39,6 +39,10 @@ const TYPE_META: Record<
   leave_approved:     { icon: <CheckCircleOutlineIcon fontSize="small" />, color: '#10b981', label: 'Onaylandı' },
   leave_rejected:     { icon: <EventBusyIcon fontSize="small" />,         color: '#ef4444', label: 'Reddedildi' },
   attendance_override:{ icon: <BuildIcon fontSize="small" />,             color: '#f59e0b', label: 'Düzeltme' },
+  open_shift_available:{ icon: <EventAvailableIcon fontSize="small" />,  color: '#a78bfa', label: 'Açık Vardiya' },
+  time_correction_submitted: { icon: <AccessTimeIcon fontSize="small" />,  color: '#60a5fa', label: 'Mesai Talebi' },
+  time_correction_approved:  { icon: <CheckCircleOutlineIcon fontSize="small" />, color: '#10b981', label: 'Mesai Onaylandı' },
+  time_correction_rejected:  { icon: <EventBusyIcon fontSize="small" />,   color: '#ef4444', label: 'Mesai Reddedildi' },
 }
 
 interface Props {

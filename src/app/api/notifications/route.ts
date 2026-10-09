@@ -1,7 +1,7 @@
 /**
  * GET  /api/notifications?employee_id=xxx          — Bildirimleri listele
  * POST /api/notifications                           — Yeni bildirim oluştur (internal use)
- * FAZ 10
+ * FAZ 10 + FAZ AUTH-2
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
@@ -10,6 +10,7 @@ import {
   getNotificationsByEmployee,
 } from '@/lib/notificationRepository'
 import type { CreateNotificationPayload, NotificationType } from '@/types/notification'
+import { requireAuth, requireMinRole, ROLES, MANAGER_ROLES } from '@/lib/auth'
 
 const VALID_TYPES: NotificationType[] = [
   'shift_reminder',
@@ -17,21 +18,28 @@ const VALID_TYPES: NotificationType[] = [
   'leave_approved',
   'leave_rejected',
   'attendance_override',
+  'open_shift_available',
+  'time_correction_submitted',
+  'time_correction_approved',
+  'time_correction_rejected',
 ]
 
 // ─── GET ────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req)
+  if ('response' in auth) return auth.response
+  const { employee: currentEmployee } = auth
+
   try {
     const { searchParams } = new URL(req.url)
-    const employeeId = searchParams.get('employee_id')
     const limitParam = searchParams.get('limit')
 
-    if (!employeeId || typeof employeeId !== 'string') {
-      return NextResponse.json(
-        { error: 'employee_id zorunludur.', code: 'VALIDATION_ERROR' },
-        { status: 400 },
-      )
-    }
+    // employee_id: manager+ parametreden, diğerleri session'dan
+    const isManager = currentEmployee.role_name
+      ? MANAGER_ROLES.includes(currentEmployee.role_name)
+      : false
+    const requestedId = searchParams.get('employee_id')
+    const employeeId = isManager && requestedId ? requestedId : currentEmployee.id
 
     const limit = limitParam ? Math.min(parseInt(limitParam, 10) || 50, 100) : 50
     const admin = createAdminClient()
@@ -46,6 +54,10 @@ export async function GET(req: NextRequest) {
 
 // ─── POST ───────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
+  // Notification oluşturma yönetimsel işlem — manager+ yetkisi gerekir
+  const auth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
+  if ('response' in auth) return auth.response
+
   try {
     const body = (await req.json()) as Partial<CreateNotificationPayload>
 

@@ -7,8 +7,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { createNotification } from '@/lib/notificationRepository'
+import { requireMinRole, ROLES } from '@/lib/auth'
 
 export async function POST(req: NextRequest) {
+  // Authorization: en az Müdür Yardımcısı yetkisi gerekir
+  const auth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
+  if ('response' in auth) return auth.response
+
   try {
     const body = await req.json() as {
       request_id?: string
@@ -74,17 +79,17 @@ export async function POST(req: NextRequest) {
       console.error('[POST /api/leave/review] bildirim gönderilemedi:', notifErr)
     }
 
-    // FAZ 12: Onay durumunda çakışan shift_assignment'ları is_on_leave = true işaretle.
-    // Vardiya silinmez — Weekly Schedule'da "İzinli" olarak gösterilir.
+    // İzin onaylandığında çakışan vardiyaları tamamen sil.
+    // İzinli çalışana o günler için yeni vardiya da atanamaz (scheduleRepository guard'ı).
     if (body.status === 'approved') {
-      const { error: leaveMarkErr } = await admin
+      const { error: deleteShiftsErr } = await admin
         .from('shift_assignments')
-        .update({ is_on_leave: true })
+        .delete()
         .eq('employee_id', data.employee_id)
         .gte('work_date', data.start_date)
         .lte('work_date', data.end_date)
-      if (leaveMarkErr) {
-        console.error('[POST /api/leave/review] is_on_leave işaretlenemedi:', leaveMarkErr.message)
+      if (deleteShiftsErr) {
+        console.error('[POST /api/leave/review] çakışan vardiyalar silinemedi:', deleteShiftsErr.message)
       }
     }
 

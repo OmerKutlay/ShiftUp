@@ -41,3 +41,12 @@ next-env.d.ts
 # supabase local dev
 /supabase/.branches
 /supabase/.temp
+
+# Cloudflare Tunnel — development binary (not committed)
+cloudflared.exe
+cloudflared
+
+# Local tooling / scratch files (mcp.json contains a Supabase access token)
+mcp.json
+config.yml
+__test_*.json

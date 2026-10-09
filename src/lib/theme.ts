@@ -50,6 +50,25 @@ export const theme = createTheme({
           textTransform: 'none',
           fontWeight: 600,
           borderRadius: 8,
+          // WCAG 2.5.5: minimum touch target 44×44px
+          minHeight: 44,
+        },
+        sizeSmall: {
+          minHeight: 36,   // small butonlar için biraz esneklik
+          minWidth: 36,
+        },
+      },
+    },
+    // IconButton touch target — tüm sayfadaki edit/refresh/hamburger butonları
+    MuiIconButton: {
+      styleOverrides: {
+        root: {
+          minWidth: 44,
+          minHeight: 44,
+        },
+        sizeSmall: {
+          minWidth: 36,
+          minHeight: 36,
         },
       },
     },
@@ -58,6 +77,14 @@ export const theme = createTheme({
         root: {
           fontWeight: 600,
           borderRadius: 6,
+        },
+      },
+    },
+    // ListItemButton touch target (nav items)
+    MuiListItemButton: {
+      styleOverrides: {
+        root: {
+          minHeight: 44,
         },
       },
     },

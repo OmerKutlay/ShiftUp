@@ -33,9 +33,12 @@ export async function fetchEmployees(): Promise<EmployeeWithRole[]> {
     .select(`
       id,
       full_name,
+      email,
       role,
       role_id,
       active,
+      employment_type,
+      auth_user_id,
       created_at,
       updated_at,
       roles (
@@ -61,6 +64,7 @@ export async function fetchActiveEmployees(): Promise<EmployeeWithRole[]> {
       role,
       role_id,
       active,
+      employment_type,
       created_at,
       updated_at,
       roles (
@@ -87,6 +91,7 @@ export async function fetchEmployeeById(id: string): Promise<EmployeeWithRole | 
       role,
       role_id,
       active,
+      employment_type,
       created_at,
       updated_at,
       roles (
@@ -145,4 +150,24 @@ export async function deactivateEmployee(id: string): Promise<Employee> {
 
 export async function activateEmployee(id: string): Promise<Employee> {
   return updateEmployee(id, { active: true })
+}
+
+/**
+ * Çalışanı kalıcı olarak siler (hard delete).
+ * Bağlı vardiya/attendance kayıtları varsa 409 (FK_VIOLATION) hatası alınır;
+ * bu durumda UI kullanıcıya pasifleştirme önerir.
+ * Auth user silme işlemi API route tarafından yapılır (service role gerektirir).
+ */
+export async function deleteEmployee(id: string): Promise<void> {
+  const res = await fetch(`/api/employees/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string; code?: string }
+    throw Object.assign(
+      new Error(body.error ?? 'Çalışan silinemedi.'),
+      { code: body.code }
+    )
+  }
 }
