@@ -83,9 +83,10 @@ export interface ShiftSwapRequest {
 }
 
 export interface CreateSwapRequestPayload {
-  requester_id: string
+  /** Sunucu tarafından yoksayılır — talep eden her zaman oturumdaki çalışandır */
+  requester_id?: string
   requester_shift_id: string
-  target_id?: string | null
+  target_id: string
   target_shift_id?: string | null
   requester_note?: string | null
 }

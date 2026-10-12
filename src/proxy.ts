@@ -11,10 +11,13 @@ import { DEV_SESSION_COOKIE, IS_DEV_AUTH } from '@/lib/authConfig'
 
 const PUBLIC_PATHS = ['/login']
 const PUBLIC_API_PREFIX = '/api/auth/'
+// Cron çağrısı oturumsuz gelir; route kendi içinde CRON_SECRET / rol kontrolü yapar
+const CRON_API_PATHS = ['/api/attendance/alerts/scan']
 
 function isPublicPath(pathname: string): boolean {
   if (PUBLIC_PATHS.includes(pathname)) return true
   if (pathname.startsWith(PUBLIC_API_PREFIX)) return true
+  if (CRON_API_PATHS.includes(pathname)) return true
   if (pathname.startsWith('/_next/')) return true
   if (pathname.startsWith('/favicon')) return true
   if (pathname === '/manifest.json') return true
