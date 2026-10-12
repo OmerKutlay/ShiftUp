@@ -235,6 +235,7 @@ export function EmployeesPage() {
 
       {/* Edit/Create Form Dialog */}
       <EmployeeFormDialog
+        key={dialogOpen ? editTarget?.id ?? 'new' : 'closed'}
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
         onSave={handleSave}

@@ -32,6 +32,12 @@ export interface Employee {
   active: boolean
   employment_type: EmploymentType  // 'full_time' | 'part_time'
   auth_user_id: string | null  // FAZ AUTH: Supabase auth.users.id bağlantısı
+  /** İşe giriş — yıllık izin hakkı (İş K. Md. 53) */
+  hire_date?: string | null
+  /** Doğum tarihi — 18 altı / 50 üstü izin hakkı */
+  birth_date?: string | null
+  /** Fazla çalışma yazılı onay tarihi (İş K. Md. 41/8) */
+  overtime_consent_at?: string | null
   created_at: string
   updated_at: string
 }
@@ -52,6 +58,9 @@ export interface CreateEmployeePayload {
   role_id: string | null
   active: boolean
   employment_type: EmploymentType
+  hire_date?: string | null
+  birth_date?: string | null
+  overtime_consent_at?: string | null
 }
 
 // Çalışan güncelleme payload
@@ -62,4 +71,7 @@ export interface UpdateEmployeePayload {
   role_id?: string | null
   active?: boolean
   employment_type?: EmploymentType
+  hire_date?: string | null
+  birth_date?: string | null
+  overtime_consent_at?: string | null
 }

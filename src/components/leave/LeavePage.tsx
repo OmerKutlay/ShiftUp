@@ -51,6 +51,7 @@ import { format, differenceInCalendarDays } from 'date-fns'
 import { useAuth } from '@/context/AuthContext'
 import { hasRole, MANAGER_ROLES } from '@/lib/auth/roles'
 import { apiFetch } from '@/lib/api/http'
+import type { AnnualLeaveBalance } from '@/lib/annualLeave'
 
 // ─── Helpers ─────────────────────────────────────────────────
 
@@ -303,6 +304,42 @@ function LeaveStatusChip({ status }: { status: LeaveStatus }) {
   )
 }
 
+// ─── Yıllık izin bakiyesi ─────────────────────────────────────
+
+function AnnualLeaveCard({ balance }: { balance: AnnualLeaveBalance }) {
+  if (!balance.known) {
+    return (
+      <Alert severity="info" sx={{ mb: 2 }}>
+        Yıllık izin bakiyeniz hesaplanamadı: işe giriş tarihiniz kayıtlı değil. Yöneticinizden eklemesini isteyin.
+      </Alert>
+    )
+  }
+  const low = balance.remainingDays <= 2
+  return (
+    <Paper elevation={0} sx={{ p: 2, mb: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2, display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+      <Box>
+        <Typography variant="caption" color="text.secondary">Yıllık izin hakkı ({balance.seniorityYears}. yıl)</Typography>
+        <Typography variant="h6" fontWeight={800}>{balance.entitlementDays} gün</Typography>
+      </Box>
+      <Box>
+        <Typography variant="caption" color="text.secondary">Kullanılan</Typography>
+        <Typography variant="h6" fontWeight={800}>{balance.usedDays} gün</Typography>
+      </Box>
+      <Box>
+        <Typography variant="caption" color="text.secondary">Onay bekleyen</Typography>
+        <Typography variant="h6" fontWeight={800}>{balance.pendingDays} gün</Typography>
+      </Box>
+      <Box>
+        <Typography variant="caption" color="text.secondary">Kalan</Typography>
+        <Typography variant="h6" fontWeight={800} color={low ? 'warning.main' : 'primary.main'}>{Math.max(0, balance.remainingDays)} gün</Typography>
+      </Box>
+      <Typography variant="caption" color="text.disabled" sx={{ alignSelf: 'flex-end', ml: 'auto' }}>
+        Dönem: {balance.periodStart && fmtDate(balance.periodStart)} – {balance.periodEnd && fmtDate(balance.periodEnd)} · Pazar ve resmi tatiller izinden sayılmaz
+      </Typography>
+    </Paper>
+  )
+}
+
 // ─── Main Page ────────────────────────────────────────────────
 
 export function LeavePage() {
@@ -339,6 +376,9 @@ export function LeavePage() {
   const [deleting, setDeleting] = useState(false)
 
   const load = () => requestsQ.mutate()
+  // Oturumdaki çalışanın yıllık izin bakiyesi (İş K. Md. 53)
+  const balanceQ = useSWR(me ? '/api/leave/balance' : null, (url: string) => apiFetch<{ balance: AnnualLeaveBalance }>(url))
+  const balance = balanceQ.data?.balance
 
   const handleNewSave = async (payload: CreateLeaveRequestPayload) => {
     setNewSaving(true)
@@ -348,11 +388,20 @@ export function LeavePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
-      const data = await res.json() as { error?: string }
-      if (!res.ok) throw new Error(data.error ?? 'Talep oluşturulamadı.')
+      const data = await res.json() as { error?: string; code?: string }
+      if (!res.ok) {
+        // Yönetici, bakiyeyi aşan yıllık izni (avans izin) açıkça onaylayarak kaydedebilir
+        if (data.code === 'ANNUAL_LEAVE_EXCEEDED' && isManager && payload.employee_id !== me?.id &&
+            window.confirm(`${data.error}
+
+Avans izin olarak yine de oluşturulsun mu?`)) {
+          return handleNewSave({ ...payload, allow_exceed: true } as CreateLeaveRequestPayload)
+        }
+        throw new Error(data.error ?? 'Talep oluşturulamadı.')
+      }
       setNewOpen(false)
       setSuccess('İzin talebi oluşturuldu.')
-      await load()
+      await Promise.all([load(), balanceQ.mutate()])
     } finally {
       setNewSaving(false)
     }
@@ -420,6 +469,8 @@ export function LeavePage() {
           </Button>
         }
       />
+
+      {balance && <AnnualLeaveCard balance={balance} />}
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       {success && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess(null)}>{success}</Alert>}

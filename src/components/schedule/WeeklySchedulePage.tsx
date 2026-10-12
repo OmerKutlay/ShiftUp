@@ -31,6 +31,7 @@ import type { EmployeeWithRole } from '@/types/employee'
 import type { ShiftTemplate } from '@/types/shiftTemplate'
 import type { ShiftAssignmentWithDetails, WeeklyScheduleEntry } from '@/types/schedule'
 import type { EmployeeAvailability, DayOfWeek } from '@/types/workforce'
+import type { PublicHoliday } from '@/types/holiday'
 import { formatTime } from '@/types/shiftTemplate'
 import {
   createShiftAssignment,
@@ -236,6 +237,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     templates,
     assignments,
     availabilityMap,
+    holidayMap,
     approvedLeaveMap,
     leaveDayToId,
     restDayMap,
@@ -408,6 +410,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
   if (isMobile) {
     return (
       <MobileScheduleView
+        holidayMap={holidayMap}
         scheduleEntries={scheduleEntries}
         weekDays={weekDays}
         loading={isFirstLoad}
@@ -470,11 +473,12 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
             </Box>
             {weekDays.map((d, i) => {
               const isToday = d === format(new Date(), 'yyyy-MM-dd')
+              const holiday = holidayMap.get(d)
               return (
-                <Box key={d} sx={{
+                <Box key={d} title={holiday ? `Resmi tatil: ${holiday.name}${holiday.half_day ? ' (13:00 sonrası)' : ''}` : undefined} sx={{
                   p: 1.5, textAlign: 'center',
                   borderLeft: '1px solid', borderColor: 'divider',
-                  bgcolor: isToday ? 'rgba(20,184,166,0.06)' : 'transparent',
+                  bgcolor: holiday && !holiday.half_day ? 'rgba(234,179,8,0.10)' : isToday ? 'rgba(20,184,166,0.06)' : 'transparent',
                 }}>
                   <Typography variant="caption" fontWeight={700}
                     color={isToday ? 'primary.main' : 'text.secondary'} display="block">
@@ -483,6 +487,11 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
                   <Typography variant="caption" color={isToday ? 'primary.main' : 'text.disabled'} fontSize="0.65rem">
                     {format(new Date(d + 'T00:00:00'), 'd MMM', { locale: tr })}
                   </Typography>
+                  {holiday && (
+                    <Typography variant="caption" display="block" color="#eab308" fontSize="0.6rem" fontWeight={700} noWrap>
+                      {holiday.half_day ? 'Arife ½' : 'Resmi tatil'}
+                    </Typography>
+                  )}
                 </Box>
               )
             })}
@@ -952,6 +961,7 @@ function ShiftCell({
 
 // ─── Mobile view ──────────────────────────────────────────────
 interface MobileViewProps {
+  holidayMap: Map<string, PublicHoliday>
   scheduleEntries: WeeklyScheduleEntry[]
   weekDays: string[]
   loading: boolean
@@ -976,7 +986,7 @@ interface MobileViewProps {
 
 function MobileScheduleView({
   scheduleEntries, weekDays, loading, error, currentWeek, onWeekChange,
-  onCellClick, approvedLeaveMap, availabilityMap,
+  onCellClick, approvedLeaveMap, availabilityMap, holidayMap,
   dialogOpen, dialogEmployee, dialogDate, dialogExisting, dialogAvailability,
   templates, saving, onSave, onDelete, onDialogClose, readOnly = false,
 }: MobileViewProps) {
@@ -1056,8 +1066,10 @@ function MobileScheduleView({
                       '&:active': { bgcolor: readOnly ? 'transparent' : 'rgba(255,255,255,0.06)' },
                     }}>
                     <Typography variant="caption" fontWeight={isToday ? 700 : 400}
-                      color={isToday ? 'primary.main' : 'text.secondary'} sx={{ width: 32 }}>
-                      {DAY_LABELS[i]}
+                      color={holidayMap.get(d) && !holidayMap.get(d)!.half_day ? '#eab308' : isToday ? 'primary.main' : 'text.secondary'}
+                      title={holidayMap.get(d)?.name}
+                      sx={{ width: 32 }}>
+                      {DAY_LABELS[i]}{holidayMap.get(d) && !holidayMap.get(d)!.half_day ? ' RT' : ''}
                     </Typography>
 
                     {isOnLeave ? (

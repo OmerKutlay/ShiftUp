@@ -17,6 +17,7 @@ import { fetchWeeklyAssignments, getWeekDays } from '@/lib/api/schedule'
 import { apiFetch } from '@/lib/api/http'
 import { addDaysToDateString } from '@/lib/dateUtils'
 import type { DayOfWeek, EmployeeAvailability } from '@/types/workforce'
+import type { PublicHoliday } from '@/types/holiday'
 
 export type AvailabilityMap = Map<string, Map<DayOfWeek, EmployeeAvailability[]>>
 
@@ -39,6 +40,9 @@ export function useWeeklySchedule(currentWeek: Date, { readOnly = false } = {}) 
   const assignmentsQ = useSWR(['shifts:week', weekKey], () => fetchWeeklyAssignments(currentWeek))
   const leavesQ = useSWR(`/api/leave?status=approved&from=${from}&to=${to}`, (url: string) =>
     apiFetch<{ requests: ApprovedLeave[] }>(url)
+  )
+  const holidaysQ = useSWR(`/api/holidays?from=${from}&to=${to}`, (url: string) =>
+    apiFetch<{ holidays: PublicHoliday[] }>(url)
   )
   const availabilityQ = useSWR(readOnly ? null : '/api/availability?all=true', (url: string) =>
     apiFetch<{ availability: EmployeeAvailability[] }>(url)
@@ -74,6 +78,11 @@ export function useWeeklySchedule(currentWeek: Date, { readOnly = false } = {}) 
     return aMap
   }, [availabilityQ.data])
 
+  const holidayMap = useMemo(
+    () => new Map((holidaysQ.data?.holidays ?? []).map((h) => [h.date, h])),
+    [holidaysQ.data]
+  )
+
   const { mutate: mutateAssignments } = assignmentsQ
   const { mutate: mutateLeaves } = leavesQ
 
@@ -95,6 +104,8 @@ export function useWeeklySchedule(currentWeek: Date, { readOnly = false } = {}) 
     leaveDayToId,
     restDayMap,
     availabilityMap,
+    /** Tarih → resmi tatil */
+    holidayMap,
     /** Bu haftanın verisi henüz hiç gelmedi (skeleton göster) */
     isFirstLoad: !assignmentsQ.data && !assignmentsQ.error,
     error: error ? (error instanceof Error ? error.message : 'Yükleme hatası.') : null,
