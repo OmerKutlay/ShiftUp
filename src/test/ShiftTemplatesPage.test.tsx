@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { ThemeProvider } from '@mui/material'
 import { theme } from '@/lib/theme'
 import type { ShiftTemplate } from '@/types/shiftTemplate'
+import { LOADING_LABEL } from '@/components/common'
 
 vi.mock('@/lib/shiftTemplateRepository', () => ({
   fetchShiftTemplates: vi.fn(),
@@ -68,9 +69,9 @@ describe('ShiftTemplatesPage — listeleme', () => {
 
     renderPage()
 
-    // Loading bitmesini bekle (loading spinner gitmeli)
+    // Loading bitmesini bekle (skeleton gitmeli)
     await waitFor(() => {
-      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
+      expect(screen.queryByLabelText(LOADING_LABEL)).not.toBeInTheDocument()
     })
 
     // Alert render edilmeli ve içinde doğru metin olmalı
