@@ -8,11 +8,8 @@ import {
   Alert,
   Divider,
   Paper,
-  Chip,
-  Tooltip,
   useMediaQuery,
   useTheme,
-  Stack,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -20,203 +17,29 @@ import {
   Button,
 } from '@mui/material'
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth'
-import AddIcon from '@mui/icons-material/Add'
-import EditIcon from '@mui/icons-material/Edit'
-import AccessTimeIcon from '@mui/icons-material/AccessTime'
-import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import EventBusyIcon from '@mui/icons-material/EventBusy'
-import WeekendIcon from '@mui/icons-material/Weekend'
 import DeleteIcon from '@mui/icons-material/Delete'
 import type { EmployeeWithRole } from '@/types/employee'
-import type { ShiftTemplate } from '@/types/shiftTemplate'
 import type { ShiftAssignmentWithDetails, WeeklyScheduleEntry } from '@/types/schedule'
-import type { EmployeeAvailability, DayOfWeek } from '@/types/workforce'
-import type { PublicHoliday } from '@/types/holiday'
-import { formatTime } from '@/types/shiftTemplate'
+import type { EmployeeAvailability } from '@/types/workforce'
 import {
   createShiftAssignment,
   updateShiftAssignment,
   deleteShiftAssignment,
 } from '@/lib/api/schedule'
-import { shiftDurationMins, netWorkMins, checkMinRest } from '@/lib/workingTimeService'
-import { PART_TIME_RULES } from '@/types/employee'
 import { getWorkingTimeConfig } from '@/lib/workingTimeConfig'
 import { WeekNavigator } from './WeekNavigator'
 import { useWeeklySchedule } from './useWeeklySchedule'
+import { ApiError } from '@/lib/api/http'
 import { ShiftAssignDialog } from './ShiftAssignDialog'
 import type { ShiftSavePayload } from './ShiftAssignDialog'
-import { PageHeader, ScheduleGridSkeleton, ListSkeleton } from '@/components/common'
+import { PageHeader, ScheduleGridSkeleton } from '@/components/common'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 
-// ─── Sabitler ─────────────────────────────────────────────────
-const DAY_LABELS = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
-
-// Rol pozisyonlarına göre sıralama önceliği (küçük = üstte).
-// Sıra önemli: 'Müdür Yardımcısı' 'müdür' de içerdiği için önce yardımcı kontrol edilir.
-const ROLE_SORT_ORDER: Array<{ keywords: string[]; order: number }> = [
-  { keywords: ['yardımcı', 'yardimci'], order: 1 },
-  { keywords: ['müdür', 'mudur', 'yönetici', 'yonetici'], order: 0 },
-  { keywords: ['kasiyer', 'kasa'], order: 2 },
-  { keywords: ['satış', 'satis', 'danışman', 'danisman', 'reyon'], order: 3 },
-  { keywords: ['görsel', 'gorsel'], order: 4 },
-  { keywords: ['depo'], order: 5 },
-]
-
-function getRoleSortOrder(role: string): number {
-  const normalized = role.toLocaleLowerCase('tr')
-  for (const { keywords, order } of ROLE_SORT_ORDER) {
-    if (keywords.some((k) => normalized.includes(k))) return order
-  }
-  return 99 // bilinmeyen roller en sona
-}
-
-/** Dakikayı '7s' / '8.5s' biçiminde saat olarak döner */
-function fmtHours(mins: number): string {
-  return `${Math.round(mins / 60 * 10) / 10}s`
-}
-
-/** Vardiyanın mola hakkı (brüt − net) */
-function breakMinsOf(start: string, end: string): number {
-  return shiftDurationMins(start, end) - netWorkMins(start, end)
-}
-
-/** Şablonsuz (planlayıcının ürettiği) vardiyalar için saatlerden ad türet */
-function shiftDisplayName(templateName: string | undefined, start: string, end: string): string {
-  if (templateName) return templateName
-  const s = start.slice(0, 5)
-  const e = end.slice(0, 5)
-  if (s <= '10:00' && e >= '22:00') return 'Full'
-  if (s < '12:00') return 'Açılış'
-  if (e >= '21:30') return 'Kapanış'
-  return 'Ortacı'
-}
-
-const JS_DAY_TO_KEY: Record<number, DayOfWeek> = {
-  0: 'sunday', 1: 'monday', 2: 'tuesday', 3: 'wednesday',
-  4: 'thursday', 5: 'friday', 6: 'saturday',
-}
-
-// ─── Yardımcı tipler ──────────────────────────────────────────
-/** Çalışan bazında availability map: employeeId → DayOfWeek → kayıtlar */
-type AvailabilityMap = Map<string, Map<DayOfWeek, EmployeeAvailability[]>>
-
-/** Çalışan bazında haftalık özet */
-interface EmployeeWeekStats {
-  /** Net çalışma (mola düşülmüş) */
-  totalMins: number
-  dailyMins: Record<string, number>      // dateStr → net dakika
-  /** Haftalık toplam mola hakkı */
-  totalBreakMins: number
-  restViolations: Array<{ between: string; restMins: number }> // ihlal açıklaması
-  employment_type: import('@/types/employee').EmploymentType
-}
-
-// ─── Özet hesaplama ───────────────────────────────────────────
-function calcEmployeeStats(
-  assignments: ShiftAssignmentWithDetails[],
-  weekDays: string[],
-  employment_type: import('@/types/employee').EmploymentType = 'full_time'
-): EmployeeWeekStats {
-  const config = getWorkingTimeConfig()
-  const dailyMins: Record<string, number> = {}
-  let totalMins = 0
-  let totalBreakMins = 0
-
-  for (const d of weekDays) {
-    const dayShifts = assignments.filter((a) => a.work_date === d && !a.is_on_leave)
-    const mins = dayShifts.reduce((sum, a) => sum + netWorkMins(a.start_time, a.end_time), 0)
-    dailyMins[d] = mins
-    totalMins += mins
-    totalBreakMins += dayShifts.reduce((sum, a) => sum + breakMinsOf(a.start_time, a.end_time), 0)
-  }
-
-  // Min rest ihlalleri — tüm haftayı kronolojik sırala
-  const allShifts = assignments
-    .filter((a) => !a.is_on_leave)
-    .sort((a, b) => {
-      const dc = a.work_date.localeCompare(b.work_date)
-      return dc !== 0 ? dc : a.start_time.localeCompare(b.start_time)
-    })
-
-  const restViolations: EmployeeWeekStats['restViolations'] = []
-  for (let i = 0; i < allShifts.length - 1; i++) {
-    const curr = allShifts[i]
-    const next = allShifts[i + 1]
-    const violation = checkMinRest(
-      next.work_date, next.start_time, next.end_time,
-      [{ work_date: curr.work_date, start_time: curr.start_time, end_time: curr.end_time }],
-      config
-    )
-    if (violation) {
-      // İki vardiya arası gerçek dinlenme dakikasını hesapla
-      const toAbsMins = (date: string, time: string) => {
-        const REF = new Date('2000-01-03')
-        const d = new Date(date)
-        const [h, m] = time.slice(0, 5).split(':').map(Number)
-        return Math.round((d.getTime() - REF.getTime()) / 60000) + h * 60 + m
-      }
-      let prevEnd = toAbsMins(curr.work_date, curr.end_time)
-      const nextStart = toAbsMins(next.work_date, next.start_time)
-      // gece yarısını geçen
-      const prevStart = toAbsMins(curr.work_date, curr.start_time)
-      if (prevEnd <= prevStart) prevEnd += 24 * 60
-      const gapMins = nextStart - prevEnd
-      restViolations.push({
-        between: `${curr.work_date.slice(5)} ${curr.end_time.slice(0, 5)} → ${next.work_date.slice(5)} ${next.start_time.slice(0, 5)}`,
-        restMins: Math.max(0, gapMins),
-      })
-    }
-  }
-
-  return { totalMins, dailyMins, totalBreakMins, restViolations, employment_type }
-}
-
-// ─── Availability helpers ─────────────────────────────────────
-/**
- * Belirli bir tarih için çalışanın availability durumunu döner.
- * Çıktı: 'off' | 'partial' | 'full' | 'none'
- * - 'off': is_available=false kayıt var
- * - 'partial': pencere dışında shift oluşturulabilir uyarısı
- * - 'full': tam olarak müsait
- * - 'none': kayıt yok
- */
-type AvailStatus = 'off' | 'partial' | 'full' | 'none'
-
-function getAvailStatus(
-  employeeId: string,
-  dateStr: string,
-  availMap: AvailabilityMap,
-  shiftStart?: string,
-  shiftEnd?: string
-): AvailStatus {
-  const dayKey = JS_DAY_TO_KEY[new Date(dateStr).getDay()]
-  const empMap = availMap.get(employeeId)
-  if (!empMap) return 'none'
-  const records = empMap.get(dayKey)
-  if (!records || records.length === 0) return 'none'
-
-  const hasOff = records.some((r) => !r.is_available)
-  if (hasOff) return 'off'
-
-  if (!shiftStart || !shiftEnd) return 'full'
-
-  // Shift pencere kontrolü
-  const toMins = (t: string) => {
-    const [h, m] = t.slice(0, 5).split(':').map(Number)
-    return h * 60 + m
-  }
-  const ss = toMins(shiftStart)
-  const se = toMins(shiftEnd)
-
-  const inWindow = records.some((r) => {
-    const rs = toMins(r.start_time)
-    const re = toMins(r.end_time)
-    return ss >= rs && se <= re
-  })
-
-  return inWindow ? 'full' : 'partial'
-}
+import { DAY_LABELS, getRoleSortOrder, JS_DAY_TO_KEY, EmployeeWeekStats, calcEmployeeStats, getAvailStatus } from './scheduleHelpers'
+import { SummaryCell, ShiftCell } from './ScheduleCells'
+import { MobileScheduleView } from './MobileScheduleView'
 
 // ─── Ana bileşen ──────────────────────────────────────────────
 interface WeeklySchedulePageProps {
@@ -359,16 +182,17 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     }
   }
 
-  const handleSave = async (payload: ShiftSavePayload) => {
+  const handleSave = async (payload: ShiftSavePayload, acknowledge = false) => {
     if (!dialogEmployee) return
     setSaving(true)
+    const options = acknowledge ? { acknowledgeViolations: true } : undefined
     try {
       if (dialogExisting) {
         await updateShiftAssignment(dialogExisting.id, dialogEmployee.id, dialogDate, {
           shift_template_id: payload.templateId ?? undefined,
           start_time: payload.startTime,
           end_time: payload.endTime,
-        })
+        }, options)
       } else {
         await createShiftAssignment(
           {
@@ -378,11 +202,23 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
             start_time: payload.startTime,
             end_time: payload.endTime,
           },
-          dialogEmployee.active
+          dialogEmployee.active,
+          options
         )
       }
       setDialogOpen(false)
       await load()
+    } catch (err) {
+      // Sunucu İş Kanunu ihlali buldu — yönetici açıkça onaylarsa tekrar gönder
+      if (!acknowledge && err instanceof ApiError && err.code === 'WORKING_TIME_VIOLATION') {
+        const violations = (err.details.violations as string[] | undefined) ?? []
+        const list = violations.map((v) => `• ${v}`).join('\n')
+        if (window.confirm(`Bu vardiya şu kuralları ihlal ediyor:\n\n${list}\n\nYine de kaydedilsin mi?`)) {
+          setSaving(false)
+          return handleSave(payload, true)
+        }
+      }
+      throw err
     } finally {
       setSaving(false)
     }
@@ -686,443 +522,3 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
   )
 }
 
-// ─── Özet sütunu hücresi ──────────────────────────────────────
-interface SummaryCellProps {
-  stats: EmployeeWeekStats | undefined
-  config: ReturnType<typeof getWorkingTimeConfig>
-}
-
-function SummaryCell({ stats, config }: SummaryCellProps) {
-  if (!stats) {
-    return (
-      <Box sx={{
-        borderLeft: '2px solid', borderColor: 'rgba(20,184,166,0.3)',
-        bgcolor: 'rgba(20,184,166,0.02)', p: 1, minHeight: 64,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>
-        <Typography variant="caption" color="text.disabled" fontSize="0.68rem">—</Typography>
-      </Box>
-    )
-  }
-
-  const totalH = Math.round(stats.totalMins / 60 * 10) / 10
-  // Part-time için 30s, full-time için config'den
-  const maxW = stats.employment_type === 'part_time'
-    ? PART_TIME_RULES.maxWeeklyHours
-    : config.maxWeeklyWorkHours
-  const overWeekly = stats.totalMins > maxW * 60
-  const hasRestViolation = stats.restViolations.length > 0
-
-  const restTooltip = stats.restViolations
-    .map((v) => `${v.between}\n(${Math.round(v.restMins / 60 * 10) / 10}s dinlenme)`)
-    .join('\n')
-
-  return (
-    <Box sx={{
-      borderLeft: '2px solid', borderColor: 'rgba(20,184,166,0.3)',
-      bgcolor: 'rgba(20,184,166,0.02)', p: 1, minHeight: 64,
-      display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 0.5,
-    }}>
-      {/* Haftalık toplam */}
-      <Tooltip title={`Haftalık toplam / Maks. ${maxW}s`} placement="left">
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.4 }}>
-          <Typography
-            variant="caption"
-            fontWeight={700}
-            fontSize="0.82rem"
-            color={overWeekly ? '#ef4444' : 'primary.main'}
-          >
-            {totalH}s
-          </Typography>
-          {overWeekly && (
-            <Chip label="aşıldı" size="small" color="error" variant="outlined"
-              sx={{ height: 14, fontSize: '0.58rem', '& .MuiChip-label': { px: 0.5 } }} />
-          )}
-        </Box>
-      </Tooltip>
-
-      {/* Dinlenme ihlali */}
-      {hasRestViolation && (
-        <Tooltip
-          title={<Box sx={{ whiteSpace: 'pre-line', fontSize: '0.72rem' }}>
-            {`Min. dinlenme ihlali:\n${restTooltip}`}
-          </Box>}
-          placement="left"
-          arrow
-        >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.4, cursor: 'default' }}>
-            <WarningAmberIcon sx={{ fontSize: 11, color: '#f97316' }} />
-            <Typography variant="caption" color="#f97316" fontSize="0.65rem">
-              {stats.restViolations.length} dinlenme ihlali
-            </Typography>
-          </Box>
-        </Tooltip>
-      )}
-
-      {/* Haftalık progress bar */}
-      <Box sx={{ width: '100%', height: 3, bgcolor: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' }}>
-        <Box sx={{
-          height: '100%',
-          width: `${Math.min(100, (stats.totalMins / (maxW * 60)) * 100)}%`,
-          bgcolor: overWeekly ? '#ef4444' : '#14b8a6',
-          borderRadius: 2,
-          transition: 'width 0.3s',
-        }} />
-      </Box>
-      <Typography variant="caption" color="text.disabled" fontSize="0.58rem">
-        net / {maxW}s maks. · {fmtHours(stats.totalBreakMins)} mola
-      </Typography>
-    </Box>
-  )
-}
-
-// ─── Shift cell ───────────────────────────────────────────────
-function ShiftCell({
-  assignment, isToday, isOnLeave, isRestDay, availStatus, dailyOver, onClick, readOnly,
-}: {
-  assignment: ShiftAssignmentWithDetails | null
-  isToday: boolean
-  isOnLeave: boolean
-  isRestDay: boolean
-  availStatus: AvailStatus
-  dailyOver: boolean
-  dailyMins: number
-  onClick: () => void
-  readOnly?: boolean
-}) {
-  const cursor = readOnly ? 'default' : 'pointer'
-
-  // ── Haftalık Tatil ──
-  if (isRestDay) {
-    return (
-      <Tooltip title="Haftalık tatil — tıklayarak kaldırabilirsiniz" placement="top">
-        <Box onClick={onClick} sx={{
-          borderLeft: '2px solid rgba(99,102,241,0.5)',
-          bgcolor: 'rgba(99,102,241,0.08)', p: 0.75, minHeight: 64, cursor,
-          display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: 0.4,
-          '&:hover': { bgcolor: readOnly ? 'rgba(99,102,241,0.08)' : 'rgba(99,102,241,0.16)' },
-        }}>
-          <WeekendIcon sx={{ fontSize: 14, color: '#818cf8' }} />
-          <Typography variant="caption" fontWeight={700} color="#818cf8" fontSize="0.7rem">Tatil</Typography>
-        </Box>
-      </Tooltip>
-    )
-  }
-
-  // ── İzinli ──
-  if (isOnLeave) {
-    return (
-      <Tooltip title={assignment
-        ? `İzin onaylandı (${formatTime(assignment.start_time)}–${formatTime(assignment.end_time)})`
-        : 'İzin onaylandı'} placement="top">
-        <Box onClick={onClick} sx={{
-          borderLeft: '1px solid', borderColor: 'divider',
-          bgcolor: 'rgba(251,191,36,0.08)', p: 0.75, minHeight: 64, cursor,
-          display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: 0.4,
-          '&:hover': { bgcolor: readOnly ? 'rgba(251,191,36,0.08)' : 'rgba(251,191,36,0.14)' },
-        }}>
-          <EventBusyIcon sx={{ fontSize: 13, color: '#fbbf24' }} />
-          <Typography variant="caption" fontWeight={700} color="warning.main" fontSize="0.7rem">İzinli</Typography>
-          {assignment && (
-            <Typography variant="caption" color="text.disabled" fontSize="0.6rem">
-              {formatTime(assignment.start_time)}–{formatTime(assignment.end_time)}
-            </Typography>
-          )}
-        </Box>
-      </Tooltip>
-    )
-  }
-
-  // Müsait değil (off day) — vardiya yok
-  if (availStatus === 'off' && !assignment) {
-    return (
-      <Tooltip title="Çalışan bu gün müsait değil (off day)" placement="top">
-        <Box onClick={onClick} sx={{
-          borderLeft: '1px solid', borderColor: 'divider',
-          bgcolor: 'rgba(239,68,68,0.08)', p: 0.75, minHeight: 64, cursor,
-          display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: 0.4,
-          '&:hover': { bgcolor: readOnly ? 'rgba(239,68,68,0.08)' : 'rgba(239,68,68,0.14)' },
-        }}>
-          <Typography variant="caption" color="error.main" fontSize="0.65rem">Off</Typography>
-          {!readOnly && <AddIcon sx={{ fontSize: 13, color: 'error.main', opacity: 0.5 }} />}
-        </Box>
-      </Tooltip>
-    )
-  }
-
-  // Boş hücre (vardiya yok)
-  if (!assignment) {
-    // Availability durumuna göre arkaplan
-    const bgColor =
-      availStatus === 'full'
-        ? isToday ? 'rgba(20,184,166,0.09)' : 'rgba(20,184,166,0.05)'
-        : isToday ? 'rgba(20,184,166,0.03)' : 'transparent'
-    const bgHoverColor =
-      availStatus === 'full'
-        ? 'rgba(20,184,166,0.13)'
-        : 'rgba(20,184,166,0.08)'
-
-    const tooltipAvail =
-      availStatus === 'full' ? 'Çalışan bu gün müsait (availability kaydı var)' :
-      availStatus === 'none' ? 'Availability kaydı yok' : undefined
-
-    return (
-      <Tooltip title={tooltipAvail} placement="top" disableHoverListener={!tooltipAvail}>
-        <Box onClick={onClick} sx={{
-          borderLeft: '2px solid',
-          borderColor: availStatus === 'full' ? 'rgba(20,184,166,0.35)' : 'divider',
-          bgcolor: bgColor, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          minHeight: 64, cursor, position: 'relative',
-          '&:hover': { bgcolor: readOnly ? bgColor : bgHoverColor, '& .add-icon': { opacity: readOnly ? 0 : 1 } },
-        }}>
-          {/* Availability nokta göstergesi */}
-          {availStatus === 'full' && (
-            <Box sx={{
-              position: 'absolute', top: 5, right: 5,
-              width: 5, height: 5, borderRadius: '50%',
-              bgcolor: 'rgba(20,184,166,0.5)',
-            }} />
-          )}
-          {!readOnly && (
-            <AddIcon className="add-icon"
-              sx={{ fontSize: 16, color: availStatus === 'full' ? 'primary.main' : 'text.disabled', opacity: 0, transition: 'opacity 0.15s' }} />
-          )}
-        </Box>
-      </Tooltip>
-    )
-  }
-
-  // Vardiya var
-  const start = formatTime(assignment.start_time)
-  const end = formatTime(assignment.end_time)
-  const name = shiftDisplayName(assignment.shift_templates?.name, start, end)
-  const grossMins = shiftDurationMins(assignment.start_time, assignment.end_time)
-  const netMins = netWorkMins(assignment.start_time, assignment.end_time)
-  const breakMins = grossMins - netMins
-
-  // Renk: ihlal > partial availability > normal
-  let bgBase = isToday ? 'rgba(20,184,166,0.05)' : 'rgba(99,102,241,0.05)'
-  let bgHover = isToday ? 'rgba(20,184,166,0.1)' : 'rgba(99,102,241,0.12)'
-  if (dailyOver) { bgBase = 'rgba(239,68,68,0.1)'; bgHover = 'rgba(239,68,68,0.16)' }
-  else if (availStatus === 'off') { bgBase = 'rgba(239,68,68,0.1)'; bgHover = 'rgba(239,68,68,0.16)' }
-  else if (availStatus === 'partial') { bgBase = 'rgba(234,179,8,0.08)'; bgHover = 'rgba(234,179,8,0.15)' }
-
-  const tooltipText = [
-    `${name}: ${start}–${end}`,
-    `Brüt ${fmtHours(grossMins)} · Mola ${fmtHours(breakMins)} · Net ${fmtHours(netMins)}`,
-    dailyOver ? '⚠️ Günlük maks. aşıldı' : '',
-    availStatus === 'off' ? '⚠️ Müsait değil gün' : '',
-    availStatus === 'partial' ? '⚠️ Müsaitlik penceresi dışı' : '',
-  ].filter(Boolean).join('\n')
-
-  return (
-    <Tooltip title={<Box sx={{ whiteSpace: 'pre-line', fontSize: '0.75rem' }}>{tooltipText}</Box>} placement="top">
-      <Box onClick={onClick} sx={{
-        borderLeft: '1px solid', borderColor: 'divider',
-        bgcolor: bgBase, p: 0.75, minHeight: 64, cursor,
-        display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 0.4,
-        '&:hover': { bgcolor: readOnly ? bgBase : bgHover },
-        // sol kenar rengi ihlal durumuna göre
-        borderLeftColor: dailyOver || availStatus === 'off' ? 'rgba(239,68,68,0.5)'
-          : availStatus === 'partial' ? 'rgba(234,179,8,0.5)'
-          : 'divider',
-        borderLeftWidth: (dailyOver || availStatus !== 'none') ? 2 : 1,
-      }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Typography variant="caption" fontWeight={700} color="secondary.main" fontSize="0.7rem" noWrap sx={{ flex: 1 }}>
-            {name}
-          </Typography>
-          {(dailyOver || availStatus === 'off' || availStatus === 'partial') && (
-            <WarningAmberIcon sx={{
-              fontSize: 10, flexShrink: 0,
-              color: dailyOver || availStatus === 'off' ? '#ef4444' : '#eab308',
-            }} />
-          )}
-        </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.3 }}>
-          <AccessTimeIcon sx={{ fontSize: 10, color: 'text.disabled' }} />
-          <Typography variant="caption" color="text.disabled" fontSize="0.65rem">
-            {start}–{end}
-          </Typography>
-        </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Typography variant="caption" fontSize="0.6rem" noWrap>
-            <Box component="span" sx={{ color: dailyOver ? '#ef4444' : 'primary.main', fontWeight: 700 }}>
-              {fmtHours(netMins)} net
-            </Box>
-            <Box component="span" sx={{ color: 'text.disabled' }}> · {fmtHours(breakMins)} mola</Box>
-          </Typography>
-          {!readOnly && <EditIcon sx={{ fontSize: 10, color: 'text.disabled' }} />}
-        </Box>
-      </Box>
-    </Tooltip>
-  )
-}
-
-// ─── Mobile view ──────────────────────────────────────────────
-interface MobileViewProps {
-  holidayMap: Map<string, PublicHoliday>
-  scheduleEntries: WeeklyScheduleEntry[]
-  weekDays: string[]
-  loading: boolean
-  error: string | null
-  currentWeek: Date
-  onWeekChange: (d: Date) => void
-  onCellClick: (emp: EmployeeWithRole, date: string) => void
-  approvedLeaveMap: Set<string>
-  availabilityMap: AvailabilityMap
-  dialogOpen: boolean
-  dialogEmployee: EmployeeWithRole | null
-  dialogDate: string
-  dialogExisting: ShiftAssignmentWithDetails | null
-  dialogAvailability: EmployeeAvailability[]
-  templates: ShiftTemplate[]
-  saving: boolean
-  onSave: (payload: ShiftSavePayload) => Promise<void>
-  onDelete: () => Promise<void>
-  onDialogClose: () => void
-  readOnly?: boolean
-}
-
-function MobileScheduleView({
-  scheduleEntries, weekDays, loading, error, currentWeek, onWeekChange,
-  onCellClick, approvedLeaveMap, availabilityMap, holidayMap,
-  dialogOpen, dialogEmployee, dialogDate, dialogExisting, dialogAvailability,
-  templates, saving, onSave, onDelete, onDialogClose, readOnly = false,
-}: MobileViewProps) {
-  const config = useMemo(() => getWorkingTimeConfig(), [])
-
-  return (
-    <Box sx={{ p: 2, minHeight: '100dvh', bgcolor: '#0f172a', color: 'text.primary' }}>
-      <PageHeader
-        icon={CalendarMonthIcon}
-        overline="Planlama"
-        title="Haftalık Plan"
-        actions={<WeekNavigator currentWeek={currentWeek} onChange={onWeekChange} />}
-      />
-      <Divider sx={{ mb: 2, borderColor: 'rgba(255,255,255,0.08)' }} />
-
-      {loading && <ListSkeleton count={5} lines={3} actions={1} />}
-      {error && <Alert severity="error">{error}</Alert>}
-
-      {!loading && !error && scheduleEntries.map((entry) => {
-        const empAssignments = entry.employee
-          ? Object.values(entry.dayAssignments).filter(Boolean) as ShiftAssignmentWithDetails[]
-          : []
-        const stats = calcEmployeeStats(empAssignments, weekDays, entry.employee.employment_type ?? 'full_time')
-        const totalH = Math.round(stats.totalMins / 60 * 10) / 10
-        const maxW = entry.employee.employment_type === 'part_time'
-          ? PART_TIME_RULES.maxWeeklyHours
-          : config.maxWeeklyWorkHours
-        const overWeekly = stats.totalMins > maxW * 60
-
-        return (
-          <Paper key={entry.employee.id} elevation={0}
-            sx={{ mb: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2, overflow: 'hidden' }}>
-            <Box sx={{ px: 2, py: 1.5, bgcolor: 'rgba(15,23,42,0.8)', borderBottom: '1px solid', borderColor: 'divider',
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Box>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6 }}>
-                  <Typography variant="subtitle2" fontWeight={700}>{entry.employee.full_name}</Typography>
-                  {entry.employee.employment_type === 'part_time' && (
-                    <Typography
-                      component="span"
-                      sx={{
-                        fontSize: '0.55rem', fontWeight: 700,
-                        color: '#818cf8', flexShrink: 0,
-                        border: '1px solid rgba(129,140,248,0.4)',
-                        borderRadius: '3px', px: '3px', lineHeight: '14px',
-                      }}
-                    >
-                      PT
-                    </Typography>
-                  )}
-                </Box>
-                <Typography variant="caption" color="text.secondary">{entry.employee.role}</Typography>
-              </Box>
-              <Typography variant="caption" fontWeight={700} color={overWeekly ? 'error.main' : 'primary.main'}>
-                {totalH}s / {maxW}s
-              </Typography>
-            </Box>
-
-            <Stack spacing={0}>
-              {weekDays.map((d, i) => {
-                const asgn = entry.dayAssignments[d]
-                const isToday = d === format(new Date(), 'yyyy-MM-dd')
-                const isOnLeave = asgn?.is_on_leave === true || approvedLeaveMap.has(`${entry.employee.id}:${d}`)
-                const availStatus = getAvailStatus(entry.employee.id, d, availabilityMap, asgn?.start_time, asgn?.end_time)
-
-                return (
-                  <Box key={d} onClick={() => onCellClick(entry.employee, d)}
-                    sx={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      px: 2, py: 1.25, minHeight: 44,
-                      borderBottom: i < 6 ? '1px solid' : 'none', borderColor: 'divider',
-                      bgcolor: isOnLeave ? 'rgba(251,191,36,0.04)'
-                        : availStatus === 'off' && !asgn ? 'rgba(239,68,68,0.06)'
-                        : availStatus === 'full' && !asgn ? 'rgba(20,184,166,0.05)'
-                        : isToday ? 'rgba(20,184,166,0.04)' : 'transparent',
-                      cursor: readOnly ? 'default' : 'pointer', WebkitTapHighlightColor: 'transparent',
-                      '&:active': { bgcolor: readOnly ? 'transparent' : 'rgba(255,255,255,0.06)' },
-                    }}>
-                    <Typography variant="caption" fontWeight={isToday ? 700 : 400}
-                      color={holidayMap.get(d) && !holidayMap.get(d)!.half_day ? '#eab308' : isToday ? 'primary.main' : 'text.secondary'}
-                      title={holidayMap.get(d)?.name}
-                      sx={{ width: 32 }}>
-                      {DAY_LABELS[i]}{holidayMap.get(d) && !holidayMap.get(d)!.half_day ? ' RT' : ''}
-                    </Typography>
-
-                    {isOnLeave ? (
-                      <Chip label="İzinli" size="small" sx={{ height: 18, fontSize: '0.62rem',
-                        bgcolor: 'rgba(251,191,36,0.15)', color: '#fbbf24' }} />
-                    ) : asgn ? (
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                        {(availStatus === 'off' || availStatus === 'partial') && (
-                          <WarningAmberIcon sx={{ fontSize: 12, color: availStatus === 'off' ? '#ef4444' : '#eab308' }} />
-                        )}
-                        <Chip label={shiftDisplayName(asgn.shift_templates?.name, asgn.start_time, asgn.end_time)} size="small"
-                          sx={{ height: 18, fontSize: '0.62rem',
-                            bgcolor: 'rgba(99,102,241,0.15)', color: '#818cf8' }} />
-                        <Typography variant="caption" color="text.disabled" fontSize="0.65rem">
-                          {formatTime(asgn.start_time)}–{formatTime(asgn.end_time)}
-                          {' '}({fmtHours(netWorkMins(asgn.start_time, asgn.end_time))} net · {fmtHours(breakMinsOf(asgn.start_time, asgn.end_time))} mola)
-                        </Typography>
-                      </Box>
-                    ) : availStatus === 'off' ? (
-                      <Typography variant="caption" color="error.main" fontSize="0.65rem">Off gün</Typography>
-                    ) : availStatus === 'full' ? (
-                      <Typography variant="caption" sx={{ color: 'rgba(20,184,166,0.6)', fontSize: '0.65rem' }}>Müsait</Typography>
-                    ) : (
-                      <Typography variant="caption" color="text.disabled">—</Typography>
-                    )}
-
-                    {!readOnly && (asgn
-                      ? <EditIcon sx={{ fontSize: 12, color: 'text.disabled' }} />
-                      : <AddIcon sx={{ fontSize: 12, color: 'text.disabled' }} />
-                    )}
-                  </Box>
-                )
-              })}
-            </Stack>
-          </Paper>
-        )
-      })}
-
-      {!readOnly && (
-        <ShiftAssignDialog
-          key={`${dialogEmployee?.id ?? ''}:${dialogDate}:${dialogExisting?.id ?? 'new'}`}
-          open={dialogOpen}
-          onClose={onDialogClose}
-          onSave={onSave}
-          onDelete={dialogExisting ? onDelete : undefined}
-          employee={dialogEmployee}
-          workDate={dialogDate}
-          templates={templates}
-          existingAssignment={dialogExisting}
-          loading={saving}
-          dayAvailability={dialogAvailability}
-        />
-      )}
-    </Box>
-  )
-}

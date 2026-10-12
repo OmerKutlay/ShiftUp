@@ -28,11 +28,12 @@ export async function fetchWeeklyAssignments(
  */
 export async function createShiftAssignment(
   payload: CreateShiftAssignmentPayload,
-  _employeeActive?: boolean
+  _employeeActive?: boolean,
+  options: { acknowledgeViolations?: boolean } = {}
 ): Promise<ShiftAssignmentWithDetails> {
   const { assignment } = await apiFetch<{ assignment: ShiftAssignmentWithDetails }>('/api/shifts', {
     method: 'POST',
-    body: payload,
+    body: { ...payload, acknowledge_violations: options.acknowledgeViolations === true },
   })
   return assignment
 }
@@ -41,11 +42,12 @@ export async function updateShiftAssignment(
   id: string,
   _employeeId: string,
   _workDate: string,
-  payload: UpdateShiftAssignmentPayload
+  payload: UpdateShiftAssignmentPayload,
+  options: { acknowledgeViolations?: boolean } = {}
 ): Promise<ShiftAssignmentWithDetails> {
   const { assignment } = await apiFetch<{ assignment: ShiftAssignmentWithDetails }>(
     `/api/shifts/${encodeURIComponent(id)}`,
-    { method: 'PATCH', body: payload }
+    { method: 'PATCH', body: { ...payload, acknowledge_violations: options.acknowledgeViolations === true } }
   )
   return assignment
 }

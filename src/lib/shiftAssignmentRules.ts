@@ -7,7 +7,8 @@
  *   - Çalışma süresi kuralları (dinlenme, günlük/haftalık net, gece, part-time)
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { validateShiftAssignment, type WorkingTimeViolation } from '@/lib/workingTimeService'
+import { validateShiftAssignment, netWorkMins, type WorkingTimeViolation } from '@/lib/workingTimeService'
+import { completedYears, minorWorkViolations } from '@/lib/laborLaw'
 import { getWorkingTimeConfig } from '@/lib/workingTimeConfig'
 import { getWeekDays } from '@/lib/scheduleUtils'
 import { addDaysToDateString } from '@/lib/dateUtils'
@@ -44,7 +45,7 @@ export async function checkAssignmentRules(
   const to = addDaysToDateString(weekDays[6], 1)
 
   const [empRes, shiftsRes, leaveRes] = await Promise.all([
-    admin.from('employees').select('id, full_name, active, employment_type').eq('id', employeeId).maybeSingle(),
+    admin.from('employees').select('id, full_name, active, employment_type, birth_date').eq('id', employeeId).maybeSingle(),
     admin
       .from('shift_assignments')
       .select('id, work_date, start_time, end_time')
@@ -78,6 +79,12 @@ export async function checkAssignmentRules(
     const [bS, bE] = shiftAbsoluteRange(s.work_date, s.start_time, s.end_time)
     return aS < bE && bS < aE
   })
+  // 18 yaş altı korumaları (gece yasağı, günlük 8 saat) — yasal yasak, onayla aşılamaz
+  const age = emp.birth_date ? completedYears(emp.birth_date as string, shift.work_date) : null
+  for (const msg of minorWorkViolations(age, shift.start_time, shift.end_time, netWorkMins(shift.start_time, shift.end_time))) {
+    blockers.push(`${name}: ${msg}`)
+  }
+
   if (clash) {
     blockers.push(`${name}: ${clash.work_date} ${clash.start_time.slice(0, 5)}–${clash.end_time.slice(0, 5)} vardiyasıyla çakışıyor.`)
   }
