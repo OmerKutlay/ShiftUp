@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
         .order('start_time'),
       admin
         .from('leave_requests')
-        .select('id, employee_id, leave_type, start_date, end_date, employees(full_name, role)', { count: 'exact' })
+        .select('id, employee_id, leave_type, start_date, end_date, employees!employee_id(full_name, role)', { count: 'exact' })
         .eq('status', 'pending')
         .order('created_at', { ascending: true })
         .limit(5),
