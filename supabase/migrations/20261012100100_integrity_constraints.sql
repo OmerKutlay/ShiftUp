@@ -92,9 +92,11 @@ SELECT pg_temp.replace_fk('attendance_records', 'employee_id', 'employees', 'RES
 SELECT pg_temp.replace_fk('attendance_records', 'shift_assignment_id', 'shift_assignments', 'RESTRICT');
 SELECT pg_temp.replace_fk('leave_requests', 'employee_id', 'employees', 'RESTRICT');
 SELECT pg_temp.replace_fk('manual_time_correction_requests', 'employee_id', 'employees', 'RESTRICT');
+-- Takasın hedef vardiyası silinirse bekleyen takas tek taraflı "devir"e dönüşmesin
+SELECT pg_temp.replace_fk('shift_swap_requests', 'target_shift_id', 'shift_assignments', 'CASCADE');
 
 -- ─── İzin çakışması: aynı çalışanın bekleyen/onaylı izinleri örtüşemez ─
-CREATE EXTENSION IF NOT EXISTS btree_gist;
+CREATE EXTENSION IF NOT EXISTS btree_gist WITH SCHEMA extensions;
 DO $$
 BEGIN
   ALTER TABLE leave_requests ADD CONSTRAINT leave_requests_no_overlap
