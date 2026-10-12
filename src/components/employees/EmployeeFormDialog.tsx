@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, TextField, FormControl, InputLabel, Select, MenuItem,
@@ -29,6 +29,9 @@ interface FormState {
   role_id: string
   active: boolean
   employment_type: EmploymentType
+  hire_date: string
+  birth_date: string
+  overtime_consent_at: string
 }
 
 const EMPTY_FORM: FormState = {
@@ -38,6 +41,9 @@ const EMPTY_FORM: FormState = {
   role_id: '',
   active: true,
   employment_type: 'full_time',
+  hire_date: '',
+  birth_date: '',
+  overtime_consent_at: '',
 }
 
 function toFormState(emp: EmployeeWithRole): FormState {
@@ -48,6 +54,9 @@ function toFormState(emp: EmployeeWithRole): FormState {
     role_id: emp.role_id ?? '',
     active: emp.active,
     employment_type: emp.employment_type ?? 'full_time',
+    hire_date: emp.hire_date ?? '',
+    birth_date: emp.birth_date ?? '',
+    overtime_consent_at: emp.overtime_consent_at ?? '',
   }
 }
 
@@ -77,18 +86,10 @@ function isValidEmail(email: string): boolean {
 
 export function EmployeeFormDialog({ open, onClose, onSave, employee, roles, loading }: Props) {
   const isEdit = !!employee
-  const [form, setForm] = useState<FormState>(EMPTY_FORM)
+  // Diyalog her açılışta yeni `key` ile mount edilir (bkz. EmployeesPage) → form ilk değerden başlar
+  const [form, setForm] = useState<FormState>(() => (employee ? toFormState(employee) : EMPTY_FORM))
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({})
   const [submitError, setSubmitError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (open) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setForm(employee ? toFormState(employee) : EMPTY_FORM)
-      setErrors({})
-      setSubmitError(null)
-    }
-  }, [open, employee])
 
   // İsim değişince email henüz el ile girilmemişse otomatik güncelle
   const handleNameChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -139,6 +140,9 @@ export function EmployeeFormDialog({ open, onClose, onSave, employee, roles, loa
         role_id: form.role_id || null,
         active: form.active,
         employment_type: form.employment_type,
+        hire_date: form.hire_date || null,
+        birth_date: form.birth_date || null,
+        overtime_consent_at: form.overtime_consent_at || null,
       }
       await onSave(payload)
     } catch (err) {
@@ -285,6 +289,37 @@ export function EmployeeFormDialog({ open, onClose, onSave, employee, roles, loa
               </Typography>
             )}
           </Box>
+
+          {/* Özlük tarihleri — yıllık izin hakkı ve fazla çalışma onayı */}
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+            <TextField
+              label="İşe Giriş Tarihi"
+              type="date"
+              value={form.hire_date}
+              onChange={(e) => setForm((f) => ({ ...f, hire_date: e.target.value }))}
+              InputLabelProps={{ shrink: true }}
+              helperText="Yıllık izin hakkı bu tarihe göre hesaplanır"
+              fullWidth
+            />
+            <TextField
+              label="Doğum Tarihi"
+              type="date"
+              value={form.birth_date}
+              onChange={(e) => setForm((f) => ({ ...f, birth_date: e.target.value }))}
+              InputLabelProps={{ shrink: true }}
+              helperText="18 yaş altı / 50 yaş üstü en az 20 gün izin"
+              fullWidth
+            />
+          </Box>
+          <TextField
+            label="Fazla Çalışma Onay Tarihi"
+            type="date"
+            value={form.overtime_consent_at}
+            onChange={(e) => setForm((f) => ({ ...f, overtime_consent_at: e.target.value }))}
+            InputLabelProps={{ shrink: true }}
+            helperText="Çalışanın fazla çalışmaya yazılı onay verdiği tarih (İş K. Md. 41). Boşsa onay yok sayılır."
+            fullWidth
+          />
 
           {/* Aktif/Pasif — sadece düzenleme modunda */}
           {isEdit && (

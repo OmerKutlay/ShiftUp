@@ -1,8 +1,8 @@
 import type { Metadata } from 'next'
-import { StoreLocationPage } from '@/components/settings/StoreLocationPage'
+import { SettingsPage } from '@/components/settings/SettingsPage'
 
 export const metadata: Metadata = { title: 'Ayarlar' }
 
 export default function Page() {
-  return <StoreLocationPage />
+  return <SettingsPage />
 }
