@@ -7,7 +7,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import type { CreateLeaveRequestPayload, LeaveType } from '@/types/leave'
-import { createNotification } from '@/lib/notificationRepository'
+import { LEAVE_TYPE_LABELS } from '@/types/leave'
+import { createNotification, notifyManagers } from '@/lib/notificationRepository'
 import { requireAuth, canAccessEmployee, MANAGER_ROLES, requireMinRole, ROLES } from '@/lib/auth'
 
 const VALID_LEAVE_TYPES: LeaveType[] = ['annual', 'sick', 'personal', 'unpaid', 'other', 'weekly_rest']
@@ -67,6 +68,7 @@ export async function POST(req: NextRequest) {
 
     // Authorization: weekly_rest yalnızca manager+ atayabilir; diğerleri kendi adına veya manager+
     const isWeeklyRest = body.leave_type === 'weekly_rest'
+    let actorId: string | undefined
     if (isWeeklyRest) {
       // Sadece manager rolü haftalık tatil atayabilir
       const managerAuth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
@@ -74,6 +76,7 @@ export async function POST(req: NextRequest) {
     } else {
       const accessCheck = await canAccessEmployee(req, body.employee_id, MANAGER_ROLES)
       if ('response' in accessCheck) return accessCheck.response
+      actorId = accessCheck.employee.id
     }
 
     if (!body.leave_type || !VALID_LEAVE_TYPES.includes(body.leave_type)) {
@@ -108,7 +111,7 @@ export async function POST(req: NextRequest) {
     // Employee aktiflik kontrolü
     const { data: emp } = await admin
       .from('employees')
-      .select('id, active')
+      .select('id, full_name, active')
       .eq('id', body.employee_id)
       .maybeSingle()
 
@@ -183,6 +186,17 @@ export async function POST(req: NextRequest) {
           message: `${body.start_date} – ${body.end_date} tarihli izin talebiniz incelemeye alındı.`,
           related_id: data.id,
         })
+        // Yöneticilere onay bekleyen talep bildirimi (talebi açan yönetici hariç)
+        await notifyManagers(
+          admin,
+          {
+            type: 'leave_submitted',
+            title: 'Yeni izin talebi',
+            message: `${emp.full_name} — ${LEAVE_TYPE_LABELS[body.leave_type]}: ${body.start_date} – ${body.end_date} tarihleri için onay bekliyor.`,
+            related_id: data.id,
+          },
+          { excludeEmployeeId: actorId },
+        )
       }
     } catch (notifErr) {
       console.error('[POST /api/leave] bildirim gönderilemedi:', notifErr)

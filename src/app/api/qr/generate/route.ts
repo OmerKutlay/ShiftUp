@@ -17,6 +17,8 @@ import type { GenerateQrRequest } from '@/types/qr'
 const VALID_ACTIONS = ['clock_in', 'break_start', 'break_end', 'clock_out'] as const
 const RATE_LIMIT_MAX = 20
 const RATE_LIMIT_WINDOW_MS = 60 * 1000
+// Kiosk 10 sn'de bir + her okutmada yeni QR üretir; yoğun vardiya değişimlerinde de yetmeli
+const KIOSK_RATE_LIMIT_MAX = 120
 
 export async function POST(req: NextRequest) {
   // Authentication zorunlu
@@ -30,7 +32,7 @@ export async function POST(req: NextRequest) {
     // ── Kiosk modu ────────────────────────────────────────────
     if (body.kiosk === true) {
       const rateLimitKey = `qr_gen:kiosk`
-      const rateCheck = checkRateLimit(rateLimitKey, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS)
+      const rateCheck = checkRateLimit(rateLimitKey, KIOSK_RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS)
       if (!rateCheck.allowed) {
         return NextResponse.json(
           { error: 'Çok fazla QR talebi.', code: 'RATE_LIMITED' },
