@@ -70,3 +70,16 @@ describe('laborLaw — Md. 53 yıllık izin', () => {
     expect(completedYears('2020-10-12', '2026-10-12')).toBe(6)
   })
 })
+
+describe('laborLaw — 18 yaş altı korumaları', async () => {
+  const { minorWorkViolations } = await import('@/lib/laborLaw')
+  it('yetişkin için kısıt yok', () => expect(minorWorkViolations(25, '14:00', '23:00', 480)).toEqual([]))
+  it('yaş bilinmiyorsa kısıt uygulanmaz', () => expect(minorWorkViolations(null, '22:00', '06:00', 420)).toEqual([]))
+  it('17 yaş: gece çalışması yasak', () => {
+    expect(minorWorkViolations(17, '14:00', '21:00', 360)[0]).toContain('gece')
+  })
+  it('17 yaş: günde 8 saati aşamaz', () => {
+    expect(minorWorkViolations(17, '08:00', '18:00', 540)).toEqual(['18 yaşından küçük çalışan günde en fazla 8 saat çalışabilir.'])
+  })
+  it('17 yaş: gündüz 8 saat uygun', () => expect(minorWorkViolations(17, '09:00', '18:00', 480)).toEqual([]))
+})

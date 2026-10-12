@@ -11,6 +11,7 @@ import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/api
 import { isUuid, isValidTime } from '@/lib/validation'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { logAudit } from '@/lib/auditLog'
+import { checkAssignmentRules } from '@/lib/shiftAssignmentRules'
 import type { UpdateShiftAssignmentPayload } from '@/types/schedule'
 
 type Ctx = { params: Promise<{ id: string }> }
@@ -59,6 +60,24 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     const shift = await loadShift(id)
     if (!shift) return notFound('Vardiya bulunamadı.')
 
+    let violations: string[] = []
+    if (payload.start_time && payload.end_time) {
+      const rules = await checkAssignmentRules(
+        createAdminClient(), shift.employee_id,
+        { work_date: shift.work_date, start_time: payload.start_time, end_time: payload.end_time },
+        [id]
+      )
+      const blockers = rules.blockers.filter((b) => !b.includes('çakışıyor'))
+      if (blockers.length > 0) return conflict(blockers.join(' '), 'ASSIGNMENT_BLOCKED')
+      violations = rules.violations.map((v) => v.message)
+      if (violations.length > 0 && body.acknowledge_violations !== true) {
+        return NextResponse.json(
+          { error: 'Bu vardiya çalışma süresi kurallarını ihlal ediyor.', code: 'WORKING_TIME_VIOLATION', violations },
+          { status: 422 }
+        )
+      }
+    }
+
     const assignment = await updateShiftAssignment(id, shift.employee_id, shift.work_date, payload)
 
     await logAudit({
@@ -68,6 +87,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       entityId: id,
       before: shift,
       after: payload,
+      note: violations.length > 0 ? `İhlaller onaylandı: ${violations.join(' | ')}` : null,
     })
 
     return NextResponse.json({ assignment })

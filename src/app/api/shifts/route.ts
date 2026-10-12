@@ -11,6 +11,7 @@ import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/api
 import { isUuid, isValidDate, isValidTime } from '@/lib/validation'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { logAudit } from '@/lib/auditLog'
+import { checkAssignmentRules } from '@/lib/shiftAssignmentRules'
 
 export async function GET(req: NextRequest) {
   const auth = await requireAuth(req)
@@ -67,6 +68,23 @@ export async function POST(req: NextRequest) {
     if (empErr) return serverError('POST /api/shifts', empErr)
     if (!emp) return notFound('Çalışan bulunamadı.')
 
+    // İş Kanunu kuralları: kesin engeller (izin, 18 yaş altı) 409; çalışma süresi ihlalleri onay ister
+    const rules = await checkAssignmentRules(admin, employee_id, {
+      work_date, start_time: start_time.slice(0, 5), end_time: end_time.slice(0, 5),
+    })
+    const blockers = rules.blockers.filter((b) => !b.includes('çakışıyor'))  // çakışma aşağıda ayrıca kontrol edilir
+    if (blockers.length > 0) return conflict(blockers.join(' '), 'ASSIGNMENT_BLOCKED')
+    if (rules.violations.length > 0 && body.acknowledge_violations !== true) {
+      return NextResponse.json(
+        {
+          error: 'Bu vardiya çalışma süresi kurallarını ihlal ediyor.',
+          code: 'WORKING_TIME_VIOLATION',
+          violations: rules.violations.map((v) => v.message),
+        },
+        { status: 422 }
+      )
+    }
+
     const assignment = await createShiftAssignment(
       {
         employee_id,
@@ -84,6 +102,7 @@ export async function POST(req: NextRequest) {
       entityType: 'shift_assignment',
       entityId: assignment.id,
       after: { employee_id, work_date, start_time, end_time },
+      note: rules.violations.length > 0 ? `İhlaller onaylandı: ${rules.violations.map((v) => v.message).join(' | ')}` : null,
     })
 
     return NextResponse.json({ assignment }, { status: 201 })
