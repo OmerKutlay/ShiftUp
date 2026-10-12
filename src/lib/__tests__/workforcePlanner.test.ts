@@ -609,3 +609,35 @@ describe('Senaryo 18 — Çalışılmış vardiyalar korunur ve limitlere dahil 
     expect(r.warnings.filter((w) => w.level === 'error')).toEqual([])
   })
 })
+
+// ─── Senaryo 19: 18 yaş altı ve hafta başı dinlenme ──────────────────────────
+
+describe('Senaryo 19 — 18 yaş altı korumaları (Md. 73) ve geçen Pazar → Pazartesi dinlenme', () => {
+  test.each([1, 2, 3, 4, 5])('seed %i: 17 yaşındakine 20:00 sonrası veya 8 saati aşan vardiya verilmez', (seed) => {
+    const genc = { ...makeEmp('genc', 'Satış Danışmanı', 'Çalışan', 'part_time'), birthDate: '2009-06-01' }
+    const r = runPlanner({ ...STORE_INPUT, employees: [...STORE, genc], seed })
+    const shifts = r.assignments.filter((a) => a.employee_id === 'genc')
+    expect(shifts.length).toBeGreaterThan(0)
+    for (const s of shifts) {
+      expect(s.end_time <= '20:00').toBe(true)
+      expect(netWorkMins(s.start_time, s.end_time)).toBeLessThanOrEqual(8 * 60)
+    }
+    expect(r.warnings.filter((w) => w.level === 'error')).toEqual([])
+  })
+
+  test('validator 18 yaş altı kapanış vardiyasını hata olarak yakalamalı', () => {
+    const genc = { ...makeEmp('genc', 'Satış Danışmanı', 'Çalışan', 'part_time'), birthDate: '2009-06-01' }
+    const errors = validatePlan([{
+      employee_id: 'genc', employee_name: 'genc', shift_template_id: null, reason: '',
+      work_date: '2026-10-14', start_time: '14:00', end_time: '22:00', shift_kind: 'closing',
+    }], [genc], []).filter((w) => w.level === 'error')
+    expect(errors.some((w) => w.message.includes('18 yaşından küçük'))).toBe(true)
+  })
+
+  test('geçen Pazar 22:00 kapanış yapan depo görevlisi Pazartesi 08:00 başlamaz', () => {
+    const employees = STORE.map((e) => (e.id === 'dep' ? { ...e, prevDayEndMins: -120 } : e))
+    const r = runPlanner({ ...STORE_INPUT, employees, seed: 7 })
+    const monday = r.assignments.find((a) => a.employee_id === 'dep' && a.work_date === WEEK_DAYS[0])
+    expect(monday?.start_time).not.toBe('08:00')
+  })
+})

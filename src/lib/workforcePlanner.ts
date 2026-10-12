@@ -34,6 +34,7 @@
 
 import { netWorkMins } from './workingTimeService'
 import { getWorkingTimeConfig } from './workingTimeConfig'
+import { completedYears, minorWorkViolations } from './laborLaw'
 import { PART_TIME_RULES } from '@/types/employee'
 
 // ─── Tipler ─────────────────────────────────────────────────────────────────
@@ -64,6 +65,13 @@ export interface PlannerEmployee {
    * Verilmezse (undefined) geçen hafta bilinmiyor kabul edilir.
    */
   lastWeek?: Partial<Record<string, ShiftKind>>
+  /** Doğum tarihi — 18 yaş altı korumaları (gece yasağı, günlük 8 saat) için */
+  birthDate?: string | null
+  /**
+   * Haftadan önceki gün (Pazar) çalıştıysa vardiya bitişi, Pazartesi 00:00'a göre dakika
+   * (ör. Pazar 22:00 → -120). Pazartesi vardiyasının dinlenme kontrolü için.
+   */
+  prevDayEndMins?: number
 }
 
 export interface DraftAssignment {
@@ -288,6 +296,12 @@ function fitsAvailabilityWindow(
   })
 }
 
+/** 18 yaş altı korumalarını (İş K. Md. 73) ihlal eden vardiya ihlal mesajları */
+function minorViolations(emp: PlannerEmployee, dateStr: string, start: string, end: string): string[] {
+  const age = emp.birthDate ? completedYears(emp.birthDate, dateStr) : null
+  return minorWorkViolations(age, start, end, netWorkMins(start, end))
+}
+
 /** Pozisyona göre sabit izin günü mü (Müdür Salı, Yardımcı Perşembe, Görsel/Depo Pazar) */
 function isFixedDayOff(emp: PlannerEmployee, dateStr: string): boolean {
   const dow = dowKey(dateStr)
@@ -489,6 +503,7 @@ function planOnce(input: PlannerInput, seed: number): PlannerResult {
     const def = SHIFTS[key]
     if (!fitsAvailabilityWindow(emp, dateStr, def.start, def.end)) return false
     if (!restOk(emp, dateStr, def)) return false
+    if (minorViolations(emp, dateStr, def.start, def.end).length > 0) return false
     return true
   }
 
@@ -496,6 +511,8 @@ function planOnce(input: PlannerInput, seed: number): PlannerResult {
   function restOk(emp: PlannerEmployee, dateStr: string, def: ShiftDef): boolean {
     const dayMap = slotMap.get(emp.id)!
     const idx = weekDays.indexOf(dateStr)
+    // Haftanın ilk günü: geçen haftanın son vardiyasıyla arası
+    if (idx === 0 && emp.prevDayEndMins !== undefined && toMins(def.start) - emp.prevDayEndMins < minRestMins) return false
     const prev = idx > 0 ? dayMap.get(weekDays[idx - 1]) : undefined
     const next = idx < weekDays.length - 1 ? dayMap.get(weekDays[idx + 1]) : undefined
     if (prev && 1440 - toMins(prev.def.end) + toMins(def.start) < minRestMins) return false
@@ -1021,6 +1038,13 @@ export function validatePlan(
       }
     }
 
+    // 6b. 18 yaş altı korumaları
+    for (const a of empAssigns) {
+      for (const msg of minorViolations(emp, a.work_date, a.start_time, a.end_time)) {
+        warnings.push({ level: 'error', message: `${emp.full_name} (${a.work_date}): ${msg}` })
+      }
+    }
+
     // 7. Aynı gün çakışan iki atama
     const dateCount = new Map<string, number>()
     for (const a of empAssigns) {
@@ -1044,6 +1068,15 @@ export function validatePlan(
     // 12. Ardışık günler arası asgari dinlenme
     const minRestMins = getWorkingTimeConfig().minRestHours * 60
     const sorted = [...empAssigns].sort((a, b) => a.work_date.localeCompare(b.work_date))
+    if (sorted[0]?.work_date === weekDays[0] && emp.prevDayEndMins !== undefined) {
+      const rest = toMins(sorted[0].start_time) - emp.prevDayEndMins
+      if (rest < minRestMins) {
+        warnings.push({
+          level: 'error',
+          message: `${emp.full_name}: geçen haftanın son vardiyası → ${weekDays[0]} ${sorted[0].start_time} arası dinlenme ${Math.round(rest / 6) / 10}s (min. ${minRestMins / 60}s).`,
+        })
+      }
+    }
     for (let i = 0; i < sorted.length - 1; i++) {
       const curr = sorted[i]
       const next = sorted[i + 1]
