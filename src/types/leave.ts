@@ -15,6 +15,17 @@ export const LEAVE_TYPE_LABELS: Record<LeaveType, string> = {
 /** weekly_rest tipi manager tarafından doğrudan atanır, onay akışına girmez */
 export const WEEKLY_REST_TYPE: LeaveType = 'weekly_rest'
 
+/**
+ * Otomatik plan aktarımında (/api/workforce/apply) atanan haftalık tatillerin reason değeri.
+ * Elle atanan tatillerden ayırt etmek için kullanılır: plan yeniden oluşturulurken
+ * yok sayılır, yeniden aktarılırken yenileriyle değiştirilir.
+ */
+export const AUTO_WEEKLY_REST_REASON = 'Haftalık tatil (otomatik plan)'
+
+export function isAutoWeeklyRest(l: { leave_type: string; reason: string | null }): boolean {
+  return l.leave_type === 'weekly_rest' && l.reason === AUTO_WEEKLY_REST_REASON
+}
+
 export const LEAVE_STATUS_LABELS: Record<LeaveStatus, string> = {
   pending: 'Onay Bekliyor',
   approved: 'Onaylandı',
