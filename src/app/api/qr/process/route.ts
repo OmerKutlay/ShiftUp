@@ -216,7 +216,7 @@ export async function POST(req: NextRequest) {
       }
       updatedRecord = created as AttendanceRecord
     } else if (existingRecord) {
-      const patch = buildFieldPatch(currentStatus, attendanceAction, recorded.recordedAt)
+      const patch = buildFieldPatch(currentStatus, attendanceAction, recorded.recordedAt, existingRecord)
       const { data: updated, error: updateError } = await admin
         .from('attendance_records')
         .update({
