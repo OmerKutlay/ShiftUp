@@ -1,14 +1,14 @@
 /**
  * attendanceService — giriş / mola / çıkış işlemlerinin tek, ortak uygulaması.
  *
- * QR okutma (/api/qr/process) ve yönetici manuel işlemi (/api/attendance/manual)
- * aynı kuralları kullanır:
+ * Giriş / mola / çıkış yalnızca QR okutma (/api/qr/process) ile işlenir.
+ * Kurallar:
  *   - "Bugün" Türkiye saatine göre hesaplanır (sunucu UTC olsa bile).
  *   - Gece yarısını geçen vardiyada çıkış/mola ertesi gün de yapılabilir
  *     (dünün açık kaydı veya penceresi devam eden vardiyası bulunur).
  *   - Bir vardiya için tek devam kaydı vardır; çıkıştan sonra tekrar giriş yapılamaz.
- *   - Güncelleme okunan duruma koşulludur (optimistic lock) — çift tıklama /
- *     eşzamanlı QR+buton ikinci kez uygulanmaz.
+ *   - Güncelleme okunan duruma koşulludur (optimistic lock) — çift /
+ *     eşzamanlı okutma ikinci kez uygulanmaz.
  *   - İzinli (is_on_leave) vardiyalarda işlem yapılamaz.
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
