@@ -1,6 +1,17 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Keep-alive: sayfalar arası geçişte son ziyaret edilen rotalar unmount edilmek yerine
+  // React <Activity mode="hidden"> ile saklanır; geri dönüldüğünde state (yüklenmiş veri,
+  // filtreler, scroll) korunur. Effect'ler yeniden çalıştığı için veri arka planda tazelenir.
+  cacheComponents: true,
+  partialPrefetching: true,
+  experimental: {
+    // API route'larındaki try/catch'lerin yakalayıp logladığı prerender bail-out gürültüsünü gizler
+    hideLogsAfterAbort: true,
+  },
+  // Cloudflare quick tunnel üzerinden dev sunucusuna erişim (HMR + client JS)
+  allowedDevOrigins: ["*.trycloudflare.com"],
   // FAZ 8: Güvenlik başlıkları + FAZ 11: PWA headers
   async headers() {
     return [

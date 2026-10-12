@@ -12,6 +12,14 @@ export type NotificationType =
   | 'time_correction_submitted'
   | 'time_correction_approved'
   | 'time_correction_rejected'
+  | 'shift_swap_submitted'
+  | 'shift_swap_approved'
+  | 'shift_swap_rejected'
+  | 'open_shift_claimed'
+  | 'attendance_late_clock_in'
+  | 'attendance_late_clock_out'
+  | 'attendance_missed_clock_in'
+  | 'attendance_missed_clock_out'
 
 export interface Notification {
   id: string

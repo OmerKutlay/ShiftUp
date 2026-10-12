@@ -1,13 +1,23 @@
 // Attendance Report domain types — FAZ 7
+import type { AttendanceStatus } from '@/types/attendance'
+
+/**
+ * Rapor satır durumu: attendance status'larına ek olarak, kaydı olmayan
+ * vardiyalar için türetilmiş durumlar:
+ *   on_leave → izinli (is_on_leave), upcoming → vardiya henüz başlamadı
+ */
+export type AttendanceReportStatus = AttendanceStatus | 'on_leave' | 'upcoming'
 
 export interface AttendanceReportRow {
+  record_id: string | null    // attendance_records.id — kayıt yoksa null
   employee_id: string
   full_name: string
   work_date: string           // 'YYYY-MM-DD'
   shift_name: string | null   // shift_template name
   start_time: string          // vardiya başlangıç
   end_time: string            // vardiya bitiş
-  status: string              // attendance status
+  status: AttendanceReportStatus
+  is_on_leave: boolean
   clock_in_at: string | null
   break_start_at: string | null
   break_end_at: string | null
@@ -28,11 +38,14 @@ export interface AttendanceReportSummary {
   employee_id: string
   full_name: string
   total_shifts: number
-  attended_shifts: number     // status !== 'shift_waiting'
+  expected_shifts: number     // izinli ve henüz başlamamış vardiyalar hariç
+  attended_shifts: number     // giriş yapılmış vardiyalar
+  on_leave_count: number
+  upcoming_count: number
   total_worked_minutes: number
   total_break_minutes: number
   clocked_out_count: number
-  no_show_count: number       // shift_waiting olanlar
+  no_show_count: number       // başlamış, izinli olmayan ve giriş yapılmamış vardiyalar
 }
 
 // Manuel override payload — FAZ 7
