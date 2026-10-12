@@ -473,6 +473,7 @@ export function AttendanceScanPage() {
             <IconButton
               size="small"
               onClick={handleBackToSelect}
+              aria-label="Geri"
               sx={{ color: 'primary.main', ml: -0.5, mr: 0.25 }}
             >
               <ChevronLeftIcon />

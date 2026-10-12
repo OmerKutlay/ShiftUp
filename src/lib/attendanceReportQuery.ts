@@ -11,8 +11,11 @@ import type {
   AttendanceReportStatus,
 } from '@/types/report'
 import { totalBreakMinutes, workedMinutes } from '@/lib/attendanceDurations'
+import { DEFAULT_ATTENDANCE_ALERT_CONFIG } from '@/lib/attendanceAlerts'
 
 const REPORT_PAGE_SIZE = 1000
+/** Giriş okutulmamış vardiya, başlangıçtan bu kadar sonra "gelmedi" sayılır (uyarı eşiğiyle aynı) */
+const NO_SHOW_GRACE_MS = DEFAULT_ATTENDANCE_ALERT_CONFIG.missedClockInMins * 60 * 1000
 
 /**
  * Vardiya başlangıç anı (epoch ms). Vardiya saatleri Türkiye yerel saatidir;
@@ -94,7 +97,8 @@ export function mapReportRow(row: any, now: number): AttendanceReportRow {
   let status: AttendanceReportStatus = rec?.status ?? 'shift_waiting'
   if (!rec) {
     if (isOnLeave) status = 'on_leave'
-    else if (shiftStartMs(row.work_date, row.start_time) > now) status = 'upcoming'
+    // Vardiya yeni başladıysa (tolerans süresi dolmadan) "gelmedi" sayılmaz
+    else if (shiftStartMs(row.work_date, row.start_time) + NO_SHOW_GRACE_MS > now) status = 'upcoming'
   }
 
   const times = {

@@ -332,7 +332,7 @@ export function MySchedulePage() {
         bgcolor: 'rgba(30,41,59,0.5)',
       }}>
         <Tooltip title="Önceki ay">
-          <IconButton size="small" onClick={() => setCurrentMonth((m) => subMonths(m, 1))}>
+          <IconButton size="small" onClick={() => setCurrentMonth((m) => subMonths(m, 1))} aria-label="Önceki ay">
             <ChevronLeftIcon />
           </IconButton>
         </Tooltip>
@@ -347,6 +347,7 @@ export function MySchedulePage() {
             size="small"
             onClick={() => setCurrentMonth((m) => addMonths(m, 1))}
             disabled={addMonths(currentMonth, 1) > new Date()}
+            aria-label="Sonraki ay"
           >
             <ChevronRightIcon />
           </IconButton>

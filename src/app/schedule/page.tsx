@@ -1,14 +1,8 @@
-'use client'
+import type { Metadata } from 'next'
+import { SchedulePageClient } from '@/components/schedule/SchedulePageClient'
 
-import { WeeklySchedulePage } from '@/components/schedule'
-import { useAuth } from '@/context/AuthContext'
-import { hasRole, MANAGER_ROLES } from '@/lib/auth/roles'
+export const metadata: Metadata = { title: 'Haftalık Plan' }
 
 export default function Page() {
-  const { employee } = useAuth()
-  const isManager = hasRole(
-    employee?.roles?.name ?? employee?.role_name ?? null,
-    MANAGER_ROLES
-  )
-  return <WeeklySchedulePage readOnly={!isManager} />
+  return <SchedulePageClient />
 }

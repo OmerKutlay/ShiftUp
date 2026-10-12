@@ -46,6 +46,13 @@ export function QrScanner({ onScan, onError, active = true }: Props) {
 
     let mounted = true
 
+    // Kamera API'si yalnızca güvenli bağlamda (HTTPS / localhost) çalışır; HTTP üzerinden
+    // (ör. yerel ağ IP'si) sessizce başarısız olur — kullanıcıya açıkça söyle
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+      onError?.('Kamera için güvenli bağlantı (HTTPS) gerekli. Uygulamayı https:// adresinden açın.')
+      return () => { mounted = false }
+    }
+
     // html5-qrcode yalnızca browser'da çalışır, dynamic import gerekli
     import('html5-qrcode').then(({ Html5Qrcode }) => {
       if (!mounted || !containerRef.current) return

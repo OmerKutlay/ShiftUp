@@ -1,36 +1,21 @@
-import js from "@eslint/js";
-import tseslint from "typescript-eslint";
-import reactHooks from "eslint-plugin-react-hooks";
-import reactRefresh from "eslint-plugin-react-refresh";
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-import { FlatCompat } from "@eslint/eslintrc";
+import { defineConfig, globalIgnores } from "eslint/config";
+import nextVitals from "eslint-config-next/core-web-vitals";
+import nextTs from "eslint-config-next/typescript";
+import prettier from "eslint-config-prettier/flat";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
-
-export default tseslint.config(
-  { ignores: [".next/**", "out/**", "build/**", "node_modules/**"] },
-  js.configs.recommended,
-  ...tseslint.configs.recommended,
-  ...compat.extends("next/core-web-vitals"),
+// Next 16: `next lint` kaldırıldı — ESLint CLI doğrudan çalıştırılır (npm run lint).
+export default defineConfig([
+  ...nextVitals,
+  ...nextTs,
+  // Biçimlendirme kurallarını Prettier'a bırak
+  prettier,
   {
-    plugins: {
-      "react-hooks": reactHooks,
-      "react-refresh": reactRefresh,
-    },
     rules: {
-      ...reactHooks.configs.recommended.rules,
-      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
+      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
       "@typescript-eslint/no-explicit-any": "warn",
-      // Bu kural Next.js 15 ile geldi; mevcut kodu bozmamak için warn'a düşürüldü
+      // Mevcut client-side veri çekme deseninde (effect içinde setState) yaygın; uyarı olarak izlenir
       "react-hooks/set-state-in-effect": "warn",
-      // no-useless-catch — mevcut kodda var, warn'a düşürüldü
-      "no-useless-catch": "warn",
     },
-  }
-);
+  },
+  globalIgnores([".next/**", "out/**", "build/**", "coverage/**", "next-env.d.ts", "public/sw.js"]),
+]);
