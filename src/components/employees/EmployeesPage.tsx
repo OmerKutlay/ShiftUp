@@ -342,15 +342,15 @@ function EmployeeCard({
         bgcolor: 'background.paper',
         opacity: employee.active ? 1 : 0.55,
         display: 'grid',
-        gridTemplateColumns: { xs: '1fr auto', md: '1fr auto auto' },
+        gridTemplateColumns: { xs: 'minmax(0, 1fr) auto', md: 'minmax(0, 1fr) auto auto' },
         alignItems: 'center',
-        gap: 2,
+        gap: { xs: 1, md: 2 },
         '&:hover': { borderColor: 'primary.dark' },
         transition: 'border-color 0.2s, opacity 0.2s',
       }}
     >
       {/* Left: name + position + system role */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
         <Box
           sx={{
             width: 40,
@@ -370,12 +370,12 @@ function EmployeeCard({
           {employee.full_name.charAt(0)}
         </Box>
 
-        <Box>
-          <Typography variant="subtitle2" fontWeight={700} color="text.primary">
+        <Box sx={{ minWidth: 0 }}>
+          <Typography variant="subtitle2" fontWeight={700} color="text.primary" noWrap>
             {employee.full_name}
           </Typography>
           {employee.email && (
-            <Typography variant="caption" color="text.disabled" fontSize="0.68rem" noWrap>
+            <Typography variant="caption" color="text.disabled" fontSize="0.68rem" noWrap display="block">
               {employee.email}
             </Typography>
           )}
@@ -406,6 +406,10 @@ function EmployeeCard({
                 }}
               />
             )}
+            {/* Mobile status */}
+            <Box sx={{ display: { xs: 'block', md: 'none' } }}>
+              <EmployeeStatusChip active={employee.active} />
+            </Box>
           </Box>
         </Box>
       </Box>
@@ -417,10 +421,6 @@ function EmployeeCard({
 
       {/* Right: actions */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-        {/* Mobile status */}
-        <Box sx={{ display: { xs: 'block', md: 'none' } }}>
-          <EmployeeStatusChip active={employee.active} />
-        </Box>
         <Tooltip title="Düzenle">
           <IconButton
             size="small"

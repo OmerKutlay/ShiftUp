@@ -101,7 +101,8 @@ export function EmployeeAttendanceRow({ entry, onRecordChange }: Props) {
           <Box
             sx={{
               display: 'grid',
-              gridTemplateColumns: '1fr 1fr auto',
+              // Sabit aksiyon sütunu: buton sayısı değişse de satırlar arası hizalama korunur
+              gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) 250px',
               alignItems: 'center',
               gap: 2,
             }}
@@ -147,13 +148,15 @@ export function EmployeeAttendanceRow({ entry, onRecordChange }: Props) {
             </Box>
 
             {/* Col 2: Shift & attendance times + status */}
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0.75 }}>
               <AttendanceStatusChip status={currentStatus} />
               <TimeInfo shiftAssignment={shiftAssignment} attendanceRecord={attendanceRecord} />
             </Box>
 
             {/* Col 3: Actions */}
-            <AttendanceActions status={currentStatus} loading={loading} onAction={handleAction} />
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <AttendanceActions status={currentStatus} loading={loading} onAction={handleAction} />
+            </Box>
           </Box>
         )}
       </Paper>
