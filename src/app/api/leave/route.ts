@@ -16,6 +16,7 @@ import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/api
 import { isUuid, isValidDate } from '@/lib/validation'
 import { turkeyToday, addDaysToDateString } from '@/lib/dateUtils'
 import { removePlannedShiftsInRange } from '@/lib/leaveService'
+import { getAnnualLeaveBalance, requestedLeaveDays } from '@/lib/annualLeaveService'
 import { logAudit } from '@/lib/auditLog'
 
 const VALID_LEAVE_TYPES: LeaveType[] = ['annual', 'sick', 'personal', 'unpaid', 'other', 'weekly_rest']
@@ -135,6 +136,29 @@ export async function POST(req: NextRequest) {
     if (!emp) return notFound('Çalışan bulunamadı.', 'EMPLOYEE_NOT_FOUND')
     if (!emp.active) {
       return NextResponse.json({ error: 'Pasif çalışan izin talebi oluşturamaz.', code: 'EMPLOYEE_INACTIVE' }, { status: 403 })
+    }
+
+    // Yıllık izin bakiyesi (Md. 53) — çalışan aşamaz; yönetici avans izin için açıkça onaylayabilir
+    if (body.leave_type === 'annual') {
+      const balance = await getAnnualLeaveBalance(admin, body.employee_id)
+      if (balance.known) {
+        const requested = await requestedLeaveDays(admin, body.start_date, body.end_date)
+        if (requested > balance.remainingDays) {
+          const isManagerActor = actorId !== body.employee_id
+          const allowExceed = (body as { allow_exceed?: boolean }).allow_exceed === true
+          if (!isManagerActor || !allowExceed) {
+            return NextResponse.json(
+              {
+                error: `Yıllık izin bakiyesi yetersiz: talep ${requested} gün, kalan ${Math.max(0, balance.remainingDays)} gün.`,
+                code: 'ANNUAL_LEAVE_EXCEEDED',
+                balance,
+                requested_days: requested,
+              },
+              { status: 422 }
+            )
+          }
+        }
+      }
     }
 
     // Aynı tarih aralığında çakışan pending/approved talep var mı? (DB'de ayrıca EXCLUDE kısıtı var)

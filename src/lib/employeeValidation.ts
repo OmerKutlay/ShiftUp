@@ -3,10 +3,16 @@
  */
 import { canManageRole } from '@/lib/auth/roles'
 import { fetchRoles } from '@/lib/employeeRepository'
-import { isUuid, isValidEmail } from '@/lib/validation'
+import { isUuid, isValidDate, isValidEmail } from '@/lib/validation'
 import type { CreateEmployeePayload } from '@/types/employee'
 
 const EMPLOYMENT_TYPES = ['full_time', 'part_time'] as const
+
+const FIELD_LABELS = {
+  hire_date: 'İşe giriş tarihi',
+  birth_date: 'Doğum tarihi',
+  overtime_consent_at: 'Fazla çalışma onay tarihi',
+} as const
 
 /** Oluşturma/güncelleme gövdesini doğrular; hata mesajı ya da temiz payload döner */
 export async function validateEmployeeInput(
@@ -48,8 +54,11 @@ export async function validateEmployeeInput(
     }
     payload.employment_type = et as CreateEmployeePayload['employment_type']
   }
-  if (!partial || body.role_id !== undefined) {
-    if (!isUuid(body.role_id)) return { error: 'Geçerli bir sistem rolü seçin.' }
+  if (body.role_id === null || body.role_id === '') {
+    // Rolsüz çalışan: hiçbir yönetimsel yetkisi olmaz
+    payload.role_id = null
+  } else if (body.role_id !== undefined) {
+    if (!isUuid(body.role_id)) return { error: 'Geçersiz sistem rolü.' }
     const roles = await fetchRoles()
     const role = roles.find((r) => r.id === body.role_id)
     if (!role) return { error: 'Seçilen rol bulunamadı.' }
@@ -57,6 +66,22 @@ export async function validateEmployeeInput(
       return { error: `"${role.name}" rolünü atama yetkiniz yok.` }
     }
     payload.role_id = role.id
+  } else if (!partial) {
+    payload.role_id = null
+  }
+
+  // Özlük tarihleri — yıllık izin hakkı (Md. 53) ve fazla çalışma onayı (Md. 41/8)
+  const today = new Date().toISOString().slice(0, 10)
+  for (const field of ['hire_date', 'birth_date', 'overtime_consent_at'] as const) {
+    const v = body[field]
+    if (v === undefined) continue
+    if (v === null || v === '') {
+      payload[field] = null
+      continue
+    }
+    if (!isValidDate(v)) return { error: `${FIELD_LABELS[field]} geçersiz (YYYY-MM-DD).` }
+    if (field === 'birth_date' && v >= today) return { error: 'Doğum tarihi geçmişte olmalıdır.' }
+    payload[field] = v
   }
 
   return { payload }

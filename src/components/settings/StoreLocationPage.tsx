@@ -54,7 +54,8 @@ function locationToForm(loc: StoreLocation): StoreLocationForm {
   }
 }
 
-export function StoreLocationPage() {
+/** embedded: sekmeli Ayarlar sayfasının içinde (başlık ve sayfa dolgusu olmadan) */
+export function StoreLocationPage({ embedded = false }: { embedded?: boolean } = {}) {
   const locationsQ = useSWR('/api/store-location', (url: string) => apiFetch<{ locations: StoreLocation[] }>(url))
   const locations = locationsQ.data?.locations ?? []
   const isFirstLoad = !locationsQ.data && !locationsQ.error
@@ -154,13 +155,15 @@ export function StoreLocationPage() {
   }
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: '#0f172a', color: 'text.primary' }}>
-      <PageHeader
-        icon={LocationOnIcon}
-        overline="Ayarlar"
-        title="Mağaza Konumu"
-        subtitle="QR devam takibinde kullanılan geofence konumunu yönetin"
-      />
+    <Box sx={embedded ? undefined : { p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: '#0f172a', color: 'text.primary' }}>
+      {!embedded && (
+        <PageHeader
+          icon={LocationOnIcon}
+          overline="Ayarlar"
+          title="Mağaza Konumu"
+          subtitle="QR devam takibinde kullanılan geofence konumunu yönetin"
+        />
+      )}
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert>}
       {success && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess(null)}>{success}</Alert>}

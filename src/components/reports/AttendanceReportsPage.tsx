@@ -166,7 +166,8 @@ function OverrideDialog({ open, row, onClose, onSave, saving }: OverrideDialogPr
 
 // ─── Main Page ───────────────────────────────────────────────
 
-export function AttendanceReportsPage() {
+/** embedded: sekmeli Raporlar sayfasının içinde (başlık ve sayfa dolgusu olmadan) */
+export function AttendanceReportsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const today = format(new Date(), 'yyyy-MM-dd')
   const weekAgo = format(subDays(new Date(), 6), 'yyyy-MM-dd')
 
@@ -273,13 +274,15 @@ export function AttendanceReportsPage() {
   }
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: '#0f172a', color: 'text.primary' }}>
-      <PageHeader
-        icon={BarChartIcon}
-        overline="Raporlama"
-        title="Devam Raporları"
-        subtitle="Tarih aralığı ve çalışana göre filtreleyerek rapor oluşturun"
-      />
+    <Box sx={embedded ? undefined : { p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: '#0f172a', color: 'text.primary' }}>
+      {!embedded && (
+        <PageHeader
+          icon={BarChartIcon}
+          overline="Raporlama"
+          title="Devam Raporları"
+          subtitle="Tarih aralığı ve çalışana göre filtreleyerek rapor oluşturun"
+        />
+      )}
 
       {/* Filters */}
       <Paper
