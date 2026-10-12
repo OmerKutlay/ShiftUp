@@ -35,6 +35,15 @@ npx supabase db reset        # yerel: migration'lar + seed
 npx supabase db push         # bağlı (canlı) projeye uygula
 ```
 
+> **Migration geçmişi uyumsuzluğu:** canlı projede eski migration'lar MCP ile farklı sürüm
+> numaralarıyla uygulanmıştır; repodaki `202609…`–`20261001…` dosyaları canlı
+> `supabase_migrations.schema_migrations` tablosunda yer almaz. Bu yüzden canlıya düz
+> `supabase db push` çalıştırmayın — önce `supabase migration repair --status applied <sürümler>`
+> ile eşitleyin. `20261012…` migration'ları canlıya uygulanmış ve geçmişe kaydedilmiştir.
+>
+> Vardiya hatırlatma bildirimleri `shift-reminder-job` (pg_cron, 5 dk) ile `shift-reminder`
+> Edge Function'ını çağırır; fonksiyonun kaynağı bu repoda değildir.
+>
 > Bütünlük migration'ı (`20261012100100_integrity_constraints.sql`) mevcut veride çakışma
 > bulursa ilgili tekil kısıtı oluşturmaz ve `WARNING` basar — hiçbir veri silinmez. Çıktıyı
 > kontrol edip uyarıdaki sorguyla kayıtları inceleyin.
