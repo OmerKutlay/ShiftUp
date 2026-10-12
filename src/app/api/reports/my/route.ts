@@ -13,24 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { requireAuth } from '@/lib/auth'
-
-function diffMins(from: string | null, to: string | null): number | null {
-  if (!from || !to) return null
-  const d = (new Date(to).getTime() - new Date(from).getTime()) / 60000
-  return Math.max(0, Math.round(d))
-}
-
-function calcWorkedMins(row: {
-  clock_in_at: string | null
-  break_start_at: string | null
-  break_end_at: string | null
-  clock_out_at: string | null
-}): number | null {
-  if (!row.clock_in_at || !row.clock_out_at) return null
-  const total = diffMins(row.clock_in_at, row.clock_out_at) ?? 0
-  const breakMin = diffMins(row.break_start_at, row.break_end_at) ?? 0
-  return Math.max(0, total - breakMin)
-}
+import { totalBreakMinutes, workedMinutes } from '@/lib/attendanceDurations'
 
 /** HH:MM → dakika */
 function timeMins(t: string): number {
@@ -67,7 +50,7 @@ export async function GET(req: NextRequest) {
         id, work_date, start_time, end_time, is_on_leave,
         shift_templates ( name ),
         attendance_records (
-          status, clock_in_at, break_start_at, break_end_at, clock_out_at
+          status, clock_in_at, break_start_at, break_end_at, clock_out_at, completed_break_minutes
         )
       `)
       .eq('employee_id', employee.id)
@@ -93,13 +76,17 @@ export async function GET(req: NextRequest) {
         ? (row.attendance_records[0] ?? null)
         : (row.attendance_records ?? null)
 
-      const workedMins = calcWorkedMins({
+      const times = {
         clock_in_at:    rec?.clock_in_at    ?? null,
         break_start_at: rec?.break_start_at ?? null,
         break_end_at:   rec?.break_end_at   ?? null,
         clock_out_at:   rec?.clock_out_at   ?? null,
-      })
-      const breakMins = diffMins(rec?.break_start_at ?? null, rec?.break_end_at ?? null)
+        completed_break_minutes: rec?.completed_break_minutes ?? 0,
+      }
+      const workedMins = workedMinutes(times)
+      const breakMins = times.break_start_at || times.completed_break_minutes > 0
+        ? totalBreakMinutes(times)
+        : null
 
       return {
         work_date:      row.work_date as string,
