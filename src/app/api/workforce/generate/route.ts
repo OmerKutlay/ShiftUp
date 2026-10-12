@@ -15,6 +15,7 @@ import { format, startOfWeek, endOfWeek, addDays } from 'date-fns'
 import { runPlanner, kindFromTimes } from '@/lib/workforcePlanner'
 import type { PlannerEmployee, PlannerShiftTemplate, ShiftKind } from '@/lib/workforcePlanner'
 import type { DayOfWeek } from '@/types/workforce'
+import { isAutoWeeklyRest } from '@/types/leave'
 
 const DOW_MAP: Record<number, DayOfWeek> = {
   0: 'sunday', 1: 'monday', 2: 'tuesday', 3: 'wednesday',
@@ -64,10 +65,11 @@ export async function POST(req: NextRequest) {
       .from('employee_availability')
       .select('employee_id, day_of_week, start_time, end_time, is_available')
 
-    // Onaylı izinler (bu haftayla kesişen)
+    // Onaylı izinler (bu haftayla kesişen). Otomatik plandan gelen haftalık tatiller yok sayılır:
+    // yeniden aktarımda yenileriyle değiştirilir, tatil günü rotasyonla kayabilir
     const { data: leaves } = await admin
       .from('leave_requests')
-      .select('employee_id, start_date, end_date')
+      .select('employee_id, leave_type, reason, start_date, end_date')
       .eq('status', 'approved')
       .lte('start_date', weekEnd)
       .gte('end_date', weekStart)
@@ -129,6 +131,7 @@ export async function POST(req: NextRequest) {
     // Leave → employee_id → Set<'YYYY-MM-DD'>
     const leaveMap = new Map<string, Set<string>>()
     for (const lv of leaves ?? []) {
+      if (isAutoWeeklyRest(lv as { leave_type: string; reason: string | null })) continue
       const empId = lv.employee_id as string
       if (!leaveMap.has(empId)) leaveMap.set(empId, new Set())
       const leaveSet = leaveMap.get(empId)!
