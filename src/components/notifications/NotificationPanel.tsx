@@ -15,7 +15,6 @@ import {
   Button,
   Divider,
   Chip,
-  CircularProgress,
 } from '@mui/material'
 import NotificationsIcon from '@mui/icons-material/Notifications'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
@@ -28,6 +27,7 @@ import { useRouter } from 'next/navigation'
 import { formatDistanceToNow } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import type { Notification, NotificationType } from '@/types/notification'
+import { ListSkeleton } from '@/components/common'
 
 // ─── Type icon + renk eşlemesi ─────────────────────────────────
 const TYPE_META: Record<
@@ -43,6 +43,14 @@ const TYPE_META: Record<
   time_correction_submitted: { icon: <AccessTimeIcon fontSize="small" />,  color: '#60a5fa', label: 'Mesai Talebi' },
   time_correction_approved:  { icon: <CheckCircleOutlineIcon fontSize="small" />, color: '#10b981', label: 'Mesai Onaylandı' },
   time_correction_rejected:  { icon: <EventBusyIcon fontSize="small" />,   color: '#ef4444', label: 'Mesai Reddedildi' },
+  shift_swap_submitted:      { icon: <AccessTimeIcon fontSize="small" />,  color: '#60a5fa', label: 'Takas Talebi' },
+  shift_swap_approved:       { icon: <CheckCircleOutlineIcon fontSize="small" />, color: '#10b981', label: 'Takas Onaylandı' },
+  shift_swap_rejected:       { icon: <EventBusyIcon fontSize="small" />,   color: '#ef4444', label: 'Takas Reddedildi' },
+  open_shift_claimed:        { icon: <EventAvailableIcon fontSize="small" />, color: '#a78bfa', label: 'Açık Vardiya Alındı' },
+  attendance_late_clock_in:  { icon: <WarningAmberIcon fontSize="small" />, color: '#f59e0b', label: 'Geç Giriş' },
+  attendance_late_clock_out: { icon: <WarningAmberIcon fontSize="small" />, color: '#f59e0b', label: 'Geç Çıkış' },
+  attendance_missed_clock_in:  { icon: <WarningAmberIcon fontSize="small" />, color: '#ef4444', label: 'Giriş Yok' },
+  attendance_missed_clock_out: { icon: <WarningAmberIcon fontSize="small" />, color: '#ef4444', label: 'Çıkış Yok' },
 }
 
 interface Props {
@@ -147,9 +155,7 @@ export function NotificationPanel({
       {/* Liste */}
       <Box sx={{ flex: 1, overflowY: 'auto' }}>
         {loading && notifications.length === 0 ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-            <CircularProgress size={24} />
-          </Box>
+          <ListSkeleton count={4} variant="plain" actions={0} dense />
         ) : notifications.length === 0 ? (
           <Box sx={{ py: 4, textAlign: 'center' }}>
             <WarningAmberIcon sx={{ color: 'text.secondary', opacity: 0.4, fontSize: 32, mb: 1 }} />

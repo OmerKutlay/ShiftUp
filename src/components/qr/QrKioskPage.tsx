@@ -8,7 +8,8 @@
  *   - Authenticated employee session'dan belirlenir
  *   - İşlem tipi (giriş/mola/çıkış) mevcut duruma göre otomatik seçilir
  *
- * QR 60 saniyede bir otomatik yenilenir.
+ * QR 10 saniyede bir ve her okutmadan (giriş/mola/çıkış) hemen sonra yenilenir.
+ * Yenileme sırasında eski QR yeni gelene kadar ekranda kalır — boşluk/uyarı ekranı yoktur.
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
@@ -18,17 +19,25 @@ import QrCode2Icon from '@mui/icons-material/QrCode2'
 import { QrCodeDisplay } from './QrCodeDisplay'
 import { formatInTimeZone } from '@/lib/dateUtils'
 
-const QR_TTL_SECONDS = 60
-const REFRESH_INTERVAL_MS = QR_TTL_SECONDS * 1000
+/** Ekranda bir QR'ın gösterilme süresi */
+const REFRESH_SECONDS = 10
+/**
+ * Token'ın sunucudaki geçerlilik süresi. Gösterim süresinden uzun tutulur:
+ * QR'ı son saniyede okutan çalışanın GPS alma + istek süresi için pay bırakır.
+ * Token zaten tek kullanımlık; okutulduğu anda kiosk yenisini üretir.
+ */
+const TOKEN_TTL_SECONDS = 30
+const STATUS_POLL_MS = 1500
+const RETRY_DELAY_MS = 3000
 
 export function QrKioskPage() {
   const [qrData, setQrData] = useState<string | null>(null)
-  const [expiresAt, setExpiresAt] = useState<Date | null>(null)
+  const [generatedAt, setGeneratedAt] = useState<Date | null>(null)
   const [secondsLeft, setSecondsLeft] = useState(0)
-  const [generating, setGenerating] = useState(false)
-  const [expired, setExpired] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const tokenRef = useRef<string | null>(null)
+  const generatingRef = useRef(false)
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const generateRef = useRef<(() => Promise<void>) | undefined>(undefined)
@@ -39,46 +48,41 @@ export function QrKioskPage() {
   }
 
   const generateQr = useCallback(async () => {
+    if (generatingRef.current) return
+    generatingRef.current = true
     clearTimers()
-    setGenerating(true)
-    setExpired(false)
-    setError(null)
 
     try {
       const res = await fetch('/api/qr/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ kiosk: true, ttl_seconds: QR_TTL_SECONDS }),
+        body: JSON.stringify({ kiosk: true, ttl_seconds: TOKEN_TTL_SECONDS }),
         credentials: 'same-origin',
       })
 
       if (!res.ok) {
-        const err = (await res.json()) as { error?: string }
+        const err = (await res.json().catch(() => ({}))) as { error?: string }
         throw new Error(err.error ?? 'QR üretilemedi.')
       }
 
-      const data = (await res.json()) as { qr_data: string; expires_at: string }
+      const data = (await res.json()) as { token: string; qr_data: string }
+      tokenRef.current = data.token
       setQrData(data.qr_data)
-      setExpiresAt(new Date(data.expires_at))
-      setSecondsLeft(QR_TTL_SECONDS)
+      setGeneratedAt(new Date())
+      setSecondsLeft(REFRESH_SECONDS)
+      setError(null)
 
       // Geri sayım
       countdownRef.current = setInterval(() => {
-        setSecondsLeft((s) => {
-          if (s <= 1) { clearInterval(countdownRef.current!); return 0 }
-          return s - 1
-        })
+        setSecondsLeft((s) => Math.max(0, s - 1))
       }, 1000)
 
-      // Süre dolunca expired → 1.5s sonra yenile
-      refreshTimerRef.current = setTimeout(() => {
-        setExpired(true)
-        setTimeout(() => generateRef.current?.(), 1500)
-      }, REFRESH_INTERVAL_MS)
+      refreshTimerRef.current = setTimeout(() => generateRef.current?.(), REFRESH_SECONDS * 1000)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'QR üretilemedi.')
+      refreshTimerRef.current = setTimeout(() => generateRef.current?.(), RETRY_DELAY_MS)
     } finally {
-      setGenerating(false)
+      generatingRef.current = false
     }
   }, [])
 
@@ -90,8 +94,32 @@ export function QrKioskPage() {
     return clearTimers
   }, [generateQr])
 
-  const progressValue = (secondsLeft / QR_TTL_SECONDS) * 100
-  const progressColor = secondsLeft <= 10 ? '#ef4444' : '#14b8a6'
+  // Gösterilen QR okutuldu mu? Okutulduysa hemen yenisini üret.
+  useEffect(() => {
+    let inFlight = false
+    const poll = setInterval(async () => {
+      const token = tokenRef.current
+      if (!token || inFlight || generatingRef.current) return
+      inFlight = true
+      try {
+        const res = await fetch(`/api/qr/status?token=${encodeURIComponent(token)}`, {
+          credentials: 'same-origin',
+          cache: 'no-store',
+        })
+        if (!res.ok) return
+        const data = (await res.json()) as { used: boolean }
+        if (data.used && tokenRef.current === token) void generateRef.current?.()
+      } catch {
+        // Ağ hatası — bir sonraki turda tekrar denenir
+      } finally {
+        inFlight = false
+      }
+    }, STATUS_POLL_MS)
+    return () => clearInterval(poll)
+  }, [])
+
+  const progressValue = (secondsLeft / REFRESH_SECONDS) * 100
+  const progressColor = secondsLeft <= 3 ? '#ef4444' : '#14b8a6'
 
   return (
     <Box sx={{
@@ -129,18 +157,17 @@ export function QrKioskPage() {
           <QrCodeDisplay
             data={qrData ?? ''}
             size={280}
-            loading={generating}
-            expired={expired}
+            loading={!qrData}
           />
         </Box>
 
         {/* Süre göstergesi */}
-        {!expired && !generating && qrData && (
+        {qrData && (
           <Box sx={{ width: '100%' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.75 }}>
               <Typography variant="caption" color="text.secondary">Geçerlilik</Typography>
               <Typography variant="caption" fontWeight={700}
-                color={secondsLeft <= 10 ? 'error.main' : 'text.secondary'}>
+                color={secondsLeft <= 3 ? 'error.main' : 'text.secondary'}>
                 {secondsLeft}s
               </Typography>
             </Box>
@@ -157,16 +184,14 @@ export function QrKioskPage() {
         )}
 
         {/* Son yenilenme */}
-        {expiresAt && !generating && (
+        {generatedAt && (
           <Typography variant="caption" color="text.disabled">
-            Son yenilenme: {formatInTimeZone(
-              new Date(expiresAt.getTime() - QR_TTL_SECONDS * 1000).toISOString()
-            )}
+            Son yenilenme: {formatInTimeZone(generatedAt.toISOString())}
           </Typography>
         )}
 
         <Typography variant="caption" color="text.disabled" textAlign="center" sx={{ maxWidth: 260 }}>
-          QR kod her {QR_TTL_SECONDS} saniyede bir otomatik yenilenir.
+          QR kod her {REFRESH_SECONDS} saniyede bir ve her okutmadan sonra otomatik yenilenir.
           Taramak için sisteme giriş yapmış olmanız gerekir.
         </Typography>
       </Paper>

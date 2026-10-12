@@ -17,11 +17,14 @@ import type { DailyShiftEntry, AttendanceRecord } from '@/types/attendance'
 import { fetchDailyShifts } from '@/lib/attendanceRepository'
 import { EmployeeAttendanceRow } from './EmployeeAttendanceRow'
 import { formatDateTurkish, formatDayNameTurkish } from '@/lib/dateUtils'
+import { PageHeader, StatCardsSkeleton, ListSkeleton } from '@/components/common'
+import { useLoadedKey } from '@/hooks/useLoadedKey'
 
 export function DailyAttendancePage() {
   const today = new Date()
   const [entries, setEntries] = useState<DailyShiftEntry[]>([])
   const [loading, setLoading] = useState(true)
+  const { isFirstLoad, markLoaded } = useLoadedKey()
   const [error, setError] = useState<string | null>(null)
   // FAZ 8: last refresh time for display
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null)
@@ -37,9 +40,10 @@ export function DailyAttendancePage() {
       setError(err instanceof Error ? err.message : 'Vardiyalar yüklenemedi.')
     } finally {
       setLoading(false)
+      markLoaded()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [markLoaded])
 
   useEffect(() => {
     void loadShifts() // eslint-disable-line react-hooks/set-state-in-effect
@@ -75,42 +79,30 @@ export function DailyAttendancePage() {
         p: { xs: 2, md: 3 },
       }}
     >
-      {/* Header */}
-      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
-        <Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-            <CalendarTodayIcon sx={{ fontSize: 18, color: 'primary.main' }} />
-            <Typography variant="overline" color="primary.main" fontWeight={700} letterSpacing={1.5}>
-              {formatDayNameTurkish(today)}
-            </Typography>
-          </Box>
-          <Typography variant="h5" fontWeight={800} color="text.primary">
-            Günlük Operasyon
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
-            {formatDateTurkish(today)}
-          </Typography>
-          {lastRefreshed && (
-            <Typography variant="caption" color="text.disabled" sx={{ mt: 0.25, display: 'block' }}>
-              Son güncelleme: {lastRefreshed.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
-            </Typography>
-          )}
-        </Box>
-        {/* FAZ 8: Manual refresh button */}
-        <Button
-          size="small"
-          variant="outlined"
-          startIcon={loading ? <CircularProgress size={14} /> : <RefreshIcon />}
-          onClick={() => void loadShifts()}
-          disabled={loading}
-          sx={{ alignSelf: 'flex-start', fontSize: '0.75rem' }}
-        >
-          Yenile
-        </Button>
-      </Box>
+      <PageHeader
+        icon={CalendarTodayIcon}
+        overline={formatDayNameTurkish(today)}
+        title="Günlük Operasyon"
+        subtitle={formatDateTurkish(today)}
+        meta={lastRefreshed && `Son güncelleme: ${lastRefreshed.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`}
+        actions={
+          /* FAZ 8: Manual refresh button */
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={loading ? <CircularProgress size={14} /> : <RefreshIcon />}
+            onClick={() => void loadShifts()}
+            disabled={loading}
+            sx={{ fontSize: '0.75rem' }}
+          >
+            Yenile
+          </Button>
+        }
+      />
 
       {/* Stats row */}
-      {!loading && !error && (
+      {isFirstLoad && <StatCardsSkeleton count={4} />}
+      {!isFirstLoad && !error && (
       <Box
           sx={{
             display: 'flex',
@@ -134,11 +126,7 @@ export function DailyAttendancePage() {
       <Divider sx={{ mb: 3, borderColor: 'rgba(255,255,255,0.08)' }} />
 
       {/* Content */}
-      {loading && entries.length === 0 && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-          <CircularProgress color="primary" />
-        </Box>
-      )}
+      {isFirstLoad && <ListSkeleton count={5} actions={2} />}
 
       {error && (
         <Alert
@@ -154,7 +142,7 @@ export function DailyAttendancePage() {
         </Alert>
       )}
 
-      {!loading && !error && entries.length === 0 && (
+      {!isFirstLoad && !error && entries.length === 0 && (
         <Alert
           severity="info"
           sx={{ bgcolor: 'rgba(99,102,241,0.1)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.3)' }}

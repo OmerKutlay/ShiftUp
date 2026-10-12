@@ -26,9 +26,12 @@ import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 import { format, addWeeks, subWeeks, startOfWeek } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import type { EmployeeWeekSummary, DaySummary, WorkingTimeViolation } from '@/lib/workingTimeService'
+import { shiftDurationMins, netWorkMins } from '@/lib/workingTimeService'
 import type { OpenShift } from '@/types/workforce'
 import type { PlannerResult, DraftAssignment, EmployeeDraftStats, PlanWarning } from '@/lib/workforcePlanner'
 import { PART_TIME_RULES } from '@/types/employee'
+import { ScheduleGridSkeleton } from '@/components/common'
+import { useLoadedKey } from '@/hooks/useLoadedKey'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -54,6 +57,21 @@ function formatMins(mins: number): string {
   const h = Math.floor(mins / 60)
   const m = mins % 60
   return m === 0 ? `${h}s` : `${h}s${m}dk`
+}
+
+/** Vardiyanın mola hakkı (brüt − net) */
+function breakMinsOf(start: string, end: string): number {
+  return shiftDurationMins(start, end) - netWorkMins(start, end)
+}
+
+/** "7s net · 1s mola" satırı */
+function NetBreakLine({ netMins, breakMins, color }: { netMins: number; breakMins: number; color: string }) {
+  return (
+    <Typography variant="caption" sx={{ display: 'block', fontSize: '0.6rem', whiteSpace: 'nowrap' }}>
+      <Box component="span" sx={{ color, fontWeight: 700 }}>{formatMins(netMins)} net</Box>
+      <Box component="span" sx={{ color: '#94a3b8' }}> · {formatMins(breakMins)} mola</Box>
+    </Typography>
+  )
 }
 
 const SHIFT_KIND_COLORS: Record<string, string> = {
@@ -95,9 +113,11 @@ function DayCellContent({ day }: { day: DaySummary }) {
         </Typography>
       ))}
       {day.totalMins > 0 && (
-        <Typography variant="caption" sx={{ fontSize: '0.65rem', color: '#14b8a6' }}>
-          {formatMins(day.totalMins)}
-        </Typography>
+        <NetBreakLine
+          netMins={day.totalMins}
+          breakMins={day.shifts.reduce((s, x) => s + breakMinsOf(x.start_time, x.end_time), 0)}
+          color="#14b8a6"
+        />
       )}
     </Box>
   )
@@ -126,16 +146,14 @@ function DraftCell({ assign }: { assign: DraftAssignment | undefined }) {
 
   const color = SHIFT_KIND_COLORS[assign.shift_kind] ?? '#64748b'
   const label = SHIFT_KIND_LABELS[assign.shift_kind] ?? assign.shift_kind
-  const mins = (() => {
-    const toM = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m }
-    let e = toM(assign.end_time); const s = toM(assign.start_time)
-    if (e <= s) e += 1440; return e - s
-  })()
+  const grossMins = shiftDurationMins(assign.start_time, assign.end_time)
+  const netMins   = netWorkMins(assign.start_time, assign.end_time)
 
   return (
     <Tooltip title={
       <Box sx={{ fontSize: '0.72rem' }}>
         <Box>{assign.start_time}–{assign.end_time}</Box>
+        <Box>Brüt {formatMins(grossMins)} · Mola {formatMins(grossMins - netMins)} · Net {formatMins(netMins)}</Box>
         <Box sx={{ color: '#94a3b8', mt: 0.25 }}>{assign.reason}</Box>
       </Box>
     } arrow placement="top">
@@ -149,9 +167,7 @@ function DraftCell({ assign }: { assign: DraftAssignment | undefined }) {
         <Typography variant="caption" sx={{ display: 'block', fontSize: '0.62rem', color: '#94a3b8', mt: 0.15, whiteSpace: 'nowrap' }}>
           {assign.start_time}–{assign.end_time}
         </Typography>
-        <Typography variant="caption" sx={{ display: 'block', fontSize: '0.6rem', color }}>
-          {formatMins(mins)}
-        </Typography>
+        <NetBreakLine netMins={netMins} breakMins={grossMins - netMins} color={color} />
       </Box>
     </Tooltip>
   )
@@ -187,10 +203,12 @@ function WarningList({ warnings }: { warnings: PlanWarning[] }) {
 export function WorkforcePlanningPanel() {
   const [weekRef, setWeekRef] = useState<Date>(() => startOfWeek(new Date(), { weekStartsOn: 1 }))
   const [activeTab, setActiveTab] = useState(0)
+  // Skeleton yalnızca bu hafta ilk kez yüklenirken; sayfaya geri dönüşte plan ekranda kalır
+  const weekKey = format(weekRef, 'yyyy-MM-dd')
+  const { isFirstLoad, markLoaded } = useLoadedKey(weekKey)
 
   // Mevcut plan state
   const [planData, setPlanData]   = useState<PlanningResponse | null>(null)
-  const [planLoading, setPlanLoading] = useState(false)
   const [planError, setPlanError] = useState<string | null>(null)
 
   // Draft state
@@ -198,30 +216,23 @@ export function WorkforcePlanningPanel() {
   const [genLoading, setGenLoading] = useState(false)
   const [genError, setGenError]   = useState<string | null>(null)
   const [applyLoading, setApplyLoading] = useState(false)
-  const [applyResult, setApplyResult] = useState<{ created: number; skipped: number; errors: string[] } | null>(null)
+  const [applyResult, setApplyResult] = useState<{ created: number; replaced: number; skipped: number; errors: string[] } | null>(null)
 
   // ── Mevcut plan yükle ──────────────────────────────────────────────────────
   const loadCurrentPlan = useCallback(async (date: Date) => {
-    setPlanLoading(true)
     setPlanError(null)
+    const week = format(date, 'yyyy-MM-dd')
     try {
-      const week = format(date, 'yyyy-MM-dd')
       const res  = await fetch(`/api/workforce/planning?week=${week}`, { credentials: 'same-origin' })
       if (res.status === 403 || res.status === 401) { setPlanError('Erişim yetkiniz yok.'); return }
       if (!res.ok) { const j = await res.json() as { error?: string }; setPlanError(j.error ?? 'Yükleme hatası.'); return }
       setPlanData(await res.json() as PlanningResponse)
     } catch { setPlanError('Bağlantı hatası.') }
-    finally  { setPlanLoading(false) }
-  }, [])
+    finally  { markLoaded(week) }
+  }, [markLoaded])
 
   useEffect(() => { void loadCurrentPlan(weekRef) }, [loadCurrentPlan, weekRef])
 
-  // Hafta değişince draft'ı sıfırla
-  useEffect(() => {
-    setDraft(null)
-    setGenError(null)
-    setApplyResult(null)
-  }, [weekRef])
 
   // ── Taslak üret ───────────────────────────────────────────────────────────
   const generate = async () => {
@@ -252,6 +263,14 @@ export function WorkforcePlanningPanel() {
       setGenError('Plan kritik kural ihlalleri içeriyor. Onaylamadan önce planı yeniden oluşturun.')
       return
     }
+    // Haftada kayıtlı plan varsa yenisiyle değiştirileceğini onaylat
+    const existingShifts = planData?.summaries.reduce(
+      (n, s) => n + Object.values(s.days).reduce((m, d) => m + d.shifts.length, 0), 0,
+    ) ?? 0
+    if (existingShifts > 0 && !window.confirm(
+      `Bu haftanın mevcut planı (${existingShifts} vardiya) silinip yeni planla değiştirilecek.\n\n` +
+      'Giriş/çıkış kaydı olan ve izinli işaretli vardiyalar korunur. Devam edilsin mi?',
+    )) return
     setApplyLoading(true)
     try {
       const res = await fetch('/api/workforce/apply', {
@@ -260,16 +279,18 @@ export function WorkforcePlanningPanel() {
         credentials: 'same-origin',
         body: JSON.stringify({
           assignments: draft.assignments,
+          weekStart: draft.weekStart,
+          weekEnd: draft.weekEnd,
           hasHardViolation: draft.hasHardViolation,
         }),
       })
-      const result = await res.json() as { created: number; skipped: number; errors: string[]; error?: string }
+      const result = await res.json() as { created: number; replaced: number; skipped: number; errors: string[]; error?: string }
       if (!res.ok) {
         setGenError(result.error ?? 'Uygulama sırasında hata oluştu.')
         return
       }
       setApplyResult(result)
-      if (result.created > 0) {
+      if (result.created > 0 || result.replaced > 0) {
         void loadCurrentPlan(weekRef)
         setActiveTab(0)
       }
@@ -277,9 +298,17 @@ export function WorkforcePlanningPanel() {
     finally  { setApplyLoading(false) }
   }
 
-  const prevWeek = () => setWeekRef((d) => subWeeks(d, 1))
-  const nextWeek = () => setWeekRef((d) => addWeeks(d, 1))
-  const thisWeek = () => setWeekRef(startOfWeek(new Date(), { weekStartsOn: 1 }))
+  // Hafta değişince draft'ı sıfırla — effect yerine handler'da: keep-alive ile sayfaya geri
+  // dönüldüğünde effect'ler yeniden çalışır ve oluşturulmuş taslak kaybolurdu
+  const changeWeek = (next: Date) => {
+    setWeekRef(next)
+    setDraft(null)
+    setGenError(null)
+    setApplyResult(null)
+  }
+  const prevWeek = () => changeWeek(subWeeks(weekRef, 1))
+  const nextWeek = () => changeWeek(addWeeks(weekRef, 1))
+  const thisWeek = () => changeWeek(startOfWeek(new Date(), { weekStartsOn: 1 }))
 
   const weekLabel = planData
     ? `${format(new Date(planData.weekStart), 'd MMM', { locale: tr })} – ${format(new Date(planData.weekEnd), 'd MMM yyyy', { locale: tr })}`
@@ -352,7 +381,9 @@ export function WorkforcePlanningPanel() {
           severity={applyResult.errors.length > 0 ? 'warning' : 'success'}
           sx={{ mb: 1.5, fontSize: '0.8rem' }}
         >
-          {applyResult.created} atama oluşturuldu, {applyResult.skipped} atama zaten mevcuttu.
+          {applyResult.created} atama oluşturuldu
+          {applyResult.replaced > 0 && `, eski plandan ${applyResult.replaced} vardiya kaldırıldı`}
+          {applyResult.skipped > 0 && `, giriş/çıkış veya izin kaydı olan ${applyResult.skipped} vardiya korundu`}.
           {applyResult.errors.length > 0 && (
             <Box component="ul" sx={{ m: 0, pl: 2 }}>
               {applyResult.errors.map((e, i) => <li key={i}>{e}</li>)}
@@ -391,13 +422,11 @@ export function WorkforcePlanningPanel() {
         <>
           {planError && <Alert severity={planError.includes('yetki') ? 'warning' : 'error'} sx={{ mb: 2 }}>{planError}</Alert>}
 
-          {planLoading && (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-              <CircularProgress size={32} />
-            </Box>
+          {isFirstLoad && (
+            <ScheduleGridSkeleton rows={6} />
           )}
 
-          {!planLoading && planData && (
+          {!isFirstLoad && planData && (
             <>
               <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
                 {[

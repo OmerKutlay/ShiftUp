@@ -14,7 +14,6 @@ import {
   Button,
   Divider,
   Chip,
-  CircularProgress,
   Paper,
   Alert,
 } from '@mui/material'
@@ -30,6 +29,7 @@ import { formatDistanceToNow, format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { useNotifications } from '@/hooks/useNotifications'
 import { useAuth } from '@/context/AuthContext'
+import { PageHeader, ListSkeleton } from '@/components/common'
 import type { Notification, NotificationType } from '@/types/notification'
 
 const TYPE_META: Record<
@@ -45,6 +45,14 @@ const TYPE_META: Record<
   time_correction_submitted: { icon: <AccessTimeIcon />,       color: '#60a5fa', label: 'Mesai Talebi' },
   time_correction_approved:  { icon: <CheckCircleOutlineIcon />, color: '#10b981', label: 'Mesai Onaylandı' },
   time_correction_rejected:  { icon: <EventBusyIcon />,        color: '#ef4444', label: 'Mesai Reddedildi' },
+  shift_swap_submitted:      { icon: <AccessTimeIcon />,       color: '#60a5fa', label: 'Takas Talebi' },
+  shift_swap_approved:       { icon: <CheckCircleOutlineIcon />, color: '#10b981', label: 'Takas Onaylandı' },
+  shift_swap_rejected:       { icon: <EventBusyIcon />,        color: '#ef4444', label: 'Takas Reddedildi' },
+  open_shift_claimed:        { icon: <EventAvailableIcon />,   color: '#a78bfa', label: 'Açık Vardiya Alındı' },
+  attendance_late_clock_in:  { icon: <WarningAmberIcon />,     color: '#f59e0b', label: 'Geç Giriş' },
+  attendance_late_clock_out: { icon: <WarningAmberIcon />,     color: '#f59e0b', label: 'Geç Çıkış' },
+  attendance_missed_clock_in:  { icon: <WarningAmberIcon />,   color: '#ef4444', label: 'Giriş Okutulmadı' },
+  attendance_missed_clock_out: { icon: <WarningAmberIcon />,   color: '#ef4444', label: 'Çıkış Okutulmadı' },
 }
 
 function NotificationItem({
@@ -141,55 +149,55 @@ function NotificationItem({
 
 export function NotificationsPage() {
   const { employee: authEmployee, status: authStatus } = useAuth()
-  const { notifications, unreadCount, loading, error, markAsRead, markAllAsRead, refresh } =
+  const { notifications, unreadCount, isFirstLoad, error, markAsRead, markAllAsRead, refresh } =
     useNotifications(authEmployee?.id ?? null)
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 720, mx: 'auto' }}>
-      {/* Başlık */}
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3, flexWrap: 'wrap', gap: 1 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <NotificationsIcon sx={{ color: 'primary.main', fontSize: 28 }} />
-          <Typography variant="h6" fontWeight={800}>
-            Bildirimler
-          </Typography>
-          {authEmployee && (
-            <Chip
-              icon={<PersonIcon sx={{ fontSize: '14px !important' }} />}
-              label={authEmployee.full_name}
-              size="small"
-              sx={{ bgcolor: 'rgba(20,184,166,0.12)', color: 'primary.main', fontWeight: 600 }}
-            />
-          )}
-          {unreadCount > 0 && (
+      <PageHeader
+        icon={NotificationsIcon}
+        overline="Gelen Kutusu"
+        title="Bildirimler"
+        titleAdornment={
+          unreadCount > 0 && (
             <Chip
               label={`${unreadCount} okunmamış`}
               size="small"
               sx={{ bgcolor: 'primary.main', color: '#fff', fontWeight: 700 }}
             />
-          )}
-        </Box>
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          {unreadCount > 0 && (
+          )
+        }
+        subtitle={
+          authEmployee && (
+            <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+              <PersonIcon sx={{ fontSize: 14 }} />
+              {authEmployee.full_name}
+            </Box>
+          )
+        }
+        actions={
+          <>
+            {unreadCount > 0 && (
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={markAllAsRead}
+                sx={{ borderColor: 'divider', color: 'text.secondary', fontSize: '0.78rem' }}
+              >
+                Tümünü okundu işaretle
+              </Button>
+            )}
             <Button
               size="small"
               variant="outlined"
-              onClick={markAllAsRead}
+              onClick={refresh}
               sx={{ borderColor: 'divider', color: 'text.secondary', fontSize: '0.78rem' }}
             >
-              Tümünü okundu işaretle
+              Yenile
             </Button>
-          )}
-          <Button
-            size="small"
-            variant="outlined"
-            onClick={refresh}
-            sx={{ borderColor: 'divider', color: 'text.secondary', fontSize: '0.78rem' }}
-          >
-            Yenile
-          </Button>
-        </Box>
-      </Box>
+          </>
+        }
+      />
 
       {authStatus === 'unauthenticated' && (
         <Alert severity="info" sx={{ mb: 2 }}>
@@ -212,10 +220,8 @@ export function NotificationsPage() {
           overflow: 'hidden',
         }}
       >
-        {loading && notifications.length === 0 ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-            <CircularProgress size={32} />
-          </Box>
+        {authStatus === 'loading' || (authEmployee && isFirstLoad) ? (
+          <ListSkeleton count={6} variant="plain" actions={0} />
         ) : notifications.length === 0 ? (
           <Box sx={{ py: 6, textAlign: 'center' }}>
             <WarningAmberIcon sx={{ color: 'text.secondary', opacity: 0.3, fontSize: 48, mb: 1 }} />

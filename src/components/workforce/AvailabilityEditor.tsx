@@ -17,6 +17,8 @@ import BlockIcon from '@mui/icons-material/Block'
 import type { EmployeeAvailability, DayOfWeek } from '@/types/workforce'
 import { DAY_OF_WEEK_LABELS } from '@/types/workforce'
 import type { EmployeeWithRole } from '@/types/employee'
+import { DayBlocksSkeleton } from '@/components/common'
+import { useLoadedKey } from '@/hooks/useLoadedKey'
 
 const DAYS: DayOfWeek[] = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']
 
@@ -27,7 +29,7 @@ interface Props {
 export function AvailabilityEditor({ employees }: Props) {
   const [selectedId, setSelectedId] = useState<string>(employees[0]?.id ?? '')
   const [availability, setAvailability] = useState<EmployeeAvailability[]>([])
-  const [loading, setLoading] = useState(false)
+  const { isFirstLoad, markLoaded } = useLoadedKey(selectedId)
   const [error, setError] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [form, setForm] = useState({ day_of_week: 'monday' as DayOfWeek, start_time: '09:00', end_time: '18:00', is_available: true, note: '' })
@@ -35,15 +37,14 @@ export function AvailabilityEditor({ employees }: Props) {
 
   const load = useCallback(async () => {
     if (!selectedId) return
-    setLoading(true)
     setError(null)
     try {
       const res = await fetch(`/api/availability?employee_id=${selectedId}`)
       const json = await res.json() as { availability: EmployeeAvailability[] }
       setAvailability(json.availability ?? [])
     } catch { setError('Yüklenemedi.') }
-    finally { setLoading(false) }
-  }, [selectedId])
+    finally { markLoaded(selectedId) }
+  }, [selectedId, markLoaded])
 
   useEffect(() => { void load() }, [load]) // eslint-disable-line react-hooks/set-state-in-effect
 
@@ -90,8 +91,8 @@ export function AvailabilityEditor({ employees }: Props) {
 
       {error && <Alert severity="error" sx={{ mb: 1 }} onClose={() => setError(null)}>{error}</Alert>}
 
-      {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={28} /></Box>
+      {isFirstLoad ? (
+        <DayBlocksSkeleton count={7} />
       ) : (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
           {grouped.map(({ day, items }) => (

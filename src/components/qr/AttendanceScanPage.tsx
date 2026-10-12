@@ -12,7 +12,7 @@
  *   - Molada iken "Çıkış Yap" seçeneği gösterilmez.
  *   - QR onaylandıktan sonra sonuç gösterilir, ardından amaç seçimine geri dönülür.
  */
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Box,
   Typography,
@@ -24,6 +24,7 @@ import {
   Alert,
   Button,
   IconButton,
+  Skeleton,
 } from '@mui/material'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
@@ -46,6 +47,7 @@ import type { ProcessQrResponse } from '@/types/qr'
 import type { GpsCoordinates } from '@/types/location'
 import { useAuth } from '@/context/AuthContext'
 import { QrScanner } from './QrScanner'
+import { LOADING_LABEL } from '@/components/common'
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -218,6 +220,7 @@ export function AttendanceScanPage() {
 
   const [pageState, setPageState] = useState<PageState>('loading_status')
   const [statusData, setStatusData] = useState<CurrentStatusResponse | null>(null)
+  const hasStatusRef = useRef(false)
   const [selectedAction, setSelectedAction] = useState<QrActionType | null>(null)
   const [scannerActive, setScannerActive] = useState(false)
   const [result, setResult] = useState<ProcessQrResponse | null>(null)
@@ -225,8 +228,12 @@ export function AttendanceScanPage() {
   const [locationStatus, setLocationStatus] = useState<string | null>(null)
 
   // ── Mevcut durumu çek ───────────────────────────────────────
-  const fetchCurrentStatus = useCallback(async () => {
-    setPageState('loading_status')
+  // silent: durum zaten yüklüyken (keep-alive ile sayfaya geri dönüş) skeleton göstermeden tazele.
+  // İşlem sonrası / tekrar dene çağrıları silent değildir — eski butonlarla yanlış işlem yapılmasın.
+  const fetchCurrentStatus = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (silent) setPageState('select_action')
+    else setPageState('loading_status')
+    setScannerActive(false)
     setErrorMsg(null)
     setSelectedAction(null)
     try {
@@ -241,6 +248,7 @@ export function AttendanceScanPage() {
       }
       const data = (await res.json()) as CurrentStatusResponse
       setStatusData(data)
+      hasStatusRef.current = true
       setPageState('select_action')
     } catch {
       setErrorMsg('Sunucuya bağlanılamadı.')
@@ -250,7 +258,7 @@ export function AttendanceScanPage() {
 
   useEffect(() => {
     if (authStatus === 'authenticated' && employee) {
-      void fetchCurrentStatus()
+      void fetchCurrentStatus({ silent: hasStatusRef.current })
     }
   }, [authStatus, employee, fetchCurrentStatus])
 
@@ -349,9 +357,21 @@ export function AttendanceScanPage() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          p: { xs: 2, md: 4 },
         }}
       >
-        <CircularProgress />
+        <Box
+          role="status"
+          aria-busy="true"
+          aria-label={LOADING_LABEL}
+          sx={{ width: '100%', maxWidth: 440, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}
+        >
+          <Skeleton variant="text" width={90} sx={{ fontSize: '0.75rem' }} />
+          <Skeleton variant="text" width={200} sx={{ fontSize: '1.5rem', mb: 2 }} />
+          <Skeleton variant="rounded" width="100%" height={120} sx={{ borderRadius: 3 }} />
+          <Skeleton variant="rounded" width="100%" height={52} sx={{ borderRadius: 2, mt: 1 }} />
+          <Skeleton variant="rounded" width="100%" height={52} sx={{ borderRadius: 2 }} />
+        </Box>
       </Box>
     )
   }
@@ -404,7 +424,7 @@ export function AttendanceScanPage() {
       {/* Header */}
       <Box sx={{ mb: 3, textAlign: 'center' }}>
         <Typography variant="overline" color="primary.main" fontWeight={700} letterSpacing={1.5}>
-          Attendance
+          QR Tara
         </Typography>
         <Typography variant="h5" fontWeight={800}>
           {pageState === 'scanning' ? 'QR Kodu Okutun' : 'Devam Takibi'}
@@ -491,18 +511,15 @@ export function AttendanceScanPage() {
           {/* ── DURUM YÜKLENİYOR ── */}
           {pageState === 'loading_status' && (
             <Box
-              sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 2,
-                py: 4,
-              }}
+              role="status"
+              aria-busy="true"
+              aria-label={LOADING_LABEL}
+              sx={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 1.5 }}
             >
-              <CircularProgress color="primary" size={48} />
-              <Typography variant="subtitle2" color="text.secondary">
-                Vardiya durumu yükleniyor...
-              </Typography>
+              <Skeleton variant="rounded" height={88} sx={{ borderRadius: 2 }} />
+              <Skeleton variant="text" width={140} sx={{ mt: 1 }} />
+              <Skeleton variant="rounded" height={52} sx={{ borderRadius: 2 }} />
+              <Skeleton variant="rounded" height={52} sx={{ borderRadius: 2 }} />
             </Box>
           )}
 

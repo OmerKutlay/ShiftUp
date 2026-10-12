@@ -17,8 +17,10 @@ import { tr } from 'date-fns/locale'
 import { useAuth } from '@/context/AuthContext'
 import { hasRole, MANAGER_ROLES } from '@/lib/auth/roles'
 import { TimeCorrectionReviewPanel } from './TimeCorrectionReviewPanel'
+import { PageHeader, PageSkeleton, ListSkeleton } from '@/components/common'
 import type { TimeCorrectionRequest } from '@/types/timeCorrection'
 import { TIME_CORRECTION_STATUS_LABELS, TIME_CORRECTION_STATUS_COLORS } from '@/types/timeCorrection'
+import { useLoadedKey } from '@/hooks/useLoadedKey'
 
 // ─── Helpers ─────────────────────────────────────────────────
 function fmtDate(d: string) {
@@ -33,7 +35,7 @@ export function TimeCorrectionPage() {
   const { employee, status: authStatus } = useAuth()
 
   const [requests, setRequests] = useState<TimeCorrectionRequest[]>([])
-  const [loading, setLoading] = useState(false)
+  const { isFirstLoad, markLoaded } = useLoadedKey()
   const [error, setError] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -42,7 +44,6 @@ export function TimeCorrectionPage() {
 
   // ── Yükle ───────────────────────────────────────────────────
   const load = useCallback(async () => {
-    setLoading(true)
     setError(null)
     try {
       const res = await fetch('/api/time-correction', { credentials: 'same-origin' })
@@ -50,8 +51,8 @@ export function TimeCorrectionPage() {
       const d = await res.json() as { requests: TimeCorrectionRequest[] }
       setRequests(d.requests ?? [])
     } catch { setError('Bağlantı hatası.') }
-    finally { setLoading(false) }
-  }, [])
+    finally { markLoaded() }
+  }, [markLoaded])
 
   useEffect(() => { if (authStatus === 'authenticated') void load() }, [authStatus, load])
 
@@ -88,30 +89,30 @@ export function TimeCorrectionPage() {
   const openDialog = () => { setSaveError(null); setDialogOpen(true) }
 
   // ─── Auth guard ──────────────────────────────────────────────
-  if (authStatus === 'loading') return <Box sx={{ display: 'flex', justifyContent: 'center', pt: 8 }}><CircularProgress /></Box>
+  if (authStatus === 'loading') return <PageSkeleton rows={4} maxWidth={720} />
   if (authStatus === 'unauthenticated' || !employee) return <Alert severity="warning" sx={{ m: 3 }}>Bu sayfayı görmek için giriş yapmanız gerekiyor.</Alert>
 
   const isManager = hasRole(employee.roles?.name ?? employee.role_name ?? null, MANAGER_ROLES)
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 720, mx: 'auto' }}>
-      {/* Başlık */}
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3, flexWrap: 'wrap', gap: 1 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <AccessTimeIcon sx={{ color: 'primary.main', fontSize: 28 }} />
-          <Typography variant="h6" fontWeight={800}>Mesai Düzeltme Talebi</Typography>
-        </Box>
-        <Button startIcon={<AddIcon />} variant="outlined" size="small" onClick={openDialog}
-          sx={{ borderColor: 'primary.main', color: 'primary.main' }}>
-          Yeni Talep
-        </Button>
-      </Box>
+      <PageHeader
+        icon={AccessTimeIcon}
+        overline="Mesai"
+        title="Mesai Düzeltme Talebi"
+        subtitle="Eksik veya hatalı giriş/çıkış kayıtları için düzeltme talep edin"
+        actions={
+          <Button variant="contained" startIcon={<AddIcon />} onClick={openDialog} sx={{ fontWeight: 700 }}>
+            Yeni Talep
+          </Button>
+        }
+      />
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert>}
 
       {/* Liste */}
-      {loading && requests.length === 0 ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress size={32} /></Box>
+      {isFirstLoad ? (
+        <ListSkeleton count={3} lines={3} avatar={false} actions={1} />
       ) : requests.length === 0 ? (
         <Paper elevation={0} sx={{ p: 4, textAlign: 'center', border: '1px solid', borderColor: 'divider', borderRadius: 2, bgcolor: 'rgba(30,41,59,0.4)' }}>
           <AccessTimeIcon sx={{ fontSize: 40, color: 'text.disabled', opacity: 0.4, mb: 1 }} />
