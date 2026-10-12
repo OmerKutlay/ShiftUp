@@ -9,7 +9,7 @@
  *
  * Sunucu doğrulaması (istemciye güvenilmez):
  *   - Her atama: geçerli çalışan (aktif), tarih (haftanın içinde), saat, şablon
- *   - Onaylı izin gününe atama → 409 (aşılamaz)
+ *   - Onaylı izin gününe atama veya 18 yaş altı gece/8 saat ihlali → 409 (aşılamaz)
  *   - Çalışma süresi / Md. 46 hafta tatili ihlalleri → 422, acknowledge_violations=true ile aşılır
  *
  * Haftalık tatil: planda hiç vardiyası olmayan aktif çalışan başına TEK gün otomatik
@@ -31,6 +31,8 @@ import { addDaysToDateString } from '@/lib/dateUtils'
 import { getWorkingTimeConfig } from '@/lib/workingTimeConfig'
 import { validateWeekPlan, type PlanShift } from '@/lib/planValidation'
 import { logAudit } from '@/lib/auditLog'
+import { completedYears, minorWorkViolations } from '@/lib/laborLaw'
+import { netWorkMins } from '@/lib/workingTimeService'
 import type { EmploymentType } from '@/types/employee'
 
 const MAX_ASSIGNMENTS = 500
@@ -76,10 +78,10 @@ export async function POST(req: NextRequest) {
     const [existingRes, empsRes, leavesRes, neighborRes] = await Promise.all([
       admin
         .from('shift_assignments')
-        .select('id, employee_id, work_date, start_time, end_time, is_on_leave, attendance_records ( id )')
+        .select('*, attendance_records ( id )')
         .gte('work_date', weekStart)
         .lte('work_date', weekEnd),
-      admin.from('employees').select('id, full_name, active, employment_type'),
+      admin.from('employees').select('id, full_name, active, employment_type, birth_date'),
       admin
         .from('leave_requests')
         .select('id, employee_id, leave_type, start_date, end_date, reason, status, reviewed_at, reviewed_by')
@@ -95,7 +97,9 @@ export async function POST(req: NextRequest) {
       if (r.error) return serverError('POST /api/workforce/apply', r.error)
     }
 
-    const employees = (empsRes.data ?? []) as Array<{ id: string; full_name: string; active: boolean; employment_type: EmploymentType | null }>
+    const employees = (empsRes.data ?? []) as Array<{
+      id: string; full_name: string; active: boolean; employment_type: EmploymentType | null; birth_date: string | null
+    }>
     const empById = new Map(employees.map((e) => [e.id, e]))
     for (const a of assignments) {
       const emp = empById.get(a.employee_id)
@@ -107,6 +111,7 @@ export async function POST(req: NextRequest) {
     const keepKeys = new Set<string>()
     const kept: PlanShift[] = []
     const deleteIds: string[] = []
+    const deletedRows: Record<string, unknown>[] = []  // hata olursa aynı id'lerle geri yüklemek için
     for (const r of existingRes.data ?? []) {
       const hasAttendance = Array.isArray(r.attendance_records) && r.attendance_records.length > 0
       if (r.is_on_leave || hasAttendance) {
@@ -114,6 +119,8 @@ export async function POST(req: NextRequest) {
         if (!r.is_on_leave) kept.push(r as PlanShift)
       } else {
         deleteIds.push(r.id as string)
+        const { attendance_records: _att, ...row } = r
+        deletedRows.push(row)
       }
     }
 
@@ -148,6 +155,14 @@ export async function POST(req: NextRequest) {
       .filter((r) => approvedBlocking.some((l) =>
         l.employee_id === r.employee_id && (l.start_date as string) <= r.work_date && (l.end_date as string) >= r.work_date))
       .map((r) => `${empById.get(r.employee_id)?.full_name}: ${r.work_date} onaylı izin günü.`)
+    // 18 yaş altı korumaları (gece yasağı, günlük 8 saat) — yasal yasak, onayla aşılamaz
+    for (const r of rows) {
+      const emp = empById.get(r.employee_id)!
+      const age = emp.birth_date ? completedYears(emp.birth_date, r.work_date) : null
+      for (const msg of minorWorkViolations(age, r.start_time, r.end_time, netWorkMins(r.start_time, r.end_time))) {
+        leaveClashes.push(`${emp.full_name} (${r.work_date}): ${msg}`)
+      }
+    }
     if (leaveClashes.length > 0) {
       return NextResponse.json({ error: leaveClashes.join(' '), code: 'LEAVE_CONFLICT', violations: leaveClashes }, { status: 409 })
     }
@@ -196,20 +211,14 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    // 1) Yeni plan tek istekte (tek ifade → ya hepsi ya hiçbiri)
-    const { data: inserted, error: insErr } = rows.length > 0
-      ? await admin.from('shift_assignments').insert(rows).select('id')
-      : { data: [], error: null }
-    if (insErr) return serverError('POST /api/workforce/apply insert', insErr, 'Plan aktarılamadı, mevcut plan değiştirilmedi.')
-    const newShiftIds = (inserted ?? []).map((r) => r.id as string)
+    // Sıra önemli: uq_shift_employee_day (çalışan+gün tekil) ve leave_requests_no_overlap
+    // nedeniyle eskiler yenilerden ÖNCE silinmelidir. Her adım başarısız olursa önceki
+    // adımlar geri alınır (eski vardiyalar aynı id'lerle geri yüklenir).
 
-    // 2) Eski otomatik tatiller silinir (yeni tatiller aynı güne düşebilir — önce temizlik)
+    // 1) Eski otomatik tatiller silinir (yeni tatiller aynı güne düşebilir)
     if (oldAutoRests.length > 0) {
       const { error: delRestErr } = await admin.from('leave_requests').delete().in('id', [...oldAutoRestIds])
-      if (delRestErr) {
-        if (newShiftIds.length > 0) await admin.from('shift_assignments').delete().in('id', newShiftIds)
-        return serverError('POST /api/workforce/apply rest delete', delRestErr, 'Eski haftalık tatiller silinemedi, değişiklik geri alındı.')
-      }
+      if (delRestErr) return serverError('POST /api/workforce/apply rest delete', delRestErr, 'Eski haftalık tatiller silinemedi, mevcut plan değiştirilmedi.')
     }
 
     const restoreOldRests = async () => {
@@ -218,27 +227,40 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 3) Yeni haftalık tatiller
+    // 2) Yeni haftalık tatiller
     const { data: insertedRests, error: restErr } = restRows.length > 0
       ? await admin.from('leave_requests').insert(restRows).select('id')
       : { data: [], error: null }
     if (restErr) {
-      if (newShiftIds.length > 0) await admin.from('shift_assignments').delete().in('id', newShiftIds)
       await restoreOldRests()
       return serverError('POST /api/workforce/apply rest insert', restErr, 'Haftalık tatiller atanamadı, mevcut plan değiştirilmedi.')
     }
     const newRestIds = (insertedRests ?? []).map((r) => r.id as string)
 
-    // 4) Eski plan silinir; başarısızsa yeni eklenenler geri alınır, eski tatiller geri yüklenir
+    const rollbackRests = async () => {
+      if (newRestIds.length > 0) await admin.from('leave_requests').delete().in('id', newRestIds)
+      await restoreOldRests()
+    }
+
+    // 3) Eski plan silinir (tek ifade → ya hepsi ya hiçbiri)
     if (deleteIds.length > 0) {
       const { error: delErr } = await admin.from('shift_assignments').delete().in('id', deleteIds)
       if (delErr) {
-        if (newShiftIds.length > 0) await admin.from('shift_assignments').delete().in('id', newShiftIds)
-        if (newRestIds.length > 0) await admin.from('leave_requests').delete().in('id', newRestIds)
-        await restoreOldRests()
-        return serverError('POST /api/workforce/apply delete', delErr, 'Eski plan silinemedi, değişiklik geri alındı.')
+        await rollbackRests()
+        return serverError('POST /api/workforce/apply delete', delErr, 'Eski plan silinemedi, mevcut plan değiştirilmedi.')
       }
     }
+
+    // 4) Yeni plan tek istekte; başarısızsa eski plan ve tatiller geri yüklenir
+    const { data: inserted, error: insErr } = rows.length > 0
+      ? await admin.from('shift_assignments').insert(rows).select('id')
+      : { data: [], error: null }
+    if (insErr) {
+      if (deletedRows.length > 0) await admin.from('shift_assignments').insert(deletedRows)
+      await rollbackRests()
+      return serverError('POST /api/workforce/apply insert', insErr, 'Plan aktarılamadı, mevcut plan geri yüklendi.')
+    }
+    const newShiftIds = (inserted ?? []).map((r) => r.id as string)
 
     await logAudit({
       actorId: auth.employee.id,

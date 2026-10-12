@@ -11,6 +11,7 @@
  * Ek uyarılar (planlayıcının dışında, sunucuda hesaplanır):
  *   - Bekleyen izin talebi olan güne atama (onaylanırsa vardiya kaldırılır)
  *   - Geçen haftanın sonuyla birlikte 6 günü aşan ardışık çalışma (İş Kanunu Md. 46)
+ *   - Resmi tatil / arife (13:00 sonrası) günlerine atama — çalışan onayı ve 2 kat ücret (Md. 44, 47)
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
@@ -24,6 +25,7 @@ import { runPlanner, kindFromTimes } from '@/lib/workforcePlanner'
 import type { PlannerEmployee, PlannerShiftTemplate, ShiftKind } from '@/lib/workforcePlanner'
 import type { DayOfWeek } from '@/types/workforce'
 import { isAutoWeeklyRest } from '@/types/leave'
+import { grossMins } from '@/lib/laborLaw'
 
 const DOW_MAP: Record<number, DayOfWeek> = {
   0: 'sunday', 1: 'monday', 2: 'tuesday', 3: 'wednesday',
@@ -50,10 +52,10 @@ export async function POST(req: NextRequest) {
     const admin = createAdminClient()
 
     // ── Veri toplama (paralel) ────────────────────────────────
-    const [empsRes, tmplsRes, availsRes, leavesRes, prevRes, weekRes] = await Promise.all([
+    const [empsRes, tmplsRes, availsRes, leavesRes, prevRes, weekRes, holsRes] = await Promise.all([
       admin
         .from('employees')
-        .select('id, full_name, role, employment_type, active, roles ( name )')
+        .select('id, full_name, role, employment_type, active, birth_date, roles ( name )')
         .eq('active', true)
         .order('full_name'),
       admin
@@ -83,8 +85,9 @@ export async function POST(req: NextRequest) {
         .select('employee_id, work_date, start_time, end_time, shift_template_id, attendance_records ( id )')
         .gte('work_date', weekStart)
         .lte('work_date', weekEnd),
+      admin.from('public_holidays').select('date, name, half_day').gte('date', weekStart).lte('date', weekEnd),
     ])
-    for (const r of [empsRes, tmplsRes, availsRes, leavesRes, prevRes, weekRes]) {
+    for (const r of [empsRes, tmplsRes, availsRes, leavesRes, prevRes, weekRes, holsRes]) {
       if (r.error) return serverError('POST /api/workforce/generate', r.error)
     }
 
@@ -141,6 +144,16 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Geçen Pazar'ın vardiya bitişi (Pazartesi 00:00'a göre dk) — hafta başı dinlenme kontrolü
+    const prevDayEnd = new Map<string, number>()
+    for (const s of prevShifts) {
+      if (s.work_date !== prevWeekEnd) continue
+      const start = s.start_time as string
+      const [h, m] = start.slice(0, 5).split(':').map(Number)
+      const end = h * 60 + m + grossMins(start, s.end_time as string) - 24 * 60
+      prevDayEnd.set(s.employee_id as string, Math.max(end, prevDayEnd.get(s.employee_id as string) ?? -Infinity))
+    }
+
     const emps = empsRes.data ?? []
     const plannerEmployees: PlannerEmployee[] = emps.map((e) => {
       const rolesObj = Array.isArray(e.roles) ? e.roles[0] : e.roles
@@ -153,6 +166,8 @@ export async function POST(req: NextRequest) {
         availability:    availMap.get(e.id as string) ?? {},
         leaveDays:       leaveMap.get(e.id as string) ?? new Set(),
         lastWeek:        hasPrevWeek ? lastWeekMap.get(e.id as string) ?? {} : undefined,
+        birthDate:       (e.birth_date as string | null) ?? null,
+        prevDayEndMins:  prevDayEnd.get(e.id as string),
       }
     })
 
@@ -200,6 +215,19 @@ export async function POST(req: NextRequest) {
           message: `${nameOf.get(empId) ?? empId}: ${run.start} – ${run.end} arası ${run.length} gün ardışık çalışma (geçen haftayla birlikte). İş Kanunu Md. 46 gereği 7 günde bir hafta tatili verilmeli.`,
         })
       }
+    }
+
+    // Resmi tatil: tam gün → tüm vardiyalar; arife → 13:00 sonrasına taşan vardiyalar
+    for (const h of (holsRes.data ?? []) as Array<{ date: string; name: string; half_day: boolean }>) {
+      const names = result.assignments
+        .filter((a) => a.work_date === h.date && (!h.half_day || a.end_time.slice(0, 5) > '13:00' || a.end_time.slice(0, 5) <= a.start_time.slice(0, 5)))
+        .map((a) => a.employee_name)
+      if (names.length === 0) continue
+      result.warnings.push({
+        level: 'warning',
+        message: `${h.date} ${h.name}${h.half_day ? ' (arife, 13:00 sonrası)' : ''}: resmi tatilde ${names.length} çalışan planlandı (${names.join(', ')}). `
+          + 'Sözleşmede hüküm yoksa çalışanın onayı gerekir; tatil çalışması 2 kat ücretlenir (İş Kanunu Md. 44, 47).',
+      })
     }
 
     return NextResponse.json(result)
