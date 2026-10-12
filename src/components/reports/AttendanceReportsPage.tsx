@@ -46,6 +46,7 @@ import {
 } from '@/lib/reportRepository'
 import { fetchActiveEmployees } from '@/lib/employeeRepository'
 import { format, subDays } from 'date-fns'
+import { PageHeader, TableSkeleton } from '@/components/common'
 
 const STATUS_LABELS: Record<string, string> = {
   shift_waiting: 'Gelmedi',
@@ -299,19 +300,12 @@ export function AttendanceReportsPage() {
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: '#0f172a', color: 'text.primary' }}>
-      {/* Header */}
-      <Box sx={{ mb: 3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-          <BarChartIcon sx={{ fontSize: 18, color: 'primary.main' }} />
-          <Typography variant="overline" color="primary.main" fontWeight={700} letterSpacing={1.5}>
-            Raporlama
-          </Typography>
-        </Box>
-        <Typography variant="h5" fontWeight={800}>Devam Raporları</Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
-          Tarih aralığı ve çalışana göre filtreleyerek rapor oluşturun
-        </Typography>
-      </Box>
+      <PageHeader
+        icon={BarChartIcon}
+        overline="Raporlama"
+        title="Devam Raporları"
+        subtitle="Tarih aralığı ve çalışana göre filtreleyerek rapor oluşturun"
+      />
 
       {/* Filters */}
       <Paper
@@ -421,6 +415,7 @@ export function AttendanceReportsPage() {
       )}
 
       {/* Detail Table */}
+      {loading && <TableSkeleton rows={8} columns={8} />}
       {hasSearched && !loading && (
         <>
           {rows.length === 0 ? (

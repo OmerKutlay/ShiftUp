@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { Box, Typography, CircularProgress } from '@mui/material'
+import { Box, Typography, Skeleton } from '@mui/material'
 import QRCode from 'qrcode'
 
 interface Props {
@@ -35,23 +35,18 @@ export function QrCodeDisplay({ data, size = 240, loading = false, expired = fal
 
   if (loading) {
     return (
-      <Box
+      <Skeleton
+        variant="rounded"
+        aria-label="QR kod oluşturuluyor"
         sx={{
           // Responsive: tam genişlik, maxWidth ile üst sınır
           width: '100%',
           maxWidth: size,
+          height: 'auto',
           aspectRatio: '1 / 1',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          bgcolor: 'rgba(255,255,255,0.05)',
           borderRadius: 2,
-          border: '1px solid',
-          borderColor: 'divider',
         }}
-      >
-        <CircularProgress color="primary" size={40} />
-      </Box>
+      />
     )
   }
 

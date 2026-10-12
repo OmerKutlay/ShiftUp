@@ -9,6 +9,7 @@ import {
   Stack,
   Chip,
   CircularProgress,
+  Skeleton,
   Alert,
   Divider,
   TextField,
@@ -32,6 +33,7 @@ import CheckIcon from '@mui/icons-material/Check'
 import CloseIcon from '@mui/icons-material/Close'
 import DeleteIcon from '@mui/icons-material/Delete'
 import type { EmployeeWithRole } from '@/types/employee'
+import { PageHeader, ListSkeleton } from '@/components/common'
 import type {
   LeaveRequestWithEmployee,
   LeaveType,
@@ -45,6 +47,7 @@ import {
 } from '@/types/leave'
 import { fetchActiveEmployees } from '@/lib/employeeRepository'
 import { format, differenceInCalendarDays } from 'date-fns'
+import { useLoadedKey } from '@/hooks/useLoadedKey'
 
 // ─── Helpers ─────────────────────────────────────────────────
 
@@ -317,7 +320,7 @@ function LeaveStatusChip({ status }: { status: LeaveStatus }) {
 export function LeavePage() {
   const [requests, setRequests] = useState<LeaveRequestWithEmployee[]>([])
   const [employees, setEmployees] = useState<EmployeeWithRole[]>([])
-  const [loading, setLoading] = useState(true)
+  const { isFirstLoad, markLoaded } = useLoadedKey()
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
@@ -337,7 +340,6 @@ export function LeavePage() {
   const [deleting, setDeleting] = useState(false)
 
   const load = useCallback(async () => {
-    setLoading(true)
     setError(null)
     try {
       const [reqRes, empList] = await Promise.all([
@@ -349,9 +351,9 @@ export function LeavePage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Yükleme hatası.')
     } finally {
-      setLoading(false)
+      markLoaded()
     }
-  }, [])
+  }, [markLoaded])
 
   useEffect(() => { void load() }, [load])
 
@@ -415,29 +417,26 @@ export function LeavePage() {
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: '#0f172a', color: 'text.primary' }}>
-      {/* Header */}
-      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
-        <Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-            <BeachAccessIcon sx={{ fontSize: 18, color: 'primary.main' }} />
-            <Typography variant="overline" color="primary.main" fontWeight={700} letterSpacing={1.5}>
-              İzin Yönetimi
-            </Typography>
-          </Box>
-          <Typography variant="h5" fontWeight={800}>İzin Talepleri</Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
-            {pendingCount > 0 ? `${pendingCount} talep onay bekliyor` : 'Onay bekleyen talep yok'}
-          </Typography>
-        </Box>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => setNewOpen(true)}
-          sx={{ fontWeight: 700 }}
-        >
-          Yeni Talep
-        </Button>
-      </Box>
+      <PageHeader
+        icon={BeachAccessIcon}
+        overline="İzin Yönetimi"
+        title="İzin Talepleri"
+        subtitle={
+          isFirstLoad
+            ? <Skeleton width={150} />
+            : pendingCount > 0 ? `${pendingCount} talep onay bekliyor` : 'Onay bekleyen talep yok'
+        }
+        actions={
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setNewOpen(true)}
+            sx={{ fontWeight: 700 }}
+          >
+            Yeni Talep
+          </Button>
+        }
+      />
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       {success && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess(null)}>{success}</Alert>}
@@ -466,19 +465,15 @@ export function LeavePage() {
       </Tabs>
 
       {/* Content */}
-      {loading && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-          <CircularProgress color="primary" />
-        </Box>
-      )}
+      {isFirstLoad && <ListSkeleton count={4} lines={3} actions={2} />}
 
-      {!loading && displayed.length === 0 && (
+      {!isFirstLoad && displayed.length === 0 && (
         <Alert severity="info">
           {tab === 0 ? 'Onay bekleyen talep bulunmuyor.' : 'Henüz izin talebi oluşturulmamış.'}
         </Alert>
       )}
 
-      {!loading && displayed.length > 0 && (
+      {!isFirstLoad && displayed.length > 0 && (
         <Stack spacing={1.5}>
           {displayed.map((req) => (
             <LeaveCard

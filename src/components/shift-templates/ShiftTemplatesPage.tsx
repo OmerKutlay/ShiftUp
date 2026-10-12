@@ -8,7 +8,7 @@ import {
   Stack,
   Paper,
   Chip,
-  CircularProgress,
+  Skeleton,
   Alert,
   Divider,
   IconButton,
@@ -26,10 +26,12 @@ import {
   updateShiftTemplate,
 } from '@/lib/shiftTemplateRepository'
 import { ShiftTemplateFormDialog } from './ShiftTemplateFormDialog'
+import { PageHeader, ListSkeleton } from '@/components/common'
+import { useLoadedKey } from '@/hooks/useLoadedKey'
 
 export function ShiftTemplatesPage() {
   const [templates, setTemplates] = useState<ShiftTemplate[]>([])
-  const [loading, setLoading] = useState(true)
+  const { isFirstLoad, markLoaded } = useLoadedKey()
   const [error, setError] = useState<string | null>(null)
 
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -37,7 +39,6 @@ export function ShiftTemplatesPage() {
   const [saving, setSaving] = useState(false)
 
   const load = useCallback(async () => {
-    setLoading(true)
     setError(null)
     try {
       const data = await fetchShiftTemplates()
@@ -45,9 +46,9 @@ export function ShiftTemplatesPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Yükleme hatası.')
     } finally {
-      setLoading(false)
+      markLoaded()
     }
-  }, [])
+  }, [markLoaded])
 
   useEffect(() => {
     void load() // eslint-disable-line react-hooks/set-state-in-effect
@@ -82,59 +83,36 @@ export function ShiftTemplatesPage() {
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: '#0f172a', color: 'text.primary' }}>
-      {/* Header */}
-      <Box
-        sx={{
-          mb: 3,
-          display: 'flex',
-          alignItems: 'flex-start',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: 2,
-        }}
-      >
-        <Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-            <ScheduleIcon sx={{ fontSize: 18, color: 'primary.main' }} />
-            <Typography variant="overline" color="primary.main" fontWeight={700} letterSpacing={1.5}>
-              Vardiya
-            </Typography>
-          </Box>
-          <Typography variant="h5" fontWeight={800}>
-            Vardiya Şablonları
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
-            {activeCount} aktif şablon
-          </Typography>
-        </Box>
-
-        <Button
-          variant="contained"
-          color="primary"
-          startIcon={<AddIcon />}
-          onClick={openCreate}
-          sx={{ fontWeight: 700 }}
-        >
-          Yeni Şablon
-        </Button>
-      </Box>
+      <PageHeader
+        icon={ScheduleIcon}
+        overline="Vardiya"
+        title="Vardiya Şablonları"
+        subtitle={isFirstLoad ? <Skeleton width={100} /> : `${activeCount} aktif şablon`}
+        actions={
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<AddIcon />}
+            onClick={openCreate}
+            sx={{ fontWeight: 700 }}
+          >
+            Yeni Şablon
+          </Button>
+        }
+      />
 
       <Divider sx={{ mb: 3, borderColor: 'rgba(255,255,255,0.08)' }} />
 
       {/* Content */}
-      {loading && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-          <CircularProgress color="primary" />
-        </Box>
-      )}
+      {isFirstLoad && <ListSkeleton count={4} actions={2} />}
 
       {error && <Alert severity="error">{error}</Alert>}
 
-      {!loading && !error && templates.length === 0 && (
+      {!isFirstLoad && !error && templates.length === 0 && (
         <Alert severity="info">Henüz vardiya şablonu eklenmemiş.</Alert>
       )}
 
-      {!loading && !error && templates.length > 0 && (
+      {!isFirstLoad && !error && templates.length > 0 && (
         <Stack spacing={1.5}>
           {templates.map((t) => (
             <ShiftTemplateCard key={t.id} template={t} onEdit={openEdit} />

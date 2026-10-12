@@ -20,8 +20,10 @@ import BlockIcon from '@mui/icons-material/Block'
 import type { OpenShift } from '@/types/workforce'
 import { useAuth } from '@/context/AuthContext'
 import { hasRole, MANAGER_ROLES } from '@/lib/auth/roles'
+import { ListSkeleton } from '@/components/common'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
+import { useLoadedKey } from '@/hooks/useLoadedKey'
 
 const STATUS_LABELS: Record<string, string> = {
   open: 'Açık',
@@ -42,10 +44,10 @@ export function OpenShiftsPanel() {
   )
 
   const [shifts, setShifts] = useState<OpenShift[]>([])
-  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [statusFilter, setStatusFilter] = useState<string>('open')
+  const { isFirstLoad, markLoaded } = useLoadedKey(statusFilter)
   const [form, setForm] = useState({
     work_date: '',
     start_time: '09:00',
@@ -60,7 +62,6 @@ export function OpenShiftsPanel() {
 
   // ── Listeyi yükle ────────────────────────────────────────────
   const load = useCallback(async () => {
-    setLoading(true)
     setError(null)
     try {
       const res = await fetch(`/api/open-shifts?status=${statusFilter}`, {
@@ -72,9 +73,9 @@ export function OpenShiftsPanel() {
     } catch {
       setError('Bağlantı hatası.')
     } finally {
-      setLoading(false)
+      markLoaded(statusFilter)
     }
-  }, [statusFilter])
+  }, [statusFilter, markLoaded])
 
   useEffect(() => {
     void load()
@@ -225,10 +226,8 @@ export function OpenShiftsPanel() {
       )}
 
       {/* Liste */}
-      {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
-          <CircularProgress size={28} />
-        </Box>
+      {isFirstLoad ? (
+        <ListSkeleton count={4} avatar={false} lines={2} actions={2} dense />
       ) : shifts.length === 0 ? (
         <Typography variant="body2" color="text.secondary">
           {statusFilter === 'open'
