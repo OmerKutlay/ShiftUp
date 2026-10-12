@@ -5,7 +5,8 @@
  * 1) Bekleyen çalışan taleplerini onayla/reddet
  * 2) Herhangi bir çalışan için doğrudan mesai düzeltmesi gir
  */
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
+import useSWR from 'swr'
 import {
   Box, Typography, Paper, Button, Stack, Chip, CircularProgress, Alert,
   TextField, Dialog, DialogTitle, DialogContent, DialogActions, Tooltip,
@@ -19,9 +20,9 @@ import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import type { TimeCorrectionRequest } from '@/types/timeCorrection'
 import { TIME_CORRECTION_STATUS_LABELS, TIME_CORRECTION_STATUS_COLORS } from '@/types/timeCorrection'
-import type { EmployeeWithRole } from '@/types/employee'
 import { ListSkeleton } from '@/components/common'
-import { useLoadedKey } from '@/hooks/useLoadedKey'
+import { apiFetch } from '@/lib/api/http'
+import { fetchActiveEmployees } from '@/lib/api/employees'
 import { useAuth } from '@/context/AuthContext'
 
 /** 422 WORKING_TIME_VIOLATION yanıtındaki ihlal listesi */
@@ -40,10 +41,14 @@ export function TimeCorrectionReviewPanel() {
   const { employee: me } = useAuth()
 
   // ── Talepler sekmesi ─────────────────────────────────────────
-  const [requests, setRequests] = useState<TimeCorrectionRequest[]>([])
-  const [error, setError] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<'pending' | 'all'>('pending')
-  const { isFirstLoad, markLoaded } = useLoadedKey(statusFilter)
+  const requestsQ = useSWR(
+    `/api/time-correction${statusFilter === 'pending' ? '?status=pending' : ''}`,
+    (url: string) => apiFetch<{ requests: TimeCorrectionRequest[] }>(url)
+  )
+  const requests = requestsQ.data?.requests ?? []
+  const isFirstLoad = !requestsQ.data && !requestsQ.error
+  const error = requestsQ.error ? (requestsQ.error instanceof Error ? requestsQ.error.message : 'Yüklenemedi.') : null
 
   const [reviewDialog, setReviewDialog] = useState<{
     open: boolean
@@ -57,36 +62,14 @@ export function TimeCorrectionReviewPanel() {
   const [reviewViolations, setReviewViolations] = useState<string[]>([])
 
   // ── Doğrudan giriş sekmesi ───────────────────────────────────
-  const [employees, setEmployees] = useState<EmployeeWithRole[]>([])
+  const employees = useSWR('employees:active', fetchActiveEmployees).data ?? []
   const [directForm, setDirectForm] = useState({ employee_id: '', date: '', start: '09:00', end: '18:00', reason: '' })
   const [directSaving, setDirectSaving] = useState(false)
   const [directError, setDirectError] = useState<string | null>(null)
   const [directSuccess, setDirectSuccess] = useState<string | null>(null)
   const [directViolations, setDirectViolations] = useState<string[]>([])
 
-  const loadRequests = useCallback(async () => {
-    setError(null)
-    try {
-      const qs = statusFilter === 'pending' ? '?status=pending' : ''
-      const res = await fetch(`/api/time-correction${qs}`, { credentials: 'same-origin' })
-      if (!res.ok) { const d = await res.json() as { error?: string }; setError(d.error ?? 'Yüklenemedi.'); return }
-      const d = await res.json() as { requests: TimeCorrectionRequest[] }
-      setRequests(d.requests ?? [])
-    } catch { setError('Bağlantı hatası.') }
-    finally { markLoaded(statusFilter) }
-  }, [statusFilter, markLoaded])
-
-  const loadEmployees = useCallback(async () => {
-    try {
-      const res = await fetch('/api/employees?active=true', { credentials: 'same-origin' })
-      if (!res.ok) return
-      const d = await res.json() as { employees: EmployeeWithRole[] }
-      setEmployees(d.employees ?? [])
-    } catch { /* non-critical */ }
-  }, [])
-
-  useEffect(() => { void loadRequests() }, [loadRequests])
-  useEffect(() => { void loadEmployees() }, [loadEmployees])
+  const loadRequests = () => requestsQ.mutate()
 
   const openReview = (req: TimeCorrectionRequest, action: 'approve' | 'reject') => {
     setReviewDialog({ open: true, req, action })
@@ -182,7 +165,7 @@ export function TimeCorrectionReviewPanel() {
             ))}
           </Box>
 
-          {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert>}
+          {error && <Alert severity="error" sx={{ mb: 2 }} action={<Button color="inherit" size="small" onClick={() => void loadRequests()}>Tekrar Dene</Button>}>{error}</Alert>}
 
           {isFirstLoad ? (
             <ListSkeleton count={3} lines={3} actions={2} dense />

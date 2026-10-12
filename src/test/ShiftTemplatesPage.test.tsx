@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { ThemeProvider } from '@mui/material'
-import { theme } from '@/lib/theme'
+import { renderWithProviders } from './helpers/renderWithProviders'
 import type { ShiftTemplate } from '@/types/shiftTemplate'
 import { LOADING_LABEL } from '@/components/common'
 
@@ -40,11 +39,7 @@ function makeTemplate(overrides: Partial<ShiftTemplate> = {}): ShiftTemplate {
 }
 
 function renderPage() {
-  return render(
-    <ThemeProvider theme={theme}>
-      <ShiftTemplatesPage />
-    </ThemeProvider>
-  )
+  return renderWithProviders(<ShiftTemplatesPage />)
 }
 
 // ============================================================

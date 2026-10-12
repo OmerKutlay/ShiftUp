@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { ThemeProvider } from '@mui/material'
-import { theme } from '@/lib/theme'
+import { renderWithProviders } from './helpers/renderWithProviders'
 import type { EmployeeWithRole, Role } from '@/types/employee'
 
 // ============================================================
@@ -57,11 +56,7 @@ function makeEmployee(overrides: Partial<EmployeeWithRole> = {}): EmployeeWithRo
 }
 
 function renderPage() {
-  return render(
-    <ThemeProvider theme={theme}>
-      <EmployeesPage />
-    </ThemeProvider>
-  )
+  return renderWithProviders(<EmployeesPage />)
 }
 
 // ============================================================

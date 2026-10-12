@@ -5,7 +5,8 @@
  * Çalışan kendi adına talep oluşturur ve geçmiş taleplerini görür.
  * Yönetici aynı sayfada review panelini de görür.
  */
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
+import useSWR from 'swr'
 import {
   Box, Typography, Paper, Button, Stack, Chip, CircularProgress, Alert,
   TextField, Dialog, DialogTitle, DialogContent, DialogActions, Divider,
@@ -20,7 +21,7 @@ import { TimeCorrectionReviewPanel } from './TimeCorrectionReviewPanel'
 import { PageHeader, PageSkeleton, ListSkeleton } from '@/components/common'
 import type { TimeCorrectionRequest } from '@/types/timeCorrection'
 import { TIME_CORRECTION_STATUS_LABELS, TIME_CORRECTION_STATUS_COLORS } from '@/types/timeCorrection'
-import { useLoadedKey } from '@/hooks/useLoadedKey'
+import { apiFetch } from '@/lib/api/http'
 
 // ─── Helpers ─────────────────────────────────────────────────
 function fmtDate(d: string) {
@@ -34,27 +35,20 @@ function fmtDateTime(iso: string) {
 export function TimeCorrectionPage() {
   const { employee, status: authStatus } = useAuth()
 
-  const [requests, setRequests] = useState<TimeCorrectionRequest[]>([])
-  const { isFirstLoad, markLoaded } = useLoadedKey()
-  const [error, setError] = useState<string | null>(null)
+  const requestsQ = useSWR(
+    authStatus === 'authenticated' ? '/api/time-correction' : null,
+    (url: string) => apiFetch<{ requests: TimeCorrectionRequest[] }>(url)
+  )
+  const requests = requestsQ.data?.requests ?? []
+  const isFirstLoad = !requestsQ.data && !requestsQ.error
+  const error = requestsQ.error ? (requestsQ.error instanceof Error ? requestsQ.error.message : 'Yüklenemedi.') : null
   const [dialogOpen, setDialogOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [form, setForm] = useState({ date: '', start: '09:00', end: '18:00', reason: '' })
 
   // ── Yükle ───────────────────────────────────────────────────
-  const load = useCallback(async () => {
-    setError(null)
-    try {
-      const res = await fetch('/api/time-correction', { credentials: 'same-origin' })
-      if (!res.ok) { const d = await res.json() as { error?: string }; setError(d.error ?? 'Yüklenemedi.'); return }
-      const d = await res.json() as { requests: TimeCorrectionRequest[] }
-      setRequests(d.requests ?? [])
-    } catch { setError('Bağlantı hatası.') }
-    finally { markLoaded() }
-  }, [markLoaded])
-
-  useEffect(() => { if (authStatus === 'authenticated') void load() }, [authStatus, load])
+  const load = () => requestsQ.mutate()
 
   // ── Talep oluştur ────────────────────────────────────────────
   const handleSubmit = async () => {
@@ -109,7 +103,7 @@ export function TimeCorrectionPage() {
         }
       />
 
-      {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert>}
+      {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => void requestsQ.mutate()}>{error}</Alert>}
 
       {/* Liste */}
       {isFirstLoad ? (

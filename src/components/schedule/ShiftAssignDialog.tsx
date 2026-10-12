@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, FormControl, InputLabel, Select, MenuItem,
@@ -121,37 +121,14 @@ export function ShiftAssignDialog({
 }: Props) {
   const isEdit = !!existingAssignment
 
-  // Mod: 'template' veya 'custom'
-  const [mode, setMode] = useState<'template' | 'custom'>('template')
-  const [selectedTemplateId, setSelectedTemplateId] = useState('')
-  const [customStart, setCustomStart] = useState('09:00')
-  const [customEnd, setCustomEnd] = useState('17:00')
+  // Başlangıç değerleri mevcut atamadan gelir. Diyalog her hücre için ayrı `key` ile
+  // açıldığından (bkz. WeeklySchedulePage) state yeniden başlatılır — effect ile senkron gerekmez.
+  const existingTpl = existingAssignment?.shift_template_id ?? ''
+  const [mode, setMode] = useState<'template' | 'custom'>(existingAssignment && !existingTpl ? 'custom' : 'template')
+  const [selectedTemplateId, setSelectedTemplateId] = useState(existingTpl)
+  const [customStart, setCustomStart] = useState(existingAssignment?.start_time.slice(0, 5) ?? '09:00')
+  const [customEnd, setCustomEnd] = useState(existingAssignment?.end_time.slice(0, 5) ?? '17:00')
   const [submitError, setSubmitError] = useState<string | null>(null)
-
-  // Dialog açılırken mevcut assignment'dan başlangıç değerlerini doldur
-  useEffect(() => {
-    if (!open) return
-    setSubmitError(null)
-    if (existingAssignment) {
-      const tplId = existingAssignment.shift_template_id ?? ''
-      if (tplId) {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setMode('template')
-        setSelectedTemplateId(tplId)
-      } else {
-        // template_id yok → özel saat modunda aç
-        setMode('custom')
-        setSelectedTemplateId('')
-      }
-      setCustomStart(existingAssignment.start_time.slice(0, 5))
-      setCustomEnd(existingAssignment.end_time.slice(0, 5))
-    } else {
-      setMode('template')
-      setSelectedTemplateId('')
-      setCustomStart('09:00')
-      setCustomEnd('17:00')
-    }
-  }, [open, existingAssignment])
 
   // Şablon seçilince özel saat alanlarını da şablondan doldur (kolaylık)
   const handleTemplateChange = useCallback((e: SelectChangeEvent<string>) => {

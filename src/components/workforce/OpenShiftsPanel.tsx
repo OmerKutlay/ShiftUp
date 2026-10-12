@@ -8,7 +8,8 @@
  *                        "Üstlen" butonu her zaman SESSION'daki çalışan adına işlem yapar —
  *                        UI'da çalışan seçici yoktur.
  */
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
+import useSWR from 'swr'
 import {
   Box, Typography, Paper, Button, Chip, CircularProgress, Alert,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField,
@@ -23,7 +24,7 @@ import { hasRole, MANAGER_ROLES } from '@/lib/auth/roles'
 import { ListSkeleton } from '@/components/common'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
-import { useLoadedKey } from '@/hooks/useLoadedKey'
+import { apiFetch } from '@/lib/api/http'
 
 const STATUS_LABELS: Record<string, string> = {
   open: 'Açık',
@@ -43,11 +44,15 @@ export function OpenShiftsPanel() {
     MANAGER_ROLES
   )
 
-  const [shifts, setShifts] = useState<OpenShift[]>([])
-  const [error, setError] = useState<string | null>(null)
+  const [actionError, setError] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [statusFilter, setStatusFilter] = useState<string>('open')
-  const { isFirstLoad, markLoaded } = useLoadedKey(statusFilter)
+  const shiftsQ = useSWR(`/api/open-shifts?status=${statusFilter}`, (url: string) =>
+    apiFetch<{ open_shifts: OpenShift[] }>(url)
+  )
+  const shifts = shiftsQ.data?.open_shifts ?? []
+  const isFirstLoad = !shiftsQ.data && !shiftsQ.error
+  const error = actionError ?? (shiftsQ.error ? (shiftsQ.error instanceof Error ? shiftsQ.error.message : 'Yüklenemedi.') : null)
   const [form, setForm] = useState({
     work_date: '',
     start_time: '09:00',
@@ -60,26 +65,9 @@ export function OpenShiftsPanel() {
   const [cancellingId, setCancellingId] = useState<string | null>(null)
   const [claimSuccess, setClaimSuccess] = useState<string | null>(null)
 
-  // ── Listeyi yükle ────────────────────────────────────────────
-  const load = useCallback(async () => {
-    setError(null)
-    try {
-      const res = await fetch(`/api/open-shifts?status=${statusFilter}`, {
-        credentials: 'same-origin',
-      })
-      const json = (await res.json()) as { open_shifts: OpenShift[]; error?: string }
-      if (!res.ok) { setError(json.error ?? 'Yüklenemedi.'); return }
-      setShifts(json.open_shifts ?? [])
-    } catch {
-      setError('Bağlantı hatası.')
-    } finally {
-      markLoaded(statusFilter)
-    }
-  }, [statusFilter, markLoaded])
-
-  useEffect(() => {
-    void load()
-  }, [load]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Oluşturma/iptal/üstlenme sonrası önbellekteki liste yerinde güncellenir (yeniden çekmeden)
+  const setShifts = (update: (prev: OpenShift[]) => OpenShift[]) =>
+    shiftsQ.mutate((d) => ({ open_shifts: update(d?.open_shifts ?? []) }), { revalidate: false })
 
   // ── Açık vardiya oluştur (yönetici) ─────────────────────────
   const handleCreate = async () => {
