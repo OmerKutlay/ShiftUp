@@ -3,88 +3,123 @@
  *
  * Onaylanmış taslak planı Weekly Schedule'a (shift_assignments) yazar.
  * Haftanın mevcut planı YENİ PLANLA DEĞİŞTİRİLİR (üst üste yazılmaz):
- *   - Giriş/çıkış kaydı (attendance_records) olan vardiyalar korunur — silinirse
- *     ON DELETE CASCADE ile mesai kayıtları da silinirdi. Taslaktaki aynı
- *     çalışan+gün ataması atlanır.
+ *   - Giriş/çıkış kaydı olan vardiyalar korunur; taslaktaki aynı çalışan+gün atlanır.
  *   - İzinli işaretli (is_on_leave) vardiyalar korunur.
- *   - Diğer tüm vardiyalar silinir.
- * Önce yeni atamalar tek seferde eklenir, sonra eskiler silinir; silme başarısız
- * olursa yeni eklenenler geri alınır. Böylece hafta yarım planla kalmaz.
- * Yalnızca MANAGER_ROLES erişebilir.
+ *   - Diğer tüm vardiyalar silinir (devam kaydı olan vardiya DB'de RESTRICT ile zaten silinemez).
  *
- * Body: { assignments: DraftAssignment[], weekStart?: string, weekEnd?: string, hasHardViolation?: boolean }
- * Planda vardiyası olmayan (ve izni olmayan) çalışan günleri haftalık tatil (weekly_rest) olarak
- * işaretlenir; önceki aktarımdan kalan otomatik tatiller yenileriyle değiştirilir.
+ * Sunucu doğrulaması (istemciye güvenilmez):
+ *   - Her atama: geçerli çalışan (aktif), tarih (haftanın içinde), saat, şablon
+ *   - Onaylı izin gününe atama → 409 (aşılamaz)
+ *   - Çalışma süresi / Md. 46 hafta tatili ihlalleri → 422, acknowledge_violations=true ile aşılır
  *
- * Response: { created: number, replaced: number, skipped: number, restDays: number, errors: string[] }
+ * Haftalık tatil: planda hiç vardiyası olmayan aktif çalışan başına TEK gün otomatik
+ * weekly_rest atanır (haftanın son boş günü). Önceki aktarımdan kalan otomatik tatiller
+ * yenileriyle değiştirilir; elle atanan tatiller ve diğer izinler korunur.
+ *
+ * Body: { assignments: DraftAssignment[], weekStart?: string, acknowledge_violations?: boolean }
+ * Response: { created, replaced, skipped, restDays, warnings }
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { requireMinRole, ROLES } from '@/lib/auth'
-import { format, startOfWeek, endOfWeek, addDays } from 'date-fns'
 import type { DraftAssignment } from '@/lib/workforcePlanner'
 import { AUTO_WEEKLY_REST_REASON, isAutoWeeklyRest } from '@/types/leave'
+import { badRequest, conflict, readJson, serverError } from '@/lib/apiErrors'
+import { isUuid, isValidDate, isValidTime } from '@/lib/validation'
+import { getWeekDays } from '@/lib/scheduleUtils'
+import { addDaysToDateString } from '@/lib/dateUtils'
+import { getWorkingTimeConfig } from '@/lib/workingTimeConfig'
+import { validateWeekPlan, type PlanShift } from '@/lib/planValidation'
+import { logAudit } from '@/lib/auditLog'
+import type { EmploymentType } from '@/types/employee'
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+const MAX_ASSIGNMENTS = 500
 
 export async function POST(req: NextRequest) {
   const auth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
   if ('response' in auth) return auth.response
 
   try {
-    const body = (await req.json()) as {
+    const body = await readJson<{
       assignments?: DraftAssignment[]
       weekStart?: string
-      weekEnd?: string
-      hasHardViolation?: boolean
-    }
+      acknowledge_violations?: boolean
+    }>(req)
+    if (!body) return badRequest('Geçersiz istek gövdesi.')
+
     const assignments = body.assignments
-    if (!Array.isArray(assignments) || assignments.length === 0) {
-      return NextResponse.json({ error: 'assignments dizisi gerekli.' }, { status: 400 })
+    if (!Array.isArray(assignments) || assignments.length === 0) return badRequest('assignments dizisi gerekli.')
+    if (assignments.length > MAX_ASSIGNMENTS) return badRequest('Çok fazla atama.')
+
+    // ── Alan doğrulaması ────────────────────────────────────────
+    for (const a of assignments) {
+      if (!a || !isUuid(a.employee_id)) return badRequest('Geçersiz çalışan.')
+      if (!isValidDate(a.work_date)) return badRequest('Geçersiz tarih.')
+      if (!isValidTime(a.start_time) || !isValidTime(a.end_time) || a.start_time.slice(0, 5) === a.end_time.slice(0, 5)) {
+        return badRequest(`Geçersiz vardiya saati (${a.work_date}).`)
+      }
+      if (a.shift_template_id != null && !isUuid(a.shift_template_id)) return badRequest('Geçersiz vardiya şablonu.')
     }
 
-    // Hard constraint ihlali varsa sunucu tarafında da engelle
-    if (body.hasHardViolation === true) {
-      return NextResponse.json(
-        { error: 'Plan, kritik kural ihlalleri içerdiği için onaylanamaz. Lütfen planı yeniden oluşturun.' },
-        { status: 422 }
-      )
-    }
-
-    // Hafta aralığı: istemciden gelmezse atamaların tarihinden Pzt–Paz türetilir
+    // Hafta aralığı: Pzt–Paz (istemciden geleni de kendi hesabımızla doğrularız)
     const firstDate = assignments.map((a) => a.work_date).reduce((a, b) => (a < b ? a : b))
-    const weekStart = body.weekStart && DATE_RE.test(body.weekStart)
-      ? body.weekStart
-      : format(startOfWeek(new Date(firstDate), { weekStartsOn: 1 }), 'yyyy-MM-dd')
-    const weekEnd = body.weekEnd && DATE_RE.test(body.weekEnd)
-      ? body.weekEnd
-      : format(endOfWeek(new Date(firstDate), { weekStartsOn: 1 }), 'yyyy-MM-dd')
-
+    const weekDays = getWeekDays(new Date(`${isValidDate(body.weekStart) ? body.weekStart : firstDate}T12:00:00`))
+    const weekStart = weekDays[0]
+    const weekEnd = weekDays[6]
     if (assignments.some((a) => a.work_date < weekStart || a.work_date > weekEnd)) {
-      return NextResponse.json({ error: 'Atamalar seçili haftanın dışında.' }, { status: 400 })
+      return badRequest('Atamalar seçili haftanın dışında.')
     }
 
     const admin = createAdminClient()
 
-    // Haftanın mevcut vardiyaları + giriş/çıkış kaydı var mı
-    const { data: existing, error: exErr } = await admin
-      .from('shift_assignments')
-      .select('id, employee_id, work_date, is_on_leave, attendance_records ( id )')
-      .gte('work_date', weekStart)
-      .lte('work_date', weekEnd)
-    if (exErr) return NextResponse.json({ error: exErr.message }, { status: 500 })
-
-    const keepKeys = new Set<string>()
-    const deleteIds: string[] = []
-    for (const r of existing ?? []) {
-      const hasAttendance = Array.isArray(r.attendance_records) && r.attendance_records.length > 0
-      if (r.is_on_leave || hasAttendance) keepKeys.add(`${r.employee_id}::${r.work_date}`)
-      else deleteIds.push(r.id as string)
+    // ── Veri ────────────────────────────────────────────────────
+    const [existingRes, empsRes, leavesRes, neighborRes] = await Promise.all([
+      admin
+        .from('shift_assignments')
+        .select('id, employee_id, work_date, start_time, end_time, is_on_leave, attendance_records ( id )')
+        .gte('work_date', weekStart)
+        .lte('work_date', weekEnd),
+      admin.from('employees').select('id, full_name, active, employment_type'),
+      admin
+        .from('leave_requests')
+        .select('id, employee_id, leave_type, start_date, end_date, reason, status, reviewed_at, reviewed_by')
+        .in('status', ['pending', 'approved'])
+        .lte('start_date', weekEnd)
+        .gte('end_date', weekStart),
+      admin
+        .from('shift_assignments')
+        .select('id, employee_id, work_date, start_time, end_time, is_on_leave')
+        .or(`and(work_date.gte.${addDaysToDateString(weekStart, -6)},work_date.lt.${weekStart}),work_date.eq.${addDaysToDateString(weekEnd, 1)}`),
+    ])
+    for (const r of [existingRes, empsRes, leavesRes, neighborRes]) {
+      if (r.error) return serverError('POST /api/workforce/apply', r.error)
     }
 
-    // Korunan çalışan+gün atlanır; taslak içi tekrarlar da elenir
+    const employees = (empsRes.data ?? []) as Array<{ id: string; full_name: string; active: boolean; employment_type: EmploymentType | null }>
+    const empById = new Map(employees.map((e) => [e.id, e]))
+    for (const a of assignments) {
+      const emp = empById.get(a.employee_id)
+      if (!emp) return badRequest('Planda bilinmeyen bir çalışan var.')
+      if (!emp.active) return conflict(`${emp.full_name} aktif değil; plana eklenemez.`)
+    }
+
+    // Korunacak / silinecek mevcut vardiyalar
+    const keepKeys = new Set<string>()
+    const kept: PlanShift[] = []
+    const deleteIds: string[] = []
+    for (const r of existingRes.data ?? []) {
+      const hasAttendance = Array.isArray(r.attendance_records) && r.attendance_records.length > 0
+      if (r.is_on_leave || hasAttendance) {
+        keepKeys.add(`${r.employee_id}::${r.work_date}`)
+        if (!r.is_on_leave) kept.push(r as PlanShift)
+      } else {
+        deleteIds.push(r.id as string)
+      }
+    }
+
+    // Taslak içi tekrarlar ve korunan günler elenir
     const seen = new Set(keepKeys)
-    const rows = []
+    const rows: Array<PlanShift & { shift_template_id: string | null; is_on_leave: boolean }> = []
     let skipped = 0
     for (const a of assignments) {
       const key = `${a.employee_id}::${a.work_date}`
@@ -92,113 +127,137 @@ export async function POST(req: NextRequest) {
       seen.add(key)
       rows.push({
         employee_id:       a.employee_id,
-        shift_template_id: a.shift_template_id,
+        shift_template_id: a.shift_template_id ?? null,
         work_date:         a.work_date,
-        start_time:        a.start_time,
-        end_time:          a.end_time,
+        start_time:        a.start_time.slice(0, 5),
+        end_time:          a.end_time.slice(0, 5),
         is_on_leave:       false,
       })
     }
 
-    // Vardiyası olmayan çalışan günleri haftalık tatil olarak işaretlenir.
-    // Önceki aktarımdan kalan otomatik tatiller yenileriyle değiştirilir; elle atanan
-    // tatiller ve diğer onaylı/bekleyen izinler korunur, o günler atlanır.
-    const [{ data: emps, error: empErr }, { data: leaves, error: leaveErr }] = await Promise.all([
-      admin.from('employees').select('id').eq('active', true),
-      admin
-        .from('leave_requests')
-        .select('id, employee_id, leave_type, start_date, end_date, reason, status, reviewed_at')
-        .in('status', ['pending', 'approved'])
-        .lte('start_date', weekEnd)
-        .gte('end_date', weekStart),
-    ])
-    if (empErr || leaveErr) {
-      return NextResponse.json({ error: (empErr ?? leaveErr)!.message }, { status: 500 })
-    }
-
-    const oldAutoRests = (leaves ?? []).filter((l) =>
+    // ── İzin çakışması (aşılamaz) ──────────────────────────────
+    const leaves = leavesRes.data ?? []
+    const oldAutoRests = leaves.filter((l) =>
       isAutoWeeklyRest(l) && (l.start_date as string) >= weekStart && (l.end_date as string) <= weekEnd
     )
     const oldAutoRestIds = new Set(oldAutoRests.map((l) => l.id as string))
-    const blockingLeaves = (leaves ?? []).filter((l) => !oldAutoRestIds.has(l.id as string))
+    const blockingLeaves = leaves.filter((l) => !oldAutoRestIds.has(l.id as string))
+    const approvedBlocking = blockingLeaves.filter((l) => l.status === 'approved')
 
-    const weekDays = Array.from({ length: 7 }, (_, i) =>
-      format(addDays(new Date(weekStart), i), 'yyyy-MM-dd')
+    const leaveClashes = rows
+      .filter((r) => approvedBlocking.some((l) =>
+        l.employee_id === r.employee_id && (l.start_date as string) <= r.work_date && (l.end_date as string) >= r.work_date))
+      .map((r) => `${empById.get(r.employee_id)?.full_name}: ${r.work_date} onaylı izin günü.`)
+    if (leaveClashes.length > 0) {
+      return NextResponse.json({ error: leaveClashes.join(' '), code: 'LEAVE_CONFLICT', violations: leaveClashes }, { status: 409 })
+    }
+
+    // ── Yasal kontroller (onayla aşılabilir) ────────────────────
+    const violations = validateWeekPlan(
+      [...rows, ...kept],
+      ((neighborRes.data ?? []) as Array<PlanShift & { is_on_leave: boolean }>).filter((s) => !s.is_on_leave),
+      employees.map((e) => ({ id: e.id, full_name: e.full_name, employment_type: e.employment_type ?? 'full_time' })),
+      weekDays,
+      getWorkingTimeConfig()
     )
+    if (violations.length > 0 && body.acknowledge_violations !== true) {
+      return NextResponse.json(
+        {
+          error: 'Plan çalışma süresi kurallarını ihlal ediyor. Onaylıyorsanız tekrar gönderin.',
+          code: 'WORKING_TIME_VIOLATION',
+          violations,
+        },
+        { status: 422 }
+      )
+    }
+
+    // ── Haftalık tatil: çalışan başına tek gün ─────────────────
     const reviewedAt = new Date().toISOString()
     const restRows = []
-    for (const e of emps ?? []) {
-      const empId = e.id as string
-      const empLeaves = blockingLeaves.filter((l) => l.employee_id === empId)
-      for (const day of weekDays) {
-        if (seen.has(`${empId}::${day}`)) continue
-        if (empLeaves.some((l) => (l.start_date as string) <= day && (l.end_date as string) >= day)) continue
-        restRows.push({
-          employee_id: empId,
-          leave_type:  'weekly_rest',
-          start_date:  day,
-          end_date:    day,
-          reason:      AUTO_WEEKLY_REST_REASON,
-          status:      'approved',
-          reviewed_at: reviewedAt,
-        })
-      }
+    for (const e of employees.filter((x) => x.active)) {
+      const empLeaves = blockingLeaves.filter((l) => l.employee_id === e.id)
+      const hasManualRest = empLeaves.some((l) => l.leave_type === 'weekly_rest')
+      if (hasManualRest) continue
+      const freeDays = weekDays.filter((day) =>
+        !seen.has(`${e.id}::${day}`) &&
+        !empLeaves.some((l) => (l.start_date as string) <= day && (l.end_date as string) >= day)
+      )
+      if (freeDays.length === 0) continue
+      const restDay = freeDays[freeDays.length - 1]
+      restRows.push({
+        employee_id: e.id,
+        leave_type:  'weekly_rest',
+        start_date:  restDay,
+        end_date:    restDay,
+        reason:      AUTO_WEEKLY_REST_REASON,
+        status:      'approved',
+        reviewed_at: reviewedAt,
+        reviewed_by: auth.employee.id,
+      })
     }
 
     // 1) Yeni plan tek istekte (tek ifade → ya hepsi ya hiçbiri)
     const { data: inserted, error: insErr } = rows.length > 0
       ? await admin.from('shift_assignments').insert(rows).select('id')
       : { data: [], error: null }
-    if (insErr) {
-      return NextResponse.json({ error: `Plan aktarılamadı, mevcut plan değiştirilmedi: ${insErr.message}` }, { status: 500 })
-    }
+    if (insErr) return serverError('POST /api/workforce/apply insert', insErr, 'Plan aktarılamadı, mevcut plan değiştirilmedi.')
     const newShiftIds = (inserted ?? []).map((r) => r.id as string)
 
-    // 2) Yeni haftalık tatiller; başarısızsa yeni vardiyalar geri alınır
+    // 2) Eski otomatik tatiller silinir (yeni tatiller aynı güne düşebilir — önce temizlik)
+    if (oldAutoRests.length > 0) {
+      const { error: delRestErr } = await admin.from('leave_requests').delete().in('id', [...oldAutoRestIds])
+      if (delRestErr) {
+        if (newShiftIds.length > 0) await admin.from('shift_assignments').delete().in('id', newShiftIds)
+        return serverError('POST /api/workforce/apply rest delete', delRestErr, 'Eski haftalık tatiller silinemedi, değişiklik geri alındı.')
+      }
+    }
+
+    const restoreOldRests = async () => {
+      if (oldAutoRests.length > 0) {
+        await admin.from('leave_requests').insert(oldAutoRests.map(({ id: _id, ...rest }) => rest))
+      }
+    }
+
+    // 3) Yeni haftalık tatiller
     const { data: insertedRests, error: restErr } = restRows.length > 0
       ? await admin.from('leave_requests').insert(restRows).select('id')
       : { data: [], error: null }
     if (restErr) {
       if (newShiftIds.length > 0) await admin.from('shift_assignments').delete().in('id', newShiftIds)
-      return NextResponse.json({ error: `Haftalık tatiller atanamadı, mevcut plan değiştirilmedi: ${restErr.message}` }, { status: 500 })
+      await restoreOldRests()
+      return serverError('POST /api/workforce/apply rest insert', restErr, 'Haftalık tatiller atanamadı, mevcut plan değiştirilmedi.')
     }
     const newRestIds = (insertedRests ?? []).map((r) => r.id as string)
-
-    const rollbackNew = async () => {
-      if (newShiftIds.length > 0) await admin.from('shift_assignments').delete().in('id', newShiftIds)
-      if (newRestIds.length > 0) await admin.from('leave_requests').delete().in('id', newRestIds)
-    }
-
-    // 3) Eski otomatik tatiller silinir; başarısızsa yeni eklenenler geri alınır
-    if (oldAutoRests.length > 0) {
-      const { error: delRestErr } = await admin.from('leave_requests').delete().in('id', [...oldAutoRestIds])
-      if (delRestErr) {
-        await rollbackNew()
-        return NextResponse.json({ error: `Eski haftalık tatiller silinemedi, değişiklik geri alındı: ${delRestErr.message}` }, { status: 500 })
-      }
-    }
 
     // 4) Eski plan silinir; başarısızsa yeni eklenenler geri alınır, eski tatiller geri yüklenir
     if (deleteIds.length > 0) {
       const { error: delErr } = await admin.from('shift_assignments').delete().in('id', deleteIds)
       if (delErr) {
-        await rollbackNew()
-        if (oldAutoRests.length > 0) {
-          await admin.from('leave_requests').insert(oldAutoRests.map(({ id: _id, ...rest }) => rest))
-        }
-        return NextResponse.json({ error: `Eski plan silinemedi, değişiklik geri alındı: ${delErr.message}` }, { status: 500 })
+        if (newShiftIds.length > 0) await admin.from('shift_assignments').delete().in('id', newShiftIds)
+        if (newRestIds.length > 0) await admin.from('leave_requests').delete().in('id', newRestIds)
+        await restoreOldRests()
+        return serverError('POST /api/workforce/apply delete', delErr, 'Eski plan silinemedi, değişiklik geri alındı.')
       }
     }
+
+    await logAudit({
+      actorId: auth.employee.id,
+      action: 'workforce.apply',
+      entityType: 'week_plan',
+      entityId: null,
+      after: { weekStart, weekEnd, created: newShiftIds.length, replaced: deleteIds.length, restDays: newRestIds.length },
+      note: violations.length > 0 ? `İhlaller onaylandı: ${violations.join(' | ')}` : null,
+    })
 
     return NextResponse.json({
       created:  newShiftIds.length,
       replaced: deleteIds.length,
       skipped,
       restDays: newRestIds.length,
+      warnings: violations,
       errors:   [] as string[],
     })
   } catch (err) {
-    console.error('[POST /api/workforce/apply]', err)
-    return NextResponse.json({ error: 'Sunucu hatası.' }, { status: 500 })
+    return serverError('POST /api/workforce/apply', err)
   }
 }

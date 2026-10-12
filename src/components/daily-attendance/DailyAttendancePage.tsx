@@ -14,7 +14,7 @@ import CalendarTodayIcon from '@mui/icons-material/CalendarToday'
 import PeopleIcon from '@mui/icons-material/People'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import type { DailyShiftEntry, AttendanceRecord } from '@/types/attendance'
-import { fetchDailyShifts } from '@/lib/attendanceRepository'
+import { fetchDailyShifts } from '@/lib/api/attendance'
 import { EmployeeAttendanceRow } from './EmployeeAttendanceRow'
 import { formatDateTurkish, formatDayNameTurkish } from '@/lib/dateUtils'
 import { PageHeader, StatCardsSkeleton, ListSkeleton } from '@/components/common'
@@ -33,7 +33,7 @@ export function DailyAttendancePage() {
     setLoading(true)
     setError(null)
     try {
-      const data = await fetchDailyShifts(today)
+      const { entries: data } = await fetchDailyShifts()
       setEntries(data)
       setLastRefreshed(new Date())
     } catch (err) {

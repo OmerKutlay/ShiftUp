@@ -31,9 +31,8 @@ import { hasRole, MANAGER_ROLES, ROLES } from '@/lib/auth/roles'
 
 const BASE_CONFIG: WorkingTimeConfig = {
   minRestHours: 11,
-  maxDailyWorkHours: 13,
+  maxDailyWorkHours: 11,
   maxWeeklyWorkHours: 45,
-  breakMins: 60,
 }
 
 // ─── 6. Gece yarısını geçen vardiya süresi ─────────────────
@@ -111,18 +110,18 @@ describe('checkMinRest', () => {
 
 // ─── 3. Günlük max ihlali ───────────────────────────────────
 describe('checkDailyMax', () => {
-  it('3. Günlük 13s aşımı → daily_max ihlali', () => {
-    const existing = [{ id: 's1', work_date: '2026-10-05', start_time: '08:00', end_time: '18:00' }] // 10h
-    // +4h = 14h > 13h
-    const result = checkDailyMax('2026-10-05', '19:00', '23:00', existing, BASE_CONFIG)
+  it('3. Günlük 11s NET aşımı → daily_max ihlali (İş K. Md. 63)', () => {
+    const existing = [{ id: 's1', work_date: '2026-10-05', start_time: '08:00', end_time: '20:00' }] // 12s brüt → 10s net
+    // +2s brüt (1s45dk net) = 11s45dk net > 11s
+    const result = checkDailyMax('2026-10-05', '21:00', '23:00', existing, BASE_CONFIG)
     expect(result).not.toBeNull()
     expect(result?.type).toBe('daily_max')
     expect(result?.severity).toBe('error')
   })
 
-  it('Günlük 13s altı → ihlal yok', () => {
-    const existing = [{ id: 's1', work_date: '2026-10-05', start_time: '08:00', end_time: '14:00' }] // 6h
-    // +6h = 12h < 13h
+  it('Günlük 11s net altı → ihlal yok', () => {
+    const existing = [{ id: 's1', work_date: '2026-10-05', start_time: '08:00', end_time: '14:00' }] // 6s brüt → 5s net
+    // +6s brüt (5s net) = 10s net < 11s
     const result = checkDailyMax('2026-10-05', '15:00', '21:00', existing, BASE_CONFIG)
     expect(result).toBeNull()
   })
@@ -146,18 +145,18 @@ describe('checkWeeklyMax', () => {
     expect(result).toBeNull()
   })
 
-  it('Aynı haftada 45s aşımı → ihlal', () => {
+  it('Aynı haftada 45s NET aşımı → ihlal', () => {
     // 2026-09-28 (Mon) hafta: 28 Sep – 04 Oct
-    // 5 × 9h = 45h, +2h = 47h > 45h
+    // 5 × 10s brüt (8,5s net) = 42,5s; +4s brüt (3,75s net) = 46,25s > 45s
     const existing = [
-      { id: 's0', work_date: '2026-09-28', start_time: '08:00', end_time: '17:00' }, // 9h
-      { id: 's1', work_date: '2026-09-29', start_time: '08:00', end_time: '17:00' }, // 9h
-      { id: 's2', work_date: '2026-09-30', start_time: '08:00', end_time: '17:00' }, // 9h
-      { id: 's3', work_date: '2026-10-01', start_time: '08:00', end_time: '17:00' }, // 9h
-      { id: 's4', work_date: '2026-10-02', start_time: '08:00', end_time: '17:00' }, // 9h
-    ] // toplam 45h
+      { id: 's0', work_date: '2026-09-28', start_time: '08:00', end_time: '18:00' }, // 10s brüt
+      { id: 's1', work_date: '2026-09-29', start_time: '08:00', end_time: '18:00' }, // 10s brüt
+      { id: 's2', work_date: '2026-09-30', start_time: '08:00', end_time: '18:00' }, // 10s brüt
+      { id: 's3', work_date: '2026-10-01', start_time: '08:00', end_time: '18:00' }, // 10s brüt
+      { id: 's4', work_date: '2026-10-02', start_time: '08:00', end_time: '18:00' }, // 10s brüt
+    ]
     const result = checkWeeklyMax(
-      '2026-10-03', '08:00', '10:00',  // +2h → 47h > 45h
+      '2026-10-03', '08:00', '12:00',  // net 46,25s > 45s
       existing, '2026-09-28', '2026-10-04', BASE_CONFIG
     )
     expect(result).not.toBeNull()
@@ -306,7 +305,7 @@ describe('calcWeeklyMins', () => {
       { work_date: '2026-09-29', start_time: '10:00', end_time: '18:00' },  // 480
       { work_date: '2026-10-05', start_time: '08:00', end_time: '16:00' },  // farklı hafta
     ]
-    expect(calcWeeklyMins(shifts, '2026-09-28', '2026-10-04')).toBe(960)
+    expect(calcWeeklyMins(shifts, '2026-09-28', '2026-10-04')).toBe(840) // net: 2 × (8s brüt − 60dk mola)
   })
 })
 
@@ -340,7 +339,7 @@ describe('validateShiftAssignment — part-time rules', () => {
   })
 
   it('PT-2. Part-time çalışan 30 saati aşamaz', () => {
-    // 4 × 7s = 28s zaten var
+    // 4 × 7s brüt (6s net) = 24s net zaten var
     const existing = [
       { id: 's1', work_date: '2026-09-28', start_time: '08:00', end_time: '15:00' }, // 7h
       { id: 's2', work_date: '2026-09-29', start_time: '08:00', end_time: '15:00' }, // 7h
@@ -350,7 +349,7 @@ describe('validateShiftAssignment — part-time rules', () => {
     const result = validateShiftAssignment({
       newDate: '2026-10-02',
       newStart: '08:00',
-      newEnd: '11:00',  // +3h = 31h > 30h
+      newEnd: '16:00',  // +8s brüt (7s net) = 31s net > 30s
       existingShifts: existing,
       weekStart: PT_WEEK_START,
       weekEnd: PT_WEEK_END,

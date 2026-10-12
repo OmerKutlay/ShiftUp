@@ -1,7 +1,8 @@
 /**
- * GET  /api/notifications?employee_id=xxx          — Bildirimleri listele
- * POST /api/notifications                           — Yeni bildirim oluştur (internal use)
- * FAZ 10 + FAZ AUTH-2
+ * GET  /api/notifications?limit=30  — Oturumdaki çalışanın bildirimleri
+ * POST /api/notifications           — Yeni bildirim oluştur (yönetimsel, Müdür Yardımcısı+)
+ *
+ * Bildirimler kişiseldir: yöneticiler dahil hiç kimse başkasının bildirimlerini okuyamaz.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
@@ -10,8 +11,10 @@ import {
   getNotificationsByEmployee,
 } from '@/lib/notificationRepository'
 import type { CreateNotificationPayload, NotificationType } from '@/types/notification'
-import { requireAuth, requireMinRole, ROLES, MANAGER_ROLES } from '@/lib/auth'
+import { requireAuth, requireMinRole, ROLES, MANAGER_ROLES, hasRole } from '@/lib/auth'
 import { scanMissedAttendanceThrottled } from '@/lib/attendanceAlerts'
+import { badRequest, readJson, serverError } from '@/lib/apiErrors'
+import { isUuid } from '@/lib/validation'
 
 const VALID_TYPES: NotificationType[] = [
   'shift_reminder',
@@ -40,64 +43,38 @@ export async function GET(req: NextRequest) {
   const { employee: currentEmployee } = auth
 
   try {
-    const { searchParams } = new URL(req.url)
-    const limitParam = searchParams.get('limit')
-
-    // employee_id: manager+ parametreden, diğerleri session'dan
-    const isManager = currentEmployee.role_name
-      ? MANAGER_ROLES.includes(currentEmployee.role_name)
-      : false
-    const requestedId = searchParams.get('employee_id')
-    const employeeId = isManager && requestedId ? requestedId : currentEmployee.id
-
+    const limitParam = req.nextUrl.searchParams.get('limit')
     const limit = limitParam ? Math.min(parseInt(limitParam, 10) || 50, 100) : 50
     const admin = createAdminClient()
 
     // Yönetici bildirimlerini çekerken okutulmamış giriş/çıkış taraması (dakikada en fazla bir kez)
-    if (isManager) await scanMissedAttendanceThrottled(admin)
+    if (hasRole(currentEmployee.role_name, MANAGER_ROLES)) await scanMissedAttendanceThrottled(admin)
 
-    const notifications = await getNotificationsByEmployee(admin, employeeId, limit)
-
+    const notifications = await getNotificationsByEmployee(admin, currentEmployee.id, limit)
     return NextResponse.json({ notifications })
   } catch (err) {
-    console.error('[GET /api/notifications]', err)
-    return NextResponse.json({ error: 'Sunucu hatası.', code: 'UNKNOWN' }, { status: 500 })
+    return serverError('GET /api/notifications', err)
   }
 }
 
 // ─── POST ───────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
-  // Notification oluşturma yönetimsel işlem — manager+ yetkisi gerekir
   const auth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
   if ('response' in auth) return auth.response
 
   try {
-    const body = (await req.json()) as Partial<CreateNotificationPayload>
+    const body = await readJson<Partial<CreateNotificationPayload>>(req)
+    if (!body) return badRequest('Geçersiz istek gövdesi.')
 
-    if (!body.employee_id || typeof body.employee_id !== 'string') {
-      return NextResponse.json(
-        { error: 'employee_id zorunludur.', code: 'VALIDATION_ERROR' },
-        { status: 400 },
-      )
+    if (!isUuid(body.employee_id)) return badRequest('employee_id zorunludur.')
+    if (!body.type || !VALID_TYPES.includes(body.type)) return badRequest('Geçersiz bildirim tipi.')
+    if (typeof body.title !== 'string' || !body.title.trim() || body.title.length > 120) {
+      return badRequest('title zorunludur (en fazla 120 karakter).')
     }
-    if (!body.type || !VALID_TYPES.includes(body.type)) {
-      return NextResponse.json(
-        { error: 'Geçersiz bildirim tipi.', code: 'VALIDATION_ERROR' },
-        { status: 400 },
-      )
+    if (typeof body.message !== 'string' || !body.message.trim() || body.message.length > 1000) {
+      return badRequest('message zorunludur (en fazla 1000 karakter).')
     }
-    if (!body.title?.trim()) {
-      return NextResponse.json(
-        { error: 'title zorunludur.', code: 'VALIDATION_ERROR' },
-        { status: 400 },
-      )
-    }
-    if (!body.message?.trim()) {
-      return NextResponse.json(
-        { error: 'message zorunludur.', code: 'VALIDATION_ERROR' },
-        { status: 400 },
-      )
-    }
+    if (body.related_id != null && !isUuid(body.related_id)) return badRequest('Geçersiz related_id.')
 
     const admin = createAdminClient()
     const notification = await createNotification(admin, {
@@ -108,14 +85,10 @@ export async function POST(req: NextRequest) {
       related_id: body.related_id ?? null,
     })
 
-    // null dönmesi = duplicate shift_reminder, idempotent
-    if (!notification) {
-      return NextResponse.json({ notification: null, duplicate: true })
-    }
-
+    // null dönmesi = duplicate (dedupe kısıtı), idempotent
+    if (!notification) return NextResponse.json({ notification: null, duplicate: true })
     return NextResponse.json({ notification }, { status: 201 })
   } catch (err) {
-    console.error('[POST /api/notifications]', err)
-    return NextResponse.json({ error: 'Sunucu hatası.', code: 'UNKNOWN' }, { status: 500 })
+    return serverError('POST /api/notifications', err)
   }
 }

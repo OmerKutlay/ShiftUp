@@ -14,8 +14,10 @@
  * UTC+3 olduğundan dönüşüm sabit ofsetle yapılır.
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { getExistingNotificationKeys, notifyManagers } from '@/lib/notificationRepository'
+import { getExistingNotificationKeys, getActiveManagerIds, notifyManagers } from '@/lib/notificationRepository'
+import { checkRateLimit } from '@/lib/rateLimiter'
 import type { NotificationType } from '@/types/notification'
+import { turkeyDateString } from '@/lib/dateUtils'
 
 const TURKEY_UTC_OFFSET = '+03:00'
 const MINUTE_MS = 60 * 1000
@@ -59,12 +61,7 @@ export function getShiftWindow(shift: ShiftLike): { start: Date; end: Date } {
   return { start, end }
 }
 
-/** Verilen anın Türkiye saatine göre tarihi (YYYY-MM-DD) */
-export function turkeyDateString(date: Date): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(date)
-}
+export { turkeyDateString }
 
 function turkeyTime(date: Date): string {
   return new Intl.DateTimeFormat('tr-TR', {
@@ -241,6 +238,9 @@ export async function scanMissedAttendance(
     alerts.map((a) => a.shift.id),
   )
 
+  // Yönetici listesi döngü dışında bir kez alınır (N+1 sorgu önlemi)
+  const managerIds = await getActiveManagerIds(admin)
+
   let notified = 0
   for (const alert of alerts) {
     if (existing.has(`${alert.type}:${alert.shift.id}`)) continue
@@ -256,7 +256,7 @@ export async function scanMissedAttendance(
             : `${alert.employeeName}, ${shiftLabel(alert.shift)} vardiyası bitti ancak çıkış QR'ı okutulmadı.`,
           related_id: alert.shift.id,
         },
-        { excludeEmployeeId: alert.employeeId },
+        { excludeEmployeeId: alert.employeeId, managerIds },
       )
       notified++
     } catch (err) {
@@ -270,11 +270,11 @@ export async function scanMissedAttendance(
 // ─── Throttle: yönetici bildirim isteklerinden tetikleme ────────
 
 const SCAN_THROTTLE_MS = 60 * 1000
-let lastScanAt = 0
 let runningScan: Promise<unknown> | null = null
 
 /**
- * scanMissedAttendance'ı en fazla dakikada bir çalıştırır (süreç içi throttle).
+ * scanMissedAttendance'ı en fazla dakikada bir çalıştırır. Throttle paylaşılan
+ * rate limiter üzerindendir — birden çok sunucu instance'ı aynı anda taramaz.
  * Cron altyapısı olmadan, yöneticinin bildirim sorgusu sırasında tarama yapılmasını sağlar.
  */
 export async function scanMissedAttendanceThrottled(admin: SupabaseClient): Promise<void> {
@@ -282,8 +282,8 @@ export async function scanMissedAttendanceThrottled(admin: SupabaseClient): Prom
     await runningScan
     return
   }
-  if (Date.now() - lastScanAt < SCAN_THROTTLE_MS) return
-  lastScanAt = Date.now()
+  const { allowed } = await checkRateLimit('attendance_missed_scan', 1, SCAN_THROTTLE_MS)
+  if (!allowed) return
   runningScan = scanMissedAttendance(admin)
     .catch((err) => console.error('[attendanceAlerts] tarama hatası:', err))
     .finally(() => { runningScan = null })

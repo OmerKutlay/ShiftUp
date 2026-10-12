@@ -1,9 +1,12 @@
 /**
  * POST /api/attendance/override
- * Manuel attendance kaydı düzeltmesi — FAZ 7 + FAZ 10 (bildirim).
+ * Yöneticinin devam kaydını manuel düzeltmesi (Müdür Yardımcısı+).
  *
- * Tüm alan değişiklikleri server-side doğrulanır.
- * exception_note zorunludur — override sebebi kaydedilir.
+ * - Kaydın düzeltme sonrası son hali tutarlı olmalı (durum ↔ saatler, kronolojik sıra).
+ * - Yönetici kendi devam kaydını düzeltemez.
+ * - exception_note zorunludur ve mevcut nota EKLENİR (yuvarlama notu kaybolmaz).
+ * - Eski/yeni değerler audit_logs'a yazılır.
+ * - Kayıt okunduktan sonra başkası güncellediyse 409 döner (updated_at koşulu).
  *
  * Body: ManualAttendanceOverride
  */
@@ -12,7 +15,11 @@ import { createAdminClient } from '@/lib/supabaseAdmin'
 import type { ManualAttendanceOverride } from '@/types/report'
 import type { AttendanceStatus } from '@/types/attendance'
 import { createNotification } from '@/lib/notificationRepository'
-import { requireMinRole, ROLES } from '@/lib/auth'
+import { requireMinRole, ROLES, forbidden } from '@/lib/auth'
+import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/apiErrors'
+import { isUuid } from '@/lib/validation'
+import { validateOverrideState, type OverrideState } from '@/lib/attendanceOverride'
+import { logAudit } from '@/lib/auditLog'
 
 const VALID_STATUSES: AttendanceStatus[] = [
   'shift_waiting',
@@ -21,127 +28,117 @@ const VALID_STATUSES: AttendanceStatus[] = [
   'working_after_break',
   'clocked_out',
 ]
+const TIME_FIELDS = ['clock_in_at', 'break_start_at', 'break_end_at', 'clock_out_at'] as const
 
 function isValidIso(val: unknown): boolean {
   if (val === null || val === undefined) return true // null silme için geçerli
   if (typeof val !== 'string') return false
-  const d = new Date(val)
-  return !isNaN(d.getTime())
+  return !Number.isNaN(new Date(val).getTime())
 }
 
 export async function POST(req: NextRequest) {
-  // Authorization: en az Müdür Yardımcısı yetkisi gerekir
   const auth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
   if ('response' in auth) return auth.response
 
   try {
-    const body = (await req.json()) as Partial<ManualAttendanceOverride>
+    const body = await readJson<Partial<ManualAttendanceOverride>>(req)
+    if (!body) return badRequest('Geçersiz istek gövdesi.')
+    if (!isUuid(body.record_id)) return badRequest('record_id zorunludur.')
 
-    // Zorunlu alanlar
-    if (!body.record_id || typeof body.record_id !== 'string') {
-      return NextResponse.json(
-        { error: 'record_id zorunludur.', code: 'VALIDATION_ERROR' },
-        { status: 400 }
-      )
-    }
+    const note = typeof body.exception_note === 'string' ? body.exception_note.trim() : ''
+    if (!note) return badRequest('exception_note zorunludur — override sebebini belirtin.')
+    if (note.length > 500) return badRequest('Sebep en fazla 500 karakter olabilir.')
 
-    if (!body.exception_note || typeof body.exception_note !== 'string' || !body.exception_note.trim()) {
-      return NextResponse.json(
-        { error: 'exception_note zorunludur — override sebebini belirtin.', code: 'VALIDATION_ERROR' },
-        { status: 400 }
-      )
-    }
-
-    // Status validation
     if (body.status !== undefined && !(VALID_STATUSES as string[]).includes(body.status)) {
-      return NextResponse.json(
-        { error: `Geçersiz status: ${body.status}`, code: 'VALIDATION_ERROR' },
-        { status: 400 }
-      )
+      return badRequest(`Geçersiz status: ${body.status}`)
     }
-
-    // Timestamp validations
-    const timeFields = ['clock_in_at', 'break_start_at', 'break_end_at', 'clock_out_at'] as const
-    for (const field of timeFields) {
+    for (const field of TIME_FIELDS) {
       if (field in body && !isValidIso(body[field])) {
-        return NextResponse.json(
-          { error: `${field} geçersiz format (ISO 8601 bekleniyor).`, code: 'VALIDATION_ERROR' },
-          { status: 400 }
-        )
+        return badRequest(`${field} geçersiz format (ISO 8601 bekleniyor).`)
       }
     }
 
     const admin = createAdminClient()
 
-    // Kaydın var olduğunu doğrula
     const { data: existing, error: fetchError } = await admin
       .from('attendance_records')
-      .select('id, status, employee_id')
+      .select('*')
       .eq('id', body.record_id)
       .maybeSingle()
+    if (fetchError) return serverError('POST /api/attendance/override', fetchError)
+    if (!existing) return notFound('Attendance kaydı bulunamadı.', 'RECORD_NOT_FOUND')
 
-    if (fetchError) {
-      return NextResponse.json(
-        { error: 'Kayıt sorgulanamadı.', code: 'DB_ERROR' },
-        { status: 500 }
-      )
+    if (existing.employee_id === auth.employee.id) {
+      return forbidden('Kendi devam kaydınızı düzeltemezsiniz.')
     }
 
-    if (!existing) {
-      return NextResponse.json(
-        { error: 'Attendance kaydı bulunamadı.', code: 'RECORD_NOT_FOUND' },
-        { status: 404 }
-      )
+    // Son hali oluştur ve doğrula
+    const next: OverrideState = {
+      status: (body.status ?? existing.status) as AttendanceStatus,
+      clock_in_at: 'clock_in_at' in body ? (body.clock_in_at ?? null) : existing.clock_in_at,
+      break_start_at: 'break_start_at' in body ? (body.break_start_at ?? null) : existing.break_start_at,
+      break_end_at: 'break_end_at' in body ? (body.break_end_at ?? null) : existing.break_end_at,
+      clock_out_at: 'clock_out_at' in body ? (body.clock_out_at ?? null) : existing.clock_out_at,
+      completed_break_minutes: body.completed_break_minutes ?? existing.completed_break_minutes ?? 0,
+    }
+    // ISO'ları normalize et
+    for (const field of TIME_FIELDS) {
+      const v = next[field]
+      if (v) next[field] = new Date(v).toISOString()
     }
 
-    // Patch nesnesi — sadece gönderilen alanları güncelle
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const patch: Record<string, any> = {
-      exception_note: body.exception_note.trim(),
+    const stateError = validateOverrideState(next)
+    if (stateError) return badRequest(stateError, 'INCONSISTENT_RECORD')
+
+    const prevNote = typeof existing.exception_note === 'string' ? existing.exception_note.trim() : ''
+    const patch = {
+      ...next,
+      exception_note: prevNote ? `${prevNote} | Düzeltme: ${note}` : `Düzeltme: ${note}`,
+      verification_method: 'manual_override',
       updated_at: new Date().toISOString(),
-    }
-
-    if (body.status !== undefined) patch.status = body.status
-    for (const field of timeFields) {
-      if (field in body) patch[field] = body[field] ?? null
     }
 
     const { data: updated, error: updateError } = await admin
       .from('attendance_records')
       .update(patch)
       .eq('id', body.record_id)
+      .eq('updated_at', existing.updated_at)
       .select()
-      .single()
+      .maybeSingle()
+    if (updateError) return serverError('POST /api/attendance/override', updateError)
+    if (!updated) return conflict('Kayıt bu sırada başka bir işlemle güncellendi. Sayfayı yenileyip tekrar deneyin.')
 
-    if (updateError) {
-      return NextResponse.json(
-        { error: 'Kayıt güncellenemedi.', code: 'DB_ERROR' },
-        { status: 500 }
-      )
-    }
+    await logAudit({
+      actorId: auth.employee.id,
+      action: 'attendance.override',
+      entityType: 'attendance_record',
+      entityId: existing.id,
+      before: {
+        status: existing.status,
+        clock_in_at: existing.clock_in_at,
+        break_start_at: existing.break_start_at,
+        break_end_at: existing.break_end_at,
+        clock_out_at: existing.clock_out_at,
+        completed_break_minutes: existing.completed_break_minutes,
+      },
+      after: next,
+      note,
+    })
 
-    // FAZ 10: Çalışana attendance düzeltme bildirimi gönder
     try {
       await createNotification(admin, {
         employee_id: existing.employee_id,
         type: 'attendance_override',
         title: 'Devam kaydınız güncellendi',
-        message: `Devam kaydınızda bir düzeltme yapıldı. Sebep: ${body.exception_note!.trim()}`,
-        related_id: body.record_id,
+        message: `Devam kaydınızda bir düzeltme yapıldı. Sebep: ${note}`,
+        related_id: existing.id,
       })
     } catch (notifErr) {
       console.error('[POST /api/attendance/override] bildirim gönderilemedi:', notifErr)
     }
 
-    return NextResponse.json(
-      { success: true, record: updated },
-      { status: 200 }
-    )
+    return NextResponse.json({ success: true, record: updated }, { status: 200 })
   } catch (err) {
-    console.error('[/api/attendance/override]', err)
-    return NextResponse.json(
-      { error: 'Sunucu hatası.', code: 'UNKNOWN' },
-      { status: 500 }
-    )
+    return serverError('POST /api/attendance/override', err)
   }
 }

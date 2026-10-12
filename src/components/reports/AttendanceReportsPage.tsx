@@ -44,7 +44,7 @@ import {
   buildReportSummary,
   exportReportToCsv,
 } from '@/lib/reportRepository'
-import { fetchEmployees } from '@/lib/employeeRepository'
+import { fetchEmployees } from '@/lib/api/employees'
 import { format, subDays } from 'date-fns'
 import { PageHeader, TableSkeleton } from '@/components/common'
 

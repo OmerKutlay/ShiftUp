@@ -1,14 +1,22 @@
 /**
- * In-memory rate limiter — FAZ 8
- * Server-side only. Next.js API routes tek process'te çalıştığı için
- * geliştirme/demo ortamında yeterlidir.
+ * Rate limiter — server-side only.
  *
- * Production'da Redis tabanlı çözüme geçiş önerilir.
+ * Birincil depo: Postgres (rate_limit_hit RPC) — tüm sunucu instance'ları ve
+ * serverless cold start'lar arasında paylaşılır, sayaç artışı atomiktir.
+ * RPC yoksa / hata verirse (ör. migration uygulanmamış yerel ortam) bellek içi
+ * sayaca düşer; bu yalnızca tek process için geçerlidir.
  */
+import { createAdminClient } from '@/lib/supabaseAdmin'
 
 interface RateLimitEntry {
   count: number
   resetAt: number  // Unix timestamp (ms)
+}
+
+export interface RateLimitResult {
+  allowed: boolean
+  remaining: number
+  resetAt: number
 }
 
 const store = new Map<string, RateLimitEntry>()
@@ -21,18 +29,8 @@ function pruneExpired(): void {
   }
 }
 
-/**
- * Verilen key için rate limit kontrolü yapar.
- * @param key      — tanımlayıcı (örn: `qr_gen:${employeeId}`)
- * @param limit    — pencere içinde izin verilen maks. istek
- * @param windowMs — pencere süresi (ms)
- * @returns { allowed, remaining, resetAt }
- */
-export function checkRateLimit(
-  key: string,
-  limit: number,
-  windowMs: number
-): { allowed: boolean; remaining: number; resetAt: number } {
+/** Bellek içi sabit pencere sayacı (fallback ve testler için) */
+export function checkRateLimitLocal(key: string, limit: number, windowMs: number): RateLimitResult {
   // Periyodik temizlik (her 1000 çağrıda bir)
   if (Math.random() < 0.001) pruneExpired()
 
@@ -40,7 +38,6 @@ export function checkRateLimit(
   const existing = store.get(key)
 
   if (!existing || existing.resetAt <= now) {
-    // Yeni pencere başlat
     const entry: RateLimitEntry = { count: 1, resetAt: now + windowMs }
     store.set(key, entry)
     return { allowed: true, remaining: limit - 1, resetAt: entry.resetAt }
@@ -53,4 +50,33 @@ export function checkRateLimit(
   }
 
   return { allowed: true, remaining: limit - existing.count, resetAt: existing.resetAt }
+}
+
+/**
+ * Verilen key için rate limit kontrolü yapar ve sayacı artırır.
+ * @param key      — tanımlayıcı (örn: `otp_send:email:${email}`)
+ * @param limit    — pencere içinde izin verilen maks. istek
+ * @param windowMs — pencere süresi (ms)
+ */
+export async function checkRateLimit(key: string, limit: number, windowMs: number): Promise<RateLimitResult> {
+  try {
+    const admin = createAdminClient()
+    const { data, error } = await admin.rpc('rate_limit_hit', {
+      p_key: key,
+      p_limit: limit,
+      p_window_ms: windowMs,
+    })
+    if (error || !data) throw error ?? new Error('rate_limit_hit boş yanıt')
+    const row = (Array.isArray(data) ? data[0] : data) as { allowed: boolean; remaining: number; reset_at: string }
+    return { allowed: row.allowed, remaining: row.remaining, resetAt: new Date(row.reset_at).getTime() }
+  } catch {
+    return checkRateLimitLocal(key, limit, windowMs)
+  }
+}
+
+/** İstemci IP'si (proxy arkasında x-forwarded-for'un ilk değeri) */
+export function clientIp(req: { headers: { get(name: string): string | null } }): string {
+  const fwd = req.headers.get('x-forwarded-for')
+  if (fwd) return fwd.split(',')[0].trim()
+  return req.headers.get('x-real-ip') ?? 'unknown'
 }

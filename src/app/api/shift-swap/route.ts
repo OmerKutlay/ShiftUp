@@ -1,19 +1,24 @@
 /**
  * GET  /api/shift-swap?status=pending
  * POST /api/shift-swap
- * FAZ 11 + FAZ AUTH-2
  *
- * Vardiya takası bir TALEPTİR: çalışan talep açar, takas ancak
- * Müdür Yardımcısı+ onayıyla (/api/shift-swap/review) uygulanır.
+ * Vardiya takası iki aşamalı bir TALEPTİR:
+ *   1. Çalışan talep açar → hedef çalışan kabul eder (target_accepted_at)
+ *   2. Müdür Yardımcısı+ onaylar (/api/shift-swap/review) → takas uygulanır
  *
- * GET:  requireAuth → employee kendi swap'larını görür; manager+ herkes
- * POST: requireAuth → requester_id SESSION'dan alınır
+ * GET:  çalışan yalnızca tarafı olduğu talepleri; yönetici tümünü görür
+ * POST: requester_id SESSION'dan alınır
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import type { CreateSwapRequestPayload } from '@/types/workforce'
-import { createNotification, notifyManagers } from '@/lib/notificationRepository'
-import { requireAuth, MANAGER_ROLES } from '@/lib/auth'
+import { createNotification } from '@/lib/notificationRepository'
+import { requireAuth, MANAGER_ROLES, hasRole, forbidden } from '@/lib/auth'
+import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/apiErrors'
+import { isUuid } from '@/lib/validation'
+import { turkeyToday } from '@/lib/dateUtils'
+
+const VALID_STATUSES = ['pending', 'approved', 'rejected', 'cancelled']
 
 // ─── GET ─────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
@@ -22,12 +27,10 @@ export async function GET(req: NextRequest) {
   const { employee: currentEmployee } = auth
 
   try {
-    const { searchParams } = new URL(req.url)
-    const status = searchParams.get('status')
+    const status = req.nextUrl.searchParams.get('status')
+    if (status && !VALID_STATUSES.includes(status)) return badRequest('Geçersiz durum filtresi.')
 
-    const isManager = currentEmployee.role_name
-      ? MANAGER_ROLES.includes(currentEmployee.role_name)
-      : false
+    const isManager = hasRole(currentEmployee.role_name, MANAGER_ROLES)
 
     const admin = createAdminClient()
     let query = admin
@@ -43,17 +46,16 @@ export async function GET(req: NextRequest) {
 
     if (status) query = query.eq('status', status)
 
-    // Manager+ tümünü görür; çalışan yalnızca kendi taleplerini
+    // Manager+ tümünü görür; çalışan yalnızca tarafı olduğu talepleri (id session'dan, UUID)
     if (!isManager) {
       query = query.or(`requester_id.eq.${currentEmployee.id},target_id.eq.${currentEmployee.id}`)
     }
 
     const { data, error } = await query
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError('GET /api/shift-swap', error)
     return NextResponse.json({ swap_requests: data ?? [] })
   } catch (err) {
-    console.error('[GET /api/shift-swap]', err)
-    return NextResponse.json({ error: 'Sunucu hatası.' }, { status: 500 })
+    return serverError('GET /api/shift-swap', err)
   }
 }
 
@@ -64,71 +66,63 @@ export async function POST(req: NextRequest) {
   const { employee: currentEmployee } = auth
 
   try {
-    const body = (await req.json()) as Partial<CreateSwapRequestPayload>
+    const body = await readJson<Partial<CreateSwapRequestPayload>>(req)
+    if (!body) return badRequest('Geçersiz istek gövdesi.')
 
-    // requester_id SESSION'dan alınır — client değeri yoksayılır
     const requesterId = currentEmployee.id
 
-    if (!body.requester_shift_id)
-      return NextResponse.json({ error: 'requester_shift_id zorunludur.' }, { status: 400 })
-    // Hedef çalışan olmadan onaylanan talep hiçbir şey değiştirmez → zorunlu
-    if (!body.target_id)
-      return NextResponse.json({ error: 'Takas yapılacak çalışan (target_id) zorunludur.' }, { status: 400 })
-    if (body.target_id === requesterId)
-      return NextResponse.json({ error: 'Kendinizle takas yapamazsınız.' }, { status: 400 })
+    if (!isUuid(body.requester_shift_id)) return badRequest('requester_shift_id zorunludur.')
+    if (!isUuid(body.target_id)) return badRequest('Takas yapılacak çalışan (target_id) zorunludur.')
+    if (body.target_id === requesterId) return badRequest('Kendinizle takas yapamazsınız.')
+    if (body.target_shift_id != null && !isUuid(body.target_shift_id)) return badRequest('Geçersiz hedef vardiya.')
+    if (body.requester_note && (typeof body.requester_note !== 'string' || body.requester_note.length > 500)) {
+      return badRequest('Not en fazla 500 karakter olabilir.')
+    }
 
     const admin = createAdminClient()
-    const today = new Date().toISOString().slice(0, 10)
+    const today = turkeyToday()
 
-    // Shift gerçekten bu employee'a ait mi?
-    const { data: shift } = await admin
+    const { data: shift, error: shErr } = await admin
       .from('shift_assignments')
       .select('id, employee_id, work_date')
       .eq('id', body.requester_shift_id)
       .maybeSingle()
+    if (shErr) return serverError('POST /api/shift-swap', shErr)
+    if (!shift) return notFound('Vardiya bulunamadı.')
+    if (shift.employee_id !== requesterId) return forbidden('Bu vardiya size ait değil.')
+    if (shift.work_date < today) return badRequest('Geçmiş vardiya için takas talebi oluşturulamaz.')
 
-    if (!shift) return NextResponse.json({ error: 'Vardiya bulunamadı.' }, { status: 404 })
-    if (shift.employee_id !== requesterId)
-      return NextResponse.json({ error: 'Bu vardiya size ait değil.' }, { status: 403 })
-    if (shift.work_date < today)
-      return NextResponse.json({ error: 'Geçmiş vardiya için takas talebi oluşturulamaz.' }, { status: 400 })
-
-    // Hedef çalışan aktif mi?
-    const { data: target } = await admin
+    const { data: target, error: tErr } = await admin
       .from('employees')
       .select('id, full_name, active')
       .eq('id', body.target_id)
       .maybeSingle()
+    if (tErr) return serverError('POST /api/shift-swap', tErr)
+    if (!target) return notFound('Hedef çalışan bulunamadı.')
+    if (!target.active) return badRequest('Hedef çalışan aktif değil.')
 
-    if (!target) return NextResponse.json({ error: 'Hedef çalışan bulunamadı.' }, { status: 404 })
-    if (!target.active) return NextResponse.json({ error: 'Hedef çalışan aktif değil.' }, { status: 400 })
-
-    // Hedef vardiya (isteğe bağlı) gerçekten hedef çalışana ait mi?
     if (body.target_shift_id) {
-      const { data: targetShift } = await admin
+      const { data: targetShift, error: tsErr } = await admin
         .from('shift_assignments')
         .select('id, employee_id, work_date')
         .eq('id', body.target_shift_id)
         .maybeSingle()
-
-      if (!targetShift) return NextResponse.json({ error: 'Hedef vardiya bulunamadı.' }, { status: 404 })
-      if (targetShift.employee_id !== body.target_id)
-        return NextResponse.json({ error: 'Hedef vardiya seçilen çalışana ait değil.' }, { status: 400 })
-      if (targetShift.work_date < today)
-        return NextResponse.json({ error: 'Geçmiş bir vardiya ile takas yapılamaz.' }, { status: 400 })
+      if (tsErr) return serverError('POST /api/shift-swap', tsErr)
+      if (!targetShift) return notFound('Hedef vardiya bulunamadı.')
+      if (targetShift.employee_id !== body.target_id) return badRequest('Hedef vardiya seçilen çalışana ait değil.')
+      if (targetShift.work_date < today) return badRequest('Geçmiş bir vardiya ile takas yapılamaz.')
     }
 
-    // Bekleyen talep kontrolü — iki vardiyadan biri zaten bekleyen bir takasta mı?
+    // Bekleyen talep kontrolü — iki vardiyadan biri zaten bekleyen bir takasta mı? (id'ler UUID doğrulandı)
     const shiftIds = [body.requester_shift_id, body.target_shift_id].filter(Boolean).join(',')
-    const { data: existing } = await admin
+    const { data: existing, error: exErr } = await admin
       .from('shift_swap_requests')
       .select('id')
       .eq('status', 'pending')
       .or(`requester_shift_id.in.(${shiftIds}),target_shift_id.in.(${shiftIds})`)
       .limit(1)
-
-    if (existing && existing.length > 0)
-      return NextResponse.json({ error: 'Bu vardiya için zaten bekleyen bir takas talebi var.' }, { status: 409 })
+    if (exErr) return serverError('POST /api/shift-swap', exErr)
+    if (existing && existing.length > 0) return conflict('Bu vardiya için zaten bekleyen bir takas talebi var.')
 
     const { data, error } = await admin
       .from('shift_swap_requests')
@@ -142,34 +136,23 @@ export async function POST(req: NextRequest) {
       })
       .select()
       .single()
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError('POST /api/shift-swap', error)
 
     try {
+      // Önce karşı tarafın kabulü gerekir; yöneticiler kabulden sonra bilgilendirilir
       await createNotification(admin, {
-        employee_id: requesterId,
+        employee_id: body.target_id,
         type: 'shift_swap_submitted',
-        title: 'Takas talebiniz alındı',
-        message: `${shift.work_date} tarihli vardiyanız için takas talebiniz yönetici onayına gönderildi.`,
+        title: 'Size bir vardiya takas teklifi var',
+        message: `${currentEmployee.full_name}, ${shift.work_date} tarihli vardiyası için sizinle takas yapmak istiyor. Kabul ederseniz yönetici onayına gönderilir.`,
         related_id: data.id,
       })
-      await notifyManagers(
-        admin,
-        {
-          type: 'shift_swap_submitted',
-          title: 'Yeni vardiya takas talebi',
-          message: `${currentEmployee.full_name}, ${shift.work_date} tarihli vardiyası için ${target.full_name} ile takas talebi oluşturdu. Onayınız bekleniyor.`,
-          related_id: data.id,
-        },
-        { excludeEmployeeId: requesterId },
-      )
     } catch (notifErr) {
       console.error('[POST /api/shift-swap] bildirim gönderilemedi:', notifErr)
     }
 
     return NextResponse.json({ swap_request: data }, { status: 201 })
   } catch (err) {
-    console.error('[POST /api/shift-swap]', err)
-    return NextResponse.json({ error: 'Sunucu hatası.' }, { status: 500 })
+    return serverError('POST /api/shift-swap', err)
   }
 }

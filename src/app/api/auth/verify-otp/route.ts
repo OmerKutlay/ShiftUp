@@ -4,18 +4,27 @@
  * Production auth — email'e gönderilen 6 haneli kodu doğrular.
  * Başarılıysa Supabase Auth session cookie'leri response'a yazılır.
  *
+ * Kaba kuvvet önlemi: e-posta başına ve IP başına deneme sınırı (paylaşılan sayaç).
+ *
  * Body: { email: string, token: string }
  * Response:
  *   200 { ok: true }
  *   400 { ok: false, reason: 'INVALID_EMAIL' | 'INVALID_TOKEN_FORMAT' }
  *   401 { ok: false, reason: 'INVALID_OTP' | 'OTP_EXPIRED' }
  *   403 { ok: false, reason: 'EMPLOYEE_NOT_FOUND' | 'NOT_AVAILABLE' }
+ *   429 { ok: false, reason: 'RATE_LIMITED' }
  *
  * ÖNEMLİ: Bu route yalnızca AUTH_MODE=production'da aktiftir.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { IS_DEV_AUTH } from '@/lib/authConfig'
+import { checkRateLimit, clientIp } from '@/lib/rateLimiter'
+import { isValidEmail } from '@/lib/validation'
+
+const WINDOW_MS = 15 * 60 * 1000
+const PER_EMAIL = 10
+const PER_IP = 30
 
 export async function POST(req: NextRequest) {
   if (IS_DEV_AUTH) {
@@ -32,11 +41,19 @@ export async function POST(req: NextRequest) {
   const email = body.email?.trim().toLowerCase()
   const token = body.token?.trim()
 
-  if (!email || !email.includes('@')) {
+  if (!isValidEmail(email)) {
     return NextResponse.json({ ok: false, reason: 'INVALID_EMAIL' }, { status: 400 })
   }
   if (!token || !/^\d{6}$/.test(token)) {
     return NextResponse.json({ ok: false, reason: 'INVALID_TOKEN_FORMAT' }, { status: 400 })
+  }
+
+  const [byEmail, byIp] = await Promise.all([
+    checkRateLimit(`otp_verify:email:${email}`, PER_EMAIL, WINDOW_MS),
+    checkRateLimit(`otp_verify:ip:${clientIp(req)}`, PER_IP, WINDOW_MS),
+  ])
+  if (!byEmail.allowed || !byIp.allowed) {
+    return NextResponse.json({ ok: false, reason: 'RATE_LIMITED' }, { status: 429 })
   }
 
   try {

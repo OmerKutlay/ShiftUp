@@ -14,12 +14,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { requireAuth } from '@/lib/auth'
 import { totalBreakMinutes, workedMinutes } from '@/lib/attendanceDurations'
-
-/** HH:MM → dakika */
-function timeMins(t: string): number {
-  const [h, m] = t.slice(0, 5).split(':').map(Number)
-  return h * 60 + m
-}
+import { grossMins, statutoryMinBreakMins } from '@/lib/laborLaw'
+import { isValidDate } from '@/lib/validation'
+import { serverError } from '@/lib/apiErrors'
 
 export async function GET(req: NextRequest) {
   const auth = await requireAuth(req)
@@ -30,12 +27,12 @@ export async function GET(req: NextRequest) {
   const dateFrom = searchParams.get('date_from')
   const dateTo   = searchParams.get('date_to')
 
-  if (!dateFrom || !dateTo)
-    return NextResponse.json({ error: 'date_from ve date_to zorunludur.', code: 'VALIDATION_ERROR' }, { status: 400 })
+  if (!isValidDate(dateFrom) || !isValidDate(dateTo))
+    return NextResponse.json({ error: 'date_from ve date_to (YYYY-MM-DD) zorunludur.', code: 'VALIDATION_ERROR' }, { status: 400 })
 
   const fromMs = new Date(dateFrom).getTime()
   const toMs   = new Date(dateTo).getTime()
-  if (isNaN(fromMs) || isNaN(toMs) || toMs < fromMs)
+  if (toMs < fromMs)
     return NextResponse.json({ error: 'Geçersiz tarih aralığı.', code: 'VALIDATION_ERROR' }, { status: 400 })
   if ((toMs - fromMs) / (1000 * 60 * 60 * 24) > 366)
     return NextResponse.json({ error: 'Tarih aralığı en fazla 366 gün olabilir.', code: 'VALIDATION_ERROR' }, { status: 400 })
@@ -59,12 +56,12 @@ export async function GET(req: NextRequest) {
       .order('work_date', { ascending: true })
       .order('start_time', { ascending: true })
 
-    if (shiftErr) return NextResponse.json({ error: shiftErr.message, code: 'DB_ERROR' }, { status: 500 })
+    if (shiftErr) return serverError('GET /api/reports/my', shiftErr)
 
-    // Manuel düzeltmeler (approved + direct) — çalışma özetine eklenir
+    // Manuel düzeltmeler (approved + direct) — eski (devam kaydı yazılmamış) düzeltmeler için
     const { data: corrData } = await admin
       .from('manual_time_correction_requests')
-      .select('id, date, requested_start_time, requested_end_time, status, reason')
+      .select('id, date, requested_start_time, requested_end_time, break_minutes, status, reason')
       .eq('employee_id', employee.id)
       .in('status', ['approved', 'direct'])
       .gte('date', dateFrom)
@@ -113,7 +110,10 @@ export async function GET(req: NextRequest) {
       const corrDate  = corr.date as string
       const startTime = (corr.requested_start_time as string).slice(0, 5)
       const endTime   = (corr.requested_end_time as string).slice(0, 5)
-      const corrMins  = Math.max(0, timeMins(endTime) - timeMins(startTime))
+      // Gece yarısını geçen düzeltme desteklenir; mola (verilmediyse Md. 68 asgari) düşülür
+      const gross     = grossMins(startTime, endTime)
+      const corrBreak = (corr.break_minutes as number | null) ?? statutoryMinBreakMins(gross)
+      const corrMins  = Math.max(0, gross - corrBreak)
 
       if (rowDateSet.has(corrDate)) {
         // Shift var → worked_minutes attendance'tan geliyor.
@@ -124,7 +124,7 @@ export async function GET(req: NextRequest) {
             ...rows[idx],
             status:         'clocked_out',
             worked_minutes: corrMins,
-            break_minutes:  0,
+            break_minutes:  corrBreak,
             is_manual_correction: true,
           }
         }
@@ -142,7 +142,7 @@ export async function GET(req: NextRequest) {
           break_start_at: null,
           break_end_at:   null,
           worked_minutes: corrMins,
-          break_minutes:  0,
+          break_minutes:  corrBreak,
           is_manual_correction: true,
         })
         rowDateSet.add(corrDate)
@@ -154,7 +154,6 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ rows })
   } catch (err) {
-    console.error('[GET /api/reports/my]', err)
-    return NextResponse.json({ error: 'Sunucu hatası.', code: 'UNKNOWN' }, { status: 500 })
+    return serverError('GET /api/reports/my', err)
   }
 }

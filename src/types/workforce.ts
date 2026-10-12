@@ -70,6 +70,9 @@ export interface ShiftSwapRequest {
   target_id: string | null
   target_shift_id: string | null
   status: SwapStatus
+  /** Hedef çalışanın teklifi kabul ettiği an — yönetici onayı ancak bundan sonra verilebilir */
+  target_accepted_at: string | null
+  reviewed_by?: string | null
   requester_note: string | null
   reviewer_note: string | null
   reviewed_at: string | null

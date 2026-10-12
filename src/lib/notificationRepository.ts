@@ -39,15 +39,34 @@ export async function createNotification(
 }
 
 /**
- * Aktif tüm yöneticilere (MANAGER_ROLES) aynı bildirimi gönder.
- * excludeEmployeeId: işlemi yapan yönetici kendi talebi için bildirim almasın.
- * Tek tek insert hataları diğerlerini engellemez. Gönderilen bildirim sayısını döner.
+ * Birden çok bildirimi tek insert ile oluşturur.
+ * Toplu insert bir tekil-kısıt ihlaline (23505) takılırsa tek tek denenir;
+ * böylece dedupe edilen kayıtlar diğerlerini engellemez. Oluşan sayıyı döner.
  */
-export async function notifyManagers(
+export async function createNotifications(
   admin: SupabaseClient,
-  payload: Omit<CreateNotificationPayload, 'employee_id'>,
-  options: { excludeEmployeeId?: string } = {},
+  payloads: CreateNotificationPayload[],
 ): Promise<number> {
+  if (payloads.length === 0) return 0
+  const rows = payloads.map((p) => ({
+    employee_id: p.employee_id,
+    type: p.type,
+    title: p.title,
+    message: p.message,
+    related_id: p.related_id ?? null,
+    is_read: false,
+  }))
+
+  const { error } = await admin.from('notifications').insert(rows)
+  if (!error) return rows.length
+  if (error.code !== '23505') throw error
+
+  const results = await Promise.allSettled(payloads.map((p) => createNotification(admin, p)))
+  return results.filter((r) => r.status === 'fulfilled' && r.value).length
+}
+
+/** Aktif yönetici (MANAGER_ROLES) id'leri */
+export async function getActiveManagerIds(admin: SupabaseClient): Promise<string[]> {
   const { data: employees, error } = await admin
     .from('employees')
     .select('id, roles(name)')
@@ -55,16 +74,29 @@ export async function notifyManagers(
 
   if (error) throw error
 
-  const targets = (employees ?? []).filter((e) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const roleName = (e as any).roles?.name ?? null
-    return MANAGER_ROLES.includes(roleName) && e.id !== options.excludeEmployeeId
-  })
+  return (employees ?? [])
+    .filter((e) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const roleName = (e as any).roles?.name ?? null
+      return MANAGER_ROLES.includes(roleName)
+    })
+    .map((e) => e.id as string)
+}
 
-  const results = await Promise.allSettled(
-    targets.map((m) => createNotification(admin, { ...payload, employee_id: m.id })),
-  )
-  return results.filter((r) => r.status === 'fulfilled' && r.value).length
+/**
+ * Aktif tüm yöneticilere (MANAGER_ROLES) aynı bildirimi gönder (tek toplu insert).
+ * excludeEmployeeId: işlemi yapan yönetici kendi talebi için bildirim almasın.
+ * managerIds: döngü içinde çağrılıyorsa önceden alınmış liste (N+1 sorgu önlemi).
+ * Gönderilen bildirim sayısını döner.
+ */
+export async function notifyManagers(
+  admin: SupabaseClient,
+  payload: Omit<CreateNotificationPayload, 'employee_id'>,
+  options: { excludeEmployeeId?: string; managerIds?: string[] } = {},
+): Promise<number> {
+  const ids = options.managerIds ?? (await getActiveManagerIds(admin))
+  const targets = ids.filter((id) => id !== options.excludeEmployeeId)
+  return createNotifications(admin, targets.map((id) => ({ ...payload, employee_id: id })))
 }
 
 /**

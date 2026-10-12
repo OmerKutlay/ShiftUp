@@ -1,21 +1,25 @@
 /**
  * GET   /api/open-shifts?status=open|filled|cancelled&date=YYYY-MM-DD
  * POST  /api/open-shifts   — yönetimsel: open shift oluştur
- * PATCH /api/open-shifts   — yönetimsel: open shift güncelle/iptal et
- * FAZ 11 + FAZ AUTH-2
+ * PATCH /api/open-shifts   — yönetimsel: open shift güncelle / iptal et / yeniden aç
  *
  * GET:   requireAuth (tüm authenticated kullanıcılar görebilir)
- * POST:  requireMinRole(Müdür Yardımcısı)
- *        → Oluşturma sonrası tüm aktif Çalışan rolündeki çalışanlara bildirim gönderilir.
- * PATCH: requireMinRole(Müdür Yardımcısı)
+ * POST:  requireMinRole(Müdür Yardımcısı) → aktif 'Çalışan' rolündekilere toplu bildirim
+ * PATCH: requireMinRole(Müdür Yardımcısı) — yalnızca open ↔ cancelled geçişi;
+ *        doldurulmuş (filled) vardiya değiştirilemez.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import type { CreateOpenShiftPayload } from '@/types/workforce'
 import { requireAuth, requireMinRole, ROLES } from '@/lib/auth'
-import { createNotification } from '@/lib/notificationRepository'
+import { createNotifications } from '@/lib/notificationRepository'
+import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/apiErrors'
+import { isUuid, isValidDate, isValidTime } from '@/lib/validation'
+import { turkeyToday } from '@/lib/dateUtils'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
+
+const STATUSES = ['open', 'filled', 'cancelled']
 
 // ─── GET ─────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
@@ -23,9 +27,10 @@ export async function GET(req: NextRequest) {
   if ('response' in auth) return auth.response
 
   try {
-    const { searchParams } = new URL(req.url)
-    const status = searchParams.get('status')
-    const date = searchParams.get('date')
+    const status = req.nextUrl.searchParams.get('status')
+    const date = req.nextUrl.searchParams.get('date')
+    if (status && !STATUSES.includes(status)) return badRequest('Geçersiz durum filtresi.')
+    if (date && !isValidDate(date)) return badRequest('Geçersiz tarih.')
 
     const admin = createAdminClient()
     let query = admin
@@ -38,11 +43,10 @@ export async function GET(req: NextRequest) {
     if (date) query = query.eq('work_date', date)
 
     const { data, error } = await query
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError('GET /api/open-shifts', error)
     return NextResponse.json({ open_shifts: data ?? [] })
   } catch (err) {
-    console.error('[GET /api/open-shifts]', err)
-    return NextResponse.json({ error: 'Sunucu hatası.' }, { status: 500 })
+    return serverError('GET /api/open-shifts', err)
   }
 }
 
@@ -52,76 +56,73 @@ export async function POST(req: NextRequest) {
   if ('response' in auth) return auth.response
 
   try {
-    const body = (await req.json()) as Partial<CreateOpenShiftPayload>
+    const body = await readJson<Partial<CreateOpenShiftPayload>>(req)
+    if (!body) return badRequest('Geçersiz istek gövdesi.')
 
-    if (!body.work_date || !/^\d{4}-\d{2}-\d{2}$/.test(body.work_date))
-      return NextResponse.json({ error: 'Geçerli work_date zorunludur (YYYY-MM-DD).' }, { status: 400 })
-    if (!body.start_time || !body.end_time)
-      return NextResponse.json({ error: 'start_time ve end_time zorunludur.' }, { status: 400 })
-    if (body.start_time >= body.end_time)
-      return NextResponse.json({ error: 'Başlangıç saati bitiş saatinden önce olmalıdır.' }, { status: 400 })
+    if (!isValidDate(body.work_date)) return badRequest('Geçerli work_date zorunludur (YYYY-MM-DD).')
+    if (body.work_date < turkeyToday()) return badRequest('Geçmiş tarih için açık vardiya oluşturulamaz.')
+    if (!isValidTime(body.start_time) || !isValidTime(body.end_time)) {
+      return badRequest('start_time ve end_time HH:MM formatında zorunludur.')
+    }
+    // Bitiş başlangıçtan önceyse gece yarısını geçen vardiyadır; eşitlik geçersiz
+    if (body.start_time.slice(0, 5) === body.end_time.slice(0, 5)) {
+      return badRequest('Başlangıç ve bitiş saati aynı olamaz.')
+    }
+    if (body.role_needed != null && (typeof body.role_needed !== 'string' || body.role_needed.length > 80)) {
+      return badRequest('Pozisyon en fazla 80 karakter olabilir.')
+    }
+    if (body.description != null && (typeof body.description !== 'string' || body.description.length > 500)) {
+      return badRequest('Açıklama en fazla 500 karakter olabilir.')
+    }
 
     const admin = createAdminClient()
     const { data, error } = await admin
       .from('open_shifts')
       .insert({
         work_date: body.work_date,
-        start_time: body.start_time,
-        end_time: body.end_time,
-        role_needed: body.role_needed ?? null,
-        description: body.description ?? null,
+        start_time: body.start_time.slice(0, 5),
+        end_time: body.end_time.slice(0, 5),
+        role_needed: body.role_needed?.trim() || null,
+        description: body.description?.trim() || null,
         status: 'open',
       })
       .select()
       .single()
+    if (error) return serverError('POST /api/open-shifts', error)
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-    // ── Tüm aktif Çalışan rolündeki çalışanlara bildirim gönder ──────────
-    // Fire-and-forget: bildirim hatası oluşturma yanıtını bloklamaz.
+    // Aktif 'Çalışan' rolündekilere tek toplu insert ile bildirim
     try {
       const shift = data
-      const dateLabel = format(new Date(shift.work_date), 'd MMMM yyyy EEEE', { locale: tr })
+      const dateLabel = format(new Date(`${shift.work_date}T12:00:00`), 'd MMMM yyyy EEEE', { locale: tr })
       const timeLabel = `${shift.start_time.slice(0, 5)} – ${shift.end_time.slice(0, 5)}`
       const roleLabel = shift.role_needed ? ` (${shift.role_needed})` : ''
 
-      // Çalışan rolündeki tüm aktif employees'ı çek
       const { data: employees } = await admin
         .from('employees')
         .select('id, roles(name)')
         .eq('active', true)
 
-      if (employees && employees.length > 0) {
-        // Yalnızca 'Çalışan' rolündekiler — yöneticiler zaten görebilir
-        const targets = employees.filter((emp) => {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const roleName = (emp as any).roles?.name ?? null
-          return roleName === ROLES.CALISAN
-        })
-
-        // Her çalışana ayrı bildirim — Promise.allSettled ile hata izole edilir
-        await Promise.allSettled(
-          targets.map((emp) =>
-            createNotification(admin, {
-              employee_id: emp.id,
-              type: 'open_shift_available',
-              title: 'Yeni Açık Vardiya',
-              message: `${dateLabel} tarihinde ${timeLabel}${roleLabel} için açık vardiya oluşturuldu. Üstlenmek için Açık Vardiyalar sayfasını ziyaret edin.`,
-              related_id: shift.id,
-            })
-          )
-        )
-      }
+      const targets = (employees ?? []).filter(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (emp) => ((emp as any).roles?.name ?? null) === ROLES.CALISAN
+      )
+      await createNotifications(
+        admin,
+        targets.map((emp) => ({
+          employee_id: emp.id as string,
+          type: 'open_shift_available' as const,
+          title: 'Yeni Açık Vardiya',
+          message: `${dateLabel} tarihinde ${timeLabel}${roleLabel} için açık vardiya oluşturuldu. Üstlenmek için Açık Vardiyalar sayfasını ziyaret edin.`,
+          related_id: shift.id,
+        }))
+      )
     } catch (notifErr) {
-      // Bildirim gönderimi başarısız olsa bile vardiya oluşturma başarılı sayılır
       console.error('[POST /api/open-shifts] bildirim gönderilemedi:', notifErr)
     }
-    // ─────────────────────────────────────────────────────────────────────
 
     return NextResponse.json({ open_shift: data }, { status: 201 })
   } catch (err) {
-    console.error('[POST /api/open-shifts]', err)
-    return NextResponse.json({ error: 'Sunucu hatası.' }, { status: 500 })
+    return serverError('POST /api/open-shifts', err)
   }
 }
 
@@ -131,21 +132,40 @@ export async function PATCH(req: NextRequest) {
   if ('response' in auth) return auth.response
 
   try {
-    const body = (await req.json()) as { id: string; status?: string; role_needed?: string; description?: string }
-    if (!body.id) return NextResponse.json({ error: 'id zorunludur.' }, { status: 400 })
+    const body = await readJson<{ id?: string; status?: string; role_needed?: string | null; description?: string | null }>(req)
+    if (!body) return badRequest('Geçersiz istek gövdesi.')
+    if (!isUuid(body.id)) return badRequest('id zorunludur.')
+    if (body.status !== undefined && body.status !== 'open' && body.status !== 'cancelled') {
+      return badRequest("status yalnızca 'open' veya 'cancelled' olabilir.")
+    }
 
     const admin = createAdminClient()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const patch: Record<string, any> = { updated_at: new Date().toISOString() }
-    if (body.status) patch.status = body.status
-    if (body.role_needed !== undefined) patch.role_needed = body.role_needed
-    if (body.description !== undefined) patch.description = body.description
+    const { data: current, error: curErr } = await admin
+      .from('open_shifts')
+      .select('id, status')
+      .eq('id', body.id)
+      .maybeSingle()
+    if (curErr) return serverError('PATCH /api/open-shifts', curErr)
+    if (!current) return notFound('Açık vardiya bulunamadı.')
+    if (current.status === 'filled') return conflict('Doldurulmuş bir vardiya değiştirilemez.')
 
-    const { data, error } = await admin.from('open_shifts').update(patch).eq('id', body.id).select().single()
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
+    if (body.status) patch.status = body.status
+    if (body.role_needed !== undefined) patch.role_needed = body.role_needed?.toString().trim().slice(0, 80) || null
+    if (body.description !== undefined) patch.description = body.description?.toString().trim().slice(0, 500) || null
+
+    // Durum hâlâ okunduğu gibiyse uygula (eşzamanlı claim ile yarış önlemi)
+    const { data, error } = await admin
+      .from('open_shifts')
+      .update(patch)
+      .eq('id', body.id)
+      .eq('status', current.status)
+      .select()
+      .maybeSingle()
+    if (error) return serverError('PATCH /api/open-shifts', error)
+    if (!data) return conflict('Vardiya bu sırada güncellendi; sayfayı yenileyin.')
     return NextResponse.json({ open_shift: data })
   } catch (err) {
-    console.error('[PATCH /api/open-shifts]', err)
-    return NextResponse.json({ error: 'Sunucu hatası.' }, { status: 500 })
+    return serverError('PATCH /api/open-shifts', err)
   }
 }

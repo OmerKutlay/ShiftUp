@@ -56,5 +56,7 @@ export interface ManualAttendanceOverride {
   break_start_at?: string | null
   break_end_at?: string | null
   clock_out_at?: string | null
+  /** Önceki (son mola hariç) molaların toplamı — dakika */
+  completed_break_minutes?: number
   exception_note: string  // zorunlu — override sebebi
 }

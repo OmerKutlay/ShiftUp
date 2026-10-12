@@ -37,7 +37,7 @@ import {
   updateEmployee,
   deleteEmployee,
   deactivateEmployee,
-} from '@/lib/employeeRepository'
+} from '@/lib/api/employees'
 import { EmployeeFormDialog } from './EmployeeFormDialog'
 import { EmployeeStatusChip } from './EmployeeStatusChip'
 import { PageHeader, ListSkeleton } from '@/components/common'

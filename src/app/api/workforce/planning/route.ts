@@ -18,7 +18,10 @@ import { createAdminClient } from '@/lib/supabaseAdmin'
 import { requireMinRole, ROLES } from '@/lib/auth'
 import { buildWeekSummary } from '@/lib/workingTimeService'
 import { getWorkingTimeConfig } from '@/lib/workingTimeConfig'
-import { format, startOfWeek, endOfWeek, addDays } from 'date-fns'
+import { getWeekDays } from '@/lib/scheduleUtils'
+import { turkeyToday } from '@/lib/dateUtils'
+import { isValidDate } from '@/lib/validation'
+import { serverError } from '@/lib/apiErrors'
 
 export async function GET(req: NextRequest) {
   // Yalnızca Müdür Yardımcısı ve üzeri erişebilir
@@ -29,17 +32,15 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const weekParam = searchParams.get('week')
 
-    // Haftayı hesapla
-    const refDate = weekParam ? new Date(weekParam) : new Date()
-    if (isNaN(refDate.getTime())) {
-      return NextResponse.json({ error: 'Geçersiz week parametresi.' }, { status: 400 })
+    // Haftayı hesapla (saat diliminden bağımsız; varsayılan: Türkiye'de bugün)
+    const ref = weekParam ?? turkeyToday()
+    if (!isValidDate(ref)) {
+      return NextResponse.json({ error: 'Geçersiz week parametresi.', code: 'VALIDATION_ERROR' }, { status: 400 })
     }
 
-    const weekStart = format(startOfWeek(refDate, { weekStartsOn: 1 }), 'yyyy-MM-dd')
-    const weekEnd = format(endOfWeek(refDate, { weekStartsOn: 1 }), 'yyyy-MM-dd')
-    const weekDays: string[] = Array.from({ length: 7 }, (_, i) =>
-      format(addDays(new Date(weekStart), i), 'yyyy-MM-dd')
-    )
+    const weekDays = getWeekDays(new Date(`${ref}T12:00:00`))
+    const weekStart = weekDays[0]
+    const weekEnd = weekDays[6]
 
     const admin = createAdminClient()
 
@@ -61,7 +62,7 @@ export async function GET(req: NextRequest) {
       .order('start_time')
 
     if (assignErr) {
-      return NextResponse.json({ error: assignErr.message }, { status: 500 })
+      return serverError('GET /api/workforce/planning', assignErr)
     }
 
     // Aktif çalışanlar (vardiyası olmayan çalışanlar da listelenmeli)
@@ -72,7 +73,7 @@ export async function GET(req: NextRequest) {
       .order('full_name')
 
     if (empErr) {
-      return NextResponse.json({ error: empErr.message }, { status: 500 })
+      return serverError('GET /api/workforce/planning', empErr)
     }
 
     // Open shifts bu hafta
@@ -139,7 +140,6 @@ export async function GET(req: NextRequest) {
       openShiftsThisWeek: openShifts ?? [],
     })
   } catch (err) {
-    console.error('[GET /api/workforce/planning]', err)
-    return NextResponse.json({ error: 'Sunucu hatası.' }, { status: 500 })
+    return serverError('GET /api/workforce/planning', err)
   }
 }

@@ -5,8 +5,8 @@ import { ShiftConflictError } from '@/types/schedule'
 // ============================================================
 // Supabase mock
 // ============================================================
-vi.mock('@/lib/supabase', () => ({
-  supabase: { from: vi.fn() },
+vi.mock('@/lib/db', () => ({
+  db: { from: vi.fn() },
 }))
 
 import {
@@ -19,7 +19,7 @@ import {
   fetchWeeklyAssignments,
   fetchAssignmentsForEmployeeOnDate,
 } from '@/lib/scheduleRepository'
-import { supabase } from '@/lib/supabase'
+import { db as supabase } from '@/lib/db'
 
 // ============================================================
 // Helpers
@@ -43,7 +43,7 @@ function makeAssignment(overrides: Partial<ShiftAssignmentWithDetails> = {}): Sh
 
 function buildChain(terminal: Record<string, unknown>) {
   const chain: Record<string, unknown> = {}
-  ;['select', 'eq', 'gte', 'lte', 'order', 'insert', 'update', 'delete', 'single'].forEach((m) => {
+  ;['select', 'eq', 'gte', 'lte', 'order', 'limit', 'insert', 'update', 'delete', 'single'].forEach((m) => {
     chain[m] = vi.fn(() => ({ ...chain, ...terminal }))
   })
   return { ...chain, ...terminal }
@@ -153,6 +153,8 @@ describe('scheduleRepository — createShiftAssignment', () => {
     // fetchAssignmentsForEmployeeOnDate → boş (çakışma yok)
     ;(supabase.from as ReturnType<typeof vi.fn>)
       .mockReturnValueOnce(buildChain({ data: [], error: null }))
+      // izin kontrolü → onaylı izin yok
+      .mockReturnValueOnce(buildChain({ data: [], error: null }))
       // insert
       .mockReturnValueOnce({
         insert: vi.fn().mockReturnThis(),
@@ -165,6 +167,33 @@ describe('scheduleRepository — createShiftAssignment', () => {
       true
     )
     expect(result.id).toBe('new-asgn')
+  })
+
+  it('önceki günün gece vardiyasıyla çakışma yakalanır', async () => {
+    ;(supabase.from as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      buildChain({
+        data: [makeAssignment({ work_date: '2026-09-27', start_time: '22:00', end_time: '06:00' })],
+        error: null,
+      })
+    )
+    await expect(
+      createShiftAssignment(
+        { employee_id: 'emp-001', shift_template_id: null, work_date: '2026-09-28', start_time: '05:00', end_time: '12:00' },
+        true
+      )
+    ).rejects.toThrow(ShiftConflictError)
+  })
+
+  it('onaylı izinli güne vardiya atanamaz', async () => {
+    ;(supabase.from as ReturnType<typeof vi.fn>)
+      .mockReturnValueOnce(buildChain({ data: [], error: null }))
+      .mockReturnValueOnce(buildChain({ data: [{ id: 'lv-1', leave_type: 'annual' }], error: null }))
+    await expect(
+      createShiftAssignment(
+        { employee_id: 'emp-001', shift_template_id: null, work_date: '2026-09-28', start_time: '09:00', end_time: '18:00' },
+        true
+      )
+    ).rejects.toThrow('onaylı izinde')
   })
 })
 

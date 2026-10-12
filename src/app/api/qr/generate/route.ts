@@ -2,16 +2,20 @@
  * POST /api/qr/generate
  *
  * İki mod:
- *   kiosk: true → Evrensel kiosk QR (employee/action içermez, yönetici veya sistem çağırır)
- *   kiosk: false/undefined → Klasik employee bazlı QR (geriye dönük uyumluluk)
+ *   kiosk: true → Evrensel kiosk QR (yalnızca Müdür Yardımcısı+ — kiosk ekranı)
+ *   kiosk: false/undefined → Klasik çalışan bazlı QR (yalnızca Müdür Yardımcısı+)
  *
- * FAZ 8: Rate limiting, employee aktiflik kontrolü.
+ * Çalışanlar QR üretemez; aksi halde evden kendi ürettikleri kodu okutarak
+ * mağazada bulunma şartını atlayabilirlerdi.
+ * Token ömrü en fazla 60 sn — ekran fotoğrafıyla uzaktan okutma penceresini daraltır.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { generateQrToken, generateKioskQrToken, QrTokenError } from '@/lib/qrTokenService'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { checkRateLimit } from '@/lib/rateLimiter'
-import { requireAuth } from '@/lib/auth'
+import { requireMinRole, ROLES } from '@/lib/auth'
+import { readJson, serverError } from '@/lib/apiErrors'
+import { isUuid } from '@/lib/validation'
 import type { GenerateQrRequest } from '@/types/qr'
 
 const VALID_ACTIONS = ['clock_in', 'break_start', 'break_end', 'clock_out'] as const
@@ -19,32 +23,32 @@ const RATE_LIMIT_MAX = 20
 const RATE_LIMIT_WINDOW_MS = 60 * 1000
 // Kiosk 10 sn'de bir + her okutmada yeni QR üretir; yoğun vardiya değişimlerinde de yetmeli
 const KIOSK_RATE_LIMIT_MAX = 120
+const MAX_TTL_SECONDS = 60
 
 export async function POST(req: NextRequest) {
-  // Authentication zorunlu
-  const auth = await requireAuth(req)
+  const auth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
   if ('response' in auth) return auth.response
 
   try {
-    const body = (await req.json()) as Partial<GenerateQrRequest>
-    const ttl = body.ttl_seconds && body.ttl_seconds > 0 ? Math.min(body.ttl_seconds, 300) : 60
+    const body = (await readJson<Partial<GenerateQrRequest>>(req)) ?? {}
+    const ttl =
+      typeof body.ttl_seconds === 'number' && body.ttl_seconds > 0
+        ? Math.min(body.ttl_seconds, MAX_TTL_SECONDS)
+        : MAX_TTL_SECONDS
 
     // ── Kiosk modu ────────────────────────────────────────────
     if (body.kiosk === true) {
-      const rateLimitKey = `qr_gen:kiosk`
-      const rateCheck = checkRateLimit(rateLimitKey, KIOSK_RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS)
+      // Kiosk cihazını çalıştıran yönetici bazlı limit (global anahtar başkalarınca tüketilemez)
+      const rateCheck = await checkRateLimit(`qr_gen:kiosk:${auth.employee.id}`, KIOSK_RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS)
       if (!rateCheck.allowed) {
-        return NextResponse.json(
-          { error: 'Çok fazla QR talebi.', code: 'RATE_LIMITED' },
-          { status: 429 }
-        )
+        return NextResponse.json({ error: 'Çok fazla QR talebi.', code: 'RATE_LIMITED' }, { status: 429 })
       }
       const result = await generateKioskQrToken(ttl)
       return NextResponse.json(result, { status: 201 })
     }
 
     // ── Klasik mod ────────────────────────────────────────────
-    if (!body.employee_id || typeof body.employee_id !== 'string') {
+    if (!isUuid(body.employee_id)) {
       return NextResponse.json(
         { error: 'employee_id veya kiosk:true zorunludur.', code: 'VALIDATION_ERROR' },
         { status: 400 }
@@ -52,14 +56,10 @@ export async function POST(req: NextRequest) {
     }
 
     if (!body.action_type || !(VALID_ACTIONS as readonly string[]).includes(body.action_type)) {
-      return NextResponse.json(
-        { error: 'Geçersiz action_type.', code: 'VALIDATION_ERROR' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Geçersiz action_type.', code: 'VALIDATION_ERROR' }, { status: 400 })
     }
 
-    const rateLimitKey = `qr_gen:${body.employee_id}`
-    const rateCheck = checkRateLimit(rateLimitKey, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS)
+    const rateCheck = await checkRateLimit(`qr_gen:${auth.employee.id}`, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS)
     if (!rateCheck.allowed) {
       return NextResponse.json(
         {
@@ -78,7 +78,8 @@ export async function POST(req: NextRequest) {
       .eq('id', body.employee_id)
       .maybeSingle()
 
-    if (empError || !employee) {
+    if (empError) return serverError('POST /api/qr/generate', empError)
+    if (!employee) {
       return NextResponse.json({ error: 'Çalışan bulunamadı.', code: 'EMPLOYEE_NOT_FOUND' }, { status: 404 })
     }
     if (!employee.active) {
@@ -89,9 +90,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(result, { status: 201 })
   } catch (err) {
     if (err instanceof QrTokenError) {
-      return NextResponse.json({ error: err.message, code: err.code }, { status: 400 })
+      return serverError('POST /api/qr/generate', err, err.message)
     }
-    console.error('[/api/qr/generate]', err)
-    return NextResponse.json({ error: 'Sunucu hatası.', code: 'UNKNOWN' }, { status: 500 })
+    return serverError('POST /api/qr/generate', err)
   }
 }

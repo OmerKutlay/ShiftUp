@@ -1,31 +1,45 @@
 /**
  * GET /api/dashboard
- * Ana sayfa için özet istatistikler — FAZ 9.
- * Tek sorguda tüm dashboard verilerini döner.
+ * Genel Bakış ekranı özet istatistikleri (Müdür Yardımcısı+).
+ * "Bugün" Türkiye saatine göredir.
  */
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
-import { format } from 'date-fns'
+import { requireMinRole, ROLES } from '@/lib/auth'
+import { serverError } from '@/lib/apiErrors'
+import { turkeyToday } from '@/lib/dateUtils'
 
-export async function GET() {
+interface TodayShift {
+  id: string
+  employee_id: string
+  start_time: string
+  end_time: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  employees: any
+}
+
+interface TodayAttendance {
+  id: string
+  employee_id: string
+  shift_assignment_id: string
+  status: string
+  clock_in_at: string | null
+  clock_out_at: string | null
+}
+
+export async function GET(req: NextRequest) {
+  const auth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
+  if ('response' in auth) return auth.response
+
   try {
     const admin = createAdminClient()
-    const today = format(new Date(), 'yyyy-MM-dd')
+    const today = turkeyToday()
 
-    // Paralel sorgular — performans için
-    const [
-      employeesResult,
-      todayShiftsResult,
-      todayAttendanceResult,
-      pendingLeavesResult,
-    ] = await Promise.all([
-      // 1. Aktif çalışan sayısı
+    const [employeesResult, todayShiftsResult, pendingLeavesResult] = await Promise.all([
       admin
         .from('employees')
         .select('id', { count: 'exact', head: true })
         .eq('active', true),
-
-      // 2. Bugünkü vardiyalar (çalışan bilgisiyle)
       admin
         .from('shift_assignments')
         .select(`
@@ -34,21 +48,6 @@ export async function GET() {
         `)
         .eq('work_date', today)
         .order('start_time'),
-
-      // 3. Bugünkü attendance kayıtları
-      admin
-        .from('attendance_records')
-        .select('id, employee_id, shift_assignment_id, status, clock_in_at, clock_out_at')
-        .in(
-          'shift_assignment_id',
-          // sub-select benzeri: sadece bugünkü shift_assignment id'leri
-          // Supabase'de doğrudan subquery yok, join üzerinden yapıyoruz
-          // Bu yüzden tüm kayıtları çekip client tarafında filtreleriz
-          // Önce shift ids çekeceğiz ayrıca
-          ['__placeholder__']  // aşağıda override edilecek
-        ),
-
-      // 4. Bekleyen izin sayısı
       admin
         .from('leave_requests')
         .select('id, employee_id, leave_type, start_date, end_date, employees(full_name, role)', { count: 'exact' })
@@ -56,41 +55,25 @@ export async function GET() {
         .order('created_at', { ascending: true })
         .limit(5),
     ])
+    for (const r of [employeesResult, todayShiftsResult, pendingLeavesResult]) {
+      if (r.error) return serverError('GET /api/dashboard', r.error)
+    }
 
-    // Bugünkü shift id'leri
-    const todayShifts = (todayShiftsResult.data ?? []) as Array<{
-      id: string
-      employee_id: string
-      start_time: string
-      end_time: string
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      employees: any
-    }>
+    const todayShifts = (todayShiftsResult.data ?? []) as TodayShift[]
     const todayShiftIds = todayShifts.map((s) => s.id)
 
-    // Bugünkü attendance kayıtlarını gerçek shift ids ile sorgula
-    let todayAttendance: Array<{
-      id: string
-      employee_id: string
-      shift_assignment_id: string
-      status: string
-      clock_in_at: string | null
-      clock_out_at: string | null
-    }> = []
-
+    let todayAttendance: TodayAttendance[] = []
     if (todayShiftIds.length > 0) {
-      const { data: attData } = await admin
+      const { data: attData, error: attErr } = await admin
         .from('attendance_records')
         .select('id, employee_id, shift_assignment_id, status, clock_in_at, clock_out_at')
         .in('shift_assignment_id', todayShiftIds)
-
-      todayAttendance = (attData ?? []) as typeof todayAttendance
+      if (attErr) return serverError('GET /api/dashboard', attErr)
+      todayAttendance = (attData ?? []) as TodayAttendance[]
     }
 
-    // Attendance lookup map
     const attByShift = new Map(todayAttendance.map((a) => [a.shift_assignment_id, a]))
 
-    // Bugünkü kadro durumu
     const todayRoster = todayShifts.map((shift) => {
       const att = attByShift.get(shift.id)
       return {
@@ -105,7 +88,6 @@ export async function GET() {
       }
     })
 
-    // İstatistikler
     const working = todayAttendance.filter(
       (a) => a.status === 'working' || a.status === 'working_after_break'
     ).length
@@ -124,10 +106,9 @@ export async function GET() {
         pending_leaves: pendingLeavesResult.count ?? 0,
       },
       today_roster: todayRoster,
-      pending_leaves: (pendingLeavesResult.data ?? []),
+      pending_leaves: pendingLeavesResult.data ?? [],
     })
   } catch (err) {
-    console.error('[GET /api/dashboard]', err)
-    return NextResponse.json({ error: 'Sunucu hatası.', code: 'UNKNOWN' }, { status: 500 })
+    return serverError('GET /api/dashboard', err)
   }
 }

@@ -1,184 +1,198 @@
 /**
- * timeCorrectionService — Manuel mesai düzeltme uygulama mantığı
+ * timeCorrectionService — Manuel mesai düzeltme uygulama mantığı (server).
  *
  * Hem çalışan talebi onayında (review/route.ts) hem yönetici doğrudan
  * girişinde (time-correction/route.ts POST direct) kullanılır.
  *
  * Davranış:
- *   1. shift_assignments: varsa güncelle, yoksa oluştur.
- *   2. attendance_records: varsa clock_in_at / clock_out_at'ı koru, yoksa
- *      manual correction saatlerinden ISO timestamp üret ve kayıt oluştur.
- *      Bu sayede /api/reports/my'daki worked_minutes doğru hesaplanır.
- *   3. Working-time validation: uyarı loglanır, işlemi engellemez.
+ *   1. Vardiya (plan) KORUNUR. O gün plan varsa düzeltme en çok örtüşen vardiyanın
+ *      devam kaydına yazılır; plan yoksa (planlanmamış çalışma) düzeltme saatleriyle
+ *      bir vardiya oluşturulur. Böylece planlanan ↔ fiili karşılaştırması bozulmaz.
+ *   2. Devam kaydı: giriş/çıkış düzeltilmiş saatlere ayarlanır, çıkış girişten
+ *      küçükse ertesi gün sayılır (gece vardiyası). Mola, verilmediyse İş Kanunu
+ *      Md. 68 yasal asgarisi olarak işlenir.
+ *   3. Çalışma süresi ihlalleri checkCorrectionViolations ile önceden hesaplanır;
+ *      route'lar yöneticinin açık onayı olmadan ihlalli düzeltmeyi uygulamaz.
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { grossMins, statutoryMinBreakMins } from '@/lib/laborLaw'
+import { getWorkingTimeConfig } from '@/lib/workingTimeConfig'
+import { validateShiftAssignment, type WorkingTimeViolation } from '@/lib/workingTimeService'
+import { getWeekDays } from '@/lib/scheduleUtils'
+import { addDaysToDateString } from '@/lib/dateUtils'
+import type { EmploymentType } from '@/types/employee'
 
-interface ApplyParams {
+export interface ApplyParams {
   admin: SupabaseClient
   employeeId: string
   date: string         // 'YYYY-MM-DD'
   startTime: string    // 'HH:MM'
-  endTime: string      // 'HH:MM'
+  endTime: string      // 'HH:MM' (startTime'dan küçükse ertesi gün)
+  /** Kullanılan toplam mola (dk). Verilmezse yasal asgari uygulanır. */
+  breakMinutes?: number | null
 }
 
-interface ApplyResult {
-  warnings: string[]
+export interface ApplyResult {
+  attendanceRecordId: string
+  shiftAssignmentId: string
+  createdShift: boolean
+  breakMinutes: number
 }
 
 /**
  * HH:MM + YYYY-MM-DD (Europe/Istanbul duvar saati) → ISO timestamp.
  * Türkiye 2016'dan beri sabit UTC+3; QR kayıtlarıyla tutarlı olması için offset açıkça eklenir.
  */
-function toISO(date: string, time: string): string {
-  return `${date}T${time}:00.000+03:00`
+export function toTurkeyISO(date: string, time: string): string {
+  return new Date(`${date}T${time.slice(0, 5)}:00.000+03:00`).toISOString()
 }
 
-export async function applyTimeCorrection(params: ApplyParams): Promise<ApplyResult> {
+/** Düzeltme saatlerinin giriş/çıkış ISO'ları (gece yarısını geçen düzeltme desteklenir) */
+export function correctionTimestamps(date: string, startTime: string, endTime: string) {
+  const overnight = endTime.slice(0, 5) <= startTime.slice(0, 5)
+  return {
+    clockIn: toTurkeyISO(date, startTime),
+    clockOut: toTurkeyISO(overnight ? addDaysToDateString(date, 1) : date, endTime),
+  }
+}
+
+function toMins(t: string) {
+  const [h, m] = t.slice(0, 5).split(':').map(Number)
+  return h * 60 + m
+}
+
+function overlapMins(aS: string, aE: string, bS: string, bE: string): number {
+  const s1 = toMins(aS), s2 = toMins(bS)
+  const e1 = s1 + grossMins(aS, aE), e2 = s2 + grossMins(bS, bE)
+  return Math.max(0, Math.min(e1, e2) - Math.max(s1, s2))
+}
+
+interface ShiftRow { id: string; work_date: string; start_time: string; end_time: string }
+
+/** O günün vardiyalarından düzeltmeyle en çok örtüşeni (yoksa ilkini) seçer */
+function pickShift(shifts: ShiftRow[], startTime: string, endTime: string): ShiftRow | null {
+  if (shifts.length === 0) return null
+  return [...shifts].sort(
+    (a, b) =>
+      overlapMins(b.start_time, b.end_time, startTime, endTime) -
+        overlapMins(a.start_time, a.end_time, startTime, endTime) ||
+      a.start_time.localeCompare(b.start_time)
+  )[0]
+}
+
+/**
+ * Düzeltmenin çalışma süresi kurallarına etkisi (uygulamadan önce).
+ * O haftanın ve komşu günlerin diğer vardiyaları + düzeltilmiş saatler kontrol edilir.
+ */
+export async function checkCorrectionViolations(
+  params: Omit<ApplyParams, 'breakMinutes'>
+): Promise<{ errors: WorkingTimeViolation[]; warnings: WorkingTimeViolation[] }> {
   const { admin, employeeId, date, startTime, endTime } = params
-  const warnings: string[] = []
+  const weekDays = getWeekDays(new Date(`${date}T12:00:00`))
+  const weekStart = weekDays[0]
+  const weekEnd = weekDays[6]
 
-  // ── 1. shift_assignments güncelle / oluştur ─────────────────
-  try {
-    const { data: existing } = await admin
-      .from('shift_assignments')
-      .select('id')
-      .eq('employee_id', employeeId)
-      .eq('work_date', date)
-      .limit(1)
-
-    if (existing && existing.length > 0) {
-      const { error: upErr } = await admin
-        .from('shift_assignments')
-        .update({
-          start_time: startTime,
-          end_time: endTime,
-          shift_template_id: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', existing[0].id)
-
-      if (upErr) warnings.push(`shift_assignment güncellenemedi: ${upErr.message}`)
-    } else {
-      const { error: insErr } = await admin
-        .from('shift_assignments')
-        .insert({
-          employee_id:       employeeId,
-          shift_template_id: null,
-          work_date:         date,
-          start_time:        startTime,
-          end_time:          endTime,
-          is_on_leave:       false,
-        })
-
-      if (insErr) warnings.push(`shift_assignment oluşturulamadı: ${insErr.message}`)
-    }
-  } catch (e) {
-    warnings.push(`shift_assignment işlemi başarısız: ${String(e)}`)
-  }
-
-  // ── 2. attendance_records güncelle / oluştur ─────────────────
-  // Çalışma özeti worked_minutes'i buradan hesaplıyor.
-  try {
-    // Bugünkü assignment'ı bul (az önce güncelledik/oluşturduk)
-    const { data: asgn } = await admin
-      .from('shift_assignments')
-      .select('id')
-      .eq('employee_id', employeeId)
-      .eq('work_date', date)
-      .limit(1)
-
-    if (asgn && asgn.length > 0) {
-      const assignmentId = asgn[0].id
-      const clockInISO  = toISO(date, startTime)
-      const clockOutISO = toISO(date, endTime)
-
-      const { data: recExisting } = await admin
-        .from('attendance_records')
-        .select('id, clock_in_at, clock_out_at')
-        .eq('shift_assignment_id', assignmentId)
-        .maybeSingle()
-
-      if (recExisting) {
-        // Mevcut kayıt var — sadece clock zamanlarını güncelle
-        const { error: recUpErr } = await admin
-          .from('attendance_records')
-          .update({
-            clock_in_at:        clockInISO,
-            clock_out_at:       clockOutISO,
-            status:             'clocked_out',
-            verification_method:'manual_correction',
-            updated_at:          new Date().toISOString(),
-          })
-          .eq('id', recExisting.id)
-
-        if (recUpErr) warnings.push(`attendance_record güncellenemedi: ${recUpErr.message}`)
-      } else {
-        // Kayıt yok — oluştur
-        const { error: recInsErr } = await admin
-          .from('attendance_records')
-          .insert({
-            employee_id:        employeeId,
-            shift_assignment_id: assignmentId,
-            status:             'clocked_out',
-            clock_in_at:        clockInISO,
-            clock_out_at:       clockOutISO,
-            verification_method:'manual_correction',
-          })
-
-        if (recInsErr) warnings.push(`attendance_record oluşturulamadı: ${recInsErr.message}`)
-      }
-    }
-  } catch (e) {
-    warnings.push(`attendance_record işlemi başarısız: ${String(e)}`)
-  }
-
-  // ── 3. Working-time uyarıları (non-blocking) ─────────────────
-  try {
-    const { getWorkingTimeConfig } = await import('@/lib/workingTimeConfig')
-    const { validateShiftAssignment } = await import('@/lib/workingTimeService')
-    const { startOfWeek, endOfWeek, format } = await import('date-fns')
-    const config = getWorkingTimeConfig()
-
-    const dateObj  = new Date(date)
-    const wkStart  = format(startOfWeek(dateObj, { weekStartsOn: 1 }), 'yyyy-MM-dd')
-    const wkEnd    = format(endOfWeek(dateObj,   { weekStartsOn: 1 }), 'yyyy-MM-dd')
-
-    const { data: weekShifts } = await admin
+  const [{ data: shifts, error }, { data: emp }] = await Promise.all([
+    admin
       .from('shift_assignments')
       .select('id, work_date, start_time, end_time')
       .eq('employee_id', employeeId)
-      .gte('work_date', wkStart)
-      .lte('work_date', wkEnd)
+      .gte('work_date', addDaysToDateString(weekStart, -1))
+      .lte('work_date', addDaysToDateString(weekEnd, 1)),
+    admin.from('employees').select('employment_type').eq('id', employeeId).maybeSingle(),
+  ])
+  if (error) throw error
 
-    const { data: empRaw } = await admin
-      .from('employees')
-      .select('employment_type')
-      .eq('id', employeeId)
-      .maybeSingle()
+  const all = (shifts ?? []) as ShiftRow[]
+  const target = pickShift(all.filter((s) => s.work_date === date), startTime, endTime)
 
-    const result = validateShiftAssignment({
-      newDate: date,
-      newStart: startTime,
-      newEnd: endTime,
-      existingShifts: (weekShifts ?? [])
-        .filter((s: { work_date: string }) => s.work_date !== date)   // kendisini hariç tut
-        .map((s: { id: string; work_date: string; start_time: string; end_time: string }) => ({
-          id: s.id, work_date: s.work_date, start_time: s.start_time, end_time: s.end_time,
-        })),
-      weekStart: wkStart,
-      weekEnd: wkEnd,
-      config,
-      employment_type: ((empRaw?.employment_type ?? 'full_time') as import('@/types/employee').EmploymentType),
-    })
+  const result = validateShiftAssignment({
+    newDate: date,
+    newStart: startTime,
+    newEnd: endTime,
+    existingShifts: all,
+    excludeId: target?.id,
+    weekStart,
+    weekEnd,
+    config: getWorkingTimeConfig(),
+    employment_type: ((emp?.employment_type ?? 'full_time') as EmploymentType),
+  })
+  return { errors: result.errors, warnings: result.warnings }
+}
 
-    const allMessages = [...result.errors, ...result.warnings].map((v) => v.message)
-    allMessages.forEach((m) => {
-      warnings.push(m)
-      console.warn('[timeCorrectionService] working-time warning (non-blocking):', m)
-    })
-  } catch (wtErr) {
-    console.warn('[timeCorrectionService] working-time check skipped:', wtErr)
+/**
+ * Düzeltmeyi uygular. DB hatasında fırlatır (çağıran route isteği geri alır).
+ */
+export async function applyTimeCorrection(params: ApplyParams): Promise<ApplyResult> {
+  const { admin, employeeId, date, startTime, endTime } = params
+  const start = startTime.slice(0, 5)
+  const end = endTime.slice(0, 5)
+
+  // ── 1. Vardiya (plan) — korunur; yoksa oluşturulur ─────────
+  const { data: dayShifts, error: shErr } = await admin
+    .from('shift_assignments')
+    .select('id, work_date, start_time, end_time')
+    .eq('employee_id', employeeId)
+    .eq('work_date', date)
+  if (shErr) throw shErr
+
+  let shift = pickShift((dayShifts ?? []) as ShiftRow[], start, end)
+  let createdShift = false
+  if (!shift) {
+    const { data: created, error: insErr } = await admin
+      .from('shift_assignments')
+      .insert({
+        employee_id: employeeId,
+        shift_template_id: null,
+        work_date: date,
+        start_time: start,
+        end_time: end,
+        is_on_leave: false,
+      })
+      .select('id, work_date, start_time, end_time')
+      .single()
+    if (insErr) throw insErr
+    shift = created as ShiftRow
+    createdShift = true
   }
 
-  return { warnings }
+  // ── 2. Devam kaydı ──────────────────────────────────────────
+  const { clockIn, clockOut } = correctionTimestamps(date, start, end)
+  const breakMinutes = Math.max(
+    0,
+    Math.round(params.breakMinutes ?? statutoryMinBreakMins(grossMins(start, end)))
+  )
+  const fields = {
+    clock_in_at: clockIn,
+    clock_out_at: clockOut,
+    break_start_at: null,
+    break_end_at: null,
+    completed_break_minutes: breakMinutes,
+    status: 'clocked_out',
+    verification_method: 'manual_correction',
+  }
+
+  const { data: existing, error: exErr } = await admin
+    .from('attendance_records')
+    .select('id')
+    .eq('shift_assignment_id', shift.id)
+    .maybeSingle()
+  if (exErr) throw exErr
+
+  let recordId: string
+  if (existing) {
+    const { error: upErr } = await admin.from('attendance_records').update(fields).eq('id', existing.id)
+    if (upErr) throw upErr
+    recordId = existing.id as string
+  } else {
+    const { data: rec, error: recErr } = await admin
+      .from('attendance_records')
+      .insert({ employee_id: employeeId, shift_assignment_id: shift.id, ...fields })
+      .select('id')
+      .single()
+    if (recErr) throw recErr
+    recordId = rec.id as string
+  }
+
+  return { attendanceRecordId: recordId, shiftAssignmentId: shift.id, createdShift, breakMinutes }
 }
