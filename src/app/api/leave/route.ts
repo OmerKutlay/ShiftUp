@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
       .select(`
         id, employee_id, leave_type, start_date, end_date,
         reason, status, reviewer_note, reviewed_at, created_at, updated_at,
-        employees ( id, full_name, role )
+        employees!employee_id ( id, full_name, role )
       `)
       .order('created_at', { ascending: false })
 
