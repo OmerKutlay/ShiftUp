@@ -11,6 +11,7 @@ import {
 } from '@/lib/notificationRepository'
 import type { CreateNotificationPayload, NotificationType } from '@/types/notification'
 import { requireAuth, requireMinRole, ROLES, MANAGER_ROLES } from '@/lib/auth'
+import { scanMissedAttendanceThrottled } from '@/lib/attendanceAlerts'
 
 const VALID_TYPES: NotificationType[] = [
   'shift_reminder',
@@ -22,6 +23,14 @@ const VALID_TYPES: NotificationType[] = [
   'time_correction_submitted',
   'time_correction_approved',
   'time_correction_rejected',
+  'shift_swap_submitted',
+  'shift_swap_approved',
+  'shift_swap_rejected',
+  'open_shift_claimed',
+  'attendance_late_clock_in',
+  'attendance_late_clock_out',
+  'attendance_missed_clock_in',
+  'attendance_missed_clock_out',
 ]
 
 // ─── GET ────────────────────────────────────────────────────────
@@ -43,6 +52,10 @@ export async function GET(req: NextRequest) {
 
     const limit = limitParam ? Math.min(parseInt(limitParam, 10) || 50, 100) : 50
     const admin = createAdminClient()
+
+    // Yönetici bildirimlerini çekerken okutulmamış giriş/çıkış taraması (dakikada en fazla bir kez)
+    if (isManager) await scanMissedAttendanceThrottled(admin)
+
     const notifications = await getNotificationsByEmployee(admin, employeeId, limit)
 
     return NextResponse.json({ notifications })
