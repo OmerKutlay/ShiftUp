@@ -8,6 +8,7 @@ import type {
   AttendanceReportRow,
   AttendanceReportFilters,
   AttendanceReportSummary,
+  AttendanceReportStatus,
 } from '@/types/report'
 
 // ============================================================
@@ -40,6 +41,16 @@ function calcWorkedMinutes(row: {
   return Math.max(0, total - breakMin)
 }
 
+/**
+ * Vardiya başlangıç anı (epoch ms). Vardiya saatleri Türkiye yerel saatidir;
+ * Türkiye 2016'dan beri sabit UTC+3 (bkz. attendanceAlerts.getShiftWindow).
+ */
+function shiftStartMs(workDate: string, startTime: string): number {
+  return new Date(`${workDate}T${startTime.slice(0, 5)}:00+03:00`).getTime()
+}
+
+const REPORT_PAGE_SIZE = 1000
+
 // ============================================================
 // Queries
 // ============================================================
@@ -65,6 +76,64 @@ export async function fetchAttendanceReport(
   if (daysDiff > 366) {
     throw new Error('Tarih aralığı en fazla 366 gün olabilir.')
   }
+  // PostgREST max_rows (1000) sınırını aşan aralıklar için sayfalı çekim
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data: any[] = []
+  for (let from = 0; ; from += REPORT_PAGE_SIZE) {
+    const { data: page, error } = await buildReportQuery(filters)
+      .range(from, from + REPORT_PAGE_SIZE - 1)
+    if (error) throw new Error(`Rapor yüklenemedi: ${error.message}`)
+    if (!page || page.length === 0) break
+    data.push(...page)
+    if (page.length < REPORT_PAGE_SIZE) break
+  }
+
+  const now = Date.now()
+
+  return data.map((row) => {
+    // attendance_records Supabase'den array olarak gelir (to-many)
+    const rec = Array.isArray(row.attendance_records)
+      ? (row.attendance_records[0] ?? null)
+      : (row.attendance_records ?? null)
+
+    const breakMin = diffMinutes(rec?.break_start_at ?? null, rec?.break_end_at ?? null)
+    const workedMin = calcWorkedMinutes({
+      clock_in_at: rec?.clock_in_at ?? null,
+      break_start_at: rec?.break_start_at ?? null,
+      break_end_at: rec?.break_end_at ?? null,
+      clock_out_at: rec?.clock_out_at ?? null,
+    })
+
+    const isOnLeave = (row.is_on_leave ?? false) as boolean
+    let status: AttendanceReportStatus = rec?.status ?? 'shift_waiting'
+    if (!rec) {
+      if (isOnLeave) status = 'on_leave'
+      else if (shiftStartMs(row.work_date, row.start_time) > now) status = 'upcoming'
+    }
+
+    return {
+      record_id: rec?.id ?? null,
+      employee_id: row.employee_id,
+      full_name: row.employees?.full_name ?? '—',
+      work_date: row.work_date,
+      shift_name: row.shift_templates?.name ?? null,
+      start_time: row.start_time,
+      end_time: row.end_time,
+      status,
+      is_on_leave: isOnLeave,
+      clock_in_at: rec?.clock_in_at ?? null,
+      break_start_at: rec?.break_start_at ?? null,
+      break_end_at: rec?.break_end_at ?? null,
+      clock_out_at: rec?.clock_out_at ?? null,
+      worked_minutes: workedMin,
+      break_minutes: breakMin,
+      verification_method: rec?.verification_method ?? null,
+      exception_note: rec?.exception_note ?? null,
+    } satisfies AttendanceReportRow
+  })
+}
+
+function buildReportQuery(filters: AttendanceReportFilters) {
   let query = supabase
     .from('shift_assignments')
     .select(`
@@ -73,6 +142,7 @@ export async function fetchAttendanceReport(
       work_date,
       start_time,
       end_time,
+      is_on_leave,
       shift_templates ( name ),
       employees ( id, full_name ),
       attendance_records (
@@ -90,49 +160,14 @@ export async function fetchAttendanceReport(
     .lte('work_date', filters.date_to)
     .order('work_date', { ascending: true })
     .order('start_time', { ascending: true })
+    // Sayfalar arası kararlı sıralama için benzersiz anahtar
+    .order('id', { ascending: true })
 
   if (filters.employee_id) {
     query = query.eq('employee_id', filters.employee_id)
   }
 
-  const { data, error } = await query
-
-  if (error) throw new Error(`Rapor yüklenemedi: ${error.message}`)
-  if (!data) return []
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return data.map((row: any) => {
-    // attendance_records Supabase'den array olarak gelir (to-many)
-    const rec = Array.isArray(row.attendance_records)
-      ? (row.attendance_records[0] ?? null)
-      : (row.attendance_records ?? null)
-
-    const breakMin = diffMinutes(rec?.break_start_at ?? null, rec?.break_end_at ?? null)
-    const workedMin = calcWorkedMinutes({
-      clock_in_at: rec?.clock_in_at ?? null,
-      break_start_at: rec?.break_start_at ?? null,
-      break_end_at: rec?.break_end_at ?? null,
-      clock_out_at: rec?.clock_out_at ?? null,
-    })
-
-    return {
-      employee_id: row.employee_id,
-      full_name: row.employees?.full_name ?? '—',
-      work_date: row.work_date,
-      shift_name: row.shift_templates?.name ?? null,
-      start_time: row.start_time,
-      end_time: row.end_time,
-      status: rec?.status ?? 'shift_waiting',
-      clock_in_at: rec?.clock_in_at ?? null,
-      break_start_at: rec?.break_start_at ?? null,
-      break_end_at: rec?.break_end_at ?? null,
-      clock_out_at: rec?.clock_out_at ?? null,
-      worked_minutes: workedMin,
-      break_minutes: breakMin,
-      verification_method: rec?.verification_method ?? null,
-      exception_note: rec?.exception_note ?? null,
-    } satisfies AttendanceReportRow
-  })
+  return query
 }
 
 /**
@@ -148,7 +183,10 @@ export function buildReportSummary(rows: AttendanceReportRow[]): AttendanceRepor
         employee_id: row.employee_id,
         full_name: row.full_name,
         total_shifts: 0,
+        expected_shifts: 0,
         attended_shifts: 0,
+        on_leave_count: 0,
+        upcoming_count: 0,
         total_worked_minutes: 0,
         total_break_minutes: 0,
         clocked_out_count: 0,
@@ -157,9 +195,14 @@ export function buildReportSummary(rows: AttendanceReportRow[]): AttendanceRepor
     }
     const summary = byEmployee.get(row.employee_id)!
     summary.total_shifts++
-    if (row.status !== 'shift_waiting') summary.attended_shifts++
+    if (row.status === 'on_leave') summary.on_leave_count++
+    else if (row.status === 'upcoming') summary.upcoming_count++
+    else {
+      summary.expected_shifts++
+      if (row.status === 'shift_waiting') summary.no_show_count++
+      else summary.attended_shifts++
+    }
     if (row.status === 'clocked_out') summary.clocked_out_count++
-    if (row.status === 'shift_waiting') summary.no_show_count++
     summary.total_worked_minutes += row.worked_minutes ?? 0
     summary.total_break_minutes += row.break_minutes ?? 0
   }
@@ -205,6 +248,8 @@ export function exportReportToCsv(rows: AttendanceReportRow[]): string {
     on_break: 'Molada',
     working_after_break: 'Çalışıyor',
     clocked_out: 'Çıkış Yaptı',
+    on_leave: 'İzinli',
+    upcoming: 'Başlamadı',
   }
 
   const headers = [

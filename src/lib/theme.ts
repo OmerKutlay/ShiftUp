@@ -80,6 +80,20 @@ export const theme = createTheme({
         },
       },
     },
+    // Sayfa yükleme skeleton'ları — koyu arka planda yumuşak wave efekti
+    MuiSkeleton: {
+      defaultProps: { animation: 'wave' },
+      styleOverrides: {
+        root: {
+          backgroundColor: 'rgba(148, 163, 184, 0.10)', // slate-400 @ 10%
+        },
+        wave: {
+          '&::after': {
+            background: 'linear-gradient(90deg, transparent, rgba(148, 163, 184, 0.08), transparent)',
+          },
+        },
+      },
+    },
     // ListItemButton touch target (nav items)
     MuiListItemButton: {
       styleOverrides: {
