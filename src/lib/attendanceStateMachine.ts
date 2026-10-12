@@ -1,4 +1,5 @@
 import type { AttendanceStatus } from '@/types/attendance'
+import { diffMinutes, type AttendanceTimes } from '@/lib/attendanceDurations'
 
 // ============================================================
 // Attendance State Machine
@@ -96,22 +97,39 @@ export interface AttendanceFieldPatch {
   status: AttendanceStatus
   clock_in_at?: string
   break_start_at?: string
-  break_end_at?: string
+  break_end_at?: string | null
   clock_out_at?: string
+  completed_break_minutes?: number
 }
+
+/** Yeni mola başlarken önceki molayı biriktirmek için gereken alanlar */
+export type BreakFields = Pick<AttendanceTimes, 'break_start_at' | 'break_end_at' | 'completed_break_minutes'>
 
 export function buildFieldPatch(
   currentStatus: AttendanceStatus,
   action: AttendanceAction,
-  now: string
+  now: string,
+  record?: BreakFields | null
 ): AttendanceFieldPatch {
   const nextStatus = applyAction(currentStatus, action)
 
   switch (action) {
     case 'clock_in':
       return { status: nextStatus, clock_in_at: now }
-    case 'start_break':
+    case 'start_break': {
+      // İkinci ve sonraki molalar: önceki molanın süresi biriktirilir,
+      // break_start_at / break_end_at yeni molayı gösterir.
+      const prevBreak = record ? diffMinutes(record.break_start_at, record.break_end_at) : null
+      if (record && prevBreak !== null) {
+        return {
+          status: nextStatus,
+          break_start_at: now,
+          break_end_at: null,
+          completed_break_minutes: (record.completed_break_minutes ?? 0) + prevBreak,
+        }
+      }
       return { status: nextStatus, break_start_at: now }
+    }
     case 'end_break':
       return { status: nextStatus, break_end_at: now }
     case 'clock_out':

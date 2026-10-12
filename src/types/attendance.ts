@@ -46,6 +46,7 @@ export interface AttendanceRecord {
   break_start_at: string | null
   break_end_at: string | null
   clock_out_at: string | null
+  completed_break_minutes: number  // önceki molaların toplamı (son mola hariç)
   verification_method: string | null
   exception_note: string | null
   created_at: string

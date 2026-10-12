@@ -3,171 +3,57 @@
  * Attendance raporları ve özet istatistikler için veri katmanı.
  * Tüm hesaplamalar burada yapılır — UI sadece görüntüler.
  */
-import { supabase } from '@/lib/supabase'
 import type {
   AttendanceReportRow,
   AttendanceReportFilters,
   AttendanceReportSummary,
-  AttendanceReportStatus,
 } from '@/types/report'
 
 // ============================================================
-// Zaman yardımcıları
+// Doğrulama
 // ============================================================
 
-/**
- * İki ISO timestamp arasındaki farkı dakika cinsinden hesaplar.
- * null gönderilirse null döner.
- */
-function diffMinutes(from: string | null, to: string | null): number | null {
-  if (!from || !to) return null
-  const diff = (new Date(to).getTime() - new Date(from).getTime()) / 60000
-  return Math.max(0, Math.round(diff))
-}
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
 /**
- * Çalışılan net süreyi hesaplar (mola hariç).
- * clock_in → clock_out — break_duration
+ * Rapor filtrelerini doğrular — client ve API route ortak kullanır.
+ * FAZ 8: max 366 günlük aralık guard. Geçerliyse null döner.
  */
-function calcWorkedMinutes(row: {
-  clock_in_at: string | null
-  break_start_at: string | null
-  break_end_at: string | null
-  clock_out_at: string | null
-}): number | null {
-  if (!row.clock_in_at || !row.clock_out_at) return null
-  const total = diffMinutes(row.clock_in_at, row.clock_out_at) ?? 0
-  const breakMin = diffMinutes(row.break_start_at, row.break_end_at) ?? 0
-  return Math.max(0, total - breakMin)
+export function validateReportFilters(filters: AttendanceReportFilters): string | null {
+  if (!DATE_RE.test(filters.date_from) || !DATE_RE.test(filters.date_to)) {
+    return 'Geçersiz tarih formatı.'
+  }
+  const fromMs = new Date(filters.date_from).getTime()
+  const toMs = new Date(filters.date_to).getTime()
+  if (isNaN(fromMs) || isNaN(toMs)) return 'Geçersiz tarih formatı.'
+  if (toMs < fromMs) return 'Bitiş tarihi başlangıç tarihinden önce olamaz.'
+  if ((toMs - fromMs) / (1000 * 60 * 60 * 24) > 366) return 'Tarih aralığı en fazla 366 gün olabilir.'
+  return null
 }
-
-/**
- * Vardiya başlangıç anı (epoch ms). Vardiya saatleri Türkiye yerel saatidir;
- * Türkiye 2016'dan beri sabit UTC+3 (bkz. attendanceAlerts.getShiftWindow).
- */
-function shiftStartMs(workDate: string, startTime: string): number {
-  return new Date(`${workDate}T${startTime.slice(0, 5)}:00+03:00`).getTime()
-}
-
-const REPORT_PAGE_SIZE = 1000
 
 // ============================================================
 // Queries
 // ============================================================
 
 /**
- * Tarih aralığına göre attendance raporu çeker.
+ * Tarih aralığına göre attendance raporu çeker (GET /api/reports/attendance).
  * Opsiyonel olarak tek çalışan filtrelenebilir.
- * FAZ 8: max 366 günlük aralık guard.
  */
 export async function fetchAttendanceReport(
   filters: AttendanceReportFilters
 ): Promise<AttendanceReportRow[]> {
-  // FAZ 8: Tarih aralığı kontrolü — maks 366 gün
-  const fromMs = new Date(filters.date_from).getTime()
-  const toMs = new Date(filters.date_to).getTime()
-  if (isNaN(fromMs) || isNaN(toMs)) {
-    throw new Error('Geçersiz tarih formatı.')
+  const validationError = validateReportFilters(filters)
+  if (validationError) throw new Error(validationError)
+
+  const params = new URLSearchParams({ date_from: filters.date_from, date_to: filters.date_to })
+  if (filters.employee_id) params.set('employee_id', filters.employee_id)
+
+  const res = await fetch(`/api/reports/attendance?${params.toString()}`)
+  const data = await res.json() as { rows?: AttendanceReportRow[]; error?: string }
+  if (!res.ok || !data.rows) {
+    throw new Error(data.error ?? 'Rapor yüklenemedi.')
   }
-  if (toMs < fromMs) {
-    throw new Error('Bitiş tarihi başlangıç tarihinden önce olamaz.')
-  }
-  const daysDiff = (toMs - fromMs) / (1000 * 60 * 60 * 24)
-  if (daysDiff > 366) {
-    throw new Error('Tarih aralığı en fazla 366 gün olabilir.')
-  }
-  // PostgREST max_rows (1000) sınırını aşan aralıklar için sayfalı çekim
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const data: any[] = []
-  for (let from = 0; ; from += REPORT_PAGE_SIZE) {
-    const { data: page, error } = await buildReportQuery(filters)
-      .range(from, from + REPORT_PAGE_SIZE - 1)
-    if (error) throw new Error(`Rapor yüklenemedi: ${error.message}`)
-    if (!page || page.length === 0) break
-    data.push(...page)
-    if (page.length < REPORT_PAGE_SIZE) break
-  }
-
-  const now = Date.now()
-
-  return data.map((row) => {
-    // attendance_records Supabase'den array olarak gelir (to-many)
-    const rec = Array.isArray(row.attendance_records)
-      ? (row.attendance_records[0] ?? null)
-      : (row.attendance_records ?? null)
-
-    const breakMin = diffMinutes(rec?.break_start_at ?? null, rec?.break_end_at ?? null)
-    const workedMin = calcWorkedMinutes({
-      clock_in_at: rec?.clock_in_at ?? null,
-      break_start_at: rec?.break_start_at ?? null,
-      break_end_at: rec?.break_end_at ?? null,
-      clock_out_at: rec?.clock_out_at ?? null,
-    })
-
-    const isOnLeave = (row.is_on_leave ?? false) as boolean
-    let status: AttendanceReportStatus = rec?.status ?? 'shift_waiting'
-    if (!rec) {
-      if (isOnLeave) status = 'on_leave'
-      else if (shiftStartMs(row.work_date, row.start_time) > now) status = 'upcoming'
-    }
-
-    return {
-      record_id: rec?.id ?? null,
-      employee_id: row.employee_id,
-      full_name: row.employees?.full_name ?? '—',
-      work_date: row.work_date,
-      shift_name: row.shift_templates?.name ?? null,
-      start_time: row.start_time,
-      end_time: row.end_time,
-      status,
-      is_on_leave: isOnLeave,
-      clock_in_at: rec?.clock_in_at ?? null,
-      break_start_at: rec?.break_start_at ?? null,
-      break_end_at: rec?.break_end_at ?? null,
-      clock_out_at: rec?.clock_out_at ?? null,
-      worked_minutes: workedMin,
-      break_minutes: breakMin,
-      verification_method: rec?.verification_method ?? null,
-      exception_note: rec?.exception_note ?? null,
-    } satisfies AttendanceReportRow
-  })
-}
-
-function buildReportQuery(filters: AttendanceReportFilters) {
-  let query = supabase
-    .from('shift_assignments')
-    .select(`
-      id,
-      employee_id,
-      work_date,
-      start_time,
-      end_time,
-      is_on_leave,
-      shift_templates ( name ),
-      employees ( id, full_name ),
-      attendance_records (
-        id,
-        status,
-        clock_in_at,
-        break_start_at,
-        break_end_at,
-        clock_out_at,
-        verification_method,
-        exception_note
-      )
-    `)
-    .gte('work_date', filters.date_from)
-    .lte('work_date', filters.date_to)
-    .order('work_date', { ascending: true })
-    .order('start_time', { ascending: true })
-    // Sayfalar arası kararlı sıralama için benzersiz anahtar
-    .order('id', { ascending: true })
-
-  if (filters.employee_id) {
-    query = query.eq('employee_id', filters.employee_id)
-  }
-
-  return query
+  return data.rows
 }
 
 /**
