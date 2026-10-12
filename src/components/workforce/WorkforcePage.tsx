@@ -5,8 +5,9 @@
  */
 import { useState, useEffect, useCallback } from 'react'
 import {
-  Box, Typography, Tabs, Tab, CircularProgress, Alert,
+  Box, Tabs, Tab, Alert,
 } from '@mui/material'
+import GroupsIcon from '@mui/icons-material/Groups'
 import PeopleIcon from '@mui/icons-material/People'
 import WorkIcon from '@mui/icons-material/Work'
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz'
@@ -21,12 +22,14 @@ import { fetchActiveEmployees } from '@/lib/employeeRepository'
 import { fetchWeeklyAssignments } from '@/lib/scheduleRepository'
 import { useAuth } from '@/context/AuthContext'
 import { hasRole, MANAGER_ROLES } from '@/lib/auth/roles'
+import { PageHeader, ListSkeleton } from '@/components/common'
+import { useLoadedKey } from '@/hooks/useLoadedKey'
 
 export function WorkforcePage() {
   const [tab, setTab] = useState(0)
   const [employees, setEmployees] = useState<EmployeeWithRole[]>([])
   const [assignments, setAssignments] = useState<ShiftAssignmentWithDetails[]>([])
-  const [loading, setLoading] = useState(true)
+  const { isFirstLoad, markLoaded } = useLoadedKey()
   const [error, setError] = useState<string | null>(null)
 
   const { employee: authEmployee } = useAuth()
@@ -36,7 +39,6 @@ export function WorkforcePage() {
   )
 
   const load = useCallback(async () => {
-    setLoading(true)
     setError(null)
     try {
       const [emps, asgns] = await Promise.all([
@@ -48,23 +50,20 @@ export function WorkforcePage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Yükleme hatası.')
     } finally {
-      setLoading(false)
+      markLoaded()
     }
-  }, [])
+  }, [markLoaded])
 
   useEffect(() => { void load() }, [load]) // eslint-disable-line react-hooks/set-state-in-effect
 
-  if (loading) return (
-    <Box sx={{ display: 'flex', justifyContent: 'center', pt: 8 }}>
-      <CircularProgress />
-    </Box>
-  )
-
   return (
     <Box sx={{ p: { xs: 2, md: 3 } }}>
-      <Typography variant="h6" fontWeight={800} sx={{ mb: 2 }}>
-        İş Gücü Planlama
-      </Typography>
+      <PageHeader
+        icon={GroupsIcon}
+        overline="Planlama"
+        title="İş Gücü Planlama"
+        subtitle="Müsaitlik, açık vardiyalar ve vardiya takaslarını yönetin"
+      />
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
@@ -102,9 +101,16 @@ export function WorkforcePage() {
         )}
       </Tabs>
 
-      {tab === 0 && employees.length > 0 && <AvailabilityEditor employees={employees} />}
+      {/* Çalışan/vardiya verisi gelene kadar yalnızca bunlara bağımlı sekmeler skeleton gösterir */}
+      {isFirstLoad && (tab === 0 || tab === 2) && <ListSkeleton count={5} actions={1} />}
+      {!isFirstLoad && tab === 0 && employees.length > 0 && <AvailabilityEditor employees={employees} />}
       {tab === 1 && <OpenShiftsPanel />}
-      {tab === 2 && <ShiftSwapPanel employees={employees} assignments={assignments} />}
+      {!isFirstLoad && tab === 2 && <ShiftSwapPanel
+        employees={employees}
+        assignments={assignments}
+        currentEmployeeId={authEmployee?.id ?? null}
+        isManager={isManager}
+      />}
       {/* Tab index 3 yalnızca isManager=true iken render edilir */}
       {tab === 3 && isManager && <WorkforcePlanningPanel />}
     </Box>

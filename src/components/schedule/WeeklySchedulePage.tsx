@@ -41,33 +41,58 @@ import {
 } from '@/lib/scheduleRepository'
 import { fetchActiveEmployees } from '@/lib/employeeRepository'
 import { fetchActiveShiftTemplates } from '@/lib/shiftTemplateRepository'
-import { shiftDurationMins, checkMinRest } from '@/lib/workingTimeService'
+import { shiftDurationMins, netWorkMins, checkMinRest } from '@/lib/workingTimeService'
 import { PART_TIME_RULES } from '@/types/employee'
 import { getWorkingTimeConfig } from '@/lib/workingTimeConfig'
 import { WeekNavigator } from './WeekNavigator'
 import { ShiftAssignDialog } from './ShiftAssignDialog'
 import type { ShiftSavePayload } from './ShiftAssignDialog'
+import { PageHeader, ScheduleGridSkeleton, ListSkeleton } from '@/components/common'
+import { useLoadedKey } from '@/hooks/useLoadedKey'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 
 // ─── Sabitler ─────────────────────────────────────────────────
 const DAY_LABELS = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
 
-// Rol pozisyonlarına göre sıralama önceliği (küçük = üstte)
+// Rol pozisyonlarına göre sıralama önceliği (küçük = üstte).
+// Sıra önemli: 'Müdür Yardımcısı' 'müdür' de içerdiği için önce yardımcı kontrol edilir.
 const ROLE_SORT_ORDER: Array<{ keywords: string[]; order: number }> = [
-  { keywords: ['yönetici', 'yonetici', 'müdür', 'mudur'], order: 0 },
-  { keywords: ['görsel', 'gorsel'], order: 1 },
-  { keywords: ['kasiyer'], order: 2 },
-  { keywords: ['satış', 'satis'], order: 3 },
-  { keywords: ['depo'], order: 4 },
+  { keywords: ['yardımcı', 'yardimci'], order: 1 },
+  { keywords: ['müdür', 'mudur', 'yönetici', 'yonetici'], order: 0 },
+  { keywords: ['kasiyer', 'kasa'], order: 2 },
+  { keywords: ['satış', 'satis', 'danışman', 'danisman', 'reyon'], order: 3 },
+  { keywords: ['görsel', 'gorsel'], order: 4 },
+  { keywords: ['depo'], order: 5 },
 ]
 
 function getRoleSortOrder(role: string): number {
-  const normalized = role.toLowerCase()
+  const normalized = role.toLocaleLowerCase('tr')
   for (const { keywords, order } of ROLE_SORT_ORDER) {
     if (keywords.some((k) => normalized.includes(k))) return order
   }
   return 99 // bilinmeyen roller en sona
+}
+
+/** Dakikayı '7s' / '8.5s' biçiminde saat olarak döner */
+function fmtHours(mins: number): string {
+  return `${Math.round(mins / 60 * 10) / 10}s`
+}
+
+/** Vardiyanın mola hakkı (brüt − net) */
+function breakMinsOf(start: string, end: string): number {
+  return shiftDurationMins(start, end) - netWorkMins(start, end)
+}
+
+/** Şablonsuz (planlayıcının ürettiği) vardiyalar için saatlerden ad türet */
+function shiftDisplayName(templateName: string | undefined, start: string, end: string): string {
+  if (templateName) return templateName
+  const s = start.slice(0, 5)
+  const e = end.slice(0, 5)
+  if (s <= '10:00' && e >= '22:00') return 'Full'
+  if (s < '12:00') return 'Açılış'
+  if (e >= '21:30') return 'Kapanış'
+  return 'Ortacı'
 }
 
 const JS_DAY_TO_KEY: Record<number, DayOfWeek> = {
@@ -81,8 +106,11 @@ type AvailabilityMap = Map<string, Map<DayOfWeek, EmployeeAvailability[]>>
 
 /** Çalışan bazında haftalık özet */
 interface EmployeeWeekStats {
+  /** Net çalışma (mola düşülmüş) */
   totalMins: number
-  dailyMins: Record<string, number>      // dateStr → dakika
+  dailyMins: Record<string, number>      // dateStr → net dakika
+  /** Haftalık toplam mola hakkı */
+  totalBreakMins: number
   restViolations: Array<{ between: string; restMins: number }> // ihlal açıklaması
   employment_type: import('@/types/employee').EmploymentType
 }
@@ -96,12 +124,14 @@ function calcEmployeeStats(
   const config = getWorkingTimeConfig()
   const dailyMins: Record<string, number> = {}
   let totalMins = 0
+  let totalBreakMins = 0
 
   for (const d of weekDays) {
     const dayShifts = assignments.filter((a) => a.work_date === d && !a.is_on_leave)
-    const mins = dayShifts.reduce((sum, a) => sum + shiftDurationMins(a.start_time, a.end_time), 0)
+    const mins = dayShifts.reduce((sum, a) => sum + netWorkMins(a.start_time, a.end_time), 0)
     dailyMins[d] = mins
     totalMins += mins
+    totalBreakMins += dayShifts.reduce((sum, a) => sum + breakMinsOf(a.start_time, a.end_time), 0)
   }
 
   // Min rest ihlalleri — tüm haftayı kronolojik sırala
@@ -142,7 +172,7 @@ function calcEmployeeStats(
     }
   }
 
-  return { totalMins, dailyMins, restViolations, employment_type }
+  return { totalMins, dailyMins, totalBreakMins, restViolations, employment_type }
 }
 
 // ─── Availability helpers ─────────────────────────────────────
@@ -212,7 +242,6 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
   const [leaveDayToId, setLeaveDayToId] = useState<Map<string, string>>(new Map())
   // key: "employee_id:YYYY-MM-DD" — haftalık tatil günleri (görsel ayrım için)
   const [restDayMap, setRestDayMap] = useState<Set<string>>(new Set())
-  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   // Dialog state
@@ -231,9 +260,11 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
   const [leaveDeleting, setLeaveDeleting] = useState(false)
 
   const weekDays = getWeekDays(currentWeek)
+  // Skeleton yalnızca bu hafta ilk kez yüklenirken; geri dönüşte / kayıt sonrası grid ekranda kalır
+  const weekKey = format(currentWeek, 'yyyy-MM-dd')
+  const { isFirstLoad, markLoaded } = useLoadedKey(weekKey)
 
   const load = useCallback(async () => {
-    setLoading(true)
     setError(null)
     try {
       const [emps, tmpls, asgns, leavesRes, availRes] = await Promise.all([
@@ -289,9 +320,9 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Yükleme hatası.')
     } finally {
-      setLoading(false)
+      markLoaded(weekKey)
     }
-  }, [currentWeek])
+  }, [currentWeek, weekKey, markLoaded])
 
   useEffect(() => {
     void load() // eslint-disable-line react-hooks/set-state-in-effect
@@ -445,7 +476,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
       <MobileScheduleView
         scheduleEntries={scheduleEntries}
         weekDays={weekDays}
-        loading={loading}
+        loading={isFirstLoad}
         error={error}
         currentWeek={currentWeek}
         onWeekChange={handleWeekChange}
@@ -469,36 +500,23 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: '#0f172a', color: 'text.primary' }}>
-      {/* Header */}
-      <Box sx={{ mb: 3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-          <CalendarMonthIcon sx={{ fontSize: 18, color: 'primary.main' }} />
-          <Typography variant="overline" color="primary.main" fontWeight={700} letterSpacing={1.5}>
-            Planlama
-          </Typography>
-        </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
-          <Typography variant="h5" fontWeight={800}>
-            Haftalık Vardiya Planı
-          </Typography>
-          <WeekNavigator currentWeek={currentWeek} onChange={handleWeekChange} />
-        </Box>
-      </Box>
+      <PageHeader
+        icon={CalendarMonthIcon}
+        overline="Planlama"
+        title="Haftalık Vardiya Planı"
+        actions={<WeekNavigator currentWeek={currentWeek} onChange={handleWeekChange} />}
+      />
 
       <Divider sx={{ mb: 3, borderColor: 'rgba(255,255,255,0.08)' }} />
 
-      {loading && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-          <CircularProgress color="primary" />
-        </Box>
-      )}
+      {isFirstLoad && <ScheduleGridSkeleton rows={Math.min(Math.max(employees.length, 6), 12)} />}
       {error && <Alert severity="error">{error}</Alert>}
-      {!loading && !error && scheduleEntries.length === 0 && (
+      {!isFirstLoad && !error && scheduleEntries.length === 0 && (
         <Alert severity="info">Aktif çalışan bulunamadı.</Alert>
       )}
 
       {/* Desktop Grid */}
-      {!loading && !error && scheduleEntries.length > 0 && (
+      {!isFirstLoad && !error && scheduleEntries.length > 0 && (
         <Paper
           elevation={0}
           sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, overflow: 'hidden' }}
@@ -627,7 +645,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
       )}
 
       {/* Legend */}
-      {!loading && !error && scheduleEntries.length > 0 && (
+      {!isFirstLoad && !error && scheduleEntries.length > 0 && (
         <Box sx={{ display: 'flex', gap: 2, mt: 1.5, flexWrap: 'wrap' }}>
           {[
             { color: 'rgba(99,102,241,0.25)', label: 'Haftalık Tatil' },
@@ -810,7 +828,7 @@ function SummaryCell({ stats, config }: SummaryCellProps) {
         }} />
       </Box>
       <Typography variant="caption" color="text.disabled" fontSize="0.58rem">
-        / {maxW}s maks.
+        net / {maxW}s maks. · {fmtHours(stats.totalBreakMins)} mola
       </Typography>
     </Box>
   )
@@ -933,11 +951,12 @@ function ShiftCell({
   }
 
   // Vardiya var
-  const tpl = assignment.shift_templates
-  const name = tpl?.name ?? '—'
   const start = formatTime(assignment.start_time)
   const end = formatTime(assignment.end_time)
-  const durationH = Math.round(shiftDurationMins(assignment.start_time, assignment.end_time) / 60 * 10) / 10
+  const name = shiftDisplayName(assignment.shift_templates?.name, start, end)
+  const grossMins = shiftDurationMins(assignment.start_time, assignment.end_time)
+  const netMins = netWorkMins(assignment.start_time, assignment.end_time)
+  const breakMins = grossMins - netMins
 
   // Renk: ihlal > partial availability > normal
   let bgBase = isToday ? 'rgba(20,184,166,0.05)' : 'rgba(99,102,241,0.05)'
@@ -947,7 +966,8 @@ function ShiftCell({
   else if (availStatus === 'partial') { bgBase = 'rgba(234,179,8,0.08)'; bgHover = 'rgba(234,179,8,0.15)' }
 
   const tooltipText = [
-    `${name}: ${start}–${end} (${durationH}s)`,
+    `${name}: ${start}–${end}`,
+    `Brüt ${fmtHours(grossMins)} · Mola ${fmtHours(breakMins)} · Net ${fmtHours(netMins)}`,
     dailyOver ? '⚠️ Günlük maks. aşıldı' : '',
     availStatus === 'off' ? '⚠️ Müsait değil gün' : '',
     availStatus === 'partial' ? '⚠️ Müsaitlik penceresi dışı' : '',
@@ -984,8 +1004,11 @@ function ShiftCell({
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Typography variant="caption" color={dailyOver ? '#ef4444' : 'text.disabled'} fontSize="0.6rem">
-            {durationH}s
+          <Typography variant="caption" fontSize="0.6rem" noWrap>
+            <Box component="span" sx={{ color: dailyOver ? '#ef4444' : 'primary.main', fontWeight: 700 }}>
+              {fmtHours(netMins)} net
+            </Box>
+            <Box component="span" sx={{ color: 'text.disabled' }}> · {fmtHours(breakMins)} mola</Box>
           </Typography>
           {!readOnly && <EditIcon sx={{ fontSize: 10, color: 'text.disabled' }} />}
         </Box>
@@ -1028,13 +1051,15 @@ function MobileScheduleView({
 
   return (
     <Box sx={{ p: 2, minHeight: '100dvh', bgcolor: '#0f172a', color: 'text.primary' }}>
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="h6" fontWeight={800} mb={1.5}>Haftalık Plan</Typography>
-        <WeekNavigator currentWeek={currentWeek} onChange={onWeekChange} />
-      </Box>
+      <PageHeader
+        icon={CalendarMonthIcon}
+        overline="Planlama"
+        title="Haftalık Plan"
+        actions={<WeekNavigator currentWeek={currentWeek} onChange={onWeekChange} />}
+      />
       <Divider sx={{ mb: 2, borderColor: 'rgba(255,255,255,0.08)' }} />
 
-      {loading && <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress color="primary" /></Box>}
+      {loading && <ListSkeleton count={5} lines={3} actions={1} />}
       {error && <Alert severity="error">{error}</Alert>}
 
       {!loading && !error && scheduleEntries.map((entry) => {
@@ -1083,7 +1108,6 @@ function MobileScheduleView({
                 const isToday = d === format(new Date(), 'yyyy-MM-dd')
                 const isOnLeave = asgn?.is_on_leave === true || approvedLeaveMap.has(`${entry.employee.id}:${d}`)
                 const availStatus = getAvailStatus(entry.employee.id, d, availabilityMap, asgn?.start_time, asgn?.end_time)
-                const dH = asgn && !isOnLeave ? Math.round(shiftDurationMins(asgn.start_time, asgn.end_time) / 60 * 10) / 10 : 0
 
                 return (
                   <Box key={d} onClick={() => onCellClick(entry.employee, d)}
@@ -1111,11 +1135,12 @@ function MobileScheduleView({
                         {(availStatus === 'off' || availStatus === 'partial') && (
                           <WarningAmberIcon sx={{ fontSize: 12, color: availStatus === 'off' ? '#ef4444' : '#eab308' }} />
                         )}
-                        <Chip label={asgn.shift_templates?.name ?? '—'} size="small"
+                        <Chip label={shiftDisplayName(asgn.shift_templates?.name, asgn.start_time, asgn.end_time)} size="small"
                           sx={{ height: 18, fontSize: '0.62rem',
                             bgcolor: 'rgba(99,102,241,0.15)', color: '#818cf8' }} />
                         <Typography variant="caption" color="text.disabled" fontSize="0.65rem">
-                          {formatTime(asgn.start_time)}–{formatTime(asgn.end_time)} ({dH}s)
+                          {formatTime(asgn.start_time)}–{formatTime(asgn.end_time)}
+                          {' '}({fmtHours(netWorkMins(asgn.start_time, asgn.end_time))} net · {fmtHours(breakMinsOf(asgn.start_time, asgn.end_time))} mola)
                         </Typography>
                       </Box>
                     ) : availStatus === 'off' ? (

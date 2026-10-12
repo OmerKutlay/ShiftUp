@@ -10,15 +10,37 @@ interface Props {
   active?: boolean
 }
 
+// html5-qrcode durum değerleri: 2 = SCANNING, 3 = PAUSED
+const RUNNING_STATES = [2, 3]
+
+interface ScannerInstance {
+  stop: () => Promise<void>
+  getState: () => number
+}
+
+// stop() tarayıcı çalışmıyorsa senkron olarak hata fırlatır (ör. kamera izni reddedildiğinde),
+// bu yüzden durum kontrolü + try/catch ile güvenli şekilde durduruyoruz
+function safeStop(scanner: ScannerInstance | null) {
+  if (!scanner) return
+  try {
+    if (RUNNING_STATES.includes(scanner.getState())) {
+      scanner.stop().catch(() => null)
+    }
+  } catch {
+    // zaten durmuş — yok say
+  }
+}
+
 export function QrScanner({ onScan, onError, active = true }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const scannerRef = useRef<{ stop: () => Promise<void> } | null>(null)
+  const scannerRef = useRef<ScannerInstance | null>(null)
   const [initializing, setInitializing] = useState(true)
   const [permissionDenied, setPermissionDenied] = useState(false)
 
   useEffect(() => {
     if (!active) {
-      scannerRef.current?.stop().catch(() => null)
+      safeStop(scannerRef.current)
+      scannerRef.current = null
       return
     }
 
@@ -48,16 +70,26 @@ export function QrScanner({ onScan, onError, active = true }: Props) {
           }
         )
         .then(() => {
-          if (mounted) setInitializing(false)
+          // start() sürerken unmount olduysa kamerayı açık bırakma
+          if (!mounted) {
+            safeStop(scanner)
+            return
+          }
+          setInitializing(false)
         })
         .catch((err: unknown) => {
+          if (scannerRef.current === scanner) scannerRef.current = null
           if (!mounted) return
           setInitializing(false)
-          const message = err instanceof Error ? err.message : String(err)
-          if (message.toLowerCase().includes('permission') || message.toLowerCase().includes('denied')) {
+          const message = (err instanceof Error ? `${err.name} ${err.message}` : String(err)).toLowerCase()
+          if (
+            message.includes('permission') ||
+            message.includes('denied') ||
+            message.includes('notallowed')
+          ) {
             setPermissionDenied(true)
           } else {
-            onError?.(message)
+            onError?.(err instanceof Error ? err.message : String(err))
           }
         })
     }).catch((err: unknown) => {
@@ -69,7 +101,8 @@ export function QrScanner({ onScan, onError, active = true }: Props) {
 
     return () => {
       mounted = false
-      scannerRef.current?.stop().catch(() => null)
+      safeStop(scannerRef.current)
+      scannerRef.current = null
     }
   }, [active, onScan, onError])
 

@@ -19,6 +19,8 @@ import LocationOnIcon from '@mui/icons-material/LocationOn'
 import SaveIcon from '@mui/icons-material/Save'
 import MyLocationIcon from '@mui/icons-material/MyLocation'
 import type { StoreLocation } from '@/types/location'
+import { PageHeader, ListSkeleton } from '@/components/common'
+import { useLoadedKey } from '@/hooks/useLoadedKey'
 
 interface StoreLocationForm {
   id?: string
@@ -53,7 +55,7 @@ function locationToForm(loc: StoreLocation): StoreLocationForm {
 
 export function StoreLocationPage() {
   const [locations, setLocations] = useState<StoreLocation[]>([])
-  const [loading, setLoading] = useState(true)
+  const { isFirstLoad, markLoaded } = useLoadedKey()
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -63,7 +65,6 @@ export function StoreLocationPage() {
   const [gettingLocation, setGettingLocation] = useState(false)
 
   const load = useCallback(async () => {
-    setLoading(true)
     setError(null)
     try {
       const res = await fetch('/api/store-location')
@@ -73,9 +74,9 @@ export function StoreLocationPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Yükleme hatası.')
     } finally {
-      setLoading(false)
+      markLoaded()
     }
-  }, [])
+  }, [markLoaded])
 
   useEffect(() => { void load() }, [load])
 
@@ -164,19 +165,12 @@ export function StoreLocationPage() {
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: '#0f172a', color: 'text.primary' }}>
-      {/* Header */}
-      <Box sx={{ mb: 3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-          <LocationOnIcon sx={{ fontSize: 18, color: 'primary.main' }} />
-          <Typography variant="overline" color="primary.main" fontWeight={700} letterSpacing={1.5}>
-            Ayarlar
-          </Typography>
-        </Box>
-        <Typography variant="h5" fontWeight={800}>Mağaza Konumu</Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
-          QR devam takibinde kullanılan geofence konumunu yönetin
-        </Typography>
-      </Box>
+      <PageHeader
+        icon={LocationOnIcon}
+        overline="Ayarlar"
+        title="Mağaza Konumu"
+        subtitle="QR devam takibinde kullanılan geofence konumunu yönetin"
+      />
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert>}
       {success && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess(null)}>{success}</Alert>}
@@ -286,8 +280,8 @@ export function StoreLocationPage() {
           <Typography variant="subtitle1" fontWeight={700} mb={2}>
             Kayıtlı Konumlar
           </Typography>
-          {loading && <CircularProgress color="primary" size={28} />}
-          {!loading && locations.length === 0 && (
+          {isFirstLoad && <ListSkeleton count={2} lines={3} actions={2} />}
+          {!isFirstLoad && locations.length === 0 && (
             <Alert severity="info">Henüz mağaza konumu eklenmemiş.</Alert>
           )}
           <Stack spacing={1.5}>

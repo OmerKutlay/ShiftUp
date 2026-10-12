@@ -15,7 +15,7 @@
  */
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
-  Box, Typography, Paper, CircularProgress, Alert,
+  Box, Typography, Paper, Alert,
   Chip, Divider, Stack, IconButton, Tooltip, LinearProgress,
 } from '@mui/material'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
@@ -30,7 +30,9 @@ import EventBusyIcon from '@mui/icons-material/EventBusy'
 import { format, startOfMonth, endOfMonth, addMonths, subMonths, getDaysInMonth, parseISO } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { useAuth } from '@/context/AuthContext'
+import { PageHeader, PageSkeleton, StatCardsSkeleton, DayBlocksSkeleton } from '@/components/common'
 import { shiftDurationMins } from '@/lib/workingTimeService'
+import { useLoadedKey } from '@/hooks/useLoadedKey'
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -230,17 +232,18 @@ export function MySchedulePage() {
   const { employee, status: authStatus } = useAuth()
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [entries, setEntries] = useState<DayEntry[]>([])
-  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const monthStart = format(startOfMonth(currentMonth), 'yyyy-MM-dd')
   const monthEnd = format(endOfMonth(currentMonth), 'yyyy-MM-dd')
   const monthLabel = format(currentMonth, 'MMMM yyyy', { locale: tr })
+  // Skeleton yalnızca bu ay ilk kez yüklenirken; sayfaya geri dönüşte veri ekranda kalır
+  const monthKey = `${employee?.id ?? ''}:${monthStart}`
+  const { isFirstLoad, markLoaded } = useLoadedKey(monthKey)
 
   // ── Veri çek ─────────────────────────────────────────────────
   const load = useCallback(async () => {
     if (!employee) return
-    setLoading(true)
     setError(null)
     try {
       // shift_assignments + attendance_records join için rapor endpoint'ini kullan
@@ -262,9 +265,9 @@ export function MySchedulePage() {
     } catch {
       setError('Bağlantı hatası.')
     } finally {
-      setLoading(false)
+      markLoaded(monthKey)
     }
-  }, [employee, monthStart, monthEnd])
+  }, [employee, monthStart, monthEnd, monthKey, markLoaded])
 
   useEffect(() => {
     if (authStatus === 'authenticated' && employee) {
@@ -301,11 +304,7 @@ export function MySchedulePage() {
 
   // ─── Auth guard ───────────────────────────────────────────────
   if (authStatus === 'loading') {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', pt: 8 }}>
-        <CircularProgress />
-      </Box>
-    )
+    return <PageSkeleton stats={4} rows={6} maxWidth={900} />
   }
   if (authStatus === 'unauthenticated' || !employee) {
     return (
@@ -318,16 +317,12 @@ export function MySchedulePage() {
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 900, mx: 'auto' }}>
 
-      {/* Başlık */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
-        <CalendarMonthIcon sx={{ color: 'primary.main', fontSize: 28 }} />
-        <Box>
-          <Typography variant="h6" fontWeight={800}>Çalışma Özetim</Typography>
-          <Typography variant="caption" color="text.secondary">
-            {employee.full_name} · {employee.role}
-          </Typography>
-        </Box>
-      </Box>
+      <PageHeader
+        icon={CalendarMonthIcon}
+        overline="Kişisel"
+        title="Çalışma Özetim"
+        subtitle={`${employee.full_name} · ${employee.role}`}
+      />
 
       {/* Ay navigasyonu */}
       <Paper elevation={0} sx={{
@@ -359,6 +354,7 @@ export function MySchedulePage() {
       </Paper>
 
       {/* Özet stat kartları */}
+      {isFirstLoad ? <StatCardsSkeleton count={4} /> : (
       <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap sx={{ mb: 3 }}>
         <StatCard
           label="Planlanan Saat"
@@ -392,9 +388,10 @@ export function MySchedulePage() {
           />
         )}
       </Stack>
+      )}
 
       {/* Planlanan vs gerçekleşen progress */}
-      {summary.plannedMins > 0 && (
+      {!isFirstLoad && summary.plannedMins > 0 && (
         <Paper elevation={0} sx={{
           p: 2, mb: 3,
           border: '1px solid', borderColor: 'divider', borderRadius: 2,
@@ -432,10 +429,8 @@ export function MySchedulePage() {
       <Divider sx={{ mb: 2.5, borderColor: 'rgba(255,255,255,0.08)' }} />
 
       {/* Günlük liste */}
-      {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-          <CircularProgress />
-        </Box>
+      {isFirstLoad ? (
+        <DayBlocksSkeleton count={7} />
       ) : error ? (
         <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>
       ) : entries.length === 0 ? (

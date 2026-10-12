@@ -3,15 +3,18 @@
 /**
  * useNotifications hook — FAZ 10
  * Seçili employee_id'ye ait bildirimleri yönetir.
- * Yükleme: ilk mount + employeeId değişimi. Polling yok.
+ * Yükleme: ilk mount + employeeId değişimi + (opsiyonel) pollMs aralığıyla periyodik yenileme.
  */
 import { useState, useEffect, useCallback } from 'react'
+import { useLoadedKey } from './useLoadedKey'
+import { useAutoRefresh } from '@/hooks/useAutoRefresh'
 import type { Notification } from '@/types/notification'
 
-export function useNotifications(employeeId: string | null) {
+export function useNotifications(employeeId: string | null, pollMs?: number) {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { isFirstLoad, markLoaded } = useLoadedKey(employeeId ?? '')
 
   const fetch = useCallback(async () => {
     if (!employeeId) {
@@ -35,8 +38,13 @@ export function useNotifications(employeeId: string | null) {
     if (!employeeId) return
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true)
-    fetch().finally(() => setLoading(false))
-  }, [employeeId, fetch])
+    fetch().finally(() => {
+      setLoading(false)
+      markLoaded(employeeId)
+    })
+  }, [employeeId, fetch, markLoaded])
+
+  useAutoRefresh(fetch, pollMs, !!employeeId)
 
   const unreadCount = notifications.filter((n) => !n.is_read).length
 
@@ -80,5 +88,5 @@ export function useNotifications(employeeId: string | null) {
 
   const refresh = useCallback(() => fetch(), [fetch])
 
-  return { notifications, unreadCount, loading, error, markAsRead, markAllAsRead, refresh }
+  return { notifications, unreadCount, loading, isFirstLoad, error, markAsRead, markAllAsRead, refresh }
 }

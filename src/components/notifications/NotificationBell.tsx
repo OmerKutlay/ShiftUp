@@ -10,6 +10,9 @@ import NotificationsIcon from '@mui/icons-material/Notifications'
 import { NotificationPanel } from './NotificationPanel'
 import { useNotifications } from '@/hooks/useNotifications'
 
+/** Yeni bildirimler (ör. geç/eksik okutma uyarıları) için yenileme aralığı */
+const NOTIFICATION_POLL_MS = 60_000
+
 interface Props {
   employeeId: string | null
   /** collapsed sidebar modunda icon-only gösterim */
@@ -19,7 +22,7 @@ interface Props {
 export function NotificationBell({ employeeId, collapsed = false }: Props) {
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null)
   const { notifications, unreadCount, loading, markAsRead, markAllAsRead } =
-    useNotifications(employeeId)
+    useNotifications(employeeId, NOTIFICATION_POLL_MS)
 
   const handleOpen = (e: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(e.currentTarget)

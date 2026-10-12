@@ -8,8 +8,8 @@ import {
   Stack,
   Paper,
   Chip,
-  CircularProgress,
   Alert,
+  Skeleton,
   Divider,
   IconButton,
   Tooltip,
@@ -40,13 +40,15 @@ import {
 } from '@/lib/employeeRepository'
 import { EmployeeFormDialog } from './EmployeeFormDialog'
 import { EmployeeStatusChip } from './EmployeeStatusChip'
+import { PageHeader, ListSkeleton } from '@/components/common'
+import { useLoadedKey } from '@/hooks/useLoadedKey'
 
 type Filter = 'all' | 'active' | 'inactive'
 
 export function EmployeesPage() {
   const [employees, setEmployees] = useState<EmployeeWithRole[]>([])
   const [roles, setRoles] = useState<Role[]>([])
-  const [loading, setLoading] = useState(true)
+  const { isFirstLoad, markLoaded } = useLoadedKey()
   const [error, setError] = useState<string | null>(null)
 
   // Edit/Create dialog
@@ -64,7 +66,6 @@ export function EmployeesPage() {
   const [filter, setFilter] = useState<Filter>('all')
 
   const load = useCallback(async () => {
-    setLoading(true)
     setError(null)
     try {
       const [emps, rls] = await Promise.all([fetchEmployees(), fetchRoles()])
@@ -73,9 +74,9 @@ export function EmployeesPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Yükleme hatası.')
     } finally {
-      setLoading(false)
+      markLoaded()
     }
-  }, [])
+  }, [markLoaded])
 
   useEffect(() => {
     void load()
@@ -169,33 +170,23 @@ export function EmployeesPage() {
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: '#0f172a', color: 'text.primary' }}>
-      {/* Header */}
-      <Box sx={{ mb: 3, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
-        <Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-            <PeopleIcon sx={{ fontSize: 18, color: 'primary.main' }} />
-            <Typography variant="overline" color="primary.main" fontWeight={700} letterSpacing={1.5}>
-              Personel
-            </Typography>
-          </Box>
-          <Typography variant="h5" fontWeight={800}>
-            Çalışanlar
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
-            {activeCount} aktif çalışan
-          </Typography>
-        </Box>
-
-        <Button
-          variant="contained"
-          color="primary"
-          startIcon={<AddIcon />}
-          onClick={openCreate}
-          sx={{ fontWeight: 700 }}
-        >
-          Yeni Çalışan
-        </Button>
-      </Box>
+      <PageHeader
+        icon={PeopleIcon}
+        overline="Personel"
+        title="Çalışanlar"
+        subtitle={isFirstLoad ? <Skeleton width={110} /> : `${activeCount} aktif çalışan`}
+        actions={
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<AddIcon />}
+            onClick={openCreate}
+            sx={{ fontWeight: 700 }}
+          >
+            Yeni Çalışan
+          </Button>
+        }
+      />
 
       {/* Filters */}
       <Box sx={{ mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center', flexDirection: { xs: 'column', sm: 'row' } }}>
@@ -230,11 +221,7 @@ export function EmployeesPage() {
       <Divider sx={{ mb: 3, borderColor: 'rgba(255,255,255,0.08)' }} />
 
       {/* Content */}
-      {loading && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-          <CircularProgress color="primary" />
-        </Box>
-      )}
+      {isFirstLoad && <ListSkeleton count={6} actions={3} />}
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
@@ -242,7 +229,7 @@ export function EmployeesPage() {
         </Alert>
       )}
 
-      {!loading && !error && filtered.length === 0 && (
+      {!isFirstLoad && !error && filtered.length === 0 && (
         <Alert severity="info">
           {search || filter !== 'all'
             ? 'Arama kriterlerine uyan çalışan bulunamadı.'
@@ -250,7 +237,7 @@ export function EmployeesPage() {
         </Alert>
       )}
 
-      {!loading && !error && filtered.length > 0 && (
+      {!isFirstLoad && !error && filtered.length > 0 && (
         <Stack spacing={1}>
           {filtered.map((emp) => (
             <EmployeeCard key={emp.id} employee={emp} onEdit={openEdit} onDelete={openDelete} />

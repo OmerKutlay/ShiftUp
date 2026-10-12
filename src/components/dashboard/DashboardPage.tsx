@@ -8,6 +8,7 @@ import {
   Stack,
   Chip,
   CircularProgress,
+  Skeleton,
   Alert,
   Divider,
   Button,
@@ -22,6 +23,7 @@ import RefreshIcon from '@mui/icons-material/Refresh'
 import { useRouter } from 'next/navigation'
 import { formatDateTurkish, formatDayNameTurkish } from '@/lib/dateUtils'
 import { LEAVE_TYPE_LABELS } from '@/types/leave'
+import { PageHeader, StatCardsSkeleton, ListSkeleton } from '@/components/common'
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -154,36 +156,25 @@ export function DashboardPage() {
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: '#0f172a', color: 'text.primary' }}>
-      {/* Header */}
-      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
-        <Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-            <DashboardIcon sx={{ fontSize: 18, color: 'primary.main' }} />
-            <Typography variant="overline" color="primary.main" fontWeight={700} letterSpacing={1.5}>
-              {formatDayNameTurkish(today)}
-            </Typography>
-          </Box>
-          <Typography variant="h5" fontWeight={800}>Genel Bakış</Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
-            {formatDateTurkish(today)}
-          </Typography>
-          {lastRefreshed && (
-            <Typography variant="caption" color="text.disabled" display="block" sx={{ mt: 0.25 }}>
-              Son güncelleme: {lastRefreshed.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
-            </Typography>
-          )}
-        </Box>
-        <Button
-          size="small"
-          variant="outlined"
-          startIcon={loading ? <CircularProgress size={14} /> : <RefreshIcon />}
-          onClick={() => void load()}
-          disabled={loading}
-          sx={{ alignSelf: 'flex-start', fontSize: '0.75rem' }}
-        >
-          Yenile
-        </Button>
-      </Box>
+      <PageHeader
+        icon={DashboardIcon}
+        overline={formatDayNameTurkish(today)}
+        title="Genel Bakış"
+        subtitle={formatDateTurkish(today)}
+        meta={lastRefreshed && `Son güncelleme: ${lastRefreshed.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`}
+        actions={
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={loading ? <CircularProgress size={14} /> : <RefreshIcon />}
+            onClick={() => void load()}
+            disabled={loading}
+            sx={{ fontSize: '0.75rem' }}
+          >
+            Yenile
+          </Button>
+        }
+      />
 
       {error && (
         <Alert
@@ -196,6 +187,7 @@ export function DashboardPage() {
       )}
 
       {/* Stats */}
+      {loading && !data && <StatCardsSkeleton count={5} />}
       {stats && (
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, mb: 3 }}>
           <StatCard
@@ -245,8 +237,15 @@ export function DashboardPage() {
       <Divider sx={{ mb: 3, borderColor: 'rgba(255,255,255,0.08)' }} />
 
       {loading && !data && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-          <CircularProgress color="primary" />
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 380px' }, gap: 3 }}>
+          <Box>
+            <Skeleton variant="text" width={130} sx={{ fontSize: '1rem', mb: 2 }} />
+            <ListSkeleton count={5} actions={1} dense />
+          </Box>
+          <Box>
+            <Skeleton variant="text" width={150} sx={{ fontSize: '1rem', mb: 2 }} />
+            <ListSkeleton count={3} avatar={false} actions={1} dense />
+          </Box>
         </Box>
       )}
 

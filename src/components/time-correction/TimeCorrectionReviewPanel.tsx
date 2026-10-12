@@ -20,6 +20,8 @@ import { tr } from 'date-fns/locale'
 import type { TimeCorrectionRequest } from '@/types/timeCorrection'
 import { TIME_CORRECTION_STATUS_LABELS, TIME_CORRECTION_STATUS_COLORS } from '@/types/timeCorrection'
 import type { EmployeeWithRole } from '@/types/employee'
+import { ListSkeleton } from '@/components/common'
+import { useLoadedKey } from '@/hooks/useLoadedKey'
 
 function fmtDate(d: string) {
   try { return format(new Date(d + 'T00:00:00'), 'd MMMM yyyy EEEE', { locale: tr }) } catch { return d }
@@ -34,9 +36,9 @@ export function TimeCorrectionReviewPanel() {
 
   // ── Talepler sekmesi ─────────────────────────────────────────
   const [requests, setRequests] = useState<TimeCorrectionRequest[]>([])
-  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<'pending' | 'all'>('pending')
+  const { isFirstLoad, markLoaded } = useLoadedKey(statusFilter)
 
   const [reviewDialog, setReviewDialog] = useState<{
     open: boolean
@@ -55,7 +57,7 @@ export function TimeCorrectionReviewPanel() {
   const [directSuccess, setDirectSuccess] = useState<string | null>(null)
 
   const loadRequests = useCallback(async () => {
-    setLoading(true); setError(null)
+    setError(null)
     try {
       const qs = statusFilter === 'pending' ? '?status=pending' : ''
       const res = await fetch(`/api/time-correction${qs}`, { credentials: 'same-origin' })
@@ -63,8 +65,8 @@ export function TimeCorrectionReviewPanel() {
       const d = await res.json() as { requests: TimeCorrectionRequest[] }
       setRequests(d.requests ?? [])
     } catch { setError('Bağlantı hatası.') }
-    finally { setLoading(false) }
-  }, [statusFilter])
+    finally { markLoaded(statusFilter) }
+  }, [statusFilter, markLoaded])
 
   const loadEmployees = useCallback(async () => {
     try {
@@ -161,8 +163,8 @@ export function TimeCorrectionReviewPanel() {
 
           {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert>}
 
-          {loading && requests.length === 0 ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={28} /></Box>
+          {isFirstLoad ? (
+            <ListSkeleton count={3} lines={3} actions={2} dense />
           ) : requests.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
               {statusFilter === 'pending' ? 'Bekleyen talep yok.' : 'Talep bulunamadı.'}
