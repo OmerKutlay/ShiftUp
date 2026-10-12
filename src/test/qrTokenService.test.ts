@@ -23,6 +23,7 @@ import {
   validateAndConsumeToken,
   QrTokenError,
 } from '@/lib/qrTokenService'
+import { createFakeDb } from './helpers/fakeSupabase'
 
 // ============================================================
 // Helpers
@@ -114,25 +115,27 @@ describe('qrTokenService — validateAndConsumeToken', () => {
   it('geçerli QR token kabul ediliyor', async () => {
     const record = makeTokenRecord()
     const qrData = makeQrData()
-
-    mockAdminFrom([
-      // 1. token lookup
-      {
-        select: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-        maybeSingle: vi.fn().mockResolvedValue({ data: record, error: null }),
-      },
-      // 2. update used_at
-      {
-        update: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockResolvedValue({ data: null, error: null }),
-      },
-    ])
+    const db = createFakeDb({ qr_tokens: [record] })
+    mockCreateAdminClient.mockReturnValue(db)
 
     const result = await validateAndConsumeToken(qrData)
     expect(result.token.token).toBe(record.token)
     expect(result.isKiosk).toBe(false)
     expect((result.payload as import('@/types/qr').QrPayload).action).toBe('clock_in')
+    expect(db.tables.qr_tokens[0].used_at).toBeTruthy()
+  })
+
+  it('eşzamanlı iki okutmadan yalnızca biri token\'ı tüketir', async () => {
+    const db = createFakeDb({ qr_tokens: [makeTokenRecord()] })
+    mockCreateAdminClient.mockReturnValue(db)
+
+    const results = await Promise.allSettled([
+      validateAndConsumeToken(makeQrData()),
+      validateAndConsumeToken(makeQrData()),
+    ])
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1)
+    const rejected = results.find((r) => r.status === 'rejected') as PromiseRejectedResult
+    expect(rejected.reason).toBeInstanceOf(QrTokenError)
   })
 
   it('süresi geçmiş QR reddediliyor (client-side exp check)', async () => {

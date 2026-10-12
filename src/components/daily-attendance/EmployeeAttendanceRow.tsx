@@ -17,7 +17,7 @@ import type { DailyShiftEntry, AttendanceRecord } from '@/types/attendance'
 import type { AttendanceAction } from '@/lib/attendanceStateMachine'
 import { AttendanceStatusChip } from './AttendanceStatusChip'
 import { AttendanceActions } from './AttendanceActions'
-import { createAttendanceRecord, performAttendanceAction } from '@/lib/attendanceRepository'
+import { performManualAttendanceAction } from '@/lib/api/attendance'
 import { formatInTimeZone } from '@/lib/dateUtils'
 
 interface Props {
@@ -39,14 +39,7 @@ export function EmployeeAttendanceRow({ entry, onRecordChange }: Props) {
     setLoading(true)
     setErrorMsg(null)
     try {
-      let updatedRecord: AttendanceRecord
-      if (action === 'clock_in' && !attendanceRecord) {
-        updatedRecord = await createAttendanceRecord(shiftAssignment.id, employee.id)
-      } else if (attendanceRecord) {
-        updatedRecord = await performAttendanceAction(attendanceRecord, action)
-      } else {
-        throw new Error('Geçersiz durum.')
-      }
+      const updatedRecord = await performManualAttendanceAction(shiftAssignment.id, action)
       onRecordChange(shiftAssignment.id, updatedRecord)
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Bir hata oluştu.')

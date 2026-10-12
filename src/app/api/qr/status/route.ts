@@ -2,20 +2,20 @@
  * GET /api/qr/status?token=...
  *
  * Kiosk ekranı, gösterdiği QR'ın okutulup okutulmadığını bu endpoint ile yoklar.
- * Token kullanıldıysa kiosk hemen yeni QR üretir.
+ * Token kullanıldıysa kiosk hemen yeni QR üretir. Yalnızca kiosk'u çalıştıran
+ * yöneticiler (Müdür Yardımcısı+) erişebilir.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
-import { requireAuth } from '@/lib/auth'
+import { requireMinRole, ROLES } from '@/lib/auth'
+import { badRequest, serverError } from '@/lib/apiErrors'
 
 export async function GET(req: NextRequest) {
-  const auth = await requireAuth(req)
+  const auth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
   if ('response' in auth) return auth.response
 
   const token = req.nextUrl.searchParams.get('token')
-  if (!token) {
-    return NextResponse.json({ error: 'token zorunludur.', code: 'VALIDATION_ERROR' }, { status: 400 })
-  }
+  if (!token || token.length > 128) return badRequest('token zorunludur.')
 
   const admin = createAdminClient()
   const { data, error } = await admin
@@ -24,10 +24,7 @@ export async function GET(req: NextRequest) {
     .eq('token', token)
     .maybeSingle()
 
-  if (error) {
-    console.error('[/api/qr/status]', error)
-    return NextResponse.json({ error: 'Sunucu hatası.', code: 'UNKNOWN' }, { status: 500 })
-  }
+  if (error) return serverError('GET /api/qr/status', error)
 
   return NextResponse.json({ used: !data || data.used_at !== null })
 }

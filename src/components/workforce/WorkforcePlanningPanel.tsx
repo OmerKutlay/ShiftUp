@@ -256,9 +256,9 @@ export function WorkforcePlanningPanel() {
   }
 
   // ── Taslağı uygula ────────────────────────────────────────────────────────
-  const applyDraft = async () => {
+  const applyDraft = async (acknowledge = false) => {
     if (!draft) return
-    // Client-side guard: geçersiz plan onaylanamaz
+    // Client-side guard: geçersiz plan onaylanamaz (sunucu ayrıca kendi doğrulamasını yapar)
     if (draft.hasHardViolation) {
       setGenError('Plan kritik kural ihlalleri içeriyor. Onaylamadan önce planı yeniden oluşturun.')
       return
@@ -267,7 +267,7 @@ export function WorkforcePlanningPanel() {
     const existingShifts = planData?.summaries.reduce(
       (n, s) => n + Object.values(s.days).reduce((m, d) => m + d.shifts.length, 0), 0,
     ) ?? 0
-    if (existingShifts > 0 && !window.confirm(
+    if (!acknowledge && existingShifts > 0 && !window.confirm(
       `Bu haftanın mevcut planı (${existingShifts} vardiya) silinip yeni planla değiştirilecek.\n\n` +
       'Giriş/çıkış kaydı olan ve izinli işaretli vardiyalar korunur. Devam edilsin mi?',
     )) return
@@ -280,12 +280,23 @@ export function WorkforcePlanningPanel() {
         body: JSON.stringify({
           assignments: draft.assignments,
           weekStart: draft.weekStart,
-          weekEnd: draft.weekEnd,
-          hasHardViolation: draft.hasHardViolation,
+          acknowledge_violations: acknowledge,
         }),
       })
-      const result = await res.json() as { created: number; replaced: number; skipped: number; restDays?: number; errors: string[]; error?: string }
+      const result = await res.json() as {
+        created: number; replaced: number; skipped: number; restDays?: number; errors: string[]
+        error?: string; code?: string; violations?: string[]
+      }
       if (!res.ok) {
+        // Sunucu yasal ihlal buldu — yönetici açıkça onaylarsa tekrar gönder
+        if (result.code === 'WORKING_TIME_VIOLATION' && window.confirm(
+          'Plan aşağıdaki İş Kanunu kurallarını ihlal ediyor:\n\n' +
+          (result.violations ?? []).map((v) => `• ${v}`).join('\n') +
+          '\n\nYine de uygulansın mı?',
+        )) {
+          setApplyLoading(false)
+          return applyDraft(true)
+        }
         setGenError(result.error ?? 'Uygulama sırasında hata oluştu.')
         return
       }

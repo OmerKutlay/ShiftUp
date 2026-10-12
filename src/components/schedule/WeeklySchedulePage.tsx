@@ -38,9 +38,9 @@ import {
   createShiftAssignment,
   updateShiftAssignment,
   deleteShiftAssignment,
-} from '@/lib/scheduleRepository'
-import { fetchActiveEmployees } from '@/lib/employeeRepository'
-import { fetchActiveShiftTemplates } from '@/lib/shiftTemplateRepository'
+} from '@/lib/api/schedule'
+import { fetchActiveEmployees } from '@/lib/api/employees'
+import { fetchActiveShiftTemplates } from '@/lib/api/shiftTemplates'
 import { shiftDurationMins, netWorkMins, checkMinRest } from '@/lib/workingTimeService'
 import { PART_TIME_RULES } from '@/types/employee'
 import { getWorkingTimeConfig } from '@/lib/workingTimeConfig'

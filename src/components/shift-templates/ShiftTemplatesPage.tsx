@@ -24,7 +24,7 @@ import {
   fetchShiftTemplates,
   createShiftTemplate,
   updateShiftTemplate,
-} from '@/lib/shiftTemplateRepository'
+} from '@/lib/api/shiftTemplates'
 import { ShiftTemplateFormDialog } from './ShiftTemplateFormDialog'
 import { PageHeader, ListSkeleton } from '@/components/common'
 import { useLoadedKey } from '@/hooks/useLoadedKey'

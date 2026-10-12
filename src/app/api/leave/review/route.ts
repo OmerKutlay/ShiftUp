@@ -1,69 +1,90 @@
 /**
  * POST /api/leave/review
- * Manager tarafından izin talebi onaylama/reddetme — FAZ 9 + FAZ 10 (bildirim) + FAZ 12 (is_on_leave).
+ * Yönetici tarafından izin talebi onaylama/reddetme.
  *
  * Body: { request_id, status: 'approved'|'rejected', reviewer_note? }
+ *
+ * - Yönetici kendi talebini onaylayamaz (ikinci bir yönetici gerekir).
+ * - Güncelleme yalnızca hâlâ 'pending' ise uygulanır (eşzamanlı çift onay engeli).
+ * - Onayda o aralığın planlanmış vardiyaları kaldırılır; çalışılmış vardiyalar korunur.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { createNotification } from '@/lib/notificationRepository'
-import { requireMinRole, ROLES } from '@/lib/auth'
+import { requireMinRole, ROLES, forbidden } from '@/lib/auth'
+import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/apiErrors'
+import { isUuid } from '@/lib/validation'
+import { removePlannedShiftsInRange } from '@/lib/leaveService'
+import { logAudit } from '@/lib/auditLog'
 
 export async function POST(req: NextRequest) {
-  // Authorization: en az Müdür Yardımcısı yetkisi gerekir
   const auth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
   if ('response' in auth) return auth.response
 
   try {
-    const body = await req.json() as {
-      request_id?: string
-      status?: string
-      reviewer_note?: string | null
-    }
-
-    if (!body.request_id || typeof body.request_id !== 'string') {
-      return NextResponse.json({ error: 'request_id zorunludur.', code: 'VALIDATION_ERROR' }, { status: 400 })
-    }
+    const body = await readJson<{ request_id?: string; status?: string; reviewer_note?: string | null }>(req)
+    if (!body) return badRequest('Geçersiz istek gövdesi.')
+    if (!isUuid(body.request_id)) return badRequest('request_id zorunludur.')
     if (body.status !== 'approved' && body.status !== 'rejected') {
-      return NextResponse.json({ error: "status 'approved' veya 'rejected' olmalıdır.", code: 'VALIDATION_ERROR' }, { status: 400 })
+      return badRequest("status 'approved' veya 'rejected' olmalıdır.")
+    }
+    if (body.reviewer_note && (typeof body.reviewer_note !== 'string' || body.reviewer_note.length > 500)) {
+      return badRequest('Not en fazla 500 karakter olabilir.')
     }
 
     const admin = createAdminClient()
 
-    // Kaydın varlığını ve mevcut durumunu doğrula
-    const { data: existing } = await admin
+    const { data: existing, error: exErr } = await admin
       .from('leave_requests')
-      .select('id, status')
+      .select('id, employee_id, status')
       .eq('id', body.request_id)
       .maybeSingle()
+    if (exErr) return serverError('POST /api/leave/review', exErr)
+    if (!existing) return notFound('İzin talebi bulunamadı.')
 
-    if (!existing) {
-      return NextResponse.json({ error: 'İzin talebi bulunamadı.', code: 'NOT_FOUND' }, { status: 404 })
+    if (existing.employee_id === auth.employee.id) {
+      return forbidden('Kendi izin talebinizi onaylayamaz veya reddedemezsiniz.')
     }
     if (existing.status !== 'pending') {
-      return NextResponse.json({
-        error: `Bu talep zaten ${existing.status === 'approved' ? 'onaylanmış' : 'reddedilmiş'}.`,
-        code: 'ALREADY_REVIEWED',
-      }, { status: 409 })
+      return conflict(`Bu talep zaten ${existing.status === 'approved' ? 'onaylanmış' : 'reddedilmiş'}.`, 'ALREADY_REVIEWED')
     }
 
+    const now = new Date().toISOString()
     const { data, error } = await admin
       .from('leave_requests')
       .update({
         status: body.status,
-        reviewer_note: body.reviewer_note?.trim() ?? null,
-        reviewed_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        reviewer_note: body.reviewer_note?.trim() || null,
+        reviewed_at: now,
+        reviewed_by: auth.employee.id,
+        updated_at: now,
       })
       .eq('id', body.request_id)
+      .eq('status', 'pending')
       .select()
-      .single()
+      .maybeSingle()
 
-    if (error) {
-      return NextResponse.json({ error: error.message, code: 'DB_ERROR' }, { status: 500 })
+    if (error) return serverError('POST /api/leave/review', error)
+    if (!data) return conflict('Bu talep az önce başka bir yönetici tarafından incelendi.', 'ALREADY_REVIEWED')
+
+    let cleanup = { removed: 0, keptWorked: 0 }
+    if (body.status === 'approved') {
+      try {
+        cleanup = await removePlannedShiftsInRange(admin, data.employee_id, data.start_date, data.end_date)
+      } catch (cleanupErr) {
+        console.error('[POST /api/leave/review] vardiya temizliği başarısız:', cleanupErr)
+      }
     }
 
-    // FAZ 10: Onay/red sonrası çalışana bildirim gönder
+    await logAudit({
+      actorId: auth.employee.id,
+      action: `leave.${body.status}`,
+      entityType: 'leave_request',
+      entityId: data.id,
+      before: { status: 'pending' },
+      after: { status: body.status, reviewer_note: data.reviewer_note, ...cleanup },
+    })
+
     try {
       const isApproved = body.status === 'approved'
       await createNotification(admin, {
@@ -79,23 +100,8 @@ export async function POST(req: NextRequest) {
       console.error('[POST /api/leave/review] bildirim gönderilemedi:', notifErr)
     }
 
-    // İzin onaylandığında çakışan vardiyaları tamamen sil.
-    // İzinli çalışana o günler için yeni vardiya da atanamaz (scheduleRepository guard'ı).
-    if (body.status === 'approved') {
-      const { error: deleteShiftsErr } = await admin
-        .from('shift_assignments')
-        .delete()
-        .eq('employee_id', data.employee_id)
-        .gte('work_date', data.start_date)
-        .lte('work_date', data.end_date)
-      if (deleteShiftsErr) {
-        console.error('[POST /api/leave/review] çakışan vardiyalar silinemedi:', deleteShiftsErr.message)
-      }
-    }
-
-    return NextResponse.json({ request: data })
+    return NextResponse.json({ request: data, kept_worked_shifts: cleanup.keptWorked })
   } catch (err) {
-    console.error('[POST /api/leave/review]', err)
-    return NextResponse.json({ error: 'Sunucu hatası.', code: 'UNKNOWN' }, { status: 500 })
+    return serverError('POST /api/leave/review', err)
   }
 }

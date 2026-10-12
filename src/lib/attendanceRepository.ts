@@ -1,16 +1,16 @@
-import { supabase } from '@/lib/supabase'
+/**
+ * attendanceRepository — Günlük operasyon ekranının veri katmanı (yalnızca server).
+ * Client bileşenleri '@/lib/api/attendance' üzerinden API'yi çağırır.
+ */
+import { db } from '@/lib/db'
 import type { AttendanceRecord, DailyShiftEntry } from '@/types/attendance'
-import type { AttendanceAction } from '@/lib/attendanceStateMachine'
-import { buildFieldPatch, AttendanceRuleError } from '@/lib/attendanceStateMachine'
-import { format } from 'date-fns'
 
 /**
- * Fetch all shift assignments for a given date, joined with employee and attendance data.
+ * Fetch all shift assignments for a given date (YYYY-MM-DD, Europe/Istanbul),
+ * joined with employee and attendance data.
  */
-export async function fetchDailyShifts(date: Date): Promise<DailyShiftEntry[]> {
-  const dateStr = format(date, 'yyyy-MM-dd')
-
-  const { data: assignments, error: assignError } = await supabase
+export async function fetchDailyShifts(dateStr: string): Promise<DailyShiftEntry[]> {
+  const { data: assignments, error: assignError } = await db
     .from('shift_assignments')
     .select(`
       id,
@@ -19,6 +19,7 @@ export async function fetchDailyShifts(date: Date): Promise<DailyShiftEntry[]> {
       work_date,
       start_time,
       end_time,
+      is_on_leave,
       created_at,
       updated_at,
       employees (
@@ -35,11 +36,11 @@ export async function fetchDailyShifts(date: Date): Promise<DailyShiftEntry[]> {
     .order('start_time', { ascending: true })
 
   if (assignError) throw new Error(`Vardiyalar yüklenemedi: ${assignError.message}`)
-  if (!assignments) return []
+  if (!assignments || assignments.length === 0) return []
 
   // Fetch attendance records for these assignments
   const assignmentIds = assignments.map((a) => a.id)
-  const { data: records, error: recError } = await supabase
+  const { data: records, error: recError } = await db
     .from('attendance_records')
     .select('*')
     .in('shift_assignment_id', assignmentIds)
@@ -68,59 +69,13 @@ export async function fetchDailyShifts(date: Date): Promise<DailyShiftEntry[]> {
   }))
 }
 
-/**
- * Create a new attendance record for a shift assignment (clock-in only path).
- * Ensures no duplicate active record exists (enforced by DB unique index too).
- */
-export async function createAttendanceRecord(
-  shiftAssignmentId: string,
-  employeeId: string
-): Promise<AttendanceRecord> {
-  // Guard: check for existing active record
-  const { data: existing } = await supabase
+/** Tek bir devam kaydını id ile getirir */
+export async function fetchAttendanceRecordByShift(shiftAssignmentId: string): Promise<AttendanceRecord | null> {
+  const { data, error } = await db
     .from('attendance_records')
-    .select('id, status')
+    .select('*')
     .eq('shift_assignment_id', shiftAssignmentId)
-    .neq('status', 'clocked_out')
     .maybeSingle()
-
-  if (existing) {
-    throw new AttendanceRuleError('Bu vardiya için zaten aktif bir devam kaydı mevcut.')
-  }
-
-  const now = new Date().toISOString()
-  const { data, error } = await supabase
-    .from('attendance_records')
-    .insert({
-      employee_id: employeeId,
-      shift_assignment_id: shiftAssignmentId,
-      status: 'working',
-      clock_in_at: now,
-    })
-    .select()
-    .single()
-
-  if (error) throw new Error(`Giriş kaydı oluşturulamadı: ${error.message}`)
-  return data as AttendanceRecord
-}
-
-/**
- * Perform an attendance action on an existing record.
- */
-export async function performAttendanceAction(
-  record: AttendanceRecord,
-  action: AttendanceAction
-): Promise<AttendanceRecord> {
-  const now = new Date().toISOString()
-  const patch = buildFieldPatch(record.status, action, now, record)
-
-  const { data, error } = await supabase
-    .from('attendance_records')
-    .update(patch)
-    .eq('id', record.id)
-    .select()
-    .single()
-
-  if (error) throw new Error(`Devam durumu güncellenemedi: ${error.message}`)
-  return data as AttendanceRecord
+  if (error) throw new Error(`Devam kaydı yüklenemedi: ${error.message}`)
+  return (data as AttendanceRecord | null) ?? null
 }

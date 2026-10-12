@@ -22,7 +22,7 @@ export function useNotifications(employeeId: string | null, pollMs?: number) {
       return
     }
     try {
-      const res = await window.fetch(`/api/notifications?employee_id=${employeeId}&limit=30`, {
+      const res = await window.fetch(`/api/notifications?limit=30`, {
         credentials: 'same-origin',
       })
       if (!res.ok) return

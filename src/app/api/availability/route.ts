@@ -1,18 +1,19 @@
 /**
- * GET    /api/availability?employee_id=xxx
+ * GET    /api/availability?employee_id=xxx | ?all=true
  * POST   /api/availability
  * DELETE /api/availability?id=xxx
- * FAZ 11 + FAZ AUTH-2 (authorization)
  *
  * Erişim kuralları:
- *   GET:    requireAuth → employee kendi, manager+ herkes
- *   POST:   requireAuth → employee_id session'dan → başkası adına ancak manager+
+ *   GET:    requireAuth → employee kendi, manager+ herkes (all=true yalnızca manager)
+ *   POST:   requireAuth → kendi adına; başkası adına ancak manager+
  *   DELETE: requireAuth → kaydın sahibi veya manager+
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import type { CreateAvailabilityPayload, DayOfWeek } from '@/types/workforce'
-import { requireAuth, canAccessEmployee, MANAGER_ROLES } from '@/lib/auth'
+import { requireAuth, canAccessEmployee, MANAGER_ROLES, hasRole, forbidden } from '@/lib/auth'
+import { badRequest, notFound, readJson, serverError } from '@/lib/apiErrors'
+import { isUuid, isValidTime } from '@/lib/validation'
 
 const VALID_DAYS: DayOfWeek[] = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']
 
@@ -23,62 +24,51 @@ export async function GET(req: NextRequest) {
   const { employee: currentEmployee } = auth
 
   try {
-    const { searchParams } = new URL(req.url)
-    const requestedId = searchParams.get('employee_id')
-    const all = searchParams.get('all') === 'true'
+    const requestedId = req.nextUrl.searchParams.get('employee_id')
+    const all = req.nextUrl.searchParams.get('all') === 'true'
+    if (requestedId && !isUuid(requestedId)) return badRequest('Geçersiz çalışan ID.')
 
-    const isManager = currentEmployee.role_name
-      ? MANAGER_ROLES.includes(currentEmployee.role_name)
-      : false
-
+    const isManager = hasRole(currentEmployee.role_name, MANAGER_ROLES)
     const admin = createAdminClient()
 
-    // Manager + all=true → tüm aktif çalışanların availability'si
-    if (all && isManager) {
-      const { data, error } = await admin
-        .from('employee_availability')
-        .select('*')
-        .order('employee_id')
-        .order('day_of_week')
-        .order('start_time')
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-      return NextResponse.json({ availability: data ?? [] })
-    }
-
-    const effectiveId = isManager
-      ? (requestedId ?? currentEmployee.id)
-      : currentEmployee.id
-
-    const { data, error } = await admin
+    let query = admin
       .from('employee_availability')
       .select('*')
-      .eq('employee_id', effectiveId)
       .order('day_of_week')
       .order('start_time')
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (!(all && isManager)) {
+      query = query.eq('employee_id', isManager ? (requestedId ?? currentEmployee.id) : currentEmployee.id)
+    }
+
+    const { data, error } = await query
+    if (error) return serverError('GET /api/availability', error)
     return NextResponse.json({ availability: data ?? [] })
   } catch (err) {
-    console.error('[GET /api/availability]', err)
-    return NextResponse.json({ error: 'Sunucu hatası.' }, { status: 500 })
+    return serverError('GET /api/availability', err)
   }
 }
 
 // ─── POST ────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
-  const auth = await requireAuth(req)
-  if ('response' in auth) return auth.response
-
   try {
-    const body = (await req.json()) as Partial<CreateAvailabilityPayload>
+    const body = await readJson<Partial<CreateAvailabilityPayload>>(req)
+    if (!body) return badRequest('Geçersiz istek gövdesi.')
 
-    if (!body.employee_id) return NextResponse.json({ error: 'employee_id zorunludur.' }, { status: 400 })
-    if (!body.day_of_week || !VALID_DAYS.includes(body.day_of_week))
-      return NextResponse.json({ error: 'Geçersiz gün.' }, { status: 400 })
-    if (!body.start_time || !body.end_time)
-      return NextResponse.json({ error: 'start_time ve end_time zorunludur.' }, { status: 400 })
-    if (body.start_time >= body.end_time)
-      return NextResponse.json({ error: 'Başlangıç saati bitiş saatinden önce olmalıdır.' }, { status: 400 })
+    if (!isUuid(body.employee_id)) return badRequest('employee_id zorunludur.')
+    if (!body.day_of_week || !VALID_DAYS.includes(body.day_of_week)) return badRequest('Geçersiz gün.')
+    if (!isValidTime(body.start_time) || !isValidTime(body.end_time)) {
+      return badRequest('start_time ve end_time HH:MM formatında zorunludur.')
+    }
+    if (body.start_time.slice(0, 5) >= body.end_time.slice(0, 5)) {
+      return badRequest('Başlangıç saati bitiş saatinden önce olmalıdır.')
+    }
+    if (body.is_available !== undefined && typeof body.is_available !== 'boolean') {
+      return badRequest('is_available boolean olmalıdır.')
+    }
+    if (body.note != null && (typeof body.note !== 'string' || body.note.length > 300)) {
+      return badRequest('Not en fazla 300 karakter olabilir.')
+    }
 
     // Employee sadece kendisi adına, manager+ herhangi biri adına
     const accessCheck = await canAccessEmployee(req, body.employee_id, MANAGER_ROLES)
@@ -90,19 +80,18 @@ export async function POST(req: NextRequest) {
       .insert({
         employee_id: body.employee_id,
         day_of_week: body.day_of_week,
-        start_time: body.start_time,
-        end_time: body.end_time,
+        start_time: body.start_time.slice(0, 5),
+        end_time: body.end_time.slice(0, 5),
         is_available: body.is_available ?? true,
-        note: body.note ?? null,
+        note: body.note?.trim() || null,
       })
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError('POST /api/availability', error)
     return NextResponse.json({ availability: data }, { status: 201 })
   } catch (err) {
-    console.error('[POST /api/availability]', err)
-    return NextResponse.json({ error: 'Sunucu hatası.' }, { status: 500 })
+    return serverError('POST /api/availability', err)
   }
 }
 
@@ -113,37 +102,27 @@ export async function DELETE(req: NextRequest) {
   const { employee: currentEmployee } = auth
 
   try {
-    const { searchParams } = new URL(req.url)
-    const id = searchParams.get('id')
-    if (!id) return NextResponse.json({ error: 'id zorunludur.' }, { status: 400 })
+    const id = req.nextUrl.searchParams.get('id')
+    if (!isUuid(id)) return badRequest('id zorunludur.')
 
     const admin = createAdminClient()
 
-    // Kaydın sahibini doğrula
-    const { data: existing } = await admin
+    const { data: existing, error: exErr } = await admin
       .from('employee_availability')
       .select('employee_id')
       .eq('id', id)
       .maybeSingle()
+    if (exErr) return serverError('DELETE /api/availability', exErr)
+    if (!existing) return notFound('Kayıt bulunamadı.')
 
-    if (!existing) return NextResponse.json({ error: 'Kayıt bulunamadı.' }, { status: 404 })
-
-    const isManager = currentEmployee.role_name
-      ? MANAGER_ROLES.includes(currentEmployee.role_name)
-      : false
-
-    if (existing.employee_id !== currentEmployee.id && !isManager) {
-      return NextResponse.json(
-        { error: 'Yalnızca kendi availability kaydınızı silebilirsiniz.', code: 'FORBIDDEN' },
-        { status: 403 }
-      )
+    if (existing.employee_id !== currentEmployee.id && !hasRole(currentEmployee.role_name, MANAGER_ROLES)) {
+      return forbidden('Yalnızca kendi müsaitlik kaydınızı silebilirsiniz.')
     }
 
     const { error } = await admin.from('employee_availability').delete().eq('id', id)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverError('DELETE /api/availability', error)
     return NextResponse.json({ success: true })
   } catch (err) {
-    console.error('[DELETE /api/availability]', err)
-    return NextResponse.json({ error: 'Sunucu hatası.' }, { status: 500 })
+    return serverError('DELETE /api/availability', err)
   }
 }

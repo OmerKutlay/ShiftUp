@@ -1,4 +1,8 @@
-import { supabase } from '@/lib/supabase'
+/**
+ * employeeRepository — employees / roles veri katmanı (yalnızca server).
+ * Client bileşenleri '@/lib/api/employees' üzerinden API'yi çağırır.
+ */
+import { db } from '@/lib/db'
 import type {
   Employee,
   EmployeeWithRole,
@@ -13,7 +17,7 @@ import type {
 
 /** Tüm rolleri getirir (kullanıcı arayüzü için dropdown vb.) */
 export async function fetchRoles(): Promise<Role[]> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('roles')
     .select('id, name, description, created_at')
     .order('name', { ascending: true })
@@ -28,7 +32,7 @@ export async function fetchRoles(): Promise<Role[]> {
 
 /** Tüm çalışanları rol bilgisiyle birlikte getirir */
 export async function fetchEmployees(): Promise<EmployeeWithRole[]> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('employees')
     .select(`
       id,
@@ -56,7 +60,7 @@ export async function fetchEmployees(): Promise<EmployeeWithRole[]> {
 
 /** Sadece aktif çalışanları getirir (vardiya planı için) */
 export async function fetchActiveEmployees(): Promise<EmployeeWithRole[]> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('employees')
     .select(`
       id,
@@ -83,7 +87,7 @@ export async function fetchActiveEmployees(): Promise<EmployeeWithRole[]> {
 
 /** Tek çalışanı id ile getirir */
 export async function fetchEmployeeById(id: string): Promise<EmployeeWithRole | null> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('employees')
     .select(`
       id,
@@ -110,7 +114,7 @@ export async function fetchEmployeeById(id: string): Promise<EmployeeWithRole | 
 
 /** Yeni çalışan oluşturur */
 export async function createEmployee(payload: CreateEmployeePayload): Promise<Employee> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('employees')
     .insert(payload)
     .select()
@@ -129,7 +133,7 @@ export async function updateEmployee(
   id: string,
   payload: UpdateEmployeePayload
 ): Promise<Employee> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('employees')
     .update(payload)
     .eq('id', id)
@@ -150,24 +154,4 @@ export async function deactivateEmployee(id: string): Promise<Employee> {
 
 export async function activateEmployee(id: string): Promise<Employee> {
   return updateEmployee(id, { active: true })
-}
-
-/**
- * Çalışanı kalıcı olarak siler (hard delete).
- * Bağlı vardiya/attendance kayıtları varsa 409 (FK_VIOLATION) hatası alınır;
- * bu durumda UI kullanıcıya pasifleştirme önerir.
- * Auth user silme işlemi API route tarafından yapılır (service role gerektirir).
- */
-export async function deleteEmployee(id: string): Promise<void> {
-  const res = await fetch(`/api/employees/${encodeURIComponent(id)}`, {
-    method: 'DELETE',
-  })
-
-  if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as { error?: string; code?: string }
-    throw Object.assign(
-      new Error(body.error ?? 'Çalışan silinemedi.'),
-      { code: body.code }
-    )
-  }
 }

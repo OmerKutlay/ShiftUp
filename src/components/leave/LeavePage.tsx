@@ -45,7 +45,7 @@ import {
   LEAVE_STATUS_LABELS,
   LEAVE_STATUS_COLORS,
 } from '@/types/leave'
-import { fetchActiveEmployees } from '@/lib/employeeRepository'
+import { fetchActiveEmployees } from '@/lib/api/employees'
 import { format, differenceInCalendarDays } from 'date-fns'
 import { useLoadedKey } from '@/hooks/useLoadedKey'
 

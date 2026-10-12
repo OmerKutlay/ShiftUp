@@ -26,13 +26,14 @@ import { tr } from 'date-fns/locale'
 import { useLoadedKey } from '@/hooks/useLoadedKey'
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
-  pending:   { label: 'Onay Bekliyor', color: '#f59e0b' },
+  awaiting_target: { label: 'Karşı Taraf Bekleniyor', color: '#60a5fa' },
+  pending:   { label: 'Yönetici Onayı Bekliyor', color: '#f59e0b' },
   approved:  { label: 'Onaylandı',     color: '#10b981' },
   rejected:  { label: 'Reddedildi',    color: '#ef4444' },
   cancelled: { label: 'İptal',         color: '#94a3b8' },
 }
 
-type ReviewStatus = 'approved' | 'rejected' | 'cancelled'
+type ReviewStatus = 'accepted' | 'declined' | 'approved' | 'rejected' | 'cancelled'
 
 interface Props {
   employees: EmployeeWithRole[]
@@ -50,6 +51,8 @@ export function ShiftSwapPanel({ employees, assignments, currentEmployeeId, isMa
   const [saving, setSaving] = useState(false)
   const [reviewingId, setReviewingId] = useState<string | null>(null)
   const [rejecting, setRejecting] = useState<{ id: string; note: string } | null>(null)
+  // Çalışma süresi ihlali — yönetici açıkça onaylarsa tekrar gönderilir
+  const [ackPrompt, setAckPrompt] = useState<{ id: string; violations: string[] } | null>(null)
 
   const load = useCallback(async () => {
     setError(null)
@@ -84,16 +87,25 @@ export function ShiftSwapPanel({ employees, assignments, currentEmployeeId, isMa
     finally { setSaving(false) }
   }
 
-  const handleReview = async (swapId: string, status: ReviewStatus, reviewerNote?: string) => {
+  const handleReview = async (swapId: string, status: ReviewStatus, reviewerNote?: string, acknowledge = false) => {
     setReviewingId(swapId)
     try {
       const res = await fetch('/api/shift-swap/review', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ swap_id: swapId, status, reviewer_note: reviewerNote || null }),
+        body: JSON.stringify({
+          swap_id: swapId, status, reviewer_note: reviewerNote || null, acknowledge_violations: acknowledge,
+        }),
       })
-      const json = await res.json() as { swap_request: ShiftSwapRequest; error?: string }
-      if (!res.ok) { setError(json.error ?? 'Hata.'); return }
+      const json = await res.json() as { swap_request: ShiftSwapRequest; error?: string; code?: string; violations?: string[] }
+      if (!res.ok) {
+        if (json.code === 'WORKING_TIME_VIOLATION') {
+          setAckPrompt({ id: swapId, violations: json.violations ?? [] })
+          return
+        }
+        setError(json.error ?? 'Hata.')
+        return
+      }
       // Yanıt join içermez — mevcut isim/vardiya bilgilerini koru
       setSwaps((prev) => prev.map((s) => s.id === swapId ? { ...s, ...json.swap_request } : s))
     } catch { setError('İşlem başarısız.') }
@@ -112,7 +124,7 @@ export function ShiftSwapPanel({ employees, assignments, currentEmployeeId, isMa
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, mb: 2, flexWrap: 'wrap' }}>
         <Typography variant="caption" color="text.secondary">
-          Takas talepleri yönetici onayından sonra uygulanır. Onaylanmayan veya reddedilen taleplerde vardiyalar değişmez.
+          Takas, karşı taraf kabul edip bir yönetici onayladıktan sonra uygulanır. Diğer durumlarda vardiyalar değişmez.
         </Typography>
         <Button startIcon={<AddIcon />} variant="outlined" size="small" onClick={() => setDialogOpen(true)}
           disabled={!currentEmployeeId}
@@ -130,11 +142,13 @@ export function ShiftSwapPanel({ employees, assignments, currentEmployeeId, isMa
       ) : (
         <Stack gap={1}>
           {swaps.map((swap) => {
-            const meta = STATUS_META[swap.status]
             const isPending = swap.status === 'pending'
+            const awaitingTarget = isPending && !swap.target_accepted_at
+            const meta = STATUS_META[awaitingTarget ? 'awaiting_target' : swap.status]
             const isParty = swap.requester_id === currentEmployeeId || swap.target_id === currentEmployeeId
-            // Yönetici, tarafı olmadığı talepleri onaylar/reddeder; çalışan yalnızca kendi talebini iptal eder
-            const canReview = isPending && isManager && !isParty
+            // Önce hedef çalışan kabul eder; sonra tarafı olmayan bir yönetici onaylar/reddeder
+            const canRespond = awaitingTarget && swap.target_id === currentEmployeeId
+            const canReview = isPending && !awaitingTarget && isManager && !isParty
             const canCancel = isPending && swap.requester_id === currentEmployeeId
             return (
               <Paper key={swap.id} sx={{ p: 1.5, bgcolor: 'rgba(30,41,59,0.5)', border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
@@ -163,6 +177,20 @@ export function ShiftSwapPanel({ employees, assignments, currentEmployeeId, isMa
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <Chip label={meta.label} size="small"
                       sx={{ bgcolor: `${meta.color}22`, color: meta.color, fontWeight: 700, fontSize: '0.65rem' }} />
+                    {canRespond && (
+                      <>
+                        <Button size="small" color="success" variant="outlined" startIcon={<CheckIcon />}
+                          onClick={() => handleReview(swap.id, 'accepted')}
+                          disabled={reviewingId === swap.id} sx={{ fontSize: '0.7rem', py: 0.25 }}>
+                          Kabul Et
+                        </Button>
+                        <Button size="small" color="error" variant="outlined" startIcon={<CloseIcon />}
+                          onClick={() => handleReview(swap.id, 'declined')}
+                          disabled={reviewingId === swap.id} sx={{ fontSize: '0.7rem', py: 0.25 }}>
+                          Reddet
+                        </Button>
+                      </>
+                    )}
                     {canReview && (
                       <>
                         <Button size="small" color="success" variant="outlined" startIcon={<CheckIcon />}
@@ -197,7 +225,7 @@ export function ShiftSwapPanel({ employees, assignments, currentEmployeeId, isMa
         <DialogTitle>Takas Talebi Oluştur</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '12px !important' }}>
           <Alert severity="info" sx={{ py: 0 }}>
-            Talebiniz yönetici onayına gönderilir. Onaylanana kadar vardiyanız değişmez.
+            Teklifiniz önce seçtiğiniz çalışana, o kabul ederse yönetici onayına gider. Onaylanana kadar vardiyanız değişmez.
           </Alert>
           {myShifts.length === 0 ? (
             <Typography variant="body2" color="text.secondary">Bu hafta takas edilebilecek vardiyanız yok.</Typography>
@@ -262,6 +290,32 @@ export function ShiftSwapPanel({ employees, assignments, currentEmployeeId, isMa
               setRejecting(null)
             }}>
             Reddet
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Çalışma süresi ihlali onayı */}
+      <Dialog open={ackPrompt !== null} onClose={() => setAckPrompt(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Çalışma Süresi İhlali</DialogTitle>
+        <DialogContent sx={{ pt: '12px !important' }}>
+          <Alert severity="warning" sx={{ mb: 1 }}>
+            Bu takas aşağıdaki İş Kanunu kurallarını ihlal ediyor. Yine de onaylamak istiyor musunuz?
+          </Alert>
+          <Box component="ul" sx={{ m: 0, pl: 2 }}>
+            {ackPrompt?.violations.map((v) => (
+              <li key={v}><Typography variant="body2">{v}</Typography></li>
+            ))}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAckPrompt(null)} color="inherit">Vazgeç</Button>
+          <Button color="warning" variant="contained"
+            onClick={() => {
+              if (!ackPrompt) return
+              void handleReview(ackPrompt.id, 'approved', undefined, true)
+              setAckPrompt(null)
+            }}>
+            İhlallere Rağmen Onayla
           </Button>
         </DialogActions>
       </Dialog>

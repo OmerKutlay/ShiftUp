@@ -54,8 +54,8 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { label: 'Genel Bakış',       href: '/dashboard',       icon: <DashboardIcon /> },
-  { label: 'Günlük Operasyon',  href: '/',                icon: <TodayIcon /> },
+  { label: 'Genel Bakış',       href: '/dashboard',       icon: <DashboardIcon />,     requiredRoles: MANAGER_ROLES },
+  { label: 'Günlük Operasyon',  href: '/',                icon: <TodayIcon />,         requiredRoles: MANAGER_ROLES },
   { label: 'Çalışanlar',        href: '/employees',       icon: <PeopleIcon />,        requiredRoles: MANAGER_ROLES },
   { label: 'Vardiya Şablonları',href: '/shift-templates', icon: <ScheduleIcon />,      requiredRoles: MANAGER_ROLES },
   { label: 'Haftalık Plan',     href: '/schedule',        icon: <CalendarMonthIcon /> },

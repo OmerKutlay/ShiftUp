@@ -1,30 +1,46 @@
 /**
- * GET    /api/leave          — Tüm izin taleplerini listele (employee join'li)
+ * GET    /api/leave          — İzin talepleri (employee join'li)
+ *        ?status=&employee_id=&from=YYYY-MM-DD&to=YYYY-MM-DD
+ *        Yöneticiler tümünü görür. Standart çalışan kendi taleplerini + başkalarının
+ *        yalnızca ONAYLI izinlerini (gerekçe/not gizli) görür.
  * POST   /api/leave          — Yeni izin talebi oluştur
- * DELETE /api/leave?id=...   — İzin talebini sil (manager+)
- * FAZ 9 + FAZ 10 (bildirim entegrasyonu)
+ * DELETE /api/leave?id=...   — İzin talebini sil (yönetici; çalışan yalnızca kendi bekleyen talebini)
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import type { CreateLeaveRequestPayload, LeaveType } from '@/types/leave'
 import { LEAVE_TYPE_LABELS } from '@/types/leave'
 import { createNotification, notifyManagers } from '@/lib/notificationRepository'
-import { requireAuth, canAccessEmployee, MANAGER_ROLES, requireMinRole, ROLES } from '@/lib/auth'
+import { requireAuth, canAccessEmployee, MANAGER_ROLES, requireMinRole, ROLES, hasRole, forbidden } from '@/lib/auth'
+import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/apiErrors'
+import { isUuid, isValidDate } from '@/lib/validation'
+import { turkeyToday, addDaysToDateString } from '@/lib/dateUtils'
+import { removePlannedShiftsInRange } from '@/lib/leaveService'
+import { logAudit } from '@/lib/auditLog'
 
 const VALID_LEAVE_TYPES: LeaveType[] = ['annual', 'sick', 'personal', 'unpaid', 'other', 'weekly_rest']
 /** Çalışanın kendi adına açabileceği tipler (weekly_rest sadece manager atayabilir) */
 const EMPLOYEE_LEAVE_TYPES: LeaveType[] = ['annual', 'sick', 'personal', 'unpaid', 'other']
+const VALID_STATUSES = ['pending', 'approved', 'rejected']
+/** Geriye dönük hastalık izni en fazla bu kadar gün öncesine açılabilir */
+const MAX_SICK_BACKDATE_DAYS = 30
 
 // ─── GET ────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
-  // Authentication zorunlu
   const auth = await requireAuth(req)
   if ('response' in auth) return auth.response
+  const isManager = hasRole(auth.employee.role_name, MANAGER_ROLES)
 
   try {
-    const { searchParams } = new URL(req.url)
-    const statusFilter = searchParams.get('status')  // 'pending' | 'approved' | 'rejected' | null
-    const employeeId = searchParams.get('employee_id')
+    const sp = req.nextUrl.searchParams
+    const statusFilter = sp.get('status')
+    const employeeId = sp.get('employee_id')
+    const from = sp.get('from')
+    const to = sp.get('to')
+
+    if (statusFilter && !VALID_STATUSES.includes(statusFilter)) return badRequest('Geçersiz durum filtresi.')
+    if (employeeId && !isUuid(employeeId)) return badRequest('Geçersiz çalışan ID.')
+    if ((from && !isValidDate(from)) || (to && !isValidDate(to))) return badRequest('Geçersiz tarih aralığı.')
 
     const admin = createAdminClient()
 
@@ -37,42 +53,44 @@ export async function GET(req: NextRequest) {
       `)
       .order('created_at', { ascending: false })
 
-    if (statusFilter) {
-      query = query.eq('status', statusFilter)
-    }
-    if (employeeId) {
-      query = query.eq('employee_id', employeeId)
-    }
+    if (statusFilter) query = query.eq('status', statusFilter)
+    if (employeeId) query = query.eq('employee_id', employeeId)
+    // Aralıkla kesişen izinler
+    if (to) query = query.lte('start_date', to)
+    if (from) query = query.gte('end_date', from)
 
     const { data, error } = await query
-    if (error) {
-      return NextResponse.json({ error: error.message, code: 'DB_ERROR' }, { status: 500 })
+    if (error) return serverError('GET /api/leave', error)
+
+    let requests = (data ?? []) as Array<Record<string, unknown>>
+    if (!isManager) {
+      const selfId = auth.employee.id
+      requests = requests
+        .filter((r) => r.employee_id === selfId || r.status === 'approved')
+        .map((r) => (r.employee_id === selfId ? r : { ...r, reason: null, reviewer_note: null }))
     }
 
-    return NextResponse.json({ requests: data ?? [] })
+    return NextResponse.json({ requests })
   } catch (err) {
-    console.error('[GET /api/leave]', err)
-    return NextResponse.json({ error: 'Sunucu hatası.', code: 'UNKNOWN' }, { status: 500 })
+    return serverError('GET /api/leave', err)
   }
 }
 
 // ─── POST ───────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as Partial<CreateLeaveRequestPayload>
+    const body = await readJson<Partial<CreateLeaveRequestPayload>>(req)
+    if (!body) return badRequest('Geçersiz istek gövdesi.')
 
-    // Validation
-    if (!body.employee_id || typeof body.employee_id !== 'string') {
-      return NextResponse.json({ error: 'employee_id zorunludur.', code: 'VALIDATION_ERROR' }, { status: 400 })
-    }
+    if (!isUuid(body.employee_id)) return badRequest('employee_id zorunludur.')
 
     // Authorization: weekly_rest yalnızca manager+ atayabilir; diğerleri kendi adına veya manager+
     const isWeeklyRest = body.leave_type === 'weekly_rest'
-    let actorId: string | undefined
+    let actorId: string
     if (isWeeklyRest) {
-      // Sadece manager rolü haftalık tatil atayabilir
       const managerAuth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
       if ('response' in managerAuth) return managerAuth.response
+      actorId = managerAuth.employee.id
     } else {
       const accessCheck = await canAccessEmployee(req, body.employee_id, MANAGER_ROLES)
       if ('response' in accessCheck) return accessCheck.response
@@ -80,50 +98,47 @@ export async function POST(req: NextRequest) {
     }
 
     if (!body.leave_type || !VALID_LEAVE_TYPES.includes(body.leave_type)) {
-      return NextResponse.json({ error: 'Geçersiz izin tipi.', code: 'VALIDATION_ERROR' }, { status: 400 })
+      return badRequest('Geçersiz izin tipi.')
     }
-    // Çalışanın kendi açabileceği tipler — weekly_rest sadece manager
-    if (!isWeeklyRest && body.leave_type && !EMPLOYEE_LEAVE_TYPES.includes(body.leave_type)) {
-      return NextResponse.json({ error: 'Bu izin tipini kendiniz oluşturamazsınız.', code: 'FORBIDDEN' }, { status: 403 })
+    if (!isWeeklyRest && !EMPLOYEE_LEAVE_TYPES.includes(body.leave_type)) {
+      return forbidden('Bu izin tipini kendiniz oluşturamazsınız.')
     }
-    if (!body.start_date || !/^\d{4}-\d{2}-\d{2}$/.test(body.start_date)) {
-      return NextResponse.json({ error: 'start_date YYYY-MM-DD formatında olmalıdır.', code: 'VALIDATION_ERROR' }, { status: 400 })
+    if (!isValidDate(body.start_date)) return badRequest('start_date YYYY-MM-DD formatında olmalıdır.')
+    if (!isValidDate(body.end_date)) return badRequest('end_date YYYY-MM-DD formatında olmalıdır.')
+    if (body.start_date > body.end_date) return badRequest('Başlangıç tarihi bitiş tarihinden sonra olamaz.')
+    if (body.reason !== undefined && body.reason !== null && (typeof body.reason !== 'string' || body.reason.length > 500)) {
+      return badRequest('Açıklama en fazla 500 karakter olabilir.')
     }
-    if (!body.end_date || !/^\d{4}-\d{2}-\d{2}$/.test(body.end_date)) {
-      return NextResponse.json({ error: 'end_date YYYY-MM-DD formatında olmalıdır.', code: 'VALIDATION_ERROR' }, { status: 400 })
+
+    // Geçmişe dönük talep — hastalık izni (sınırlı) ve haftalık tatil hariç (Türkiye tarihi)
+    const today = turkeyToday()
+    if (body.start_date < today) {
+      if (body.leave_type === 'sick') {
+        if (body.start_date < addDaysToDateString(today, -MAX_SICK_BACKDATE_DAYS)) {
+          return badRequest(`Hastalık izni en fazla ${MAX_SICK_BACKDATE_DAYS} gün geriye dönük açılabilir.`)
+        }
+      } else if (body.leave_type !== 'weekly_rest') {
+        return badRequest('Geçmiş tarih için izin talebi oluşturulamaz (hastalık izni hariç).')
+      }
     }
-    if (body.start_date > body.end_date) {
-      return NextResponse.json({ error: 'Başlangıç tarihi bitiş tarihinden sonra olamaz.', code: 'VALIDATION_ERROR' }, { status: 400 })
-    }
-    // Geçmişe dönük talep — hastalık izni ve haftalık tatil hariç
-    const today = new Date().toISOString().slice(0, 10)
-    if (body.start_date < today && body.leave_type !== 'sick' && body.leave_type !== 'weekly_rest') {
-      return NextResponse.json({ error: 'Geçmiş tarih için izin talebi oluşturulamaz (hastalık izni hariç).', code: 'VALIDATION_ERROR' }, { status: 400 })
-    }
-    // Maks 30 gün (haftalık tatil tek gün olacak, yine de genel kurala dahil)
-    const diffDays = (new Date(body.end_date).getTime() - new Date(body.start_date).getTime()) / 86400000
-    if (diffDays > 30) {
-      return NextResponse.json({ error: 'Tek talep en fazla 30 gün olabilir.', code: 'VALIDATION_ERROR' }, { status: 400 })
-    }
+    const diffDays = (Date.parse(body.end_date) - Date.parse(body.start_date)) / 86400000
+    if (diffDays > 30) return badRequest('Tek talep en fazla 30 gün olabilir.')
 
     const admin = createAdminClient()
 
-    // Employee aktiflik kontrolü
-    const { data: emp } = await admin
+    const { data: emp, error: empErr } = await admin
       .from('employees')
       .select('id, full_name, active')
       .eq('id', body.employee_id)
       .maybeSingle()
-
-    if (!emp) {
-      return NextResponse.json({ error: 'Çalışan bulunamadı.', code: 'EMPLOYEE_NOT_FOUND' }, { status: 404 })
-    }
+    if (empErr) return serverError('POST /api/leave', empErr)
+    if (!emp) return notFound('Çalışan bulunamadı.', 'EMPLOYEE_NOT_FOUND')
     if (!emp.active) {
       return NextResponse.json({ error: 'Pasif çalışan izin talebi oluşturamaz.', code: 'EMPLOYEE_INACTIVE' }, { status: 403 })
     }
 
-    // Aynı tarih aralığında çakışan pending/approved talep var mı?
-    const { data: overlapping } = await admin
+    // Aynı tarih aralığında çakışan pending/approved talep var mı? (DB'de ayrıca EXCLUDE kısıtı var)
+    const { data: overlapping, error: ovErr } = await admin
       .from('leave_requests')
       .select('id')
       .eq('employee_id', body.employee_id)
@@ -131,9 +146,9 @@ export async function POST(req: NextRequest) {
       .lte('start_date', body.end_date)
       .gte('end_date', body.start_date)
       .limit(1)
-
+    if (ovErr) return serverError('POST /api/leave', ovErr)
     if (overlapping && overlapping.length > 0) {
-      return NextResponse.json({ error: 'Bu tarih aralığında zaten onaylı veya bekleyen bir izin talebi mevcut.', code: 'LEAVE_CONFLICT' }, { status: 409 })
+      return conflict('Bu tarih aralığında zaten onaylı veya bekleyen bir izin talebi mevcut.', 'LEAVE_CONFLICT')
     }
 
     const { data, error } = await admin
@@ -143,32 +158,36 @@ export async function POST(req: NextRequest) {
         leave_type: body.leave_type,
         start_date: body.start_date,
         end_date: body.end_date,
-        reason: body.reason?.trim() ?? null,
+        reason: body.reason?.trim() || null,
         // weekly_rest manager tarafından atanır → doğrudan onaylı, onay akışına girmez
         status: isWeeklyRest ? 'approved' : 'pending',
         reviewed_at: isWeeklyRest ? new Date().toISOString() : null,
+        reviewed_by: isWeeklyRest ? actorId : null,
       })
       .select()
       .single()
 
     if (error) {
-      return NextResponse.json({ error: error.message, code: 'DB_ERROR' }, { status: 500 })
-    }
-
-    // weekly_rest için vardiyaları da sil (aynı gün varsa)
-    if (isWeeklyRest) {
-      const { error: delErr } = await admin
-        .from('shift_assignments')
-        .delete()
-        .eq('employee_id', body.employee_id)
-        .gte('work_date', body.start_date)
-        .lte('work_date', body.end_date)
-      if (delErr) {
-        console.error('[POST /api/leave] weekly_rest vardiya silinemedi:', delErr.message)
+      // 23P01: exclusion constraint (eşzamanlı çakışan talep)
+      if (error.code === '23P01') {
+        return conflict('Bu tarih aralığında zaten onaylı veya bekleyen bir izin talebi mevcut.', 'LEAVE_CONFLICT')
       }
+      return serverError('POST /api/leave', error)
     }
 
-    // Bildirim — weekly_rest için tatil bildirimi, diğerleri için talep bildirimi
+    // weekly_rest: o günlerin planlanmış vardiyaları kaldırılır (çalışılmış olanlar korunur)
+    let cleanup = { removed: 0, keptWorked: 0 }
+    if (isWeeklyRest) {
+      cleanup = await removePlannedShiftsInRange(admin, body.employee_id, body.start_date, body.end_date)
+      await logAudit({
+        actorId,
+        action: 'leave.weekly_rest.assign',
+        entityType: 'leave_request',
+        entityId: data.id,
+        after: { employee_id: body.employee_id, start_date: body.start_date, end_date: body.end_date, ...cleanup },
+      })
+    }
+
     try {
       if (isWeeklyRest) {
         await createNotification(admin, {
@@ -186,7 +205,6 @@ export async function POST(req: NextRequest) {
           message: `${body.start_date} – ${body.end_date} tarihli izin talebiniz incelemeye alındı.`,
           related_id: data.id,
         })
-        // Yöneticilere onay bekleyen talep bildirimi (talebi açan yönetici hariç)
         await notifyManagers(
           admin,
           {
@@ -202,65 +220,50 @@ export async function POST(req: NextRequest) {
       console.error('[POST /api/leave] bildirim gönderilemedi:', notifErr)
     }
 
-    return NextResponse.json({ request: data }, { status: 201 })
+    return NextResponse.json({ request: data, kept_worked_shifts: cleanup.keptWorked }, { status: 201 })
   } catch (err) {
-    console.error('[POST /api/leave]', err)
-    return NextResponse.json({ error: 'Sunucu hatası.', code: 'UNKNOWN' }, { status: 500 })
+    return serverError('POST /api/leave', err)
   }
 }
 
 // ─── DELETE ─────────────────────────────────────────────────────
 export async function DELETE(req: NextRequest) {
-  // Authorization: en az Müdür Yardımcısı yetkisi gerekir
-  const auth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
+  const auth = await requireAuth(req)
   if ('response' in auth) return auth.response
+  const isManager = hasRole(auth.employee.role_name, MANAGER_ROLES)
 
   try {
-    const { searchParams } = new URL(req.url)
-    const id = searchParams.get('id')
-
-    if (!id || typeof id !== 'string') {
-      return NextResponse.json({ error: 'id parametresi zorunludur.', code: 'VALIDATION_ERROR' }, { status: 400 })
-    }
+    const id = req.nextUrl.searchParams.get('id')
+    if (!isUuid(id)) return badRequest('id parametresi zorunludur.')
 
     const admin = createAdminClient()
 
-    // Kaydın varlığını doğrula
-    const { data: existing } = await admin
+    const { data: existing, error: exErr } = await admin
       .from('leave_requests')
-      .select('id, employee_id, status, start_date, end_date')
+      .select('id, employee_id, status, leave_type, start_date, end_date')
       .eq('id', id)
       .maybeSingle()
+    if (exErr) return serverError('DELETE /api/leave', exErr)
+    if (!existing) return notFound('İzin talebi bulunamadı.')
 
-    if (!existing) {
-      return NextResponse.json({ error: 'İzin talebi bulunamadı.', code: 'NOT_FOUND' }, { status: 404 })
+    // Çalışan yalnızca kendi bekleyen talebini geri çekebilir
+    if (!isManager && !(existing.employee_id === auth.employee.id && existing.status === 'pending')) {
+      return forbidden('Yalnızca kendi bekleyen talebinizi geri çekebilirsiniz.')
     }
 
-    // Onaylı izin silinirse ilgili shift_assignments'ların is_on_leave bayrağını kaldır
-    if (existing.status === 'approved') {
-      const { error: resetErr } = await admin
-        .from('shift_assignments')
-        .update({ is_on_leave: false })
-        .eq('employee_id', existing.employee_id)
-        .gte('work_date', existing.start_date)
-        .lte('work_date', existing.end_date)
-      if (resetErr) {
-        console.error('[DELETE /api/leave] is_on_leave sıfırlanamadı:', resetErr.message)
-      }
-    }
+    const { error } = await admin.from('leave_requests').delete().eq('id', id)
+    if (error) return serverError('DELETE /api/leave', error)
 
-    const { error } = await admin
-      .from('leave_requests')
-      .delete()
-      .eq('id', id)
-
-    if (error) {
-      return NextResponse.json({ error: error.message, code: 'DB_ERROR' }, { status: 500 })
-    }
+    await logAudit({
+      actorId: auth.employee.id,
+      action: 'leave.delete',
+      entityType: 'leave_request',
+      entityId: id,
+      before: existing,
+    })
 
     return NextResponse.json({ success: true })
   } catch (err) {
-    console.error('[DELETE /api/leave]', err)
-    return NextResponse.json({ error: 'Sunucu hatası.', code: 'UNKNOWN' }, { status: 500 })
+    return serverError('DELETE /api/leave', err)
   }
 }

@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { markAsRead } from '@/lib/notificationRepository'
 import { requireAuth } from '@/lib/auth'
+import { isUuid } from '@/lib/validation'
 
 export async function PATCH(req: NextRequest) {
   const auth = await requireAuth(req)
@@ -17,9 +18,9 @@ export async function PATCH(req: NextRequest) {
   const { employee: currentEmployee } = auth
 
   try {
-    const body = (await req.json()) as { notification_id?: string }
+    const body = ((await req.json().catch(() => ({}))) ?? {}) as { notification_id?: string }
 
-    if (!body.notification_id || typeof body.notification_id !== 'string') {
+    if (!isUuid(body.notification_id)) {
       return NextResponse.json(
         { error: 'notification_id zorunludur.', code: 'VALIDATION_ERROR' },
         { status: 400 },

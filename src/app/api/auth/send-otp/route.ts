@@ -5,16 +5,20 @@
  *
  * Body: { email: string }
  * Akış:
- *   1. Email employees tablosunda aranır, aktiflik kontrol edilir
- *   2. Employee'nın Supabase Auth kullanıcısı yoksa oluşturulup bağlanır
- *   3. signInWithOtp({ shouldCreateUser: false }) ile kod email'e gönderilir
+ *   1. Rate limit: e-posta başına ve istemci IP'si başına (paylaşılan sayaç)
+ *   2. Email employees tablosunda aranır, aktiflik kontrol edilir
+ *   3. Employee'nın Supabase Auth kullanıcısı yoksa oluşturulup bağlanır
+ *   4. signInWithOtp({ shouldCreateUser: false }) ile kod email'e gönderilir
+ *
+ * Kullanıcı numaralandırma önlemi: kayıtlı olmayan / pasif e-posta için de
+ * { ok: true } döner (kod gönderilmez). Yanıt, adresin kayıtlı olup olmadığını ele vermez.
  *
  * Response:
  *   200 { ok: true }
- *   400 { ok: false, reason: 'INVALID_EMAIL' }
- *   403 { ok: false, reason: 'EMPLOYEE_NOT_FOUND' | 'EMPLOYEE_INACTIVE' | 'NOT_AVAILABLE' }
+ *   400 { ok: false, reason: 'INVALID_EMAIL' | 'INVALID_JSON' }
+ *   403 { ok: false, reason: 'NOT_AVAILABLE' }
  *   429 { ok: false, reason: 'RATE_LIMITED' }
- *   500 { ok: false, reason: 'SEND_FAILED' | 'AUTH_PROVISION_FAILED' | 'AUTH_USER_CONFLICT' }
+ *   500 { ok: false, reason: 'SEND_FAILED' }
  *
  * ÖNEMLİ: Bu route yalnızca AUTH_MODE=production'da aktiftir.
  */
@@ -22,6 +26,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { IS_DEV_AUTH } from '@/lib/authConfig'
 import { ensureAuthUserForEmployee } from '@/lib/auth/authUser'
+import { checkRateLimit, clientIp } from '@/lib/rateLimiter'
+import { isValidEmail } from '@/lib/validation'
+
+const WINDOW_MS = 15 * 60 * 1000
+const PER_EMAIL = 5
+const PER_IP = 20
 
 export async function POST(req: NextRequest) {
   if (IS_DEV_AUTH) {
@@ -36,38 +46,43 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, reason: 'INVALID_JSON' }, { status: 400 })
   }
 
-  if (!email || !email.includes('@')) {
+  if (!isValidEmail(email)) {
     return NextResponse.json({ ok: false, reason: 'INVALID_EMAIL' }, { status: 400 })
+  }
+
+  const [byEmail, byIp] = await Promise.all([
+    checkRateLimit(`otp_send:email:${email}`, PER_EMAIL, WINDOW_MS),
+    checkRateLimit(`otp_send:ip:${clientIp(req)}`, PER_IP, WINDOW_MS),
+  ])
+  if (!byEmail.allowed || !byIp.allowed) {
+    return NextResponse.json({ ok: false, reason: 'RATE_LIMITED' }, { status: 429 })
   }
 
   try {
     const admin = createAdminClient()
 
-    // ── 1. Employee + aktiflik kontrolü ─────────────────────────
-    const { data: employee } = await admin
+    const { data: employee, error: empErr } = await admin
       .from('employees')
       .select('id, email, active, auth_user_id')
       .eq('email', email)
       .maybeSingle()
+    if (empErr) throw empErr
 
-    if (!employee) {
-      return NextResponse.json({ ok: false, reason: 'EMPLOYEE_NOT_FOUND' }, { status: 403 })
-    }
-    if (!employee.active) {
-      return NextResponse.json({ ok: false, reason: 'EMPLOYEE_INACTIVE' }, { status: 403 })
+    // Kayıtlı değil / pasif → sessizce başarı (numaralandırma önlemi)
+    if (!employee || !employee.active) {
+      return NextResponse.json({ ok: true })
     }
 
-    // ── 2. Auth kullanıcısını hazırla ───────────────────────────
     const provision = await ensureAuthUserForEmployee(admin, {
       id: employee.id,
       email,
       auth_user_id: employee.auth_user_id,
     })
     if (!provision.ok) {
-      return NextResponse.json({ ok: false, reason: provision.reason }, { status: 500 })
+      console.error('[POST /api/auth/send-otp] auth provisioning:', provision.reason)
+      return NextResponse.json({ ok: false, reason: 'SEND_FAILED' }, { status: 500 })
     }
 
-    // ── 3. OTP gönder ───────────────────────────────────────────
     const { createSupabaseServerClient } = await import('@/lib/supabase/server')
     const supabase = await createSupabaseServerClient()
     const { error } = await supabase.auth.signInWithOtp({

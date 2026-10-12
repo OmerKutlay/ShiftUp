@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/db'
 import type {
   ShiftTemplate,
   CreateShiftTemplatePayload,
@@ -45,7 +45,7 @@ function validatePayload(payload: CreateShiftTemplatePayload): void {
 
 /** Tüm şablonları getirir */
 export async function fetchShiftTemplates(): Promise<ShiftTemplate[]> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('shift_templates')
     .select('id, name, start_time, end_time, description, active, created_at, updated_at')
     .order('start_time', { ascending: true })
@@ -56,7 +56,7 @@ export async function fetchShiftTemplates(): Promise<ShiftTemplate[]> {
 
 /** Sadece aktif şablonları getirir (vardiya atama için) */
 export async function fetchActiveShiftTemplates(): Promise<ShiftTemplate[]> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('shift_templates')
     .select('id, name, start_time, end_time, description, active, created_at, updated_at')
     .eq('active', true)
@@ -76,7 +76,7 @@ export async function createShiftTemplate(
 ): Promise<ShiftTemplate> {
   validatePayload(payload)
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('shift_templates')
     .insert({
       name: payload.name.trim(),
@@ -126,7 +126,7 @@ export async function updateShiftTemplate(
     void partial // suppress unused warning
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('shift_templates')
     .update(payload)
     .eq('id', id)
