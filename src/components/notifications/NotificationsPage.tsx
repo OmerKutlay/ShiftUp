@@ -224,7 +224,7 @@ export function NotificationsPage() {
           <ListSkeleton count={6} variant="plain" actions={0} />
         ) : notifications.length === 0 ? (
           <Box sx={{ py: 6, textAlign: 'center' }}>
-            <WarningAmberIcon sx={{ color: 'text.secondary', opacity: 0.3, fontSize: 48, mb: 1 }} />
+            <NotificationsIcon sx={{ color: 'text.secondary', opacity: 0.3, fontSize: 48, mb: 1 }} />
             <Typography variant="body1" color="text.secondary">
               {authEmployee ? 'Henüz bildirim bulunmuyor' : 'Giriş yapılmadı'}
             </Typography>

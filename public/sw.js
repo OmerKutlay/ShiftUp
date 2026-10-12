@@ -11,8 +11,8 @@
  * - /, /dashboard, /attendance/scan, /qr-kiosk, /leave, /schedule, /workforce
  */
 
-const CACHE_NAME = 'shiftup-v2'
-const STATIC_CACHE = 'shiftup-static-v2'
+const CACHE_NAME = 'shiftup-v3'
+const STATIC_CACHE = 'shiftup-static-v3'
 
 // API path'leri — bunlar asla cache'lenmez
 const API_NO_CACHE_PATTERNS = [
@@ -54,6 +54,16 @@ self.addEventListener('activate', (event) => {
 // Fetch: strateji uygula
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url)
+
+  // 0. Next.js RSC / router istekleri ve diğer origin'ler — SW devre dışı (tarayıcı varsayılanı).
+  // Cache'ten gelen eski RSC payload'ı güncel HTML/JS ile karışırsa hydration mismatch oluşur.
+  if (url.origin !== self.location.origin ||
+      url.searchParams.has('_rsc') ||
+      event.request.headers.has('RSC') ||
+      event.request.headers.has('Next-Router-State-Tree') ||
+      (url.pathname.startsWith('/_next/') && !url.pathname.startsWith('/_next/static/'))) {
+    return
+  }
 
   // 1. API route'ları — Network Only (cache kesinlikle yok)
   if (url.pathname.startsWith('/api/') ||

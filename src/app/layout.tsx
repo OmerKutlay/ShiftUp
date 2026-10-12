@@ -4,12 +4,17 @@ import Script from 'next/script'
 import { AppRouterCacheProvider } from '@mui/material-nextjs/v15-appRouter'
 import { Providers } from './providers'
 
-const inter = Inter({ subsets: ['latin'], display: 'swap' })
+// latin-ext: Türkçe karakterler (ı, ş, ğ, İ) fallback fonta düşmesin
+const inter = Inter({ subsets: ['latin', 'latin-ext'], display: 'swap' })
 
 export const metadata: Metadata = {
   title: 'ShiftUp — Mağaza Vardiya Yönetimi',
   description: 'Günlük operasyon, vardiya planlama ve personel devam takip sistemi',
   manifest: '/manifest.json',
+  icons: {
+    icon: '/icon-192.svg',
+    apple: '/icon-192.svg',
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
@@ -42,7 +47,21 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Providers>{children}</Providers>
         </AppRouterCacheProvider>
         {/* PWA Service Worker registration */}
-        <Script id="sw-register" strategy="afterInteractive">{`
+        {/* Dev'de SW kaydedilmez ve varsa kaldırılır: Turbopack dev chunk'ları içerik hash'i
+            taşımadığından cache-first strateji eski JS sunar → hydration mismatch */}
+        <Script id="sw-register" strategy="afterInteractive">{process.env.NODE_ENV !== 'production' ? `
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then(function(regs) {
+    regs.forEach(function(r) { r.unregister(); });
+  });
+  if (window.caches) {
+    caches.keys().then(function(keys) {
+      keys.filter(function(k) { return k.indexOf('shiftup-') === 0; })
+        .forEach(function(k) { caches.delete(k); });
+    });
+  }
+}
+` : `
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function() {
     navigator.serviceWorker.register('/sw.js', { scope: '/' })
