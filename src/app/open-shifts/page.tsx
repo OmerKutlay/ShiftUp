@@ -1,7 +1,7 @@
 import { OpenShiftsPage } from '@/components/workforce/OpenShiftsPage'
 
 export const metadata = {
-  title: 'Açık Vardiyalar | ShiftUp',
+  title: 'Açık Vardiyalar',
 }
 
 export default function Page() {

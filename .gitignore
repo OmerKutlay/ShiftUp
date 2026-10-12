@@ -51,3 +51,4 @@ config.yml
 __test_*.json
 # Playwright CLI output (may contain credentials)
 .playwright-cli/
+.playwright/

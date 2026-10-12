@@ -1,5 +1,5 @@
 /// <reference types="vitest/globals" />
-import { buildReportSummary } from '../reportRepository'
+import { buildReportSummary, exportReportToCsv } from '../reportRepository'
 import { mapReportRow } from '../attendanceReportQuery'
 import { buildFieldPatch } from '../attendanceStateMachine'
 import { workedMinutes } from '../attendanceDurations'
@@ -109,5 +109,36 @@ describe('buildFieldPatch — çoklu mola', () => {
       clock_out_at: '2026-10-01T15:00:00Z',
       completed_break_minutes: 30,
     })).toBe(9 * 60 - 45)
+  })
+})
+
+describe('exportReportToCsv', () => {
+  it('formül ile başlayan hücreler kaçışlanır (CSV injection)', () => {
+    const r = { ...row('clocked_out', 480), full_name: '=HYPERLINK("http://x")', exception_note: '+1+1' }
+    const csv = exportReportToCsv([r])
+    expect(csv).toContain(`"'=HYPERLINK(""http://x"")"`)
+    expect(csv).toContain(`'+1+1`)
+    expect(csv).not.toMatch(/,=HYPERLINK/)
+  })
+
+  it('tek tek mola saatleri yerine toplam mola sütunu var', () => {
+    const header = exportReportToCsv([]).replace('﻿', '').split('\n')[0]
+    expect(header).toContain('Toplam Mola')
+    expect(header).not.toContain('Mola Başlangıç')
+  })
+})
+
+describe('mapReportRow — gelmedi toleransı', () => {
+  const base = {
+    employee_id: 'e1', work_date: '2026-10-01', start_time: '09:00:00', end_time: '17:00:00',
+    is_on_leave: false, employees: { full_name: 'Ayşe' }, attendance_records: [],
+  }
+  it('vardiya başlangıcından 10 dk sonra henüz "gelmedi" değil', () => {
+    const now = new Date('2026-10-01T09:10:00+03:00').getTime()
+    expect(mapReportRow(base, now).status).toBe('upcoming')
+  })
+  it('tolerans geçince "gelmedi" (shift_waiting)', () => {
+    const now = new Date('2026-10-01T09:45:00+03:00').getTime()
+    expect(mapReportRow(base, now).status).toBe('shift_waiting')
   })
 })

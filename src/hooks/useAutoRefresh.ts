@@ -3,9 +3,8 @@
 /**
  * useAutoRefresh — isteğe bağlı periyodik yenileme hook'u
  *
- * Tek tetikleyici: interval (opsiyonel)
- * visibilitychange kaldırıldı — kullanıcı hiçbir işlem yapmadan
- * veri kendiliğinden yenilenmemeli; refresh yalnızca mutation sonrası olmalı.
+ * Tek tetikleyici: interval (opsiyonel). Sekme görünmüyorsa (document.hidden) tur atlanır —
+ * arka plandaki sekmeler gereksiz istek atmaz. Görünür olunca bir sonraki turda devam eder.
  *
  * Kullanım:
  *   useAutoRefresh(load, 0, !dialogOpen)   // interval yok, sadece enabled kontrolü
@@ -23,7 +22,10 @@ export function useAutoRefresh(
 
   useEffect(() => {
     if (!enabled || !intervalMs) return
-    const id = setInterval(() => refreshRef.current(), intervalMs)
+    const id = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return
+      refreshRef.current()
+    }, intervalMs)
     return () => clearInterval(id)
   }, [enabled, intervalMs])
 }

@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { usePathname, useRouter } from 'next/navigation'
+import { useState } from 'react'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import {
   Box,
   Drawer,
@@ -37,7 +38,6 @@ import EditNoteIcon from '@mui/icons-material/EditNote'
 
 import { ErrorBoundary } from './ErrorBoundary'
 import { NotificationBell } from '@/components/notifications/NotificationBell'
-import { useActiveEmployee } from '@/context/ActiveEmployeeContext'
 import { useAuth } from '@/context/AuthContext'
 import { hasRole, MANAGER_ROLES, ADMIN_ROLES } from '@/lib/auth/roles'
 
@@ -81,21 +81,8 @@ export function AppShell({ children }: Props) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const pathname = usePathname()
-  const router = useRouter()
-  const { activeEmployee, setActiveEmployee } = useActiveEmployee()
   const { employee: authEmployee, signOut, status: authStatus } = useAuth()
   const authRoleName = authEmployee?.roles?.name ?? authEmployee?.role_name ?? null
-
-  // Auth'dan gelen employee'ı activeEmployee'a sync et
-  useEffect(() => {
-    if (authEmployee && authEmployee.active) {
-      setActiveEmployee({ id: authEmployee.id, full_name: authEmployee.full_name })
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authEmployee?.id])
-
-  // Aktif çalışanlar listesini yükle (selector için) — artık auth'dan geliyor
-  // Bu useEffect kaldırıldı; auth employee sync yukarıda yapılıyor
 
   const drawerWidth = collapsed && !isMobile ? DRAWER_COLLAPSED : DRAWER_WIDTH
 
@@ -135,6 +122,8 @@ export function AppShell({ children }: Props) {
           <IconButton
             size="small"
             onClick={() => setCollapsed((c) => !c)}
+            aria-label={collapsed ? 'Menüyü genişlet' : 'Menüyü daralt'}
+            aria-expanded={!collapsed}
             sx={{ color: 'text.secondary' }}
           >
             {collapsed ? <MenuIcon fontSize="small" /> : <ChevronLeftIcon fontSize="small" />}
@@ -144,6 +133,7 @@ export function AppShell({ children }: Props) {
           <IconButton
             size="small"
             onClick={() => setMobileOpen(false)}
+            aria-label="Menüyü kapat"
             sx={{ color: 'text.secondary' }}
           >
             <ChevronLeftIcon fontSize="small" />
@@ -167,11 +157,15 @@ export function AppShell({ children }: Props) {
               placement="right"
             >
               <ListItemButton
+                component={Link}
+                href={item.href}
+                prefetch
                 onClick={() => {
-                  router.push(item.href)
                   if (isMobile) setMobileOpen(false)
                 }}
                 selected={active}
+                aria-current={active ? 'page' : undefined}
+                aria-label={collapsed && !isMobile ? item.label : undefined}
                 sx={{
                   borderRadius: 2,
                   mb: 0.5,
@@ -316,6 +310,7 @@ export function AppShell({ children }: Props) {
       {!isMobile && (
         <Box
           component="nav"
+          aria-label="Ana menü"
           sx={{
             width: drawerWidth,
             flexShrink: 0,

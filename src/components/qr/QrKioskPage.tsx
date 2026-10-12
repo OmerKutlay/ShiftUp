@@ -94,12 +94,27 @@ export function QrKioskPage() {
     return clearTimers
   }, [generateQr])
 
+  // Ekran gizlenince QR üretimini durdur; tekrar görünür olunca hemen yenisini üret
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.hidden) {
+        clearTimers()
+        tokenRef.current = null
+      } else {
+        void generateRef.current?.()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [])
+
   // Gösterilen QR okutuldu mu? Okutulduysa hemen yenisini üret.
   useEffect(() => {
     let inFlight = false
     const poll = setInterval(async () => {
       const token = tokenRef.current
-      if (!token || inFlight || generatingRef.current) return
+      // Ekran görünmüyorsa yoklama yapma (arka planda gereksiz istek)
+      if (!token || inFlight || generatingRef.current || document.hidden) return
       inFlight = true
       try {
         const res = await fetch(`/api/qr/status?token=${encodeURIComponent(token)}`, {

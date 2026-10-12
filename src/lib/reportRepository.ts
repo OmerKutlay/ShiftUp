@@ -140,16 +140,20 @@ export function exportReportToCsv(rows: AttendanceReportRow[]): string {
     upcoming: 'Başlamadı',
   }
 
+  // Çoklu molada yalnızca son molanın saatleri tutulduğundan tek tek mola saatleri
+  // yerine toplam mola süresi verilir (yanıltıcı olmasın).
   const headers = [
     'Çalışan', 'Tarih', 'Vardiya', 'Başlangıç', 'Bitiş',
-    'Durum', 'Giriş', 'Mola Başlangıç', 'Mola Bitiş', 'Çıkış',
-    'Çalışma Süresi', 'Mola Süresi', 'Doğrulama', 'Not',
+    'Durum', 'Giriş', 'Çıkış',
+    'Çalışma Süresi', 'Toplam Mola', 'Doğrulama', 'Not',
   ]
 
   const escape = (v: string | null | undefined): string => {
     if (!v) return ''
-    const s = String(v)
-    if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+    let s = String(v)
+    // CSV formül enjeksiyonu: = + - @ (ve tab/CR) ile başlayan hücre Excel'de formül olarak çalışır
+    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`
+    if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes(';')) {
       return `"${s.replace(/"/g, '""')}"`
     }
     return s
@@ -166,8 +170,6 @@ export function exportReportToCsv(rows: AttendanceReportRow[]): string {
         escape(r.end_time.slice(0, 5)),
         escape(STATUS_TR[r.status] ?? r.status),
         escape(formatTime(r.clock_in_at)),
-        escape(formatTime(r.break_start_at)),
-        escape(formatTime(r.break_end_at)),
         escape(formatTime(r.clock_out_at)),
         escape(formatMinutes(r.worked_minutes)),
         escape(formatMinutes(r.break_minutes)),

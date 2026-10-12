@@ -60,7 +60,7 @@ export function useNotifications(employeeId: string | null, pollMs?: number) {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'same-origin',
-          body: JSON.stringify({ notification_id: notificationId, employee_id: employeeId }),
+          body: JSON.stringify({ notification_id: notificationId }),
         })
       } catch {
         // Başarısız olursa yeniden yükle
@@ -79,7 +79,7 @@ export function useNotifications(employeeId: string | null, pollMs?: number) {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ employee_id: employeeId }),
+
       })
     } catch {
       fetch()

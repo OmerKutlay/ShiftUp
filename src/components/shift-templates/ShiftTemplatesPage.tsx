@@ -240,6 +240,7 @@ function ShiftTemplateCard({
           <IconButton
             size="small"
             onClick={() => onEdit(template)}
+            aria-label={`${template.name} şablonunu düzenle`}
             sx={{ color: 'text.secondary', '&:hover': { color: 'primary.main' } }}
           >
             <EditIcon fontSize="small" />
