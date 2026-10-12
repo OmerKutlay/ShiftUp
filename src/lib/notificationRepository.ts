@@ -4,7 +4,8 @@
  * createAdminClient() çağıranın sorumluluğundadır.
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { CreateNotificationPayload, Notification } from '@/types/notification'
+import type { CreateNotificationPayload, Notification, NotificationType } from '@/types/notification'
+import { MANAGER_ROLES } from '@/lib/auth/roles'
 
 /**
  * Yeni bildirim oluştur.
@@ -35,6 +36,56 @@ export async function createNotification(
   }
 
   return data as Notification
+}
+
+/**
+ * Aktif tüm yöneticilere (MANAGER_ROLES) aynı bildirimi gönder.
+ * excludeEmployeeId: işlemi yapan yönetici kendi talebi için bildirim almasın.
+ * Tek tek insert hataları diğerlerini engellemez. Gönderilen bildirim sayısını döner.
+ */
+export async function notifyManagers(
+  admin: SupabaseClient,
+  payload: Omit<CreateNotificationPayload, 'employee_id'>,
+  options: { excludeEmployeeId?: string } = {},
+): Promise<number> {
+  const { data: employees, error } = await admin
+    .from('employees')
+    .select('id, roles(name)')
+    .eq('active', true)
+
+  if (error) throw error
+
+  const targets = (employees ?? []).filter((e) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const roleName = (e as any).roles?.name ?? null
+    return MANAGER_ROLES.includes(roleName) && e.id !== options.excludeEmployeeId
+  })
+
+  const results = await Promise.allSettled(
+    targets.map((m) => createNotification(admin, { ...payload, employee_id: m.id })),
+  )
+  return results.filter((r) => r.status === 'fulfilled' && r.value).length
+}
+
+/**
+ * Verilen tip + related_id çiftleri için zaten bildirim oluşturulmuş olanları döner.
+ * Dönen Set anahtarı: `${type}:${related_id}` — periyodik taramalarda tekrar bildirimi önler.
+ */
+export async function getExistingNotificationKeys(
+  admin: SupabaseClient,
+  types: NotificationType[],
+  relatedIds: string[],
+): Promise<Set<string>> {
+  if (types.length === 0 || relatedIds.length === 0) return new Set()
+
+  const { data, error } = await admin
+    .from('notifications')
+    .select('type, related_id')
+    .in('type', types)
+    .in('related_id', relatedIds)
+
+  if (error) throw error
+  return new Set((data ?? []).map((n) => `${n.type}:${n.related_id}`))
 }
 
 /**

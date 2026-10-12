@@ -2,17 +2,22 @@
  * workforcePlanner.ts – ShiftUp Kural Tabanlı Haftalık Vardiya Planlayıcı
  *
  * Deterministik, AI içermeyen planlama motoru.
- * Mevcut verilerden (employees, availability, leaves, shift templates) hareketle
- * bir hafta için taslak (draft) plan üretir.
+ * Mevcut verilerden (employees, availability, leaves) hareketle bir hafta için
+ * taslak (draft) plan üretir. Vardiya saatleri mağaza saatlerine (10:00–22:00)
+ * göre sabit katalogdan (SHIFTS) gelir; aynı saatlere sahip bir şablon varsa
+ * shift_template_id olarak bağlanır.
  *
  * Algoritma fazları:
- *   1. Zorunlu sabitleri ve izin günlerini belirle (Müdür Salı, YardMüd Perşembe, Görsel/Depo Pazar)
- *   2. Yönetici kapsamasını sağla (her gün opening + closing'de Müdür veya Yardımcı)
- *   3. Kasiyer minimum ihtiyacını karşıla (her gün ≥1 opening + ≥1 closing kasiyer)
- *   4. Satış danışmanı zorunlu atamalarını yap
- *   5. FT çalışanları 45 saate yaklaştır (hard limit: 45s ve max 6 gün)
- *   6. PT çalışanları 30 saate yaklaştır (hard limit: 30s ve max 4 gün)
- *   7. Bağımsız validator ile planın tamamını kontrol et
+ *   1. Müdür & Müdür Yardımcısı: biri açılışta, diğeri kapanışta (günlük dönüşüm).
+ *      Biri izinliyken diğeri full (10:00–22:00).
+ *   2. Görsel Uzman & Depo: Pzt–Cum 08:00–17:00, Cmt 08:00–14:00, Pazar izin (= 45s)
+ *   3. Perşembe etiket yenileme: 2 çalışan daha 08:00–17:00
+ *   4. FT kasiyer Perşembe full tercihi
+ *   5. Günlük minimum kapsama (kasiyer opening/closing, satış danışmanı)
+ *   6. Kalan günleri doldur: FT 6 gün, PT 4 gün; gün yükü ve açılış/kapanış dengesine göre
+ *   7. FT 45 saat tamamlama: mevcut vardiyalar katalogdaki uzun/kısa varyantlarla
+ *      değiştirilerek 45 saate en yakın kombinasyon aranır
+ *   8. Bağımsız validator ile planın tamamını kontrol et
  *
  * HARD CONSTRAINTS (ihlal → hasHardViolation = true, plan onaylanamaz):
  *   - FT çalışan haftalık net saat ≤ 45s
@@ -28,6 +33,7 @@
  */
 
 import { netWorkMins } from './workingTimeService'
+import { getWorkingTimeConfig } from './workingTimeConfig'
 import { PART_TIME_RULES } from '@/types/employee'
 
 // ─── Tipler ─────────────────────────────────────────────────────────────────
@@ -53,6 +59,11 @@ export interface PlannerEmployee {
   availability: Record<string, Array<{ start_time: string; end_time: string; is_available: boolean }>>
   /** Bu hafta izinli günler: 'YYYY-MM-DD' set */
   leaveDays: Set<string>
+  /**
+   * Geçen haftanın vardiya türleri: dow ('monday'…) → tür. Listede olmayan gün = izinliydi.
+   * Verilmezse (undefined) geçen hafta bilinmiyor kabul edilir.
+   */
+  lastWeek?: Partial<Record<string, ShiftKind>>
 }
 
 export interface DraftAssignment {
@@ -92,6 +103,8 @@ export interface PlannerResult {
   warnings: PlanWarning[]
   /** Hard constraint ihlali var mı (plan onaylanamaz) */
   hasHardViolation: boolean
+  /** Planı üreten tohum — aynı tohum + aynı veri = aynı plan */
+  seed: number
 }
 
 export interface PlannerInput {
@@ -100,6 +113,23 @@ export interface PlannerInput {
   weekDays: string[]  // 7 eleman
   employees: PlannerEmployee[]
   templates: PlannerShiftTemplate[]
+  /**
+   * Rastgelelik tohumu. Kurallar aynı kalır; eşit derecede uygun seçenekler
+   * (kim, hangi gün izinli, açılış mı kapanış mı) bu tohuma göre seçilir.
+   * Verilmezse haftanın tarihinden türetilir.
+   */
+  seed?: number
+  /**
+   * Bu hafta zaten çalışılmış (giriş/çıkış kaydı olan) vardiyalar. Değiştirilmez;
+   * saat/gün limitleri ve kapsama bunlar hesaba katılarak doldurulur.
+   */
+  fixedAssignments?: Array<{
+    employee_id: string
+    work_date: string
+    start_time: string
+    end_time: string
+    shift_template_id?: string | null
+  }>
 }
 
 // ─── Sabitler ────────────────────────────────────────────────────────────────
@@ -119,6 +149,11 @@ const DATE_TO_DOW: Record<number, string> = {
 const MUDUR_OFF_DOW = 'tuesday'            // Müdür Salı izinli
 const MUDUR_Y_OFF_DOW = 'thursday'         // Müdür Yardımcısı Perşembe izinli
 const GORSEL_DEPO_OFF_DOW = 'sunday'       // Görsel Uzman & Depo Pazar izinli
+const GORSEL_DEPO_SHORT_DOW = 'saturday'   // Görsel Uzman & Depo Cumartesi kısa (08:00–14:00)
+
+// Perşembe etiket yenileme: görsel/depo dışında 08:00'de başlayan ek çalışan sayısı
+const LABEL_DAY_DOW = 'thursday'
+const LABEL_DAY_EXTRA_STAFF = 2
 
 // Yoğun günler (personel planlama önceliği)
 const HEAVY_DAYS = new Set(['thursday', 'friday', 'saturday', 'sunday'])
@@ -129,7 +164,45 @@ const POS_MUDUR_YARDIMCISI = ['yardimci', 'mudur yardimcisi', 'müdür yardımc�
 const POS_GORSEL_UZMAN    = ['gorsel', 'görsel', 'visual']
 const POS_DEPO            = ['depo', 'storage', 'warehouse']
 const POS_KASIYER         = ['kasiyer', 'kasa', 'cashier']
-const POS_SATIS           = ['satis', 'satış', 'danisman', 'danışman', 'sales']
+const POS_SATIS           = ['satis', 'satış', 'danisman', 'danışman', 'sales', 'reyon']
+// Kısaltmalar (tam eşleşme): M.M = Mağaza Müdürü, M.M.Y = Müdür Yardımcısı
+const ABBR_MUDUR            = ['mm']
+const ABBR_MUDUR_YARDIMCISI = ['mmy']
+
+// ─── Vardiya kataloğu (mağaza 10:00–22:00) ───────────────────────────────────
+
+type ShiftKey =
+  | 'opening' | 'mid' | 'closing' | 'full'
+  | 'closingShort' | 'closingLong'
+  | 'early' | 'earlyShort'
+
+interface ShiftDef {
+  start: string
+  end: string
+  kind: ShiftKind
+  label: string
+}
+
+const SHIFTS: Record<ShiftKey, ShiftDef> = {
+  opening:      { start: '10:00', end: '18:00', kind: 'opening', label: 'Açılış' },          // net 7s
+  mid:          { start: '12:00', end: '20:00', kind: 'mid',     label: 'Ortacı' },          // net 7s
+  closing:      { start: '14:00', end: '22:00', kind: 'closing', label: 'Kapanış' },         // net 7s
+  full:         { start: '10:00', end: '22:00', kind: 'full',    label: 'Full' },            // net 10s
+  closingShort: { start: '15:00', end: '22:00', kind: 'closing', label: 'Kısa kapanış' },    // net 6s
+  closingLong:  { start: '12:00', end: '22:00', kind: 'closing', label: 'Uzun kapanış' },    // net 8.5s
+  early:        { start: '08:00', end: '17:00', kind: 'opening', label: 'Erken (08:00)' },   // net 8s
+  earlyShort:   { start: '08:00', end: '14:00', kind: 'opening', label: 'Erken kısa' },      // net 5s
+}
+
+/** 45 saat tamamlamada bir vardiyanın yerine geçebilecek varyantlar (kapsamayı bozmaz) */
+const TOPUP_VARIANTS: Partial<Record<ShiftKey, ShiftKey[]>> = {
+  opening: ['opening', 'full'],
+  closing: ['closing', 'closingShort', 'closingLong', 'full'],
+}
+
+const SHIFT_NET: Record<ShiftKey, number> = Object.fromEntries(
+  (Object.keys(SHIFTS) as ShiftKey[]).map((k) => [k, netWorkMins(SHIFTS[k].start, SHIFTS[k].end)])
+) as Record<ShiftKey, number>
 
 // ─── Yardımcı fonksiyonlar ───────────────────────────────────────────────────
 
@@ -142,12 +215,39 @@ function normTR(s: string): string {
     .replace(/ö/g, 'o').replace(/Ö/g, 'o')
     .replace(/ü/g, 'u').replace(/Ü/g, 'u')
     .replace(/ç/g, 'c').replace(/Ç/g, 'c')
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
 }
 
 function positionIs(pos: string, list: string[]): boolean {
   const n = normTR(pos)
   return list.some((p) => n.includes(normTR(p)))
+}
+
+function abbrIs(pos: string, list: string[]): boolean {
+  const n = normTR(pos).replace(/[\s.]/g, '')
+  return list.includes(n)
+}
+
+function hasRole(emp: PlannerEmployee, list: string[], abbrs: string[]): boolean {
+  return (
+    positionIs(emp.position, list) || positionIs(emp.role_name, list) ||
+    abbrIs(emp.position, abbrs) || abbrIs(emp.role_name, abbrs)
+  )
+}
+
+/** Müdür Yardımcısı. Önce bu kontrol edilmeli: 'Müdür Yardımcısı' metni 'mudur' da içerir. */
+function isAssistantManager(emp: PlannerEmployee): boolean {
+  return hasRole(emp, POS_MUDUR_YARDIMCISI, ABBR_MUDUR_YARDIMCISI)
+}
+
+/** Mağaza Müdürü (yardımcı değil) */
+function isStoreManager(emp: PlannerEmployee): boolean {
+  return !isAssistantManager(emp) && hasRole(emp, POS_MUDUR, ABBR_MUDUR)
+}
+
+/** Görsel Uzman veya Depo — sabit 08:00 kalıbıyla çalışır */
+function isFixedCrew(emp: PlannerEmployee): boolean {
+  return positionIs(emp.position, POS_GORSEL_UZMAN) || positionIs(emp.position, POS_DEPO)
 }
 
 function dowKey(dateStr: string): string {
@@ -157,28 +257,6 @@ function dowKey(dateStr: string): string {
 function toMins(t: string): number {
   const [h, m] = t.slice(0, 5).split(':').map(Number)
   return h * 60 + m
-}
-
-/** Şablona veya saate göre vardiya türünü belirle */
-function classifyShift(start: string, end: string, templates: PlannerShiftTemplate[]): ShiftKind {
-  const tmpl = templates.find(
-    (t) => t.start_time.slice(0, 5) === start.slice(0, 5) && t.end_time.slice(0, 5) === end.slice(0, 5)
-  )
-  if (tmpl) {
-    const n = normTR(tmpl.name)
-    if (n.includes('acilis') || n.includes('opening') || n.includes('sabah')) return 'opening'
-    if (n.includes('kapanis') || n.includes('closing') || n.includes('aksam')) return 'closing'
-    if (n.includes('full') || n.includes('tam gun') || n.includes('tam gün')) return 'full'
-    if (n.includes('araci') || n.includes('aracı') || n.includes('orta') || n.includes('mid')) return 'mid'
-  }
-  // Saat bazlı tahmin
-  const startM = toMins(start)
-  const endM   = toMins(end) <= toMins(start) ? toMins(end) + 1440 : toMins(end)
-  const dur    = endM - startM
-  if (startM <= 600 && dur >= 660) return 'full'    // ≤10:00 başlayıp ≥11s
-  if (startM <= 660) return 'opening'               // ≤11:00
-  if (startM >= 780) return 'closing'               // ≥13:00
-  return 'mid'
 }
 
 /** Çalışanın o gün availability'si var mı */
@@ -210,66 +288,163 @@ function fitsAvailabilityWindow(
   })
 }
 
-/** Şablonu ada göre bul */
-function findTemplate(
-  templates: PlannerShiftTemplate[],
-  ...nameParts: string[]
-): PlannerShiftTemplate | null {
-  for (const namePart of nameParts) {
-    const found = templates.find((t) => normTR(t.name).includes(normTR(namePart)))
-    if (found) return found
-  }
-  return null
+/** Pozisyona göre sabit izin günü mü (Müdür Salı, Yardımcı Perşembe, Görsel/Depo Pazar) */
+function isFixedDayOff(emp: PlannerEmployee, dateStr: string): boolean {
+  const dow = dowKey(dateStr)
+  if (isStoreManager(emp) && dow === MUDUR_OFF_DOW) return true
+  if (isAssistantManager(emp) && dow === MUDUR_Y_OFF_DOW) return true
+  if (isFixedCrew(emp) && dow === GORSEL_DEPO_OFF_DOW) return true
+  return false
 }
 
-/** Rol adına göre yönetici mi */
-function isManagerRole(emp: PlannerEmployee): boolean {
-  return (
-    positionIs(emp.role_name, POS_MUDUR) ||
-    positionIs(emp.role_name, POS_MUDUR_YARDIMCISI) ||
-    positionIs(emp.position, POS_MUDUR) ||
-    positionIs(emp.position, POS_MUDUR_YARDIMCISI) ||
-    normTR(emp.role_name).includes('yonetici') ||
-    normTR(emp.role_name).includes('mudur')
-  )
+function isOpeningKind(k: ShiftKind): boolean {
+  return k === 'opening' || k === 'full'
+}
+
+function isClosingKind(k: ShiftKind): boolean {
+  return k === 'closing' || k === 'full'
+}
+
+/** Kayıtlı bir vardiyanın türünü saatlerinden çıkar (geçen hafta verisi için) */
+export function kindFromTimes(start: string, end: string): ShiftKind {
+  const s = start.slice(0, 5)
+  const e = end.slice(0, 5)
+  if (s <= '10:00' && e >= '22:00') return 'full'
+  if (s < '12:00') return 'opening'
+  if (e >= '21:30') return 'closing'
+  return 'mid'
+}
+
+/** Tohumlu sözde-rastgele üreteç (mulberry32) — [0, 1) */
+function createRng(seed: number): () => number {
+  let a = seed >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0
+    let t = a
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+function hashString(s: string): number {
+  let h = 2166136261
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return h >>> 0
+}
+
+/** Fisher–Yates; yeni dizi döner */
+function shuffle<T>(list: T[], rng: () => number): T[] {
+  const out = [...list]
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1))
+    ;[out[i], out[j]] = [out[j], out[i]]
+  }
+  return out
 }
 
 // ─── Ana Planlayıcı ──────────────────────────────────────────────────────────
 
+interface Slot {
+  /** Katalog vardiyası; 'fixed' = dışarıdan gelen, zaten çalışılmış vardiya */
+  key: ShiftKey | 'fixed'
+  def: ShiftDef
+  net: number
+  /** Tamamlama fazında değiştirilemez (görsel/depo, etiket günü, çalışılmış vardiya) */
+  locked: boolean
+  assignment: DraftAssignment
+}
+
+/** Kaç deneme yapılacağı (en iyi plan seçilir) */
+const PLAN_ATTEMPTS = 12
+
+/**
+ * Haftalık taslak plan üretir.
+ * Tohumdan türetilen farklı varyasyonlarla birkaç deneme yapar ve
+ * en iyisini döner: önce hata (error) sayısı, sonra FT'lerin 45s'e toplam
+ * eksiği, sonra uyarı sayısı en az olan.
+ */
 export function runPlanner(input: PlannerInput): PlannerResult {
+  const baseSeed = input.seed ?? hashString(input.weekStart)
+  const score = (r: PlannerResult) => {
+    const errors = r.warnings.filter((w) => w.level === 'error').length
+    const ftDeficit = Object.values(r.stats)
+      .filter((s) => s.employment_type === 'full_time' && s.workDays >= FT_MAX_DAYS)
+      .reduce((sum, s) => sum + Math.max(0, FT_MAX_MINS - s.totalMins), 0)
+    const warns = r.warnings.filter((w) => w.level === 'warning').length
+    return errors * 1_000_000 + ftDeficit * 10 + warns
+  }
+
+  let best: PlannerResult | null = null
+  let bestScore = Infinity
+  for (let i = 0; i < PLAN_ATTEMPTS; i++) {
+    const result = planOnce(input, (baseSeed + i * 0x9e3779b1) >>> 0)
+    const s = score(result)
+    if (s < bestScore) {
+      best = result
+      bestScore = s
+    }
+    if (s === 0) break
+  }
+  return best!
+}
+
+function planOnce(input: PlannerInput, seed: number): PlannerResult {
   const { weekStart, weekEnd, weekDays, employees, templates } = input
+
+  const minRestMins = getWorkingTimeConfig().minRestHours * 60
+  const rng = createRng(seed)
+  const shuffled = <T,>(list: T[]) => shuffle(list, rng)
 
   const warnings: PlanWarning[] = []
 
-  // Atama haritası: employee_id → date → DraftAssignment
-  const assignMap = new Map<string, Map<string, DraftAssignment>>()
+  // Atama haritası: employee_id → date → Slot
+  const slotMap = new Map<string, Map<string, Slot>>()
   for (const emp of employees) {
-    assignMap.set(emp.id, new Map())
+    slotMap.set(emp.id, new Map())
   }
-
-  // ─── Şablonları bul ─────────────────────────────────────────────────────
-
-  const tOpening = findTemplate(templates, 'acilis', 'açılış', 'opening', 'sabah')
-  const tClosing = findTemplate(templates, 'kapanis', 'kapanış', 'closing', 'aksam', 'akşam')
-  const tMid     = findTemplate(templates, 'araci', 'aracı', 'mid', 'orta', 'oglen', 'öğlen')
-  const tFull    = findTemplate(templates, 'full', 'tam gun', 'tam gün')
-
-  if (!tOpening) warnings.push({ level: 'error', message: 'Açılış vardiya şablonu bulunamadı.' })
-  if (!tClosing) warnings.push({ level: 'error', message: 'Kapanış vardiya şablonu bulunamadı.' })
-  if (!tFull)    warnings.push({ level: 'warning', message: 'Full (tam gün) vardiya şablonu bulunamadı.' })
 
   // ─── Çalışan kategorileri ────────────────────────────────────────────────
 
-  const mudur = employees.find(
-    (e) => positionIs(e.role_name, POS_MUDUR) || positionIs(e.position, POS_MUDUR)
+  const mudur  = employees.find(isStoreManager)
+  const mudurY = employees.find(isAssistantManager)
+  const managers = [mudur, mudurY].filter((e): e is PlannerEmployee => !!e)
+  const managerIds = new Set(managers.map((e) => e.id))
+  const fixedCrew = employees.filter((e) => !managerIds.has(e.id) && isFixedCrew(e))
+  const flexible = employees.filter((e) => !managerIds.has(e.id) && !isFixedCrew(e))
+  const kasiyerler = flexible.filter((e) => positionIs(e.position, POS_KASIYER))
+  const satisDanismanlari = flexible.filter(
+    (e) => !positionIs(e.position, POS_KASIYER) && positionIs(e.position, POS_SATIS)
   )
-  const mudurY = employees.find(
-    (e) => positionIs(e.role_name, POS_MUDUR_YARDIMCISI) || positionIs(e.position, POS_MUDUR_YARDIMCISI)
-  )
-  const gorsel = employees.find((e) => positionIs(e.position, POS_GORSEL_UZMAN))
-  const depo   = employees.find((e) => positionIs(e.position, POS_DEPO))
-  const kasiyerler = employees.filter((e) => positionIs(e.position, POS_KASIYER))
-  const satisDanismanlari = employees.filter((e) => positionIs(e.position, POS_SATIS))
+
+  // Zaten çalışılmış vardiyalar (giriş/çıkış kaydı olan) sabit olarak yerleşir
+  for (const f of input.fixedAssignments ?? []) {
+    const dayMap = slotMap.get(f.employee_id)
+    const emp = employees.find((e) => e.id === f.employee_id)
+    if (!dayMap || !emp || !weekDays.includes(f.work_date) || dayMap.has(f.work_date)) continue
+    const start = f.start_time.slice(0, 5)
+    const end   = f.end_time.slice(0, 5)
+    const def: ShiftDef = { start, end, kind: kindFromTimes(start, end), label: 'Çalışılmış' }
+    dayMap.set(f.work_date, {
+      key: 'fixed',
+      def,
+      net: netWorkMins(start, end),
+      locked: true,
+      assignment: {
+        employee_id:       emp.id,
+        employee_name:     emp.full_name,
+        work_date:         f.work_date,
+        start_time:        start,
+        end_time:          end,
+        shift_template_id: f.shift_template_id ?? null,
+        shift_kind:        def.kind,
+        reason:            'Giriş/çıkış kaydı var — mevcut vardiya korunuyor',
+      },
+    })
+  }
 
   if (!mudur)  warnings.push({ level: 'warning', message: 'Mağaza Müdürü bulunamadı.' })
   if (!mudurY) warnings.push({ level: 'warning', message: 'Müdür Yardımcısı bulunamadı.' })
@@ -277,523 +452,423 @@ export function runPlanner(input: PlannerInput): PlannerResult {
   // ─── Yardımcı fonksiyonlar ───────────────────────────────────────────────
 
   function getEmpMins(empId: string): number {
-    return [...(assignMap.get(empId)?.values() ?? [])].reduce(
-      (s, a) => s + netWorkMins(a.start_time, a.end_time), 0
-    )
+    return [...(slotMap.get(empId)?.values() ?? [])].reduce((s, x) => s + x.net, 0)
   }
 
   function getEmpDays(empId: string): number {
-    return assignMap.get(empId)?.size ?? 0
+    return slotMap.get(empId)?.size ?? 0
   }
 
-  /** FT veya PT hard limit kontrolü */
-  function wouldExceedLimit(emp: PlannerEmployee, addMins: number): boolean {
-    const currMins = getEmpMins(emp.id)
-    const currDays = getEmpDays(emp.id)
-    if (emp.employment_type === 'full_time') {
-      if (currDays >= FT_MAX_DAYS) return true
-      if (currMins + addMins > FT_MAX_MINS) return true
-    } else {
-      if (currDays >= PT_MAX_DAYS) return true
-      if (currMins + addMins > PT_MAX_MINS) return true
-    }
-    return false
+  function maxDays(emp: PlannerEmployee): number {
+    return emp.employment_type === 'full_time' ? FT_MAX_DAYS : PT_MAX_DAYS
   }
 
-  /** Pozisyona göre o çalışanın o günde çalışıp çalışamayacağını belirle (sabit izinler dahil) */
-  function isFixedDayOff(emp: PlannerEmployee, dateStr: string): boolean {
-    const dow = dowKey(dateStr)
-
-    // Önce daha özgün eşleşme: Müdür Yardımcısı
-    // NOT: positionIs('Mudur Yardimcisi', POS_MUDUR) da true döner çünkü 'mudur' içeriyor.
-    // Bu nedenle önce yardımcı kontrolü yapılmalı.
-    const isYardimci =
-      positionIs(emp.position, POS_MUDUR_YARDIMCISI) ||
-      positionIs(emp.role_name, POS_MUDUR_YARDIMCISI)
-
-    // Sadece Müdür (yardımcı değil)
-    const isMudurOnly =
-      !isYardimci &&
-      (positionIs(emp.position, POS_MUDUR) || positionIs(emp.role_name, POS_MUDUR))
-
-    // Müdür: Salı izinli
-    if (isMudurOnly && dow === MUDUR_OFF_DOW) return true
-
-    // Müdür Yardımcısı: Perşembe izinli
-    if (isYardimci && dow === MUDUR_Y_OFF_DOW) return true
-
-    // Görsel Uzman + Depo: Pazar izinli
-    if (positionIs(emp.position, POS_GORSEL_UZMAN) || positionIs(emp.position, POS_DEPO)) {
-      if (dow === GORSEL_DEPO_OFF_DOW) return true
-    }
-
-    return false
+  function maxMins(emp: PlannerEmployee): number {
+    return emp.employment_type === 'full_time' ? FT_MAX_MINS : PT_MAX_MINS
   }
 
-  /**
-   * Atama ekleme — tüm hard constraint'leri kontrol eder.
-   * Başarılıysa true, herhangi bir kural ihlalinde false döner.
-   */
-  function addAssignment(
+  function getKindCount(empId: string, kind: ShiftKind): number {
+    return [...(slotMap.get(empId)?.values() ?? [])].filter((x) => x.def.kind === kind).length
+  }
+
+  /** Çalışan o gün çalışabilir mi (atanmamış, izinsiz, müsait, sabit izin değil) */
+  function canWork(emp: PlannerEmployee, dateStr: string): boolean {
+    return (
+      !slotMap.get(emp.id)!.has(dateStr) &&
+      !emp.leaveDays.has(dateStr) &&
+      isAvailableOnDay(emp, dateStr) &&
+      !isFixedDayOff(emp, dateStr)
+    )
+  }
+
+  /** Vardiya hard limitleri ve availability penceresiyle birlikte yerleştirilebilir mi */
+  function canPlace(emp: PlannerEmployee, dateStr: string, key: ShiftKey): boolean {
+    if (!canWork(emp, dateStr)) return false
+    if (getEmpDays(emp.id) >= maxDays(emp)) return false
+    if (getEmpMins(emp.id) + SHIFT_NET[key] > maxMins(emp)) return false
+    const def = SHIFTS[key]
+    if (!fitsAvailabilityWindow(emp, dateStr, def.start, def.end)) return false
+    if (!restOk(emp, dateStr, def)) return false
+    return true
+  }
+
+  /** Önceki/sonraki gün vardiyasıyla arada en az minRestHours dinlenme kalıyor mu */
+  function restOk(emp: PlannerEmployee, dateStr: string, def: ShiftDef): boolean {
+    const dayMap = slotMap.get(emp.id)!
+    const idx = weekDays.indexOf(dateStr)
+    const prev = idx > 0 ? dayMap.get(weekDays[idx - 1]) : undefined
+    const next = idx < weekDays.length - 1 ? dayMap.get(weekDays[idx + 1]) : undefined
+    if (prev && 1440 - toMins(prev.def.end) + toMins(def.start) < minRestMins) return false
+    if (next && 1440 - toMins(def.end) + toMins(next.def.start) < minRestMins) return false
+    return true
+  }
+
+  function templateIdFor(def: ShiftDef): string | null {
+    return templates.find(
+      (t) => t.start_time.slice(0, 5) === def.start && t.end_time.slice(0, 5) === def.end
+    )?.id ?? null
+  }
+
+  /** Atama ekleme — tüm hard constraint'leri kontrol eder. */
+  function place(
     emp: PlannerEmployee,
     dateStr: string,
-    tmpl: PlannerShiftTemplate,
+    key: ShiftKey,
     reason: string,
+    locked = false,
   ): boolean {
-    const dayMap = assignMap.get(emp.id)!
-    // Aynı gün zaten atanmış
-    if (dayMap.has(dateStr)) return false
-    // İzin günü
-    if (emp.leaveDays.has(dateStr)) return false
-    // Availability yok
-    if (!isAvailableOnDay(emp, dateStr)) return false
-    // Sabit izin günü
-    if (isFixedDayOff(emp, dateStr)) return false
-    // Hard saat/gün limiti
-    const addMins = netWorkMins(tmpl.start_time, tmpl.end_time)
-    if (wouldExceedLimit(emp, addMins)) return false
-    // Availability penceresi (soft: pencere tanımlıysa kısıtla)
-    if (!fitsAvailabilityWindow(emp, dateStr, tmpl.start_time, tmpl.end_time)) {
-      const dow = dowKey(dateStr)
-      const avList = emp.availability[dow] ?? []
-      if (avList.length > 0 && avList.every((a) => a.is_available)) return false
-    }
-
-    const kind = classifyShift(tmpl.start_time, tmpl.end_time, templates)
-    dayMap.set(dateStr, {
-      employee_id:        emp.id,
-      employee_name:      emp.full_name,
-      work_date:          dateStr,
-      start_time:         tmpl.start_time.slice(0, 5),
-      end_time:           tmpl.end_time.slice(0, 5),
-      shift_template_id:  tmpl.id,
-      shift_kind:         kind,
-      reason,
+    if (!canPlace(emp, dateStr, key)) return false
+    const def = SHIFTS[key]
+    slotMap.get(emp.id)!.set(dateStr, {
+      key,
+      def,
+      net: SHIFT_NET[key],
+      locked,
+      assignment: {
+        employee_id:       emp.id,
+        employee_name:     emp.full_name,
+        work_date:         dateStr,
+        start_time:        def.start,
+        end_time:          def.end,
+        shift_template_id: templateIdFor(def),
+        shift_kind:        def.kind,
+        reason,
+      },
     })
     return true
   }
 
+  /** Mevcut atamayı başka bir vardiyayla değiştir; olmazsa eskisini geri koy */
+  function replace(emp: PlannerEmployee, dateStr: string, key: ShiftKey, reason: string): boolean {
+    const dayMap = slotMap.get(emp.id)!
+    const prev = dayMap.get(dateStr)
+    dayMap.delete(dateStr)
+    if (place(emp, dateStr, key, reason, prev?.locked ?? false)) return true
+    if (prev) dayMap.set(dateStr, prev)
+    return false
+  }
+
+  /** O gün belirli bir gruptaki atamaların vardiya türleri */
+  function kindsOnDay(list: PlannerEmployee[], dateStr: string): ShiftKind[] {
+    return list
+      .map((e) => slotMap.get(e.id)!.get(dateStr))
+      .filter((x): x is Slot => !!x)
+      .map((x) => x.def.kind)
+  }
+
   /**
-   * Custom atama ekleme — şablon olmayan saatler için.
+   * Gruptan o gün için en uygun adayı seç:
+   * kalan gün kapasitesi en fazla olan → bu türden en az almış olan → FT önce
    */
-  function addCustomAssignment(
-    emp: PlannerEmployee,
-    dateStr: string,
-    startTime: string,
-    endTime: string,
-    kind: ShiftKind,
-    reason: string,
-  ): boolean {
-    const dayMap = assignMap.get(emp.id)!
-    if (dayMap.has(dateStr)) return false
-    if (emp.leaveDays.has(dateStr)) return false
-    if (!isAvailableOnDay(emp, dateStr)) return false
-    if (isFixedDayOff(emp, dateStr)) return false
-    const addMins = netWorkMins(startTime, endTime)
-    if (wouldExceedLimit(emp, addMins)) return false
-    if (!fitsAvailabilityWindow(emp, dateStr, startTime, endTime)) {
-      const dow = dowKey(dateStr)
-      const avList = emp.availability[dow] ?? []
-      if (avList.length > 0 && avList.every((a) => a.is_available)) return false
-    }
-
-    dayMap.set(dateStr, {
-      employee_id:        emp.id,
-      employee_name:      emp.full_name,
-      work_date:          dateStr,
-      start_time:         startTime,
-      end_time:           endTime,
-      shift_template_id:  null,
-      shift_kind:         kind,
-      reason,
-    })
-    return true
-  }
-
-  function getShiftKindCount(empId: string, kind: ShiftKind): number {
-    return [...(assignMap.get(empId)?.values() ?? [])].filter((a) => a.shift_kind === kind).length
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // FAZ 1: Müdür & Müdür Yardımcısı — sabit kurallar
-  // ═══════════════════════════════════════════════════════════════════════════
-  //
-  // Müdür:
-  //   - Salı: izin (atama yapılmaz)
-  //   - Perşembe: Full (yönetici Perşembe full kuralı)
-  //   - Diğer: Opening
-  //
-  // Müdür Yardımcısı:
-  //   - Perşembe: izin
-  //   - Salı: Full
-  //   - Diğer: Closing (denge için; Müdür opening'de, Yardımcı closing'de)
-  //
-  // Not: İkisi de ortacı alamaz.
-
-  if (mudur) {
-    for (const dateStr of weekDays) {
-      const dow = dowKey(dateStr)
-      if (dow === MUDUR_OFF_DOW) continue  // Salı izin
-
-      if (dow === 'thursday' && tFull) {
-        addAssignment(mudur, dateStr, tFull, 'Müdür Perşembe full vardiya kuralı')
-      } else if (tOpening) {
-        addAssignment(mudur, dateStr, tOpening, 'Müdür açılış kuralı')
-      }
-    }
-  }
-
-  if (mudurY) {
-    for (const dateStr of weekDays) {
-      const dow = dowKey(dateStr)
-      if (dow === MUDUR_Y_OFF_DOW) continue  // Perşembe izin
-
-      if (dow === 'tuesday' && tFull) {
-        addAssignment(mudurY, dateStr, tFull, 'Müdür Yardımcısı Salı full vardiya kuralı')
-      } else if (tClosing) {
-        // Müdür izin günü (Salı) yoksa Yardımcı closing alabilir; diğer günlerde closing ile denge
-        addAssignment(mudurY, dateStr, tClosing, 'Müdür Yardımcısı kapanış (yönetici kapsaması dengesi)')
-      } else if (tOpening) {
-        addAssignment(mudurY, dateStr, tOpening, 'Müdür Yardımcısı açılış (kapanış şablonu yok)')
-      }
-    }
-  }
-
-  // FAZ 1b: Görsel Uzman & Depo — Pazar izin, diğer günler 08:00 açılış
-  if (gorsel) {
-    for (const dateStr of weekDays) {
-      if (dowKey(dateStr) === GORSEL_DEPO_OFF_DOW) continue
-      addCustomAssignment(gorsel, dateStr, '08:00', '16:00', 'opening',
-        'Görsel Uzman açılış kuralı (08:00–16:00)')
-    }
-  }
-  if (depo) {
-    for (const dateStr of weekDays) {
-      if (dowKey(dateStr) === GORSEL_DEPO_OFF_DOW) continue
-      addCustomAssignment(depo, dateStr, '08:00', '16:00', 'opening',
-        'Depo Görevlisi açılış kuralı (08:00–16:00)')
-    }
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // FAZ 2: FT Kasiyer — Perşembe full tercih
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  const ftKasiyerler = kasiyerler.filter((e) => e.employment_type === 'full_time')
-  for (const kFT of ftKasiyerler) {
-    const persembe = weekDays.find((d) => dowKey(d) === 'thursday')
-    if (persembe && tFull) {
-      addAssignment(kFT, persembe, tFull, 'FT kasiyer Perşembe full vardiya tercihi')
-    }
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // FAZ 3: Kasiyer minimum ihtiyacı — her gün ≥1 opening + ≥1 closing kasiyer
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  for (const dateStr of weekDays) {
-    const dow = dowKey(dateStr)
-
-    // O güne ait kasiyer atamalarını hesapla
-    const todayKasiyerKinds = (): ShiftKind[] =>
-      kasiyerler
-        .map((e) => assignMap.get(e.id)?.get(dateStr)?.shift_kind)
-        .filter((k): k is ShiftKind => !!k)
-
-    // Aday sıralaması: opening/closing sayısı az olanı önce ver (denge)
-    const sortedByOpenCount = (list: PlannerEmployee[]) =>
-      [...list].sort((a, b) => getShiftKindCount(a.id, 'opening') - getShiftKindCount(b.id, 'opening'))
-
-    const sortedByCloseCount = (list: PlannerEmployee[]) =>
-      [...list].sort((a, b) => getShiftKindCount(a.id, 'closing') - getShiftKindCount(b.id, 'closing'))
-
-    // Müsait ve atanmamış kasiyerler
-    const freeKasiyerler = (neededMins: number) =>
-      kasiyerler.filter(
-        (e) =>
-          !assignMap.get(e.id)?.has(dateStr) &&
-          !e.leaveDays.has(dateStr) &&
-          isAvailableOnDay(e, dateStr) &&
-          !isFixedDayOff(e, dateStr) &&
-          !wouldExceedLimit(e, neededMins)
+  function pickCandidate(list: PlannerEmployee[], dateStr: string, key: ShiftKey): PlannerEmployee | null {
+    const kind = SHIFTS[key].kind
+    // Eşitlikler rastgele kırılsın diye önce karıştırılır (sort stabildir)
+    const candidates = shuffled(list.filter((e) => canPlace(e, dateStr, key)))
+      .sort((a, b) =>
+        (maxDays(b) - getEmpDays(b.id)) - (maxDays(a) - getEmpDays(a.id)) ||
+        Number(wasOffLastWeek(b, dateStr)) - Number(wasOffLastWeek(a, dateStr)) ||
+        getKindCount(a.id, kind) - getKindCount(b.id, kind) ||
+        Number(sameAsLastWeek(a, dateStr, kind)) - Number(sameAsLastWeek(b, dateStr, kind)) ||
+        (a.employment_type === 'full_time' ? -1 : 0) - (b.employment_type === 'full_time' ? -1 : 0)
       )
+    return candidates[0] ?? null
+  }
 
-    // Opening kasiyer
-    if (!todayKasiyerKinds().some((k) => k === 'opening' || k === 'full')) {
-      if (tOpening) {
-        const neededMins = netWorkMins(tOpening.start_time, tOpening.end_time)
-        // Availability penceresine uyanlar önce
-        const withWindow = sortedByOpenCount(
-          freeKasiyerler(neededMins).filter((e) =>
-            fitsAvailabilityWindow(e, dateStr, tOpening.start_time, tOpening.end_time)
-          )
-        )
-        const fallback = sortedByOpenCount(freeKasiyerler(neededMins))
-        const candidate = withWindow[0] ?? fallback[0]
-        if (candidate) {
-          addAssignment(candidate, dateStr, tOpening, `Günlük minimum kasiyer opening (${dow})`)
-        } else {
-          warnings.push({ level: 'error', message: `${dateStr} tarihinde opening kasiyer atanamadı (yetersiz müsait kasiyer).` })
+  /** Geçen hafta aynı gün aynı türü almış mı */
+  function sameAsLastWeek(emp: PlannerEmployee, dateStr: string, kind: ShiftKind): boolean {
+    return emp.lastWeek?.[dowKey(dateStr)] === kind
+  }
+
+  /** Geçen hafta bu gün izinli miydi (veri yoksa false) */
+  function wasOffLastWeek(emp: PlannerEmployee, dateStr: string): boolean {
+    return emp.lastWeek !== undefined && emp.lastWeek[dowKey(dateStr)] === undefined
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FAZ 1: Müdür & Müdür Yardımcısı
+  // ═══════════════════════════════════════════════════════════════════════════
+  //
+  // İkisi de çalışıyorsa biri açılış, diğeri kapanış (günlük dönüşümle dengeli).
+  // Yalnızca biri çalışabiliyorsa (sabit izin günü veya onaylı izin) o kişi full.
+  // Önce full günleri yerleştirilir ki saat limiti onlara öncelik versin.
+
+  const bothManagerDays: string[] = []
+  for (const dateStr of weekDays) {
+    // Bir yönetici o gün zaten çalışmışsa (fixed) diğeri eksik kalan tarafı tamamlar
+    const worked = managers.filter((m) => slotMap.get(m.id)!.has(dateStr))
+    if (worked.length > 0) {
+      const kinds = worked.map((m) => slotMap.get(m.id)!.get(dateStr)!.def.kind)
+      const needOpen  = !kinds.some(isOpeningKind)
+      const needClose = !kinds.some(isClosingKind)
+      const key: ShiftKey | null = needOpen && needClose ? 'full' : needOpen ? 'opening' : needClose ? 'closing' : null
+      if (key) {
+        for (const m of managers.filter((x) => canWork(x, dateStr))) {
+          place(m, dateStr, key, 'Yönetici kapsaması (diğer yönetici bu gün çalıştı)')
         }
       }
+      continue
     }
 
-    // Closing kasiyer (opening'den farklı biri)
-    if (!todayKasiyerKinds().some((k) => k === 'closing' || k === 'full')) {
-      if (tClosing) {
-        const neededMins = netWorkMins(tClosing.start_time, tClosing.end_time)
-        const withWindow = sortedByCloseCount(
-          freeKasiyerler(neededMins).filter((e) =>
-            fitsAvailabilityWindow(e, dateStr, tClosing.start_time, tClosing.end_time)
-          )
-        )
-        const fallback = sortedByCloseCount(freeKasiyerler(neededMins))
-        const candidate = withWindow[0] ?? fallback[0]
-        if (candidate) {
-          addAssignment(candidate, dateStr, tClosing, `Günlük minimum kasiyer closing (${dow})`)
-        } else {
-          const total = kasiyerler.filter((e) => assignMap.get(e.id)?.has(dateStr)).length
-          if (total < 2) {
-            warnings.push({ level: 'error', message: `${dateStr} tarihinde minimum 2 kasiyer şartı karşılanamıyor.` })
-          } else {
-            warnings.push({ level: 'error', message: `${dateStr} tarihinde closing kasiyer atanamadı.` })
-          }
-        }
+    const present = managers.filter((m) => canWork(m, dateStr))
+    if (present.length === 1) {
+      const m = present[0]
+      if (!place(m, dateStr, 'full', 'Diğer yönetici izinli — full vardiya')) {
+        place(m, dateStr, 'opening', 'Diğer yönetici izinli — full saat limitine sığmadı')
       }
+    } else if (present.length === 2) {
+      bothManagerDays.push(dateStr)
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // FAZ 4: Yönetici kapsaması — her gün opening + closing'de Müdür veya Yardımcı
-  // ═══════════════════════════════════════════════════════════════════════════
-  // FAZ 1 zaten Müdür'ü opening'e, Yardımcı'yı closing'e koyuyor.
-  // Burada sadece eksik kapsamayı kontrol edip uyarı üretiyoruz.
-
-  for (const dateStr of weekDays) {
-    const dayAssigns = [...assignMap.values()]
-      .map((dm) => dm.get(dateStr))
-      .filter((a): a is DraftAssignment => !!a)
-
-    const managerHasOpening = dayAssigns.some((a) => {
-      const emp = employees.find((e) => e.id === a.employee_id)
-      return emp && isManagerRole(emp) && (a.shift_kind === 'opening' || a.shift_kind === 'full')
+  if (mudur && mudurY) {
+    // Müdürün açılışta olduğu günler: yarısı, rastgele dağıtılmış (her hafta farklı)
+    const mudurOpens = shuffled(bothManagerDays.map((_, i) => i < Math.ceil(bothManagerDays.length / 2)))
+    if (rng() < 0.5) mudurOpens.forEach((v, i) => { mudurOpens[i] = !v })
+    bothManagerDays.forEach((dateStr, i) => {
+      const [opener, closer] = mudurOpens[i] ? [mudur, mudurY] : [mudurY, mudur]
+      const okOpen  = place(opener, dateStr, 'opening', 'Yönetici açılış (diğer yönetici kapanışta)')
+      const okClose = place(closer, dateStr, 'closing', 'Yönetici kapanış (diğer yönetici açılışta)')
+      // Biri saat limitine takıldıysa diğeri full'e çıkar
+      if (okOpen && !okClose) replace(opener, dateStr, 'full', 'Diğer yönetici saat limitinde — full vardiya')
+      if (!okOpen && okClose) replace(closer, dateStr, 'full', 'Diğer yönetici saat limitinde — full vardiya')
     })
-
-    const managerHasClosing = dayAssigns.some((a) => {
-      const emp = employees.find((e) => e.id === a.employee_id)
-      return emp && isManagerRole(emp) && (a.shift_kind === 'closing' || a.shift_kind === 'full')
-    })
-
-    if (!managerHasOpening) {
-      warnings.push({ level: 'error', message: `${dateStr} tarihinde açılışta Müdür/Müdür Yardımcısı bulunamıyor.` })
-    }
-    if (!managerHasClosing) {
-      warnings.push({ level: 'error', message: `${dateStr} tarihinde kapanışta Müdür/Müdür Yardımcısı bulunamıyor.` })
-    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // FAZ 5: Satış Danışmanları
+  // FAZ 2: Görsel Uzman & Depo — Pzt–Cum 08:00–17:00, Cmt 08:00–14:00, Pazar izin
   // ═══════════════════════════════════════════════════════════════════════════
-  // Hafta içi: ≥1 opening SD
-  // Hafta sonu: mid tercih, closing gerekli
-  // Yoğun günler (Per/Cum/Cmt/Paz): daha fazla closing SD
 
-  function getSDOnDay(dateStr: string): DraftAssignment[] {
-    return satisDanismanlari
-      .map((e) => assignMap.get(e.id)?.get(dateStr))
-      .filter((a): a is DraftAssignment => !!a)
-  }
-
-  // Hafta içi opening SD
-  for (const dateStr of weekDays) {
-    const dow = dowKey(dateStr)
-    if (['saturday', 'sunday'].includes(dow)) continue
-
-    const sdOnDay = getSDOnDay(dateStr)
-    const hasOpeningSD = sdOnDay.some((a) => a.shift_kind === 'opening' || a.shift_kind === 'full')
-    if (hasOpeningSD) continue
-
-    if (tOpening) {
-      const neededMins = netWorkMins(tOpening.start_time, tOpening.end_time)
-      const candidate = satisDanismanlari
-        .filter(
-          (e) =>
-            !assignMap.get(e.id)?.has(dateStr) &&
-            !e.leaveDays.has(dateStr) &&
-            isAvailableOnDay(e, dateStr) &&
-            !isFixedDayOff(e, dateStr) &&
-            !wouldExceedLimit(e, neededMins)
-        )
-        .sort((a, b) => getShiftKindCount(a.id, 'opening') - getShiftKindCount(b.id, 'opening'))[0]
-
-      if (candidate) {
-        addAssignment(candidate, dateStr, tOpening, `Hafta içi opening Satış Danışmanı zorunluluğu (${dow})`)
+  for (const emp of fixedCrew) {
+    for (const dateStr of weekDays) {
+      if (dowKey(dateStr) === GORSEL_DEPO_SHORT_DOW) {
+        place(emp, dateStr, 'earlyShort', 'Görsel/Depo Cumartesi kısa mesai (08:00–14:00)', true)
       } else {
-        warnings.push({ level: 'error', message: `${dateStr} tarihinde hafta içi opening Satış Danışmanı şartı karşılanamadı.` })
+        place(emp, dateStr, 'early', 'Görsel/Depo mesaisi (08:00–17:00)', true)
       }
-    }
-  }
-
-  // Closing SD (hafta içi 2, yoğun günler 3, hafta sonu 2)
-  for (const dateStr of weekDays) {
-    const dow = dowKey(dateStr)
-    const isWeekend = ['saturday', 'sunday'].includes(dow)
-    const isHeavy   = HEAVY_DAYS.has(dow)
-    const targetClosing = isHeavy ? 3 : 2
-
-    const existingClosingSD = getSDOnDay(dateStr).filter(
-      (a) => a.shift_kind === 'closing' || a.shift_kind === 'full'
-    ).length
-
-    const needed = targetClosing - existingClosingSD
-    if (needed <= 0 || !tClosing) continue
-
-    const neededMins = netWorkMins(tClosing.start_time, tClosing.end_time)
-    const candidates = satisDanismanlari
-      .filter(
-        (e) =>
-          !assignMap.get(e.id)?.has(dateStr) &&
-          !e.leaveDays.has(dateStr) &&
-          isAvailableOnDay(e, dateStr) &&
-          !isFixedDayOff(e, dateStr) &&
-          !wouldExceedLimit(e, neededMins)
-      )
-      .sort((a, b) => getShiftKindCount(a.id, 'closing') - getShiftKindCount(b.id, 'closing'))
-
-    for (let i = 0; i < needed && i < candidates.length; i++) {
-      addAssignment(candidates[i], dateStr, tClosing,
-        `${isWeekend ? 'Hafta sonu' : 'Hafta içi'} Satış Danışmanı closing${isHeavy ? ' (yoğun gün)' : ''}`)
-    }
-  }
-
-  // Hafta sonu mid SD (12:00–20:00 tercih)
-  for (const dateStr of weekDays) {
-    const dow = dowKey(dateStr)
-    if (!['saturday', 'sunday'].includes(dow) || !tMid) continue
-
-    const neededMins = netWorkMins(tMid.start_time, tMid.end_time)
-    const candidate = satisDanismanlari
-      .filter(
-        (e) =>
-          !assignMap.get(e.id)?.has(dateStr) &&
-          !e.leaveDays.has(dateStr) &&
-          isAvailableOnDay(e, dateStr) &&
-          !isFixedDayOff(e, dateStr) &&
-          !wouldExceedLimit(e, neededMins)
-      )[0]
-
-    if (candidate) {
-      addAssignment(candidate, dateStr, tMid, 'Hafta sonu Satış Danışmanı ortacı tercihi')
     }
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // FAZ 6: FT çalışanları 45 saate yaklaştır (max 6 gün, max 45s net)
+  // FAZ 3: Perşembe etiket yenileme — 2 çalışan daha 08:00'de başlar
   // ═══════════════════════════════════════════════════════════════════════════
 
-  const ftEmployees = employees.filter((e) => e.employment_type === 'full_time')
-  // Yoğun günleri önce işle (hafta içi + hafta sonu)
-  const orderedDays = [
-    ...weekDays.filter((d) => HEAVY_DAYS.has(dowKey(d))),
-    ...weekDays.filter((d) => !HEAVY_DAYS.has(dowKey(d))),
-  ]
-
-  for (const emp of ftEmployees) {
-    for (const dateStr of orderedDays) {
-      // Limit kontrolü
-      if (getEmpMins(emp.id) >= FT_MAX_MINS) break
-      if (getEmpDays(emp.id) >= FT_MAX_DAYS) break
-      // Zaten bu güne atanmış
-      if (assignMap.get(emp.id)?.has(dateStr)) continue
-      // İzin/availability
-      if (emp.leaveDays.has(dateStr)) continue
-      if (!isAvailableOnDay(emp, dateStr)) continue
-      if (isFixedDayOff(emp, dateStr)) continue
-
-      const stillNeeded = FT_MAX_MINS - getEmpMins(emp.id)
-
-      // Vardiya seç: kalan saate göre en uygun şablon
-      let selectedTmpl: PlannerShiftTemplate | null = null
-      let reason = 'FT 45 saat hedefi'
-
-      if (stillNeeded >= 10 * 60 && tFull) {
-        // full: 12s brüt - 2s mola = 10s net
-        selectedTmpl = tFull
-        reason = 'FT 45 saat hedefi için full vardiya'
-      } else if (stillNeeded >= 7 * 60 && tOpening) {
-        // opening: 8s brüt - 1s mola = 7s net
-        selectedTmpl = tOpening
-        reason = 'FT 45 saat hedefi için açılış vardiyası'
-      } else if (stillNeeded >= 7 * 60 && tClosing) {
-        selectedTmpl = tClosing
-        reason = 'FT 45 saat hedefi için kapanış vardiyası'
-      } else if (tClosing) {
-        // Kalan süreye en yakın kapanış
-        const closingMins = netWorkMins(tClosing.start_time, tClosing.end_time)
-        if (stillNeeded >= closingMins * 0.5) {
-          selectedTmpl = tClosing
-          reason = 'FT 45 saat hedefi için kapanış vardiyası'
-        }
-      } else if (tOpening) {
-        const openingMins = netWorkMins(tOpening.start_time, tOpening.end_time)
-        if (stillNeeded >= openingMins * 0.5) {
-          selectedTmpl = tOpening
-          reason = 'FT 45 saat hedefi için açılış vardiyası'
-        }
-      }
-
-      if (selectedTmpl) {
-        addAssignment(emp, dateStr, selectedTmpl, reason)
-      }
+  const labelDay = weekDays.find((d) => dowKey(d) === LABEL_DAY_DOW)
+  if (labelDay) {
+    // Öncelik: FT satış/reyon → PT satış/reyon → diğerleri → kasiyerler en son
+    const rank = (e: PlannerEmployee) =>
+      (satisDanismanlari.includes(e) ? 0 : kasiyerler.includes(e) ? 4 : 2) +
+      (e.employment_type === 'full_time' ? 0 : 1)
+    const crew = shuffled(flexible.filter((e) => canPlace(e, labelDay, 'early')))
+      .sort((a, b) => rank(a) - rank(b))
+      .slice(0, LABEL_DAY_EXTRA_STAFF)
+    for (const emp of crew) {
+      place(emp, labelDay, 'early', 'Perşembe etiket yenileme (08:00)', true)
     }
-
-    const finalMins = getEmpMins(emp.id)
-    const finalDays = getEmpDays(emp.id)
-    if (finalMins < FT_MAX_MINS - 60) {
+    if (crew.length < LABEL_DAY_EXTRA_STAFF) {
       warnings.push({
-        level: 'info',
-        message: `${emp.full_name}: 45 saat hedefine ulaşılamadı (${Math.round(finalMins / 60 * 10) / 10}s, ${finalDays} gün). Availability veya izin kısıtlaması olabilir.`,
+        level: 'warning',
+        message: `${labelDay}: Etiket yenileme için ${LABEL_DAY_EXTRA_STAFF} ek çalışan 08:00'e atanamadı (${crew.length} atandı).`,
       })
     }
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // FAZ 7: PT çalışanları 30 saate yaklaştır (max 4 gün, max 30s net)
+  // FAZ 4: FT Kasiyer — Perşembe full tercih
   // ═══════════════════════════════════════════════════════════════════════════
 
-  const ptEmployees = employees.filter((e) => e.employment_type === 'part_time')
+  if (labelDay) {
+    for (const kFT of kasiyerler.filter((e) => e.employment_type === 'full_time')) {
+      place(kFT, labelDay, 'full', 'FT kasiyer Perşembe full vardiya tercihi')
+    }
+  }
 
-  for (const emp of ptEmployees) {
-    for (const dateStr of orderedDays) {
-      if (getEmpMins(emp.id) >= PT_MAX_MINS) break
-      if (getEmpDays(emp.id) >= PT_MAX_DAYS) break
-      if (assignMap.get(emp.id)?.has(dateStr)) continue
-      if (emp.leaveDays.has(dateStr)) continue
-      if (!isAvailableOnDay(emp, dateStr)) continue
-      if (isFixedDayOff(emp, dateStr)) continue
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FAZ 5: Günlük minimum kapsama
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Kasiyer: her gün ≥1 opening + ≥1 closing, toplam ≥2
+  // Satış danışmanı: hafta içi ≥1 opening, her gün ≥1 closing, hafta sonu ≥1 ortacı
+  // Günler karışık sırayla işlenir; sabit sıra, az kişili gruplarda (ör. tek FT kasiyer)
+  // izin gününü her hafta aynı güne düşürür.
 
-      const dow = dowKey(dateStr)
-      const isWeekend = ['saturday', 'sunday'].includes(dow)
+  for (const dateStr of shuffled(weekDays)) {
+    const dow = dowKey(dateStr)
+    const isWeekend = dow === 'saturday' || dow === 'sunday'
 
-      let selectedTmpl: PlannerShiftTemplate | null = null
+    if (!kindsOnDay(kasiyerler, dateStr).some(isOpeningKind)) {
+      const c = pickCandidate(kasiyerler, dateStr, 'opening')
+      if (c) place(c, dateStr, 'opening', `Günlük minimum kasiyer açılış (${dow})`)
+      else warnings.push({ level: 'error', message: `${dateStr} tarihinde opening kasiyer atanamadı (yetersiz müsait kasiyer).` })
+    }
 
-      if (isWeekend && tMid) {
-        const newMins = getEmpMins(emp.id) + netWorkMins(tMid.start_time, tMid.end_time)
-        if (newMins <= PT_MAX_MINS) selectedTmpl = tMid
+    if (!kindsOnDay(kasiyerler, dateStr).some(isClosingKind)) {
+      const c = pickCandidate(kasiyerler, dateStr, 'closing')
+      if (c) place(c, dateStr, 'closing', `Günlük minimum kasiyer kapanış (${dow})`)
+      else warnings.push({ level: 'error', message: `${dateStr} tarihinde closing kasiyer atanamadı.` })
+    }
+
+    if (kindsOnDay(kasiyerler, dateStr).length < 2) {
+      const c = pickCandidate(kasiyerler, dateStr, 'closing') ?? pickCandidate(kasiyerler, dateStr, 'opening')
+      if (c) {
+        const key: ShiftKey = getKindCount(c.id, 'closing') > getKindCount(c.id, 'opening') ? 'opening' : 'closing'
+        if (!place(c, dateStr, key, `Günlük minimum 2 kasiyer (${dow})`)) {
+          place(c, dateStr, key === 'opening' ? 'closing' : 'opening', `Günlük minimum 2 kasiyer (${dow})`)
+        }
+      } else {
+        warnings.push({ level: 'error', message: `${dateStr} tarihinde minimum 2 kasiyer şartı karşılanamıyor.` })
       }
-      if (!selectedTmpl && tClosing) {
-        const newMins = getEmpMins(emp.id) + netWorkMins(tClosing.start_time, tClosing.end_time)
-        if (newMins <= PT_MAX_MINS) selectedTmpl = tClosing
-      }
-      if (!selectedTmpl && tOpening) {
-        const newMins = getEmpMins(emp.id) + netWorkMins(tOpening.start_time, tOpening.end_time)
-        if (newMins <= PT_MAX_MINS) selectedTmpl = tOpening
-      }
+    }
 
-      if (selectedTmpl) {
-        addAssignment(emp, dateStr, selectedTmpl, `PT çalışan 30 saat hedefi (${dow})`)
+    if (!isWeekend && !kindsOnDay(satisDanismanlari, dateStr).some(isOpeningKind)) {
+      const c = pickCandidate(satisDanismanlari, dateStr, 'opening')
+      if (c) place(c, dateStr, 'opening', `Hafta içi açılış Satış Danışmanı (${dow})`)
+      else if (satisDanismanlari.length > 0) {
+        warnings.push({ level: 'error', message: `${dateStr} tarihinde hafta içi opening Satış Danışmanı şartı karşılanamadı.` })
       }
+    }
+
+    if (!kindsOnDay(satisDanismanlari, dateStr).some(isClosingKind)) {
+      const c = pickCandidate(satisDanismanlari, dateStr, 'closing')
+      if (c) place(c, dateStr, 'closing', `Günlük minimum kapanış Satış Danışmanı (${dow})`)
+    }
+
+    if (isWeekend && !kindsOnDay(satisDanismanlari, dateStr).includes('mid')) {
+      const c = pickCandidate(satisDanismanlari, dateStr, 'mid')
+      if (c) place(c, dateStr, 'mid', 'Hafta sonu Satış Danışmanı ortacı tercihi')
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FAZ 6: Kalan günleri doldur (FT 6 gün, PT 4 gün)
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Çalışanlar sırayla birer gün alır (round-robin) ki izin günleri yayılsın.
+  // Gün seçimi: en az personelli gün (yoğun günler 1 kişi fazlasını hedefler).
+  // Tür seçimi: çalışanın açılış/kapanış farkı ≥2 ise dengeleyen tür;
+  //             değilse o gün hangi tarafta daha az kişi varsa o tür.
+
+  function dayLoad(dateStr: string): number {
+    return kindsOnDay(flexible, dateStr).length - (HEAVY_DAYS.has(dowKey(dateStr)) ? 1 : 0)
+  }
+
+  function kindOrder(emp: PlannerEmployee, dateStr: string): ShiftKey[] {
+    const dow = dowKey(dateStr)
+    const isWeekend = dow === 'saturday' || dow === 'sunday'
+    const dayKinds = kindsOnDay(flexible, dateStr)
+    const dayOpen  = dayKinds.filter(isOpeningKind).length
+    const dayClose = dayKinds.filter(isClosingKind).length
+    const ownOpen  = getKindCount(emp.id, 'opening')
+    const ownClose = getKindCount(emp.id, 'closing')
+
+    let order: ShiftKey[]
+    if (ownOpen - ownClose >= 2)      order = ['closing', 'opening']
+    else if (ownClose - ownOpen >= 2) order = ['opening', 'closing']
+    else if (dayOpen !== dayClose) order = dayOpen < dayClose ? ['opening', 'closing'] : ['closing', 'opening']
+    // Eşitlikte geçen haftanın tersi; o da yoksa rastgele
+    else if (emp.lastWeek?.[dow] === 'opening') order = ['closing', 'opening']
+    else if (emp.lastWeek?.[dow] === 'closing') order = ['opening', 'closing']
+    else order = rng() < 0.5 ? ['opening', 'closing'] : ['closing', 'opening']
+
+    if (isWeekend && satisDanismanlari.includes(emp) && !dayKinds.includes('mid')) {
+      order = ['mid', ...order]
+    }
+    return order
+  }
+
+  function fillOneDay(emp: PlannerEmployee): boolean {
+    // Geçen hafta izinli olunan gün bu hafta çalışmaya yatkın → izin günü kayar
+    const score = (d: string) => dayLoad(d) - (wasOffLastWeek(emp, d) ? 0.5 : 0)
+    const days = shuffled(weekDays.filter((d) => canWork(emp, d)))
+      .sort((a, b) => score(a) - score(b))
+    for (const dateStr of days) {
+      for (const key of kindOrder(emp, dateStr)) {
+        const reason = emp.employment_type === 'full_time'
+          ? `FT haftalık plan (${SHIFTS[key].label})`
+          : `PT haftalık plan (${SHIFTS[key].label})`
+        if (place(emp, dateStr, key, reason)) return true
+      }
+    }
+    return false
+  }
+
+  const pending = new Set(flexible)
+  while (pending.size > 0) {
+    for (const emp of shuffled([...pending])) {
+      if (getEmpDays(emp.id) >= maxDays(emp) || !fillOneDay(emp)) pending.delete(emp)
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FAZ 7: FT 45 saat tamamlama
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 6 gün çalışan FT için her günün vardiyası katalogdaki varyantlarla
+  // (açılış → full; kapanış → kısa/uzun kapanış veya full) değiştirilerek
+  // 45 saati aşmayan en yüksek toplam aranır. Eşitlikte en az değişiklik,
+  // sonra full'lerin yoğun günlere düşmesi tercih edilir.
+  // İzinli (6 günden az) çalışanlar uzatılmaz.
+
+  for (const emp of [...managers, ...flexible]) {
+    if (emp.employment_type !== 'full_time') continue
+    const dayMap = slotMap.get(emp.id)!
+    if (dayMap.size < FT_MAX_DAYS) continue
+    if (getEmpMins(emp.id) >= FT_MAX_MINS) continue
+
+    const entries = [...dayMap.entries()]
+    // Kilitli (ve 'fixed') vardiyalar tek seçenek olarak kalır
+    const options: Array<Array<{ key: Slot['key']; net: number }>> = entries.map(([dateStr, slot]) => {
+      if (slot.locked || slot.key === 'fixed') return [{ key: slot.key, net: slot.net }]
+      const variants = TOPUP_VARIANTS[slot.key] ?? [slot.key]
+      // Karıştırma: eşit derecede iyi kombinasyonlardan (hangi gün full vb.) rastgele biri seçilir
+      return shuffled(variants.filter((k) =>
+        k === slot.key || fitsAvailabilityWindow(emp, dateStr, SHIFTS[k].start, SHIFTS[k].end)
+      )).map((k) => ({ key: k, net: SHIFT_NET[k] }))
+    })
+
+    let best = { total: -1, changes: Infinity, lightFulls: Infinity, keys: [] as Array<Slot['key']> }
+    const current: Array<Slot['key']> = []
+    const search = (i: number, total: number, changes: number, lightFulls: number) => {
+      if (total > FT_MAX_MINS) return
+      if (i === entries.length) {
+        if (
+          total > best.total ||
+          (total === best.total && changes < best.changes) ||
+          (total === best.total && changes === best.changes && lightFulls < best.lightFulls)
+        ) {
+          best = { total, changes, lightFulls, keys: [...current] }
+        }
+        return
+      }
+      const [dateStr, slot] = entries[i]
+      for (const { key: k, net } of options[i]) {
+        current.push(k)
+        search(
+          i + 1,
+          total + net,
+          changes + (k === slot.key ? 0 : 1),
+          lightFulls + (k === 'full' && k !== slot.key && !HEAVY_DAYS.has(dowKey(dateStr)) ? 1 : 0),
+        )
+        current.pop()
+      }
+    }
+    search(0, 0, 0, 0)
+
+    // Saati azaltan değişiklikler önce uygulanır; aksi halde ara toplam 45s'i aşıp reddedilir
+    // Değişen günler hep kilitsiz katalog vardiyalarıdır ('fixed' tek seçenekli)
+    entries
+      .map(([dateStr, slot], i) => ({ dateStr, from: slot.key as ShiftKey, to: best.keys[i] as ShiftKey }))
+      .filter((c) => c.to && c.to !== c.from)
+      .sort((a, b) => (SHIFT_NET[a.to] - SHIFT_NET[a.from]) - (SHIFT_NET[b.to] - SHIFT_NET[b.from]))
+      .forEach(({ dateStr, to }) => {
+        replace(emp, dateStr, to, `FT 45 saat tamamlama (${SHIFTS[to].label} ${SHIFTS[to].start}–${SHIFTS[to].end})`)
+      })
+  }
+
+  for (const emp of employees) {
+    if (emp.employment_type !== 'full_time') continue
+    const finalMins = getEmpMins(emp.id)
+    if (finalMins < FT_MAX_MINS - 60) {
+      warnings.push({
+        level: 'info',
+        message: `${emp.full_name}: 45 saat hedefine ulaşılamadı (${Math.round(finalMins / 60 * 10) / 10}s, ${getEmpDays(emp.id)} gün). Availability veya izin kısıtlaması olabilir.`,
+      })
     }
   }
 
@@ -805,36 +880,26 @@ export function runPlanner(input: PlannerInput): PlannerResult {
   const stats: Record<string, EmployeeDraftStats> = {}
 
   for (const emp of employees) {
-    const dayMap = assignMap.get(emp.id)!
-    const empAssignments = [...dayMap.values()]
+    const empAssignments = [...slotMap.get(emp.id)!.values()]
+      .map((x) => x.assignment)
+      .sort((a, b) => a.work_date.localeCompare(b.work_date))
     allAssignments.push(...empAssignments)
-
-    const totalMins    = empAssignments.reduce((s, a) => s + netWorkMins(a.start_time, a.end_time), 0)
-    const openingCount = empAssignments.filter((a) => a.shift_kind === 'opening').length
-    const closingCount = empAssignments.filter((a) => a.shift_kind === 'closing').length
-    const fullCount    = empAssignments.filter((a) => a.shift_kind === 'full').length
 
     stats[emp.id] = {
       employeeId:      emp.id,
       employeeName:    emp.full_name,
       employment_type: emp.employment_type,
-      totalMins,
+      totalMins:       empAssignments.reduce((s, a) => s + netWorkMins(a.start_time, a.end_time), 0),
       workDays:        empAssignments.length,
-      openingCount,
-      closingCount,
-      fullCount,
+      openingCount:    empAssignments.filter((a) => a.shift_kind === 'opening').length,
+      closingCount:    empAssignments.filter((a) => a.shift_kind === 'closing').length,
+      fullCount:       empAssignments.filter((a) => a.shift_kind === 'full').length,
       assignments:     empAssignments,
     }
   }
 
   // Bağımsız validator
-  const validationWarnings = validatePlan(allAssignments, employees, weekDays)
-  for (const w of validationWarnings) {
-    // Zaten aynı mesaj yoksa ekle
-    if (!warnings.some((x) => x.message === w.message)) {
-      warnings.push(w)
-    }
-  }
+  warnings.push(...validatePlan(allAssignments, employees, weekDays))
 
   // Tekrar eden uyarıları kaldır
   const uniqueWarnings = warnings.filter(
@@ -852,6 +917,7 @@ export function runPlanner(input: PlannerInput): PlannerResult {
     stats,
     warnings: uniqueWarnings,
     hasHardViolation,
+    seed,
   }
 }
 
@@ -874,6 +940,7 @@ export function runPlanner(input: PlannerInput): PlannerResult {
  *   8. Her gün ≥1 opening kasiyer, ≥1 closing kasiyer, toplam ≥2 kasiyer
  *   9. Her gün opening + closing'de yönetici
  *  10. Müdür/Yardımcı ortacı alma yasağı
+ *  11. (uyarı) Tüm hafta aynı vardiya türü (hep açılış / hep kapanış)
  */
 export function validatePlan(
   assignments: DraftAssignment[],
@@ -936,23 +1003,13 @@ export function validatePlan(
     // 5. Sabit izin günü ihlali
     for (const a of empAssigns) {
       const dow = dowKey(a.work_date)
-
-      // Önce yardımcı kontrolü (positionIs mudur_yardimcisi aynı zamanda 'mudur' içerir)
-      const isYardimci =
-        positionIs(emp.position, POS_MUDUR_YARDIMCISI) ||
-        positionIs(emp.role_name, POS_MUDUR_YARDIMCISI)
-
-      const isMudurOnly =
-        !isYardimci &&
-        (positionIs(emp.position, POS_MUDUR) || positionIs(emp.role_name, POS_MUDUR))
-
-      if (isMudurOnly && dow === MUDUR_OFF_DOW) {
+      if (isStoreManager(emp) && dow === MUDUR_OFF_DOW) {
         warnings.push({ level: 'error', message: `${emp.full_name}: Müdür Salı günü çalışamaz (${a.work_date}).` })
       }
-      if (isYardimci && dow === MUDUR_Y_OFF_DOW) {
+      if (isAssistantManager(emp) && dow === MUDUR_Y_OFF_DOW) {
         warnings.push({ level: 'error', message: `${emp.full_name}: Müdür Yardımcısı Perşembe günü çalışamaz (${a.work_date}).` })
       }
-      if ((positionIs(emp.position, POS_GORSEL_UZMAN) || positionIs(emp.position, POS_DEPO)) && dow === GORSEL_DEPO_OFF_DOW) {
+      if (isFixedCrew(emp) && dow === GORSEL_DEPO_OFF_DOW) {
         warnings.push({ level: 'error', message: `${emp.full_name}: ${a.work_date} Pazar günü çalışamaz.` })
       }
     }
@@ -976,25 +1033,53 @@ export function validatePlan(
     }
 
     // 10. Müdür/Yardımcı ortacı alma yasağı
-    if (isManagerRoleById(emp)) {
+    if (isManagerRole(emp)) {
       for (const a of empAssigns) {
         if (a.shift_kind === 'mid') {
           warnings.push({ level: 'error', message: `${emp.full_name}: Yönetici ortacı (mid) vardiya alamaz (${a.work_date}).` })
         }
       }
     }
+
+    // 12. Ardışık günler arası asgari dinlenme
+    const minRestMins = getWorkingTimeConfig().minRestHours * 60
+    const sorted = [...empAssigns].sort((a, b) => a.work_date.localeCompare(b.work_date))
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const curr = sorted[i]
+      const next = sorted[i + 1]
+      const dayGap = Math.round((new Date(next.work_date).getTime() - new Date(curr.work_date).getTime()) / 86_400_000)
+      if (dayGap !== 1) continue
+      const rest = 1440 - toMins(curr.end_time) + toMins(next.start_time)
+      if (rest < minRestMins) {
+        warnings.push({
+          level: 'error',
+          message: `${emp.full_name}: ${curr.work_date} ${curr.end_time} → ${next.work_date} ${next.start_time} arası dinlenme ${Math.round(rest / 6) / 10}s (min. ${minRestMins / 60}s).`,
+        })
+      }
+    }
+
+    // 11. Tüm hafta aynı tür (görsel/depo sabit kalıp hariç)
+    if (!isFixedCrew(emp) && empAssigns.length >= 4) {
+      const kinds = new Set(empAssigns.map((a) => a.shift_kind))
+      if (kinds.size === 1) {
+        warnings.push({
+          level: 'warning',
+          message: `${emp.full_name}: Tüm hafta aynı vardiya türünde (${[...kinds][0]}).`,
+        })
+      }
+    }
   }
 
   // 8. Her gün kasiyer minimum ihtiyacı
+  const kasiyerIds = new Set(
+    employees.filter((e) => positionIs(e.position, POS_KASIYER)).map((e) => e.id)
+  )
   for (const dateStr of weekDays) {
-    const kasiyerIds = new Set(
-      employees.filter((e) => positionIs(e.position, POS_KASIYER)).map((e) => e.id)
-    )
     const kasiyerAssigns = assignments.filter((a) => kasiyerIds.has(a.employee_id) && a.work_date === dateStr)
 
     const total   = kasiyerAssigns.length
-    const opening = kasiyerAssigns.filter((a) => a.shift_kind === 'opening' || a.shift_kind === 'full').length
-    const closing = kasiyerAssigns.filter((a) => a.shift_kind === 'closing' || a.shift_kind === 'full').length
+    const opening = kasiyerAssigns.filter((a) => isOpeningKind(a.shift_kind)).length
+    const closing = kasiyerAssigns.filter((a) => isClosingKind(a.shift_kind)).length
 
     if (total < 2) {
       warnings.push({ level: 'error', message: `${dateStr}: Günlük minimum 2 kasiyer şartı karşılanmıyor (${total} kasiyer).` })
@@ -1008,25 +1093,14 @@ export function validatePlan(
   }
 
   // 9. Her gün yönetici kapsaması
+  const managerIds = new Set(employees.filter(isManagerRole).map((e) => e.id))
   for (const dateStr of weekDays) {
-    const dayAssigns = assignments.filter((a) => a.work_date === dateStr)
-    const managerIds = new Set(
-      employees
-        .filter((e) => isManagerRoleById(e))
-        .map((e) => e.id)
-    )
+    const dayAssigns = assignments.filter((a) => a.work_date === dateStr && managerIds.has(a.employee_id))
 
-    const mgrOpening = dayAssigns.some(
-      (a) => managerIds.has(a.employee_id) && (a.shift_kind === 'opening' || a.shift_kind === 'full')
-    )
-    const mgrClosing = dayAssigns.some(
-      (a) => managerIds.has(a.employee_id) && (a.shift_kind === 'closing' || a.shift_kind === 'full')
-    )
-
-    if (!mgrOpening) {
+    if (!dayAssigns.some((a) => isOpeningKind(a.shift_kind))) {
       warnings.push({ level: 'error', message: `${dateStr}: Açılışta yönetici (Müdür/Müdür Yardımcısı) yok.` })
     }
-    if (!mgrClosing) {
+    if (!dayAssigns.some((a) => isClosingKind(a.shift_kind))) {
       warnings.push({ level: 'error', message: `${dateStr}: Kapanışta yönetici (Müdür/Müdür Yardımcısı) yok.` })
     }
   }
@@ -1034,12 +1108,11 @@ export function validatePlan(
   return warnings
 }
 
-function isManagerRoleById(emp: PlannerEmployee): boolean {
+/** Rol adına göre yönetici mi */
+function isManagerRole(emp: PlannerEmployee): boolean {
   return (
-    positionIs(emp.role_name, POS_MUDUR) ||
-    positionIs(emp.role_name, POS_MUDUR_YARDIMCISI) ||
-    positionIs(emp.position, POS_MUDUR) ||
-    positionIs(emp.position, POS_MUDUR_YARDIMCISI) ||
+    isStoreManager(emp) ||
+    isAssistantManager(emp) ||
     normTR(emp.role_name).includes('yonetici') ||
     normTR(emp.role_name).includes('mudur')
   )
