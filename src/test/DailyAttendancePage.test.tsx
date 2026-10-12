@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from './helpers/renderWithProviders'
 import type { DailyShiftEntry, AttendanceRecord } from '@/types/attendance'
 
@@ -9,7 +8,6 @@ import type { DailyShiftEntry, AttendanceRecord } from '@/types/attendance'
 // ============================================================
 vi.mock('@/lib/api/attendance', () => ({
   fetchDailyShifts: vi.fn(),
-  performManualAttendanceAction: vi.fn(),
 }))
 
 // ============================================================
@@ -102,39 +100,30 @@ describe('DailyAttendancePage — sayfa yükleme (Senaryo 10)', () => {
   })
 })
 
-describe('DailyAttendancePage — attendance aksiyonları', () => {
+describe('DailyAttendancePage — salt okunur (giriş/mola/çıkış yalnızca QR ile)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('1. Vardiya bekleyen çalışan "Giriş Yap" butonunu görür', async () => {
-    vi.mocked(repo.fetchDailyShifts).mockResolvedValue({ date: '2026-09-28', entries: [makeShiftEntry()] })
+  it.each([
+    ['shift_waiting', null],
+    ['working', makeAttendanceRecord({ status: 'working' })],
+    ['on_break', makeAttendanceRecord({ status: 'on_break', break_start_at: '2026-09-28T09:00:00Z' })],
+  ] as const)('%s durumunda manuel giriş/mola/çıkış butonu yoktur', async (_status, record) => {
+    vi.mocked(repo.fetchDailyShifts).mockResolvedValue({
+      date: '2026-09-28',
+      entries: [makeShiftEntry({ attendanceRecord: record })],
+    })
 
     renderPage()
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /giriş yap/i })).toBeInTheDocument()
-    })
+    await screen.findByText('Ahmet Kaya')
+    for (const name of [/giriş yap/i, /molaya çık/i, /moladan dön/i, /çıkış yap/i]) {
+      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
+    }
   })
 
-  it('2. Giriş yapıldıktan sonra durum Çalışıyor olur', async () => {
-    vi.mocked(repo.fetchDailyShifts).mockResolvedValue({ date: '2026-09-28', entries: [makeShiftEntry()] })
-    const workingRecord = makeAttendanceRecord({ status: 'working' })
-    vi.mocked(repo.performManualAttendanceAction).mockResolvedValue(workingRecord)
-
-    renderPage()
-
-    const btn = await screen.findByRole('button', { name: /giriş yap/i })
-    await userEvent.click(btn)
-
-    await waitFor(() => {
-      // 'Çalışıyor' appears both in stat card and in the status chip
-      const elements = screen.getAllByText('Çalışıyor')
-      expect(elements.length).toBeGreaterThanOrEqual(1)
-    })
-  })
-
-  it('4. Çalışan molaya çıkabilir — "Molaya Çık" butonu görünür', async () => {
+  it('QR ile işlenen durum ve saatler gösterilir', async () => {
     vi.mocked(repo.fetchDailyShifts).mockResolvedValue({ date: '2026-09-28', entries: [
       makeShiftEntry({ attendanceRecord: makeAttendanceRecord({ status: 'working' }) }),
     ] })
@@ -142,73 +131,9 @@ describe('DailyAttendancePage — attendance aksiyonları', () => {
     renderPage()
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /molaya çık/i })).toBeInTheDocument()
-    })
-  })
-
-  it('5. Molada iken "Molaya Çık" butonu görünmez', async () => {
-    vi.mocked(repo.fetchDailyShifts).mockResolvedValue({ date: '2026-09-28', entries: [
-      makeShiftEntry({
-        attendanceRecord: makeAttendanceRecord({
-          status: 'on_break',
-          break_start_at: '2026-09-28T09:00:00Z',
-        }),
-      }),
-    ] })
-
-    renderPage()
-
-    await waitFor(() => {
-      expect(screen.queryByRole('button', { name: /molaya çık/i })).not.toBeInTheDocument()
-    })
-  })
-
-  it('6. Çalışan moladan dönebilir — "Moladan Dön" butonu görünür', async () => {
-    vi.mocked(repo.fetchDailyShifts).mockResolvedValue({ date: '2026-09-28', entries: [
-      makeShiftEntry({
-        attendanceRecord: makeAttendanceRecord({
-          status: 'on_break',
-          break_start_at: '2026-09-28T09:00:00Z',
-        }),
-      }),
-    ] })
-
-    renderPage()
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /moladan dön/i })).toBeInTheDocument()
-    })
-  })
-
-  it('7. Çalışan çıkış yapabilir — "Çıkış Yap" butonu görünür', async () => {
-    vi.mocked(repo.fetchDailyShifts).mockResolvedValue({ date: '2026-09-28', entries: [
-      makeShiftEntry({ attendanceRecord: makeAttendanceRecord({ status: 'working' }) }),
-    ] })
-
-    renderPage()
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /çıkış yap/i })).toBeInTheDocument()
-    })
-  })
-
-  it('8. Çıkış yapıldıktan sonra aksiyon butonu yoktur', async () => {
-    vi.mocked(repo.fetchDailyShifts).mockResolvedValue({ date: '2026-09-28', entries: [
-      makeShiftEntry({
-        attendanceRecord: makeAttendanceRecord({
-          status: 'clocked_out',
-          clock_in_at: '2026-09-28T06:00:00Z',
-          clock_out_at: '2026-09-28T14:00:00Z',
-        }),
-      }),
-    ] })
-
-    renderPage()
-
-    await waitFor(() => {
-      expect(screen.queryByRole('button', { name: /giriş yap/i })).not.toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: /çıkış yap/i })).not.toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: /molaya çık/i })).not.toBeInTheDocument()
+      // 'Çalışıyor' hem istatistik kartında hem durum çipinde görünür
+      expect(screen.getAllByText('Çalışıyor').length).toBeGreaterThanOrEqual(2)
+      expect(screen.getByText(/Giriş:/)).toBeInTheDocument()
     })
   })
 })

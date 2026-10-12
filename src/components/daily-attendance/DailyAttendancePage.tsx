@@ -13,7 +13,7 @@ import {
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday'
 import PeopleIcon from '@mui/icons-material/People'
 import RefreshIcon from '@mui/icons-material/Refresh'
-import type { DailyShiftEntry, AttendanceRecord } from '@/types/attendance'
+import type { DailyShiftEntry } from '@/types/attendance'
 import { fetchDailyShifts } from '@/lib/api/attendance'
 import { EmployeeAttendanceRow } from './EmployeeAttendanceRow'
 import { formatDateTurkish, formatDayNameTurkish } from '@/lib/dateUtils'
@@ -28,19 +28,6 @@ export function DailyAttendancePage() {
   const error = loadError ? (loadError instanceof Error ? loadError.message : 'Vardiyalar yüklenemedi.') : null
   const lastRefreshed = useLastUpdated(data)
   const loadShifts = () => mutate()
-
-  // Manuel işlem sonrası yalnızca ilgili satır güncellenir (listeyi yeniden çekmeden)
-  const handleRecordChange = (shiftId: string, updatedRecord: AttendanceRecord) => {
-    void mutate(
-      (prev) => prev && {
-        ...prev,
-        entries: prev.entries.map((entry) =>
-          entry.shiftAssignment.id === shiftId ? { ...entry, attendanceRecord: updatedRecord } : entry
-        ),
-      },
-      { revalidate: false }
-    )
-  }
 
   // Stats
   const workingCount = entries.filter(
@@ -137,11 +124,7 @@ export function DailyAttendancePage() {
       {entries.length > 0 && (
         <Stack spacing={1.5}>
           {entries.map((entry) => (
-            <EmployeeAttendanceRow
-              key={entry.shiftAssignment.id}
-              entry={entry}
-              onRecordChange={handleRecordChange}
-            />
+            <EmployeeAttendanceRow key={entry.shiftAssignment.id} entry={entry} />
           ))}
         </Stack>
       )}
