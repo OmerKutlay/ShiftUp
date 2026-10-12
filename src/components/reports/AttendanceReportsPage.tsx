@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import {
   Box,
   Typography,
@@ -54,6 +54,8 @@ const STATUS_LABELS: Record<string, string> = {
   on_break: 'Molada',
   working_after_break: 'Çalışıyor',
   clocked_out: 'Çıkış Yaptı',
+  on_leave: 'İzinli',
+  upcoming: 'Başlamadı',
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -62,6 +64,8 @@ const STATUS_COLORS: Record<string, string> = {
   on_break: '#f59e0b',
   working_after_break: '#10b981',
   clocked_out: '#818cf8',
+  on_leave: '#38bdf8',
+  upcoming: '#94a3b8',
 }
 
 function formatMinutes(mins: number | null): string {
@@ -99,40 +103,15 @@ function OverrideDialog({ open, row, onClose, onSave, saving }: OverrideDialogPr
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
 
-  // Find the attendance record id from the row — we need to fetch it
-  // Since the report row doesn't include record_id, we fetch via a lookup
-  const [recordId, setRecordId] = useState<string | null>(null)
-  const [loadingId, setLoadingId] = useState(false)
+  const recordId = row?.record_id ?? null
 
-  const loadRecordId = useCallback(async () => {
-    if (!row || !open) return
-    setLoadingId(true)
-    try {
-      const res = await fetch(
-        `/api/attendance/record-id?employee_id=${row.employee_id}&work_date=${row.work_date}`
-      )
-      const data = await res.json() as { record_id?: string; error?: string }
-      if (!res.ok || !data.record_id) {
-        setError(data.error ?? 'Kayıt bulunamadı.')
-      } else {
-        setRecordId(data.record_id)
-      }
-    } catch {
-      setError('Kayıt yüklenemedi.')
-    } finally {
-      setLoadingId(false)
-    }
-  }, [row, open])
-
-  // Load record id when dialog opens
-  useState(() => {
+  // Her açılışta formu sıfırla
+  useEffect(() => {
     if (open) {
       setNote('')
       setError(null)
-      setRecordId(null)
-      void loadRecordId()
     }
-  })
+  }, [open, row])
 
   const handleSave = async () => {
     if (!recordId) {
@@ -144,7 +123,11 @@ function OverrideDialog({ open, row, onClose, onSave, saving }: OverrideDialogPr
       return
     }
     setError(null)
-    await onSave({ record_id: recordId, exception_note: note })
+    try {
+      await onSave({ record_id: recordId, exception_note: note })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Override başarısız.')
+    }
   }
 
   return (
@@ -158,9 +141,8 @@ function OverrideDialog({ open, row, onClose, onSave, saving }: OverrideDialogPr
             </Typography>
           </Box>
         )}
-        {loadingId && <CircularProgress size={24} sx={{ mb: 2 }} />}
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-        {!loadingId && !recordId && !error && (
+        {!recordId && !error && (
           <Alert severity="info" sx={{ mb: 2 }}>
             Bu çalışanın bu tarihe ait attendance kaydı bulunamadı.
           </Alert>
@@ -173,7 +155,7 @@ function OverrideDialog({ open, row, onClose, onSave, saving }: OverrideDialogPr
           value={note}
           onChange={(e) => setNote(e.target.value)}
           placeholder="Örn: Sistem hatası nedeniyle manuel düzeltme yapıldı."
-          disabled={!recordId || loadingId}
+          disabled={!recordId}
         />
       </DialogContent>
       <DialogActions>
@@ -402,9 +384,15 @@ export function AttendanceReportsPage() {
                   <Typography variant="subtitle2" fontWeight={700} mb={1}>{s.full_name}</Typography>
                   <Stack spacing={0.5}>
                     <SummaryRow label="Toplam Vardiya" value={String(s.total_shifts)} />
-                    <SummaryRow label="Katılım" value={`${s.attended_shifts}/${s.total_shifts}`} />
+                    <SummaryRow label="Katılım" value={`${s.attended_shifts}/${s.expected_shifts}`} />
                     <SummaryRow label="Tamamlanan" value={String(s.clocked_out_count)} color="#818cf8" />
                     <SummaryRow label="Gelmedi" value={String(s.no_show_count)} color="#ef4444" />
+                    {s.on_leave_count > 0 && (
+                      <SummaryRow label="İzinli" value={String(s.on_leave_count)} color={STATUS_COLORS.on_leave} />
+                    )}
+                    {s.upcoming_count > 0 && (
+                      <SummaryRow label="Başlamadı" value={String(s.upcoming_count)} color={STATUS_COLORS.upcoming} />
+                    )}
                     <SummaryRow label="Net Çalışma" value={formatMinutes(s.total_worked_minutes)} color="#10b981" />
                   </Stack>
                 </Paper>
@@ -497,7 +485,7 @@ export function AttendanceReportsPage() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {row.status !== 'shift_waiting' && (
+                          {row.record_id && (
                             <Tooltip title="Manuel Düzelt">
                               <Box
                                 component="span"
