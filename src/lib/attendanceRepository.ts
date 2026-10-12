@@ -112,7 +112,7 @@ export async function performAttendanceAction(
   action: AttendanceAction
 ): Promise<AttendanceRecord> {
   const now = new Date().toISOString()
-  const patch = buildFieldPatch(record.status, action, now)
+  const patch = buildFieldPatch(record.status, action, now, record)
 
   const { data, error } = await supabase
     .from('attendance_records')

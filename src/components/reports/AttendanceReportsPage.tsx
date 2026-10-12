@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback } from 'react'
 import {
   Box,
   Typography,
@@ -44,7 +44,7 @@ import {
   buildReportSummary,
   exportReportToCsv,
 } from '@/lib/reportRepository'
-import { fetchActiveEmployees } from '@/lib/employeeRepository'
+import { fetchEmployees } from '@/lib/employeeRepository'
 import { format, subDays } from 'date-fns'
 import { PageHeader, TableSkeleton } from '@/components/common'
 
@@ -103,15 +103,8 @@ function OverrideDialog({ open, row, onClose, onSave, saving }: OverrideDialogPr
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
 
+  // Form her açılışta sıfırlanır — üst bileşen key ile yeniden mount eder
   const recordId = row?.record_id ?? null
-
-  // Her açılışta formu sıfırla
-  useEffect(() => {
-    if (open) {
-      setNote('')
-      setError(null)
-    }
-  }, [open, row])
 
   const handleSave = async () => {
     if (!recordId) {
@@ -194,6 +187,7 @@ export function AttendanceReportsPage() {
   // Override dialog
   const [overrideOpen, setOverrideOpen] = useState(false)
   const [overrideRow, setOverrideRow] = useState<AttendanceReportRow | null>(null)
+  const [overrideKey, setOverrideKey] = useState(0)
   const [overrideSaving, setOverrideSaving] = useState(false)
   const [overrideSuccess, setOverrideSuccess] = useState<string | null>(null)
 
@@ -201,7 +195,7 @@ export function AttendanceReportsPage() {
   const ensureEmployees = useCallback(async () => {
     if (employeesLoaded) return
     try {
-      const emps = await fetchActiveEmployees()
+      const emps = await fetchEmployees()
       setEmployees(emps)
       setEmployeesLoaded(true)
     } catch {
@@ -253,6 +247,7 @@ export function AttendanceReportsPage() {
 
   const openOverride = (row: AttendanceReportRow) => {
     setOverrideRow(row)
+    setOverrideKey((k) => k + 1)
     setOverrideOpen(true)
     setOverrideSuccess(null)
   }
@@ -273,8 +268,6 @@ export function AttendanceReportsPage() {
       setOverrideSuccess(`${overrideRow?.full_name} kaydı güncellendi.`)
       // Raporu yenile
       await handleSearch()
-    } catch (err) {
-      throw err
     } finally {
       setOverrideSaving(false)
     }
@@ -323,7 +316,9 @@ export function AttendanceReportsPage() {
             >
               <MenuItem value="">Tüm Çalışanlar</MenuItem>
               {employees.map((e) => (
-                <MenuItem key={e.id} value={e.id}>{e.full_name}</MenuItem>
+                <MenuItem key={e.id} value={e.id}>
+                  {e.full_name}{!e.active && ' (Pasif)'}
+                </MenuItem>
               ))}
             </Select>
           </FormControl>
@@ -526,6 +521,7 @@ export function AttendanceReportsPage() {
 
       {/* Override Dialog */}
       <OverrideDialog
+        key={overrideKey}
         open={overrideOpen}
         row={overrideRow}
         onClose={() => setOverrideOpen(false)}
