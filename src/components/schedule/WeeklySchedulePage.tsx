@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import {
   Box,
   Typography,
@@ -33,22 +33,18 @@ import type { ShiftAssignmentWithDetails, WeeklyScheduleEntry } from '@/types/sc
 import type { EmployeeAvailability, DayOfWeek } from '@/types/workforce'
 import { formatTime } from '@/types/shiftTemplate'
 import {
-  fetchWeeklyAssignments,
-  getWeekDays,
   createShiftAssignment,
   updateShiftAssignment,
   deleteShiftAssignment,
 } from '@/lib/api/schedule'
-import { fetchActiveEmployees } from '@/lib/api/employees'
-import { fetchActiveShiftTemplates } from '@/lib/api/shiftTemplates'
 import { shiftDurationMins, netWorkMins, checkMinRest } from '@/lib/workingTimeService'
 import { PART_TIME_RULES } from '@/types/employee'
 import { getWorkingTimeConfig } from '@/lib/workingTimeConfig'
 import { WeekNavigator } from './WeekNavigator'
+import { useWeeklySchedule } from './useWeeklySchedule'
 import { ShiftAssignDialog } from './ShiftAssignDialog'
 import type { ShiftSavePayload } from './ShiftAssignDialog'
 import { PageHeader, ScheduleGridSkeleton, ListSkeleton } from '@/components/common'
-import { useLoadedKey } from '@/hooks/useLoadedKey'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 
@@ -227,22 +223,29 @@ interface WeeklySchedulePageProps {
   readOnly?: boolean
 }
 
+
 export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps) {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const config = useMemo(() => getWorkingTimeConfig(), [])
 
   const [currentWeek, setCurrentWeek] = useState(new Date())
-  const [employees, setEmployees] = useState<EmployeeWithRole[]>([])
-  const [templates, setTemplates] = useState<ShiftTemplate[]>([])
-  const [assignments, setAssignments] = useState<ShiftAssignmentWithDetails[]>([])
-  const [availabilityMap, setAvailabilityMap] = useState<AvailabilityMap>(new Map())
-  const [approvedLeaveMap, setApprovedLeaveMap] = useState<Set<string>>(new Set())
-  // key: "employee_id:YYYY-MM-DD" → leave request id (silme için)
-  const [leaveDayToId, setLeaveDayToId] = useState<Map<string, string>>(new Map())
-  // key: "employee_id:YYYY-MM-DD" — haftalık tatil günleri (görsel ayrım için)
-  const [restDayMap, setRestDayMap] = useState<Set<string>>(new Set())
-  const [error, setError] = useState<string | null>(null)
+  const {
+    weekDays,
+    employees,
+    templates,
+    assignments,
+    availabilityMap,
+    approvedLeaveMap,
+    leaveDayToId,
+    restDayMap,
+    isFirstLoad,
+    error: loadError,
+    reload: load,
+  } = useWeeklySchedule(currentWeek, { readOnly })
+  // Kayıt/silme işlem hataları (yükleme hataları hook'tan gelir)
+  const [actionError, setError] = useState<string | null>(null)
+  const error = actionError ?? loadError
 
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -258,75 +261,6 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     leaveId: string
   } | null>(null)
   const [leaveDeleting, setLeaveDeleting] = useState(false)
-
-  const weekDays = getWeekDays(currentWeek)
-  // Skeleton yalnızca bu hafta ilk kez yüklenirken; geri dönüşte / kayıt sonrası grid ekranda kalır
-  const weekKey = format(currentWeek, 'yyyy-MM-dd')
-  const { isFirstLoad, markLoaded } = useLoadedKey(weekKey)
-
-  const load = useCallback(async () => {
-    setError(null)
-    try {
-      const [emps, tmpls, asgns, leavesRes, availRes] = await Promise.all([
-        fetchActiveEmployees(),
-        fetchActiveShiftTemplates(),
-        fetchWeeklyAssignments(currentWeek),
-        fetch(`/api/leave?status=approved`).then((r) =>
-          r.ok ? r.json() : { requests: [] }
-        ) as Promise<{ requests: Array<{ id: string; employee_id: string; start_date: string; end_date: string; leave_type: string }> }>,
-        // Tüm çalışanların availability'si (manager ise all=true çalışır)
-        fetch(`/api/availability?all=true`).then((r) =>
-          r.ok ? r.json() : { availability: [] }
-        ) as Promise<{ availability: EmployeeAvailability[] }>,
-      ])
-
-      setEmployees(emps)
-      setTemplates(tmpls)
-      setAssignments(asgns)
-
-      // Onaylı izin set'i
-      const leaveSet = new Set<string>()
-      const leaveIdMap = new Map<string, string>()
-      const restSet = new Set<string>()
-      for (const lr of leavesRes.requests ?? []) {
-        const startParts = lr.start_date.slice(0, 10).split('-').map(Number) as [number, number, number]
-        const endParts = lr.end_date.slice(0, 10).split('-').map(Number) as [number, number, number]
-        const curD = new Date(startParts[0], startParts[1] - 1, startParts[2])
-        const endD = new Date(endParts[0], endParts[1] - 1, endParts[2])
-        while (curD <= endD) {
-          const y = curD.getFullYear()
-          const m = String(curD.getMonth() + 1).padStart(2, '0')
-          const d = String(curD.getDate()).padStart(2, '0')
-          const key = `${lr.employee_id}:${y}-${m}-${d}`
-          leaveSet.add(key)
-          leaveIdMap.set(key, lr.id)
-          if (lr.leave_type === 'weekly_rest') restSet.add(key)
-          curD.setDate(curD.getDate() + 1)
-        }
-      }
-      setApprovedLeaveMap(leaveSet)
-      setLeaveDayToId(leaveIdMap)
-      setRestDayMap(restSet)
-
-      // Availability map: employeeId → DayOfWeek → records[]
-      const aMap = new Map<string, Map<DayOfWeek, EmployeeAvailability[]>>()
-      for (const av of availRes.availability ?? []) {
-        if (!aMap.has(av.employee_id)) aMap.set(av.employee_id, new Map())
-        const empMap = aMap.get(av.employee_id)!
-        if (!empMap.has(av.day_of_week)) empMap.set(av.day_of_week, [])
-        empMap.get(av.day_of_week)!.push(av)
-      }
-      setAvailabilityMap(aMap)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Yükleme hatası.')
-    } finally {
-      markLoaded(weekKey)
-    }
-  }, [currentWeek, weekKey, markLoaded])
-
-  useEffect(() => {
-    void load() // eslint-disable-line react-hooks/set-state-in-effect
-  }, [load])
 
   // Assignment map: key = `${employee_id}:${work_date}`
   const assignmentMap = useMemo(() => {
@@ -565,8 +499,6 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
           {/* Employee rows */}
           {scheduleEntries.map((entry, rowIdx) => {
             const stats = statsMap.get(entry.employee.id)
-            const hasViolation = (stats?.restViolations.length ?? 0) > 0
-            const weeklyOver = stats ? stats.totalMins > config.maxWeeklyWorkHours * 60 : false
 
             return (
               <Box
@@ -665,6 +597,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
       {/* Assign Dialog — sadece manager modunda */}
       {!readOnly && (
         <ShiftAssignDialog
+          key={`${dialogEmployee?.id ?? ''}:${dialogDate}:${dialogExisting?.id ?? 'new'}`}
           open={dialogOpen}
           onClose={() => setDialogOpen(false)}
           onSave={handleSave}
@@ -836,7 +769,7 @@ function SummaryCell({ stats, config }: SummaryCellProps) {
 
 // ─── Shift cell ───────────────────────────────────────────────
 function ShiftCell({
-  assignment, isToday, isOnLeave, isRestDay, availStatus, dailyOver, dailyMins, onClick, readOnly,
+  assignment, isToday, isOnLeave, isRestDay, availStatus, dailyOver, onClick, readOnly,
 }: {
   assignment: ShiftAssignmentWithDetails | null
   isToday: boolean
@@ -1165,6 +1098,7 @@ function MobileScheduleView({
 
       {!readOnly && (
         <ShiftAssignDialog
+          key={`${dialogEmployee?.id ?? ''}:${dialogDate}:${dialogExisting?.id ?? 'new'}`}
           open={dialogOpen}
           onClose={onDialogClose}
           onSave={onSave}

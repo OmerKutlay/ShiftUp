@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import useSWR from 'swr'
 import {
   Box,
   Typography,
@@ -18,44 +18,27 @@ import { fetchDailyShifts } from '@/lib/api/attendance'
 import { EmployeeAttendanceRow } from './EmployeeAttendanceRow'
 import { formatDateTurkish, formatDayNameTurkish } from '@/lib/dateUtils'
 import { PageHeader, StatCardsSkeleton, ListSkeleton } from '@/components/common'
-import { useLoadedKey } from '@/hooks/useLoadedKey'
+import { useLastUpdated } from '@/hooks/useLastUpdated'
 
 export function DailyAttendancePage() {
   const today = new Date()
-  const [entries, setEntries] = useState<DailyShiftEntry[]>([])
-  const [loading, setLoading] = useState(true)
-  const { isFirstLoad, markLoaded } = useLoadedKey()
-  const [error, setError] = useState<string | null>(null)
-  // FAZ 8: last refresh time for display
-  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null)
+  const { data, error: loadError, isValidating: loading, mutate } = useSWR('attendance:daily', fetchDailyShifts)
+  const entries: DailyShiftEntry[] = data?.entries ?? []
+  const isFirstLoad = !data && !loadError
+  const error = loadError ? (loadError instanceof Error ? loadError.message : 'Vardiyalar yüklenemedi.') : null
+  const lastRefreshed = useLastUpdated(data)
+  const loadShifts = () => mutate()
 
-  const loadShifts = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const { entries: data } = await fetchDailyShifts()
-      setEntries(data)
-      setLastRefreshed(new Date())
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Vardiyalar yüklenemedi.')
-    } finally {
-      setLoading(false)
-      markLoaded()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [markLoaded])
-
-  useEffect(() => {
-    void loadShifts() // eslint-disable-line react-hooks/set-state-in-effect
-  }, [loadShifts])
-
+  // Manuel işlem sonrası yalnızca ilgili satır güncellenir (listeyi yeniden çekmeden)
   const handleRecordChange = (shiftId: string, updatedRecord: AttendanceRecord) => {
-    setEntries((prev) =>
-      prev.map((entry) =>
-        entry.shiftAssignment.id === shiftId
-          ? { ...entry, attendanceRecord: updatedRecord }
-          : entry
-      )
+    void mutate(
+      (prev) => prev && {
+        ...prev,
+        entries: prev.entries.map((entry) =>
+          entry.shiftAssignment.id === shiftId ? { ...entry, attendanceRecord: updatedRecord } : entry
+        ),
+      },
+      { revalidate: false }
     )
   }
 

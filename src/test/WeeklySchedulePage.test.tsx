@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
+import { renderWithProviders } from './helpers/renderWithProviders'
 import userEvent from '@testing-library/user-event'
-import { ThemeProvider } from '@mui/material'
-import { theme } from '@/lib/theme'
 import type { EmployeeWithRole } from '@/types/employee'
 import type { ShiftTemplate } from '@/types/shiftTemplate'
 import type { ShiftAssignmentWithDetails } from '@/types/schedule'
@@ -118,11 +117,7 @@ function setupMocks(
 }
 
 function renderPage() {
-  return render(
-    <ThemeProvider theme={theme}>
-      <WeeklySchedulePage />
-    </ThemeProvider>
-  )
+  return renderWithProviders(<WeeklySchedulePage />)
 }
 
 // ============================================================

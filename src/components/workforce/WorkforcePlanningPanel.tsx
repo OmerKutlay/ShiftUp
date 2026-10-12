@@ -6,12 +6,13 @@
  *   1. "Mevcut Plan" sekmesi — DB'deki mevcut shift_assignments özeti (önceki davranış)
  *   2. "Taslak Oluştur" sekmesi — kural tabanlı engine ile draft plan + onay akışı
  */
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
+import useSWR from 'swr'
 import {
   Box, Typography, Paper, Chip, CircularProgress, Alert,
   IconButton, Tooltip, Stack, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Button, Tabs, Tab,
-  Divider, Badge,
+  Divider,
 } from '@mui/material'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
@@ -28,10 +29,10 @@ import { tr } from 'date-fns/locale'
 import type { EmployeeWeekSummary, DaySummary, WorkingTimeViolation } from '@/lib/workingTimeService'
 import { shiftDurationMins, netWorkMins } from '@/lib/workingTimeService'
 import type { OpenShift } from '@/types/workforce'
-import type { PlannerResult, DraftAssignment, EmployeeDraftStats, PlanWarning } from '@/lib/workforcePlanner'
+import type { PlannerResult, DraftAssignment, PlanWarning } from '@/lib/workforcePlanner'
 import { PART_TIME_RULES } from '@/types/employee'
 import { ScheduleGridSkeleton } from '@/components/common'
-import { useLoadedKey } from '@/hooks/useLoadedKey'
+import { apiFetch, ApiError } from '@/lib/api/http'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -205,11 +206,16 @@ export function WorkforcePlanningPanel() {
   const [activeTab, setActiveTab] = useState(0)
   // Skeleton yalnızca bu hafta ilk kez yüklenirken; sayfaya geri dönüşte plan ekranda kalır
   const weekKey = format(weekRef, 'yyyy-MM-dd')
-  const { isFirstLoad, markLoaded } = useLoadedKey(weekKey)
 
-  // Mevcut plan state
-  const [planData, setPlanData]   = useState<PlanningResponse | null>(null)
-  const [planError, setPlanError] = useState<string | null>(null)
+  // Mevcut plan (SWR — hafta değişince eski haftanın yanıtı yenisinin üstüne yazamaz)
+  const planQ = useSWR(`/api/workforce/planning?week=${weekKey}`, (url: string) => apiFetch<PlanningResponse>(url))
+  const planData = planQ.data ?? null
+  const isFirstLoad = !planQ.data && !planQ.error
+  const planError = planQ.error
+    ? planQ.error instanceof ApiError && (planQ.error.status === 401 || planQ.error.status === 403)
+      ? 'Erişim yetkiniz yok.'
+      : planQ.error instanceof Error ? planQ.error.message : 'Yükleme hatası.'
+    : null
 
   // Draft state
   const [draft, setDraft]         = useState<PlannerResult | null>(null)
@@ -217,22 +223,6 @@ export function WorkforcePlanningPanel() {
   const [genError, setGenError]   = useState<string | null>(null)
   const [applyLoading, setApplyLoading] = useState(false)
   const [applyResult, setApplyResult] = useState<{ created: number; replaced: number; skipped: number; restDays?: number; errors: string[] } | null>(null)
-
-  // ── Mevcut plan yükle ──────────────────────────────────────────────────────
-  const loadCurrentPlan = useCallback(async (date: Date) => {
-    setPlanError(null)
-    const week = format(date, 'yyyy-MM-dd')
-    try {
-      const res  = await fetch(`/api/workforce/planning?week=${week}`, { credentials: 'same-origin' })
-      if (res.status === 403 || res.status === 401) { setPlanError('Erişim yetkiniz yok.'); return }
-      if (!res.ok) { const j = await res.json() as { error?: string }; setPlanError(j.error ?? 'Yükleme hatası.'); return }
-      setPlanData(await res.json() as PlanningResponse)
-    } catch { setPlanError('Bağlantı hatası.') }
-    finally  { markLoaded(week) }
-  }, [markLoaded])
-
-  useEffect(() => { void loadCurrentPlan(weekRef) }, [loadCurrentPlan, weekRef])
-
 
   // ── Taslak üret ───────────────────────────────────────────────────────────
   const generate = async () => {
@@ -302,7 +292,7 @@ export function WorkforcePlanningPanel() {
       }
       setApplyResult(result)
       if (result.created > 0 || result.replaced > 0) {
-        void loadCurrentPlan(weekRef)
+        void planQ.mutate()
         setActiveTab(0)
       }
     } catch { setGenError('Uygulama sırasında bağlantı hatası.') }

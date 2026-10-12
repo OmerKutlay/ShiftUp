@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
+import useSWR from 'swr'
 import {
   Box,
   Typography,
@@ -47,7 +48,9 @@ import {
 } from '@/types/leave'
 import { fetchActiveEmployees } from '@/lib/api/employees'
 import { format, differenceInCalendarDays } from 'date-fns'
-import { useLoadedKey } from '@/hooks/useLoadedKey'
+import { useAuth } from '@/context/AuthContext'
+import { hasRole, MANAGER_ROLES } from '@/lib/auth/roles'
+import { apiFetch } from '@/lib/api/http'
 
 // ─── Helpers ─────────────────────────────────────────────────
 
@@ -77,24 +80,13 @@ const LEAVE_TYPES: LeaveType[] = ['annual', 'sick', 'personal', 'unpaid', 'other
 const today = format(new Date(), 'yyyy-MM-dd')
 
 function NewRequestDialog({ open, onClose, onSave, employees, saving }: NewRequestDialogProps) {
-  const [employeeId, setEmployeeId] = useState('')
+  // Dialog her açılışta yeni `key` ile mount edilir → state ilk değerlerden başlar
+  const [employeeId, setEmployeeId] = useState(employees.length === 1 ? employees[0].id : '')
   const [leaveType, setLeaveType] = useState<LeaveType>('annual')
   const [startDate, setStartDate] = useState(today)
   const [endDate, setEndDate] = useState(today)
   const [reason, setReason] = useState('')
   const [error, setError] = useState<string | null>(null)
-
-  // Reset on open
-  useEffect(() => {
-    if (open) {
-      setEmployeeId('')
-      setLeaveType('annual')
-      setStartDate(today)
-      setEndDate(today)
-      setReason('')
-      setError(null)
-    }
-  }, [open])
 
   const days = dayCount(startDate, endDate)
 
@@ -210,10 +202,6 @@ function ReviewDialog({ open, request, onClose, onReview, saving }: ReviewDialog
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (open) { setNote(''); setError(null) }
-  }, [open])
-
   const handle = async (status: 'approved' | 'rejected') => {
     setError(null)
     try {
@@ -318,10 +306,21 @@ function LeaveStatusChip({ status }: { status: LeaveStatus }) {
 // ─── Main Page ────────────────────────────────────────────────
 
 export function LeavePage() {
-  const [requests, setRequests] = useState<LeaveRequestWithEmployee[]>([])
-  const [employees, setEmployees] = useState<EmployeeWithRole[]>([])
-  const { isFirstLoad, markLoaded } = useLoadedKey()
-  const [error, setError] = useState<string | null>(null)
+  const { employee: me } = useAuth()
+  const isManager = hasRole(me?.roles?.name ?? me?.role_name ?? null, MANAGER_ROLES)
+
+  const requestsQ = useSWR('/api/leave', (url: string) => apiFetch<{ requests: LeaveRequestWithEmployee[] }>(url))
+  // Çalışan seçimi yalnızca yöneticiler için; çalışan kendi adına talep açar
+  const employeesQ = useSWR(isManager ? 'employees:active' : null, fetchActiveEmployees)
+  const employees: EmployeeWithRole[] = isManager
+    ? employeesQ.data ?? []
+    : me ? [{ ...(me as unknown as EmployeeWithRole) }] : []
+  // Çalışan, başkalarının (takvimde görünen) onaylı izinlerini burada görmez — yalnızca kendi talepleri
+  const requests = (requestsQ.data?.requests ?? []).filter((r) => isManager || r.employee_id === me?.id)
+  const isFirstLoad = !requestsQ.data && !requestsQ.error
+  const [actionError, setError] = useState<string | null>(null)
+  const loadError = requestsQ.error ? (requestsQ.error instanceof Error ? requestsQ.error.message : 'Yükleme hatası.') : null
+  const error = actionError ?? loadError
   const [success, setSuccess] = useState<string | null>(null)
 
   // Tab: 0=pending 1=all
@@ -339,23 +338,7 @@ export function LeavePage() {
   const [deleteTarget, setDeleteTarget] = useState<LeaveRequestWithEmployee | null>(null)
   const [deleting, setDeleting] = useState(false)
 
-  const load = useCallback(async () => {
-    setError(null)
-    try {
-      const [reqRes, empList] = await Promise.all([
-        fetch('/api/leave').then((r) => r.json()) as Promise<{ requests: LeaveRequestWithEmployee[] }>,
-        fetchActiveEmployees(),
-      ])
-      setRequests(reqRes.requests ?? [])
-      setEmployees(empList)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Yükleme hatası.')
-    } finally {
-      markLoaded()
-    }
-  }, [markLoaded])
-
-  useEffect(() => { void load() }, [load])
+  const load = () => requestsQ.mutate()
 
   const handleNewSave = async (payload: CreateLeaveRequestPayload) => {
     setNewSaving(true)
@@ -479,8 +462,8 @@ export function LeavePage() {
             <LeaveCard
               key={req.id}
               request={req}
-              onReview={req.status === 'pending' ? () => setReviewTarget(req) : undefined}
-              onDelete={() => setDeleteTarget(req)}
+              onReview={isManager && req.status === 'pending' && req.employee_id !== me?.id ? () => setReviewTarget(req) : undefined}
+              onDelete={isManager || (req.employee_id === me?.id && req.status === 'pending') ? () => setDeleteTarget(req) : undefined}
             />
           ))}
         </Stack>
@@ -488,6 +471,7 @@ export function LeavePage() {
 
       {/* Dialogs */}
       <NewRequestDialog
+        key={newOpen ? 'open' : 'closed'}
         open={newOpen}
         onClose={() => setNewOpen(false)}
         onSave={handleNewSave}
@@ -495,6 +479,7 @@ export function LeavePage() {
         saving={newSaving}
       />
       <ReviewDialog
+        key={reviewTarget?.id ?? 'none'}
         open={!!reviewTarget}
         request={reviewTarget}
         onClose={() => setReviewTarget(null)}

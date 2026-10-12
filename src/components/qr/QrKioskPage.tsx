@@ -88,8 +88,9 @@ export function QrKioskPage() {
 
   useEffect(() => { generateRef.current = generateQr }, [generateQr])
 
-  // Sayfa açılınca ilk QR üret
+  // Sayfa açılınca ilk QR üret (generateQr state'i yalnızca await sonrasında günceller)
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void generateQr()
     return clearTimers
   }, [generateQr])
