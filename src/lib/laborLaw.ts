@@ -75,6 +75,21 @@ export function nightWorkViolation(startTime: string, endTime: string, netMins: 
   return night * 2 > gross && netMins > MAX_NIGHT_WORK_MINS
 }
 
+/**
+ * 18 yaşından küçük işçiler (İş K. Md. 73; Çocuk ve Genç İşçilerin Çalıştırılma Usul ve
+ * Esasları Hk. Yönetmelik): gece (20:00–06:00) çalıştırılamaz, günde en fazla 8 saat çalışır.
+ * İhlal mesajlarını döner (boş dizi = uygun).
+ */
+export const MINOR_MAX_DAILY_MINS = 8 * 60
+
+export function minorWorkViolations(age: number | null, startTime: string, endTime: string, netMins: number): string[] {
+  if (age === null || age >= 18) return []
+  const out: string[] = []
+  if (nightMinutes(startTime, endTime) > 0) out.push('18 yaşından küçük çalışan gece (20:00–06:00) çalıştırılamaz.')
+  if (netMins > MINOR_MAX_DAILY_MINS) out.push('18 yaşından küçük çalışan günde en fazla 8 saat çalışabilir.')
+  return out
+}
+
 /** Md. 41 — haftalık net çalışma dakikasından fazla çalışma dakikası */
 export function weeklyOvertimeMins(weeklyNetMins: number): number {
   return Math.max(0, weeklyNetMins - MAX_WEEKLY_WORK_MINS)

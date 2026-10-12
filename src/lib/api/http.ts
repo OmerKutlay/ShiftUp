@@ -6,7 +6,13 @@
  */
 
 export class ApiError extends Error {
-  constructor(message: string, public code?: string, public status?: number) {
+  constructor(
+    message: string,
+    public code?: string,
+    public status?: number,
+    /** Sunucunun döndürdüğü ek alanlar (ör. violations) */
+    public details: Record<string, unknown> = {}
+  ) {
     super(message)
     this.name = 'ApiError'
   }
@@ -29,7 +35,8 @@ export async function apiFetch<T>(
     throw new ApiError(
       typeof json.error === 'string' ? json.error : 'İstek başarısız oldu.',
       typeof json.code === 'string' ? json.code : undefined,
-      res.status
+      res.status,
+      json
     )
   }
   return json as T
