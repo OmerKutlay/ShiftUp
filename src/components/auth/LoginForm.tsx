@@ -38,6 +38,23 @@ import BugReportIcon from '@mui/icons-material/BugReport'
 
 type Step = 'email' | 'otp'
 
+/** Production'da Supabase email OTP uzunluğu */
+const OTP_LENGTH = 6
+/** Supabase aynı email'e 60 sn içinde ikinci kod göndermez */
+const RESEND_COOLDOWN_SEC = 60
+
+const EMAIL_ERRORS: Record<string, string> = {
+  EMPLOYEE_INACTIVE: 'Bu hesap aktif değil. Yöneticinizle iletişime geçin.',
+  EMPLOYEE_NOT_FOUND: 'Bu email adresiyle kayıtlı çalışan bulunamadı.',
+  INVALID_EMAIL: 'Geçerli bir email adresi giriniz.',
+  RATE_LIMITED: 'Çok fazla kod istendi. Lütfen biraz bekleyip tekrar deneyin.',
+}
+
+const OTP_ERRORS: Record<string, string> = {
+  OTP_EXPIRED: 'Kodun süresi dolmuş. Yeni kod isteyin.',
+  EMPLOYEE_NOT_FOUND: 'Bu hesap aktif bir çalışana bağlı değil.',
+}
+
 interface FormState {
   email: string
   otp: string
@@ -66,6 +83,14 @@ export function LoginForm({ authMode }: Props) {
     }
   }, [readyToNavigate, status, router])
 
+  // Tekrar gönder geri sayımı
+  const [cooldown, setCooldown] = useState(0)
+  useEffect(() => {
+    if (cooldown <= 0) return
+    const t = setTimeout(() => setCooldown((c) => c - 1), 1000)
+    return () => clearTimeout(t)
+  }, [cooldown])
+
   const [state, setState] = useState<FormState>({
     email: '',
     otp: '',
@@ -80,8 +105,8 @@ export function LoginForm({ authMode }: Props) {
   }
 
   // ─── Adım 1: Email kontrolü ──────────────────────────────
-  async function handleEmailSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  async function handleEmailSubmit(e?: React.FormEvent) {
+    e?.preventDefault()
     const email = state.email.trim().toLowerCase()
 
     if (!email || !email.includes('@')) {
@@ -112,16 +137,17 @@ export function LoginForm({ authMode }: Props) {
         setPartial({
           loading: false,
           error:
-            data.reason === 'EMPLOYEE_INACTIVE'
-              ? 'Bu hesap aktif değil. Yöneticinizle iletişime geçin.'
-              : 'Bu email adresiyle kayıtlı çalışan bulunamadı.',
+            EMAIL_ERRORS[data.reason ?? ''] ??
+            'Giriş kodu gönderilemedi. Lütfen daha sonra tekrar deneyin.',
         })
         return
       }
 
+      if (!isDevMode) setCooldown(RESEND_COOLDOWN_SEC)
       setPartial({
         loading: false,
         step: 'otp',
+        otp: '',
         info: isDevMode
           ? 'Development modu aktif. Giriş kodunuzu girin.'
           : `${email} adresine giriş kodu gönderildi.`,
@@ -137,7 +163,7 @@ export function LoginForm({ authMode }: Props) {
     e.preventDefault()
     const token = state.otp.replace(/\D/g, '').slice(0, 6)
 
-    if (token.length < 4) {
+    if (isDevMode ? token.length < 4 : token.length !== OTP_LENGTH) {
       setPartial({ error: 'Kodu eksiksiz giriniz.' })
       return
     }
@@ -158,7 +184,10 @@ export function LoginForm({ authMode }: Props) {
       const data = (await res.json()) as { ok: boolean; reason?: string }
 
       if (!data.ok) {
-        setPartial({ loading: false, error: 'Kod hatalı. Tekrar deneyin.' })
+        setPartial({
+          loading: false,
+          error: OTP_ERRORS[data.reason ?? ''] ?? 'Kod hatalı. Tekrar deneyin.',
+        })
         return
       }
 
@@ -215,7 +244,7 @@ export function LoginForm({ authMode }: Props) {
               ? 'Email adresinizi girerek devam edin.'
               : isDevMode
               ? 'Development kodu girin (varsayılan: 12345).'
-              : 'Email adresinize gönderilen kodu girin.'}
+              : 'Email adresinize gönderilen 6 haneli kodu girin.'}
           </Typography>
 
           {state.error && (
@@ -304,6 +333,18 @@ export function LoginForm({ authMode }: Props) {
               >
                 {state.loading ? <CircularProgress size={20} color="inherit" /> : 'Giriş Yap'}
               </Button>
+              {!isDevMode && (
+                <Button
+                  variant="text"
+                  size="small"
+                  fullWidth
+                  disabled={state.loading || cooldown > 0}
+                  onClick={() => handleEmailSubmit()}
+                  sx={{ mb: 0.5 }}
+                >
+                  {cooldown > 0 ? `Kodu tekrar gönder (${cooldown} sn)` : 'Kodu tekrar gönder'}
+                </Button>
+              )}
               <Button
                 startIcon={<ArrowBackIcon />}
                 variant="text"
