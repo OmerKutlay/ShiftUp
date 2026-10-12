@@ -59,6 +59,7 @@ function makeRecord(overrides: Partial<AttendanceRecord> = {}): AttendanceRecord
     break_start_at: null,
     break_end_at: null,
     clock_out_at: null,
+    completed_break_minutes: 0,
     verification_method: null,
     exception_note: null,
     created_at: '2026-09-28T06:00:00.000Z',

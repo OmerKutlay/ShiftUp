@@ -216,7 +216,7 @@ export function WorkforcePlanningPanel() {
   const [genLoading, setGenLoading] = useState(false)
   const [genError, setGenError]   = useState<string | null>(null)
   const [applyLoading, setApplyLoading] = useState(false)
-  const [applyResult, setApplyResult] = useState<{ created: number; replaced: number; skipped: number; errors: string[] } | null>(null)
+  const [applyResult, setApplyResult] = useState<{ created: number; replaced: number; skipped: number; restDays?: number; errors: string[] } | null>(null)
 
   // ── Mevcut plan yükle ──────────────────────────────────────────────────────
   const loadCurrentPlan = useCallback(async (date: Date) => {
@@ -284,7 +284,7 @@ export function WorkforcePlanningPanel() {
           hasHardViolation: draft.hasHardViolation,
         }),
       })
-      const result = await res.json() as { created: number; replaced: number; skipped: number; errors: string[]; error?: string }
+      const result = await res.json() as { created: number; replaced: number; skipped: number; restDays?: number; errors: string[]; error?: string }
       if (!res.ok) {
         setGenError(result.error ?? 'Uygulama sırasında hata oluştu.')
         return
@@ -383,7 +383,8 @@ export function WorkforcePlanningPanel() {
         >
           {applyResult.created} atama oluşturuldu
           {applyResult.replaced > 0 && `, eski plandan ${applyResult.replaced} vardiya kaldırıldı`}
-          {applyResult.skipped > 0 && `, giriş/çıkış veya izin kaydı olan ${applyResult.skipped} vardiya korundu`}.
+          {applyResult.skipped > 0 && `, giriş/çıkış veya izin kaydı olan ${applyResult.skipped} vardiya korundu`}
+          {!!applyResult.restDays && `, ${applyResult.restDays} gün haftalık tatil olarak işaretlendi`}.
           {applyResult.errors.length > 0 && (
             <Box component="ul" sx={{ m: 0, pl: 2 }}>
               {applyResult.errors.map((e, i) => <li key={i}>{e}</li>)}
