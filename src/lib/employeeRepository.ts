@@ -1,0 +1,173 @@
+import { supabase } from '@/lib/supabase'
+import type {
+  Employee,
+  EmployeeWithRole,
+  Role,
+  CreateEmployeePayload,
+  UpdateEmployeePayload,
+} from '@/types/employee'
+
+// ============================================================
+// Roles
+// ============================================================
+
+/** Tüm rolleri getirir (kullanıcı arayüzü için dropdown vb.) */
+export async function fetchRoles(): Promise<Role[]> {
+  const { data, error } = await supabase
+    .from('roles')
+    .select('id, name, description, created_at')
+    .order('name', { ascending: true })
+
+  if (error) throw new Error(`Roller yüklenemedi: ${error.message}`)
+  return (data ?? []) as Role[]
+}
+
+// ============================================================
+// Employees
+// ============================================================
+
+/** Tüm çalışanları rol bilgisiyle birlikte getirir */
+export async function fetchEmployees(): Promise<EmployeeWithRole[]> {
+  const { data, error } = await supabase
+    .from('employees')
+    .select(`
+      id,
+      full_name,
+      email,
+      role,
+      role_id,
+      active,
+      employment_type,
+      auth_user_id,
+      created_at,
+      updated_at,
+      roles (
+        id,
+        name,
+        description,
+        created_at
+      )
+    `)
+    .order('full_name', { ascending: true })
+
+  if (error) throw new Error(`Çalışanlar yüklenemedi: ${error.message}`)
+  return (data ?? []) as unknown as EmployeeWithRole[]
+}
+
+/** Sadece aktif çalışanları getirir (vardiya planı için) */
+export async function fetchActiveEmployees(): Promise<EmployeeWithRole[]> {
+  const { data, error } = await supabase
+    .from('employees')
+    .select(`
+      id,
+      full_name,
+      role,
+      role_id,
+      active,
+      employment_type,
+      created_at,
+      updated_at,
+      roles (
+        id,
+        name,
+        description,
+        created_at
+      )
+    `)
+    .eq('active', true)
+    .order('full_name', { ascending: true })
+
+  if (error) throw new Error(`Aktif çalışanlar yüklenemedi: ${error.message}`)
+  return (data ?? []) as unknown as EmployeeWithRole[]
+}
+
+/** Tek çalışanı id ile getirir */
+export async function fetchEmployeeById(id: string): Promise<EmployeeWithRole | null> {
+  const { data, error } = await supabase
+    .from('employees')
+    .select(`
+      id,
+      full_name,
+      role,
+      role_id,
+      active,
+      employment_type,
+      created_at,
+      updated_at,
+      roles (
+        id,
+        name,
+        description,
+        created_at
+      )
+    `)
+    .eq('id', id)
+    .maybeSingle()
+
+  if (error) throw new Error(`Çalışan yüklenemedi: ${error.message}`)
+  return data as unknown as EmployeeWithRole | null
+}
+
+/** Yeni çalışan oluşturur */
+export async function createEmployee(payload: CreateEmployeePayload): Promise<Employee> {
+  const { data, error } = await supabase
+    .from('employees')
+    .insert(payload)
+    .select()
+    .single()
+
+  if (error) throw new Error(`Çalışan oluşturulamadı: ${error.message}`)
+  return data as Employee
+}
+
+/**
+ * Çalışanı günceller.
+ * Hard delete yok — pasif yapmak için active: false kullanılır.
+ * Geçmiş vardiya ve attendance kayıtları korunur.
+ */
+export async function updateEmployee(
+  id: string,
+  payload: UpdateEmployeePayload
+): Promise<Employee> {
+  const { data, error } = await supabase
+    .from('employees')
+    .update(payload)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) throw new Error(`Çalışan güncellenemedi: ${error.message}`)
+  return data as Employee
+}
+
+/**
+ * Çalışanı pasif yapar (soft delete).
+ * Geçmiş kayıtlar korunur, yeni vardiyalara dahil edilmez.
+ */
+export async function deactivateEmployee(id: string): Promise<Employee> {
+  return updateEmployee(id, { active: false })
+}
+
+export async function activateEmployee(id: string): Promise<Employee> {
+  return updateEmployee(id, { active: true })
+}
+
+/**
+ * Çalışanı kalıcı olarak siler (hard delete).
+ * Bağlı vardiya/attendance kayıtları varsa 409 (FK_VIOLATION) hatası alınır;
+ * bu durumda UI kullanıcıya pasifleştirme önerir.
+ * Auth user silme işlemi API route tarafından yapılır (service role gerektirir).
+ */
+export async function deleteEmployee(id: string): Promise<void> {
+  const res = await fetch(`/api/employees/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string; code?: string }
+    throw Object.assign(
+      new Error(body.error ?? 'Çalışan silinemedi.'),
+      { code: body.code }
+    )
+  }
+}
