@@ -21,6 +21,8 @@ function isPublicPath(pathname: string): boolean {
   if (pathname.startsWith('/_next/')) return true
   if (pathname.startsWith('/favicon')) return true
   if (pathname === '/manifest.json') return true
+  // PWA / favicon ikonları — tarayıcı oturumsuz da ister
+  if (/^\/icon-\d+\.svg$/.test(pathname)) return true
   if (pathname === '/sw.js') return true
   return false
 }

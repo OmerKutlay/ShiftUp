@@ -43,6 +43,7 @@ import { hasRole, MANAGER_ROLES, ADMIN_ROLES } from '@/lib/auth/roles'
 
 const DRAWER_WIDTH = 220
 const DRAWER_COLLAPSED = 64
+const MOBILE_BAR_HEIGHT = 56
 
 interface NavItem {
   label: string
@@ -153,7 +154,8 @@ export function AppShell({ children }: Props) {
       <Divider sx={{ borderColor: 'divider' }} />
 
       {/* Nav items */}
-      <List sx={{ flex: 1, px: 1, pt: 1 }}>
+      {/* Kısa ekranlarda liste kendi içinde kayar; alttaki kullanıcı/çıkış alanı görünür kalır */}
+      <List sx={{ flex: 1, minHeight: 0, overflowY: 'auto', px: 1, pt: 1 }}>
         {NAV_ITEMS.filter((item) =>
           !item.requiredRoles || hasRole(authRoleName, item.requiredRoles as never)
         ).map((item) => {
@@ -274,24 +276,40 @@ export function AppShell({ children }: Props) {
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100dvh', bgcolor: 'background.default' }}>
-      {/* Mobile hamburger */}
+      {/* Mobile top bar — içerik üzerinde yüzen buton yerine sabit, markalı bar */}
       {isMobile && (
-        <IconButton
-          onClick={() => setMobileOpen(true)}
+        <Box
+          component="header"
           sx={{
             position: 'fixed',
-            top: 'calc(12px + env(safe-area-inset-top))',
-            left: 'calc(12px + env(safe-area-inset-left))',
-            zIndex: 1300,
-            bgcolor: 'rgba(30,41,59,0.9)',
-            border: '1px solid',
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: theme.zIndex.appBar,
+            height: `calc(${MOBILE_BAR_HEIGHT}px + env(safe-area-inset-top))`,
+            pt: 'env(safe-area-inset-top)',
+            pl: 'calc(8px + env(safe-area-inset-left))',
+            pr: 'calc(16px + env(safe-area-inset-right))',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+            bgcolor: 'rgba(15,23,42,0.85)',
+            backdropFilter: 'blur(12px)',
+            borderBottom: '1px solid',
             borderColor: 'divider',
-            color: 'text.primary',
-            WebkitTapHighlightColor: 'transparent',
           }}
         >
-          <MenuIcon />
-        </IconButton>
+          <IconButton
+            onClick={() => setMobileOpen(true)}
+            aria-label="Menüyü aç"
+            sx={{ color: 'text.primary', WebkitTapHighlightColor: 'transparent' }}
+          >
+            <MenuIcon />
+          </IconButton>
+          <Typography variant="subtitle1" fontWeight={800} color="primary.main" letterSpacing={1}>
+            ShiftUp
+          </Typography>
+        </Box>
       )}
 
       {/* Desktop drawer */}
@@ -338,12 +356,12 @@ export function AppShell({ children }: Props) {
       <Box
         component="main"
         sx={{
+          // Sol boşluk masaüstünde nav yer tutucusundan gelir; ek margin çift boşluk yaratır
           flex: 1,
           minWidth: 0,
-          ml: isMobile ? 0 : `${drawerWidth}px`,
-          transition: 'margin-left 0.2s',
           minHeight: '100dvh',
-          pt: isMobile ? 'calc(68px + env(safe-area-inset-top))' : 0,
+          // body zaten safe-area-inset-top kadar padding alıyor; burada yalnızca bar yüksekliği eklenir
+          pt: isMobile ? `${MOBILE_BAR_HEIGHT}px` : 0,
         }}
       >
         <ErrorBoundary>{children}</ErrorBoundary>

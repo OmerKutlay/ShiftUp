@@ -237,7 +237,7 @@ export function DashboardPage() {
       <Divider sx={{ mb: 3, borderColor: 'rgba(255,255,255,0.08)' }} />
 
       {loading && !data && (
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 380px' }, gap: 3 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'minmax(0, 1fr) 380px' }, gap: 3 }}>
           <Box>
             <Skeleton variant="text" width={130} sx={{ fontSize: '1rem', mb: 2 }} />
             <ListSkeleton count={5} actions={1} dense />
@@ -251,7 +251,7 @@ export function DashboardPage() {
 
       {/* Two column layout: Bugünkü kadro + Onay bekleyenler */}
       {data && (
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 380px' }, gap: 3 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'minmax(0, 1fr) 380px' }, gap: 3 }}>
 
           {/* Bugünkü Kadro */}
           <Box>
@@ -311,7 +311,7 @@ export function DashboardPage() {
 
                       {/* Name + role */}
                       <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography variant="caption" fontWeight={700} noWrap>{entry.full_name}</Typography>
+                        <Typography variant="caption" fontWeight={700} noWrap display="block">{entry.full_name}</Typography>
                         <Typography variant="caption" color="text.secondary" display="block" noWrap fontSize="0.65rem">
                           {entry.role} · {entry.start_time.slice(0, 5)}–{entry.end_time.slice(0, 5)}
                         </Typography>

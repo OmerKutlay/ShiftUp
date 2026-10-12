@@ -287,7 +287,7 @@ export function AttendanceReportsPage() {
         elevation={0}
         sx={{ p: 2.5, border: '1px solid', borderColor: 'divider', borderRadius: 2, mb: 3 }}
       >
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="flex-end">
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'stretch', md: 'flex-end' }}>
           <TextField
             label="Başlangıç Tarihi"
             type="date"

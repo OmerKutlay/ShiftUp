@@ -36,6 +36,33 @@ export const theme = createTheme({
     borderRadius: 12,
   },
   components: {
+    MuiAlert: {
+      styleOverrides: {
+        // Uzun, boşluksuz mesajlar (ör. DB hata metinleri) dar ekranda taşmasın
+        message: { overflowWrap: 'anywhere', minWidth: 0 },
+      },
+    },
+    MuiDialog: {
+      styleOverrides: {
+        // Telefonda 32px kenar boşluğu form alanlarını gereksiz daraltıyor
+        paper: ({ theme }) => ({
+          // Varsayılan paper rengi yarı saydam; modal içeriğin arkasındaki sayfa okunabilirliği bozuyor
+          backgroundColor: '#1e293b',
+          [theme.breakpoints.down('sm')]: {
+            margin: 16,
+            '&.MuiDialog-paperFullWidth': { width: 'calc(100% - 32px)' },
+            maxHeight: 'calc(100% - 32px)',
+          },
+        }),
+      },
+    },
+    MuiPopover: {
+      styleOverrides: { paper: { backgroundColor: '#1e293b' } },
+    },
+    MuiTabs: {
+      // Dar ekranda sığmayan sekmeler kesilip erişilemez olmasın: kaydırılabilir + oklar
+      defaultProps: { variant: 'scrollable', scrollButtons: 'auto', allowScrollButtonsMobile: true },
+    },
     MuiPaper: {
       defaultProps: { elevation: 0 },
       styleOverrides: {

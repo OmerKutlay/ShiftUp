@@ -189,7 +189,7 @@ function StatCard({
         borderRadius: 2,
         // xs: kart yarısı genişlikte — 2 kart yan yana; sm+: sabit minWidth
         minWidth: { xs: 'calc(50% - 6px)', sm: 110 },
-        flex: '1 1 auto',
+        flex: '1 1 0',
       }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.25 }}>
