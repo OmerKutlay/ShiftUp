@@ -20,6 +20,13 @@ export async function POST() {
     return res
   }
 
-  // Production: Supabase Auth signOut (client-side'da zaten yapılıyor, bu ek güvence)
+  // Production: Supabase Auth signOut — refresh token iptal edilir, session cookie'leri silinir
+  try {
+    const { createSupabaseServerClient } = await import('@/lib/supabase/server')
+    const supabase = await createSupabaseServerClient()
+    await supabase.auth.signOut()
+  } catch (err) {
+    console.error('[POST /api/auth/logout]', err)
+  }
   return NextResponse.json({ ok: true })
 }
