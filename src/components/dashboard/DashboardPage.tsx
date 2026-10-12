@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import useSWR from 'swr'
+import { useLastUpdated } from '@/hooks/useLastUpdated'
 import {
   Box,
   Typography,
@@ -125,30 +126,11 @@ export function DashboardPage() {
   const today = new Date()
   const router = useRouter()
 
-  const [data, setData] = useState<DashboardData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await fetch('/api/dashboard')
-      if (!res.ok) throw new Error('Dashboard verisi alınamadı.')
-      const json = await res.json() as DashboardData
-      setData(json)
-      setLastRefreshed(new Date())
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Yükleme hatası.')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    void load()
-  }, [load])
+  const { data, error: loadError, isValidating: loading, mutate } = useSWR<DashboardData>('/api/dashboard')
+  const error = loadError ? (loadError instanceof Error ? loadError.message : 'Yükleme hatası.') : null
+  const load = () => mutate()
+  // SWR yanıt zamanını tutmaz; veri her değiştiğinde "son güncelleme" anını al
+  const lastRefreshed = useLastUpdated(data)
 
   const stats = data?.stats
   const roster = data?.today_roster ?? []

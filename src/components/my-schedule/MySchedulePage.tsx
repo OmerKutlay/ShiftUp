@@ -13,9 +13,10 @@
  *
  * Çalışan bu ekrandan maaş hesabı yapabilmek için saatlerini görebilir.
  */
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useMemo } from 'react'
+import useSWR from 'swr'
 import {
-  Box, Typography, Paper, Alert,
+  Box, Typography, Paper, Alert, Button,
   Chip, Divider, Stack, IconButton, Tooltip, LinearProgress,
 } from '@mui/material'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
@@ -32,7 +33,7 @@ import { tr } from 'date-fns/locale'
 import { useAuth } from '@/context/AuthContext'
 import { PageHeader, PageSkeleton, StatCardsSkeleton, DayBlocksSkeleton } from '@/components/common'
 import { shiftDurationMins } from '@/lib/workingTimeService'
-import { useLoadedKey } from '@/hooks/useLoadedKey'
+import { apiFetch } from '@/lib/api/http'
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -70,12 +71,6 @@ function fmtTime(iso: string | null): string {
       hour: '2-digit', minute: '2-digit', hour12: false,
     }).format(new Date(iso))
   } catch { return '—' }
-}
-
-function diffMins(from: string | null, to: string | null): number | null {
-  if (!from || !to) return null
-  const d = (new Date(to).getTime() - new Date(from).getTime()) / 60000
-  return Math.max(0, Math.round(d))
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -231,49 +226,18 @@ function DayCard({ entry, isToday }: { entry: DayEntry; isToday: boolean }) {
 export function MySchedulePage() {
   const { employee, status: authStatus } = useAuth()
   const [currentMonth, setCurrentMonth] = useState(new Date())
-  const [entries, setEntries] = useState<DayEntry[]>([])
-  const [error, setError] = useState<string | null>(null)
 
   const monthStart = format(startOfMonth(currentMonth), 'yyyy-MM-dd')
   const monthEnd = format(endOfMonth(currentMonth), 'yyyy-MM-dd')
   const monthLabel = format(currentMonth, 'MMMM yyyy', { locale: tr })
-  // Skeleton yalnızca bu ay ilk kez yüklenirken; sayfaya geri dönüşte veri ekranda kalır
-  const monthKey = `${employee?.id ?? ''}:${monthStart}`
-  const { isFirstLoad, markLoaded } = useLoadedKey(monthKey)
-
-  // ── Veri çek ─────────────────────────────────────────────────
-  const load = useCallback(async () => {
-    if (!employee) return
-    setError(null)
-    try {
-      // shift_assignments + attendance_records join için rapor endpoint'ini kullan
-      const params = new URLSearchParams({
-        employee_id: employee.id,
-        date_from: monthStart,
-        date_to: monthEnd,
-      })
-      const res = await fetch(`/api/reports/my?${params.toString()}`, {
-        credentials: 'same-origin',
-      })
-      if (!res.ok) {
-        const d = (await res.json()) as { error?: string }
-        setError(d.error ?? 'Veriler yüklenemedi.')
-        return
-      }
-      const data = (await res.json()) as { rows: DayEntry[] }
-      setEntries(data.rows ?? [])
-    } catch {
-      setError('Bağlantı hatası.')
-    } finally {
-      markLoaded(monthKey)
-    }
-  }, [employee, monthStart, monthEnd, monthKey, markLoaded])
-
-  useEffect(() => {
-    if (authStatus === 'authenticated' && employee) {
-      void load()
-    }
-  }, [authStatus, employee, load])
+  // ── Veri (SWR) — ay değişince eski ayın geç gelen yanıtı yenisinin üstüne yazamaz ──
+  const reportKey = authStatus === 'authenticated' && employee
+    ? `/api/reports/my?${new URLSearchParams({ date_from: monthStart, date_to: monthEnd })}`
+    : null
+  const reportQ = useSWR(reportKey, (url: string) => apiFetch<{ rows: DayEntry[] }>(url))
+  const entries = useMemo(() => reportQ.data?.rows ?? [], [reportQ.data])
+  const isFirstLoad = !reportQ.data && !reportQ.error
+  const error = reportQ.error ? (reportQ.error instanceof Error ? reportQ.error.message : 'Veriler yüklenemedi.') : null
 
   // ── Özet hesapla ─────────────────────────────────────────────
   const summary = useMemo(() => {
@@ -433,7 +397,7 @@ export function MySchedulePage() {
       {isFirstLoad ? (
         <DayBlocksSkeleton count={7} />
       ) : error ? (
-        <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>
+        <Alert severity="error" action={<Button color="inherit" size="small" onClick={() => void reportQ.mutate()}>Tekrar Dene</Button>}>{error}</Alert>
       ) : entries.length === 0 ? (
         <Box sx={{ textAlign: 'center', py: 6 }}>
           <EventBusyIcon sx={{ fontSize: 48, color: 'text.disabled', opacity: 0.4, mb: 1 }} />

@@ -66,11 +66,6 @@ const INPUT = {
   templates: TEMPLATES,
 }
 
-// Helper: belirli template'in net dakikasını döner
-function netOf(tmplId: string): number {
-  const t = TEMPLATES.find((x) => x.id === tmplId)!
-  return netWorkMins(t.start_time, t.end_time)
-}
 
 // ─── Temel plan üretimi ───────────────────────────────────────────────────────
 
@@ -227,13 +222,9 @@ describe('Senaryo 5 — Günlük yönetici kapsaması', () => {
   const result = runPlanner(INPUT)
   const managerIds = new Set(['emp-mudur', 'emp-yardimci'])
 
-  const dowOf = (d: string) =>
-    ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][new Date(d).getDay()]
-
   // Her gün (hem Müdür hem Yardımcı kendi izin günlerinde olmak şartıyla)
   // en az biri opening/full, en az biri closing/full olmalı
   test.each(WEEK_DAYS)('%s günü açılışta yönetici olmalı', (dateStr) => {
-    const dow = dowOf(dateStr)
     // Salı: Müdür yok, Müdür Yardımcısı full (full ≥ opening kapsaması)
     // Perşembe: Yardımcı yok, Müdür full
     const dayAssigns = result.assignments.filter(

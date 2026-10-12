@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
+import useSWR from 'swr'
 import {
   Box,
   Typography,
@@ -20,7 +21,7 @@ import SaveIcon from '@mui/icons-material/Save'
 import MyLocationIcon from '@mui/icons-material/MyLocation'
 import type { StoreLocation } from '@/types/location'
 import { PageHeader, ListSkeleton } from '@/components/common'
-import { useLoadedKey } from '@/hooks/useLoadedKey'
+import { apiFetch } from '@/lib/api/http'
 
 interface StoreLocationForm {
   id?: string
@@ -54,31 +55,20 @@ function locationToForm(loc: StoreLocation): StoreLocationForm {
 }
 
 export function StoreLocationPage() {
-  const [locations, setLocations] = useState<StoreLocation[]>([])
-  const { isFirstLoad, markLoaded } = useLoadedKey()
+  const locationsQ = useSWR('/api/store-location', (url: string) => apiFetch<{ locations: StoreLocation[] }>(url))
+  const locations = locationsQ.data?.locations ?? []
+  const isFirstLoad = !locationsQ.data && !locationsQ.error
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [actionError, setError] = useState<string | null>(null)
+  const loadError = locationsQ.error ? (locationsQ.error instanceof Error ? locationsQ.error.message : 'Yükleme hatası.') : null
+  const error = actionError ?? loadError
   const [success, setSuccess] = useState<string | null>(null)
 
   const [form, setForm] = useState<StoreLocationForm>(DEFAULT_FORM)
   const [isEditing, setIsEditing] = useState(false)
   const [gettingLocation, setGettingLocation] = useState(false)
 
-  const load = useCallback(async () => {
-    setError(null)
-    try {
-      const res = await fetch('/api/store-location')
-      const data = await res.json() as { locations?: StoreLocation[]; error?: string }
-      if (!res.ok) throw new Error(data.error ?? 'Yükleme hatası.')
-      setLocations(data.locations ?? [])
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Yükleme hatası.')
-    } finally {
-      markLoaded()
-    }
-  }, [markLoaded])
-
-  useEffect(() => { void load() }, [load])
+  const load = () => locationsQ.mutate()
 
   const handleEdit = (loc: StoreLocation) => {
     setForm(locationToForm(loc))

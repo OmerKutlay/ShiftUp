@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
+import useSWR from 'swr'
 import {
   Box,
   Typography,
@@ -29,7 +30,7 @@ import EditIcon from '@mui/icons-material/Edit'
 import DeleteIcon from '@mui/icons-material/Delete'
 import SearchIcon from '@mui/icons-material/Search'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
-import type { EmployeeWithRole, Role, CreateEmployeePayload, UpdateEmployeePayload } from '@/types/employee'
+import type { EmployeeWithRole, CreateEmployeePayload, UpdateEmployeePayload } from '@/types/employee'
 import {
   fetchEmployees,
   fetchRoles,
@@ -41,15 +42,17 @@ import {
 import { EmployeeFormDialog } from './EmployeeFormDialog'
 import { EmployeeStatusChip } from './EmployeeStatusChip'
 import { PageHeader, ListSkeleton } from '@/components/common'
-import { useLoadedKey } from '@/hooks/useLoadedKey'
 
 type Filter = 'all' | 'active' | 'inactive'
 
 export function EmployeesPage() {
-  const [employees, setEmployees] = useState<EmployeeWithRole[]>([])
-  const [roles, setRoles] = useState<Role[]>([])
-  const { isFirstLoad, markLoaded } = useLoadedKey()
-  const [error, setError] = useState<string | null>(null)
+  const employeesQ = useSWR('employees:all', fetchEmployees)
+  const rolesQ = useSWR('roles', fetchRoles)
+  const employees = employeesQ.data ?? []
+  const roles = rolesQ.data ?? []
+  const isFirstLoad = !employeesQ.data && !employeesQ.error
+  const loadError = employeesQ.error ?? rolesQ.error
+  const error = loadError ? (loadError instanceof Error ? loadError.message : 'Yükleme hatası.') : null
 
   // Edit/Create dialog
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -65,22 +68,7 @@ export function EmployeesPage() {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
 
-  const load = useCallback(async () => {
-    setError(null)
-    try {
-      const [emps, rls] = await Promise.all([fetchEmployees(), fetchRoles()])
-      setEmployees(emps)
-      setRoles(rls)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Yükleme hatası.')
-    } finally {
-      markLoaded()
-    }
-  }, [markLoaded])
-
-  useEffect(() => {
-    void load()
-  }, [load])
+  const load = () => employeesQ.mutate()
 
   const openCreate = () => {
     setEditTarget(null)

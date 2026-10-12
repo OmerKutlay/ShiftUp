@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { ThemeProvider } from '@mui/material'
-import { theme } from '@/lib/theme'
+import { renderWithProviders } from './helpers/renderWithProviders'
 import type { DailyShiftEntry, AttendanceRecord } from '@/types/attendance'
 
 // ============================================================
@@ -69,11 +68,7 @@ function makeAttendanceRecord(overrides: Partial<AttendanceRecord> = {}): Attend
 }
 
 function renderPage() {
-  return render(
-    <ThemeProvider theme={theme}>
-      <DailyAttendancePage />
-    </ThemeProvider>
-  )
+  return renderWithProviders(<DailyAttendancePage />)
 }
 
 // ============================================================

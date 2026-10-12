@@ -20,6 +20,8 @@ import {
   useRef,
   type ReactNode,
 } from 'react'
+import { useRouter } from 'next/navigation'
+import { useSWRConfig } from 'swr'
 import type { Employee, Role } from '@/types/employee'
 
 // ─── Types ───────────────────────────────────────────────────
@@ -57,6 +59,8 @@ const AuthContext = createContext<AuthContextValue>({
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('loading')
   const [employee, setEmployee] = useState<AuthEmployee | null>(null)
+  const router = useRouter()
+  const { mutate } = useSWRConfig()
 
   const mountedRef = useRef(true)
   useEffect(() => {
@@ -93,13 +97,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' })
     } catch { /* sessiz hata */ }
+    // Önbellekteki tüm veriyi temizle — aynı cihazda giriş yapan sonraki kullanıcı
+    // önceki kullanıcının verisini görmesin
+    await mutate(() => true, undefined, { revalidate: false })
     if (mountedRef.current) {
       setEmployee(null)
       setStatus('unauthenticated')
     }
-    // Middleware /login'e yönlendirecek
-    window.location.href = '/login'
-  }, [])
+    router.replace('/login')
+    router.refresh()
+  }, [mutate, router])
 
   const refreshEmployee = useCallback(async () => {
     const emp = await fetchEmployee()
