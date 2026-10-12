@@ -4,8 +4,8 @@ import type { ShiftTemplate } from '@/types/shiftTemplate'
 // ============================================================
 // Supabase mock
 // ============================================================
-vi.mock('@/lib/supabase', () => ({
-  supabase: { from: vi.fn() },
+vi.mock('@/lib/db', () => ({
+  db: { from: vi.fn() },
 }))
 
 import {
@@ -16,7 +16,7 @@ import {
   deactivateShiftTemplate,
   ShiftTemplateValidationError,
 } from '@/lib/shiftTemplateRepository'
-import { supabase } from '@/lib/supabase'
+import { db as supabase } from '@/lib/db'
 
 // ============================================================
 // Helpers

@@ -26,6 +26,9 @@ import {
   DEV_SESSION_COOKIE,
   DEV_SESSION_MAX_AGE,
 } from '@/lib/authConfig'
+import { signDevSession } from '@/lib/auth/devSession'
+import { checkRateLimit, clientIp } from '@/lib/rateLimiter'
+import { timingSafeEqual } from 'crypto'
 
 export async function POST(req: NextRequest) {
   // Production'da bu route kapalı
@@ -89,7 +92,15 @@ export async function POST(req: NextRequest) {
     }
 
     // Dev OTP kontrolü — yalnızca burada, tek yerde
-    if (otp !== getDevOtp()) {
+    // Sabit DEV_OTP'ye kaba kuvvet denemesine karşı IP bazlı limit
+    const rate = await checkRateLimit(`dev_otp:ip:${clientIp(req)}`, 10, 15 * 60 * 1000)
+    if (!rate.allowed) {
+      return NextResponse.json({ ok: false, reason: 'RATE_LIMITED' }, { status: 429 })
+    }
+
+    const expected = Buffer.from(getDevOtp())
+    const given = Buffer.from(otp)
+    if (expected.length !== given.length || !timingSafeEqual(expected, given)) {
       return NextResponse.json(
         { ok: false, reason: 'INVALID_OTP' },
         { status: 401 }
@@ -126,12 +137,8 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Session payload — sadece employee ID saklıyoruz (cookie'de minimal veri)
-    const sessionPayload = JSON.stringify({
-      employeeId: employee.id,
-      email,
-      createdAt: Date.now(),
-    })
+    // İmzalı session — sadece employee ID (HMAC ile; istemci değiştiremez)
+    const sessionPayload = signDevSession({ employeeId: employee.id, createdAt: Date.now() })
 
     const res = NextResponse.json({ ok: true, employee })
 
@@ -141,8 +148,8 @@ export async function POST(req: NextRequest) {
       sameSite: 'strict',
       path: '/',
       maxAge: DEV_SESSION_MAX_AGE,
-      // Development'ta HTTPS zorunlu değil; production'da secure: true olur
-      secure: false,
+      // Tünel (https) üzerinden erişimde secure; localhost http'de false
+      secure: req.nextUrl.protocol === 'https:',
     })
 
     return res

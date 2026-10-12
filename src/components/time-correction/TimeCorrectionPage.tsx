@@ -61,8 +61,9 @@ export function TimeCorrectionPage() {
     if (!form.date || !form.start || !form.end || !form.reason.trim()) {
       setSaveError('Tüm alanlar zorunludur.'); return
     }
-    if (form.start >= form.end) {
-      setSaveError('Çıkış saati giriş saatinden sonra olmalıdır.'); return
+    // Çıkış girişten önceyse ertesi gün sayılır (gece vardiyası)
+    if (form.start === form.end) {
+      setSaveError('Giriş ve çıkış saati aynı olamaz.'); return
     }
     setSaving(true); setSaveError(null)
     try {

@@ -22,8 +22,8 @@ export const QR_TO_ATTENDANCE_ACTION: Record<QrActionType, string> = {
 export interface QrToken {
   id: string
   token: string
-  action_type: QrActionType
-  employee_id: string
+  action_type: QrActionType | null  // kiosk token: null
+  employee_id: string | null        // kiosk token: null
   expires_at: string
   used_at: string | null
   created_at: string

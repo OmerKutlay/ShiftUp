@@ -21,6 +21,8 @@ export {
   MANAGER_ROLES,
   ADMIN_ROLES,
   roleAtLeast,
+  roleRank,
+  canManageRole,
 } from './roles'
 export type { RoleName } from './roles'
 

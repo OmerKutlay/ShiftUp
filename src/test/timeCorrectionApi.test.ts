@@ -27,7 +27,7 @@ import type { EmploymentType } from '@/types/employee'
 import { PART_TIME_RULES } from '@/types/employee'
 
 // ── Config sabitler ──────────────────────────────────────────
-const FT_CONFIG: WorkingTimeConfig = { minRestHours: 11, maxDailyWorkHours: 13, maxWeeklyWorkHours: 45, breakMins: 60 }
+const FT_CONFIG: WorkingTimeConfig = { minRestHours: 11, maxDailyWorkHours: 11, maxWeeklyWorkHours: 45 }
 const WEEK_START = '2026-09-28'
 const WEEK_END   = '2026-10-04'
 
@@ -180,16 +180,16 @@ describe('TC-9-11: Working-time limits do NOT block approval', () => {
   })
 
   it('TC-10: Full-time 45s aşımı → validation hata üretir ama onayı engellemez', () => {
-    // Haftanın 5 günü 9h = 45h, ardından +2h = 47h > 45h
+    // 5 gün × 10s brüt (8,5s net) = 42,5s; +4s brüt (3,75s net) → 46,25s > 45s
     const existing = [
-      { id: 's1', work_date: '2026-09-28', start_time: '08:00', end_time: '17:00' },
-      { id: 's2', work_date: '2026-09-29', start_time: '08:00', end_time: '17:00' },
-      { id: 's3', work_date: '2026-09-30', start_time: '08:00', end_time: '17:00' },
-      { id: 's4', work_date: '2026-10-01', start_time: '08:00', end_time: '17:00' },
-      { id: 's5', work_date: '2026-10-02', start_time: '08:00', end_time: '17:00' },
+      { id: 's1', work_date: '2026-09-28', start_time: '08:00', end_time: '18:00' },
+      { id: 's2', work_date: '2026-09-29', start_time: '08:00', end_time: '18:00' },
+      { id: 's3', work_date: '2026-09-30', start_time: '08:00', end_time: '18:00' },
+      { id: 's4', work_date: '2026-10-01', start_time: '08:00', end_time: '18:00' },
+      { id: 's5', work_date: '2026-10-02', start_time: '08:00', end_time: '18:00' },
     ]
     const result = validateShiftAssignment({
-      newDate: '2026-10-03', newStart: '08:00', newEnd: '10:00',  // +2h → 47h > 45h
+      newDate: '2026-10-03', newStart: '08:00', newEnd: '12:00',  // net 46,25s > 45s
       existingShifts: existing,
       weekStart: WEEK_START, weekEnd: WEEK_END,
       config: FT_CONFIG,

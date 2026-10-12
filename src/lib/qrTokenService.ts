@@ -46,7 +46,10 @@ export async function generateKioskQrToken(
     .select()
     .single()
 
-  if (error) throw new QrTokenError(`Kiosk QR token oluşturulamadı: ${error.message}`, 'DB_ERROR')
+  if (error) {
+    console.error('[qrTokenService] kiosk insert:', error.message)
+    throw new QrTokenError('Kiosk QR token oluşturulamadı.', 'DB_ERROR')
+  }
 
   const record = data as QrToken
 
@@ -84,7 +87,10 @@ export async function generateQrToken(
     .select()
     .single()
 
-  if (error) throw new QrTokenError(`QR token oluşturulamadı: ${error.message}`, 'DB_ERROR')
+  if (error) {
+    console.error('[qrTokenService] insert:', error.message)
+    throw new QrTokenError('QR token oluşturulamadı.', 'DB_ERROR')
+  }
 
   const record = data as QrToken
   const qrPayload: QrPayload = {
@@ -173,13 +179,20 @@ export async function validateAndConsumeToken(rawQrData: string): Promise<Valida
     }
   }
 
-  // 4. Tek kullanım işaretle
-  const { error: updateError } = await admin
+  // 4. Tek kullanım işaretle — atomik: yalnızca hâlâ kullanılmamış ve süresi
+  // dolmamışsa güncellenir. Eşzamanlı iki okutmadan yalnızca biri kazanır.
+  const nowIso = new Date().toISOString()
+  const { data: consumed, error: updateError } = await admin
     .from('qr_tokens')
-    .update({ used_at: new Date().toISOString() })
+    .update({ used_at: nowIso })
     .eq('id', record.id)
+    .is('used_at', null)
+    .gt('expires_at', nowIso)
+    .select('id')
+    .maybeSingle()
 
   if (updateError) throw new QrTokenError('QR token güncellenemedi.', 'DB_ERROR')
+  if (!consumed) throw new QrTokenError('Bu QR kod daha önce kullanılmış.', 'QR_USED')
 
   return {
     token: record,

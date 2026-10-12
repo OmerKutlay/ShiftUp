@@ -1,15 +1,22 @@
 /**
  * POST /api/time-correction/review
- * Yönetici bekleyen mesai talebini onaylar veya reddeder.
- * Yetki: en az Müdür Yardımcısı.
+ * Yönetici bekleyen mesai talebini onaylar veya reddeder. Yetki: en az Müdür Yardımcısı.
  *
- * Onay → applyTimeCorrection() → shift_assignment + attendance_record
+ * Body: { request_id, status: 'approved'|'rejected', reviewer_note?, acknowledge_violations? }
+ *
+ * - Yönetici kendi talebini inceleyemez.
+ * - Onayda çalışma süresi ihlali varsa acknowledge_violations=true olmadan 422 döner.
+ * - Durum geçişi atomiktir (yalnızca 'pending' → karar); uygulama başarısız olursa
+ *   talep tekrar 'pending' yapılır.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
-import { requireMinRole, ROLES } from '@/lib/auth'
+import { requireMinRole, ROLES, forbidden } from '@/lib/auth'
 import { createNotification } from '@/lib/notificationRepository'
-import { applyTimeCorrection } from '@/lib/timeCorrectionService'
+import { applyTimeCorrection, checkCorrectionViolations } from '@/lib/timeCorrectionService'
+import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/apiErrors'
+import { isUuid } from '@/lib/validation'
+import { logAudit } from '@/lib/auditLog'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 
@@ -19,83 +26,131 @@ export async function POST(req: NextRequest) {
   const { employee: reviewer } = auth
 
   try {
-    const body = (await req.json()) as {
+    const body = await readJson<{
       request_id?: string
       status?: string
       reviewer_note?: string | null
-    }
-
-    if (!body.request_id || typeof body.request_id !== 'string') {
-      return NextResponse.json({ error: 'request_id zorunludur.', code: 'VALIDATION_ERROR' }, { status: 400 })
-    }
+      acknowledge_violations?: boolean
+    }>(req)
+    if (!body) return badRequest('Geçersiz istek gövdesi.')
+    if (!isUuid(body.request_id)) return badRequest('request_id zorunludur.')
     if (body.status !== 'approved' && body.status !== 'rejected') {
-      return NextResponse.json({ error: "status 'approved' veya 'rejected' olmalıdır.", code: 'VALIDATION_ERROR' }, { status: 400 })
+      return badRequest("status 'approved' veya 'rejected' olmalıdır.")
+    }
+    if (body.reviewer_note && (typeof body.reviewer_note !== 'string' || body.reviewer_note.length > 500)) {
+      return badRequest('Not en fazla 500 karakter olabilir.')
     }
 
     const admin = createAdminClient()
 
-    const { data: req_ } = await admin
+    const { data: request, error: reqErr } = await admin
       .from('manual_time_correction_requests')
-      .select('id, status, employee_id, date, requested_start_time, requested_end_time, reason')
+      .select('id, status, employee_id, date, requested_start_time, requested_end_time, break_minutes, reason')
       .eq('id', body.request_id)
       .maybeSingle()
+    if (reqErr) return serverError('POST /api/time-correction/review', reqErr)
+    if (!request) return notFound('Talep bulunamadı.')
 
-    if (!req_) return NextResponse.json({ error: 'Talep bulunamadı.', code: 'NOT_FOUND' }, { status: 404 })
-    if (req_.status !== 'pending') {
-      return NextResponse.json({
-        error: `Bu talep zaten ${req_.status === 'approved' ? 'onaylanmış' : 'reddedilmiş'}.`,
-        code: 'ALREADY_REVIEWED',
-      }, { status: 409 })
+    if (request.employee_id === reviewer.id) {
+      return forbidden('Kendi mesai düzeltme talebinizi inceleyemezsiniz.')
+    }
+    if (request.status !== 'pending') {
+      return conflict(`Bu talep zaten ${request.status === 'approved' ? 'onaylanmış' : 'reddedilmiş'}.`, 'ALREADY_REVIEWED')
     }
 
+    const start = String(request.requested_start_time).slice(0, 5)
+    const end = String(request.requested_end_time).slice(0, 5)
+
+    // Onay öncesi ihlal kontrolü
+    let violationMessages: string[] = []
+    if (body.status === 'approved') {
+      const v = await checkCorrectionViolations({
+        admin, employeeId: request.employee_id, date: request.date, startTime: start, endTime: end,
+      })
+      violationMessages = v.errors.map((x) => x.message)
+      if (violationMessages.length > 0 && body.acknowledge_violations !== true) {
+        return NextResponse.json(
+          {
+            error: 'Bu düzeltme çalışma süresi kurallarını ihlal ediyor. Onaylıyorsanız tekrar gönderin.',
+            code: 'WORKING_TIME_VIOLATION',
+            violations: violationMessages,
+          },
+          { status: 422 }
+        )
+      }
+    }
+
+    // Atomik durum geçişi: yalnızca hâlâ pending ise
+    const now = new Date().toISOString()
     const { data: updated, error: updateErr } = await admin
       .from('manual_time_correction_requests')
       .update({
         status: body.status,
         reviewed_by: reviewer.id,
-        reviewed_at: new Date().toISOString(),
-        reviewer_note: body.reviewer_note?.trim() ?? null,
-        updated_at: new Date().toISOString(),
+        reviewed_at: now,
+        reviewer_note: body.reviewer_note?.trim() || null,
+        updated_at: now,
       })
       .eq('id', body.request_id)
+      .eq('status', 'pending')
       .select()
-      .single()
+      .maybeSingle()
+    if (updateErr) return serverError('POST /api/time-correction/review', updateErr)
+    if (!updated) return conflict('Bu talep az önce başka bir yönetici tarafından incelendi.', 'ALREADY_REVIEWED')
 
-    if (updateErr) return NextResponse.json({ error: updateErr.message, code: 'DB_ERROR' }, { status: 500 })
-
-    // Onay → shift_assignment + attendance_record uygula
-    const warnings: string[] = []
     if (body.status === 'approved') {
-      const result = await applyTimeCorrection({
-        admin,
-        employeeId: req_.employee_id,
-        date: req_.date,
-        startTime: req_.requested_start_time.slice(0, 5),
-        endTime:   req_.requested_end_time.slice(0, 5),
+      try {
+        const applied = await applyTimeCorrection({
+          admin,
+          employeeId: request.employee_id,
+          date: request.date,
+          startTime: start,
+          endTime: end,
+          breakMinutes: request.break_minutes,
+        })
+        await logAudit({
+          actorId: reviewer.id,
+          action: 'time_correction.approved',
+          entityType: 'attendance_record',
+          entityId: applied.attendanceRecordId,
+          after: { request_id: request.id, date: request.date, start, end, break_minutes: applied.breakMinutes },
+          note: violationMessages.length > 0 ? `İhlaller onaylandı: ${violationMessages.join(' | ')}` : null,
+        })
+      } catch (applyErr) {
+        await admin
+          .from('manual_time_correction_requests')
+          .update({ status: 'pending', reviewed_by: null, reviewed_at: null, updated_at: new Date().toISOString() })
+          .eq('id', request.id)
+        return serverError('POST /api/time-correction/review apply', applyErr)
+      }
+    } else {
+      await logAudit({
+        actorId: reviewer.id,
+        action: 'time_correction.rejected',
+        entityType: 'time_correction_request',
+        entityId: request.id,
+        note: body.reviewer_note ?? null,
       })
-      warnings.push(...result.warnings)
     }
 
-    // Çalışana bildirim
     try {
       const isApproved = body.status === 'approved'
-      const dateLabel  = format(new Date(req_.date + 'T00:00:00'), 'd MMMM yyyy', { locale: tr })
+      const label = format(new Date(`${request.date}T12:00:00`), 'd MMMM yyyy', { locale: tr })
       await createNotification(admin, {
-        employee_id: req_.employee_id,
+        employee_id: request.employee_id,
         type: isApproved ? 'time_correction_approved' : 'time_correction_rejected',
         title: isApproved ? 'Mesai düzeltme talebiniz onaylandı' : 'Mesai düzeltme talebiniz reddedildi',
         message: isApproved
-          ? `${dateLabel} ${req_.requested_start_time.slice(0, 5)}–${req_.requested_end_time.slice(0, 5)} mesai düzeltme talebiniz onaylandı, takviminiz güncellendi.`
-          : `${dateLabel} mesai düzeltme talebiniz reddedildi.${body.reviewer_note ? ' Not: ' + body.reviewer_note : ''}`,
-        related_id: body.request_id,
+          ? `${label} ${start}–${end} mesai düzeltme talebiniz onaylandı, kayıtlarınız güncellendi.`
+          : `${label} mesai düzeltme talebiniz reddedildi.${body.reviewer_note ? ' Not: ' + body.reviewer_note : ''}`,
+        related_id: request.id,
       })
     } catch (notifErr) {
       console.error('[time-correction/review] bildirim gönderilemedi:', notifErr)
     }
 
-    return NextResponse.json({ request: updated, warnings })
+    return NextResponse.json({ request: updated, warnings: violationMessages })
   } catch (err) {
-    console.error('[POST /api/time-correction/review]', err)
-    return NextResponse.json({ error: 'Sunucu hatası.', code: 'UNKNOWN' }, { status: 500 })
+    return serverError('POST /api/time-correction/review', err)
   }
 }

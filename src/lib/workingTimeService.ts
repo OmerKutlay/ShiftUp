@@ -10,6 +10,8 @@ import type { WorkingTimeConfig } from './workingTimeConfig'
 import type { DayOfWeek } from '@/types/workforce'
 import type { EmploymentType } from '@/types/employee'
 import { PART_TIME_RULES } from '@/types/employee'
+import { statutoryMinBreakMins, nightWorkViolation, MAX_NIGHT_WORK_MINS } from './laborLaw'
+import { dayOfWeekFromDateString } from './dateUtils'
 
 // ─── Temel hesaplamalar ───────────────────────────────────────
 
@@ -30,28 +32,32 @@ export function shiftDurationMins(startTime: string, endTime: string): number {
 }
 
 /**
- * Vardiya brüt süresinden mola düşülerek NET çalışma süresi (dakika).
+ * Vardiya için planlanan mola süresi (dakika).
  *
- * Mola kuralları (brüt vardiya süresine göre):
- *   ≥ 11 saat (full 12s brüt)  → 120 dk (2s) mola
- *   ≥ 9.5 saat                 →  90 dk (1.5s) mola  (özel 10s brüt vb.)
- *   diğer                      →  60 dk (1s) mola    (standart 8s vardiyalar)
+ *   ≤ 4 saat brüt   →  15 dk (Md. 68 yasal asgari — kısa part-time vardiyalar)
+ *   ≥ 11 saat brüt  → 120 dk (mağaza politikası, full 12s vardiya)
+ *   ≥ 9,5 saat brüt →  90 dk (mağaza politikası)
+ *   diğer           →  60 dk (mağaza politikası; yasal asgarinin (30/60 dk) üstünde)
  *
- * Çakışma ve dinlenme kontrolleri brüt süreyi kullanmaya devam eder;
- * bu fonksiyon yalnızca haftalık/günlük saat raporları ve planner hedef
- * hesaplamaları için kullanılır.
+ * Sonuç hiçbir zaman yasal asgarinin altına düşmez.
+ */
+export function plannedBreakMins(startTime: string, endTime: string): number {
+  const brut = shiftDurationMins(startTime, endTime)
+  let policy: number
+  if (brut <= 4 * 60) policy = 15
+  else if (brut >= 11 * 60) policy = 120
+  else if (brut >= 9 * 60 + 30) policy = 90
+  else policy = 60
+  return Math.max(policy, statutoryMinBreakMins(brut))
+}
+
+/**
+ * Vardiya brüt süresinden planlanan mola düşülerek NET çalışma süresi (dakika).
+ * Mola süreleri çalışma süresinden sayılmaz (Md. 68); yasal günlük/haftalık
+ * sınırlar ve fazla çalışma net süre üzerinden hesaplanır.
  */
 export function netWorkMins(startTime: string, endTime: string): number {
-  const brut = shiftDurationMins(startTime, endTime)
-  let breakMins: number
-  if (brut >= 11 * 60) {
-    breakMins = 120   // full vardiya: 2 saat mola
-  } else if (brut >= 9 * 60 + 30) {
-    breakMins = 90    // ~10 saat brüt: 1.5 saat mola
-  } else {
-    breakMins = 60    // standart 8 saat vardiya: 1 saat mola
-  }
-  return Math.max(0, brut - breakMins)
+  return Math.max(0, shiftDurationMins(startTime, endTime) - plannedBreakMins(startTime, endTime))
 }
 
 /** Dakikayı 'Xh Ym' formatında döner */
@@ -79,7 +85,7 @@ export function calcDailyMins(
 ): number {
   return shifts
     .filter((s) => s.work_date === date)
-    .reduce((sum, s) => sum + shiftDurationMins(s.start_time, s.end_time), 0)
+    .reduce((sum, s) => sum + netWorkMins(s.start_time, s.end_time), 0)
 }
 
 /**
@@ -93,7 +99,7 @@ export function calcWeeklyMins(
 ): number {
   return shifts
     .filter((s) => s.work_date >= weekStart && s.work_date <= weekEnd)
-    .reduce((sum, s) => sum + shiftDurationMins(s.start_time, s.end_time), 0)
+    .reduce((sum, s) => sum + netWorkMins(s.start_time, s.end_time), 0)
 }
 
 // ─── İhlal tipleri ────────────────────────────────────────────
@@ -106,6 +112,7 @@ export type ViolationType =
   | 'availability'
   | 'part_time_day_limit'
   | 'part_time_hour_limit'
+  | 'night_work'
 
 export interface WorkingTimeViolation {
   type: ViolationType
@@ -160,6 +167,15 @@ export function checkMinRest(
     let sAbsEnd = toAbsMins(s.work_date, s.end_time)
     if (sAbsEnd <= sAbsStart) sAbsEnd += 24 * 60
 
+    // Zaman aralıkları kesişiyor (ör. önceki günün gece vardiyası) → dinlenme negatif
+    if (newAbsStart < sAbsEnd && sAbsStart < newAbsEnd) {
+      return {
+        type: 'overlap',
+        message: `Vardiya, ${s.work_date} tarihli ${s.start_time.slice(0, 5)}–${s.end_time.slice(0, 5)} vardiyasıyla çakışıyor.`,
+        severity: 'error',
+      }
+    }
+
     // Yeni vardiya mevcut vardiyadan SONRA başlıyorsa: mevcut bitiş → yeni başlangıç arası dinlenme
     const gapAfterExisting = newAbsStart - sAbsEnd
     if (gapAfterExisting >= 0 && gapAfterExisting < minRestMins) {
@@ -202,8 +218,8 @@ export function checkDailyMax(
   const maxMins = config.maxDailyWorkHours * 60
   const existing = existingShifts
     .filter((s) => s.work_date === newDate && s.id !== excludeId)
-    .reduce((sum, s) => sum + shiftDurationMins(s.start_time, s.end_time), 0)
-  const newDuration = shiftDurationMins(newStart, newEnd)
+    .reduce((sum, s) => sum + netWorkMins(s.start_time, s.end_time), 0)
+  const newDuration = netWorkMins(newStart, newEnd)
   const total = existing + newDuration
 
   if (total > maxMins) {
@@ -236,8 +252,8 @@ export function checkWeeklyMax(
   const maxMins = config.maxWeeklyWorkHours * 60
   const existing = existingShifts
     .filter((s) => s.work_date >= weekStart && s.work_date <= weekEnd && s.id !== excludeId)
-    .reduce((sum, s) => sum + shiftDurationMins(s.start_time, s.end_time), 0)
-  const newDuration = shiftDurationMins(newStart, newEnd)
+    .reduce((sum, s) => sum + netWorkMins(s.start_time, s.end_time), 0)
+  const newDuration = netWorkMins(newStart, newEnd)
   const total = existing + newDuration
 
   if (total > maxMins) {
@@ -272,7 +288,7 @@ export function checkAvailability(
     0: 'sunday', 1: 'monday', 2: 'tuesday', 3: 'wednesday',
     4: 'thursday', 5: 'friday', 6: 'saturday',
   }
-  const jsDay = new Date(newDate).getDay()
+  const jsDay = dayOfWeekFromDateString(newDate)
   const dayKey = DAY_MAP[jsDay]
 
   const dayAvailability = availability.filter((a) => a.day_of_week === dayKey)
@@ -294,11 +310,13 @@ export function checkAvailability(
     return h * 60 + m
   }
   const shiftStart = toMins(newStart)
-  const shiftEnd = toMins(newEnd)
+  let shiftEnd = toMins(newEnd)
+  if (shiftEnd <= shiftStart) shiftEnd += 24 * 60  // gece yarısını geçen vardiya
 
   for (const a of dayAvailability) {
     const avStart = toMins(a.start_time)
-    const avEnd = toMins(a.end_time)
+    let avEnd = toMins(a.end_time)
+    if (avEnd <= avStart) avEnd += 24 * 60
     if (shiftStart >= avStart && shiftEnd <= avEnd) return null  // tam içinde
   }
 
@@ -306,6 +324,18 @@ export function checkAvailability(
     type: 'availability',
     message: `Vardiya çalışanın müsaitlik penceresinin dışında (${newStart}–${newEnd}).`,
     severity: 'warning',
+  }
+}
+
+/**
+ * Md. 69 — gece çalışması (20:00–06:00) 7,5 saati aşamaz.
+ */
+export function checkNightWork(newStart: string, newEnd: string): WorkingTimeViolation | null {
+  if (!nightWorkViolation(newStart, newEnd, netWorkMins(newStart, newEnd))) return null
+  return {
+    type: 'night_work',
+    message: `Gece çalışması (20:00–06:00) ${MAX_NIGHT_WORK_MINS / 60} saati aşamaz (İş Kanunu Md. 69): ${newStart.slice(0, 5)}–${newEnd.slice(0, 5)}.`,
+    severity: 'error',
   }
 }
 
@@ -366,6 +396,9 @@ export function validateShiftAssignment(input: ShiftValidationInput): ShiftValid
   )
   if (weeklyViolation) violations.push(weeklyViolation)
 
+  const nightViolation = checkNightWork(input.newStart, input.newEnd)
+  if (nightViolation) violations.push(nightViolation)
+
   if (input.availability) {
     const availViolation = checkAvailability(
       input.newDate, input.newStart, input.newEnd, input.availability
@@ -383,8 +416,8 @@ export function validateShiftAssignment(input: ShiftValidationInput): ShiftValid
         s.work_date <= input.weekEnd &&
         s.id !== input.excludeId
       )
-      .reduce((sum, s) => sum + shiftDurationMins(s.start_time, s.end_time), 0)
-    const newMins = shiftDurationMins(input.newStart, input.newEnd)
+      .reduce((sum, s) => sum + netWorkMins(s.start_time, s.end_time), 0)
+    const newMins = netWorkMins(input.newStart, input.newEnd)
     if (
       input.newDate >= input.weekStart &&
       input.newDate <= input.weekEnd &&
@@ -552,7 +585,7 @@ export function buildWeekSummary(
     // Günlük max ve min rest kontrolü (her iki tip için)
     for (const day of weekDays) {
       const dayShifts = shifts.filter((s) => s.work_date === day && !s.is_on_leave)
-      const dayMins = dayShifts.reduce((sum, s) => sum + shiftDurationMins(s.start_time, s.end_time), 0)
+      const dayMins = dayShifts.reduce((sum, s) => sum + netWorkMins(s.start_time, s.end_time), 0)
       if (dayMins > config.maxDailyWorkHours * 60) {
         violations.push({
           type: 'daily_max',
@@ -560,6 +593,13 @@ export function buildWeekSummary(
           severity: 'error',
         })
       }
+    }
+
+    // Gece çalışması (Md. 69)
+    for (const s of shifts) {
+      if (s.is_on_leave || s.work_date < weekStart || s.work_date > weekEnd) continue
+      const night = checkNightWork(s.start_time, s.end_time)
+      if (night) violations.push({ ...night, message: `${s.work_date}: ${night.message}` })
     }
 
     // Min rest — tüm vardiyaları kronolojik sırala, ardışıkları kontrol et

@@ -22,6 +22,10 @@ import { TIME_CORRECTION_STATUS_LABELS, TIME_CORRECTION_STATUS_COLORS } from '@/
 import type { EmployeeWithRole } from '@/types/employee'
 import { ListSkeleton } from '@/components/common'
 import { useLoadedKey } from '@/hooks/useLoadedKey'
+import { useAuth } from '@/context/AuthContext'
+
+/** 422 WORKING_TIME_VIOLATION yanıtındaki ihlal listesi */
+interface ApiResult { error?: string; code?: string; violations?: string[] }
 
 function fmtDate(d: string) {
   try { return format(new Date(d + 'T00:00:00'), 'd MMMM yyyy EEEE', { locale: tr }) } catch { return d }
@@ -33,6 +37,7 @@ function fmtDateTime(iso: string) {
 
 export function TimeCorrectionReviewPanel() {
   const [tab, setTab] = useState(0)
+  const { employee: me } = useAuth()
 
   // ── Talepler sekmesi ─────────────────────────────────────────
   const [requests, setRequests] = useState<TimeCorrectionRequest[]>([])
@@ -48,6 +53,8 @@ export function TimeCorrectionReviewPanel() {
   const [reviewNote, setReviewNote] = useState('')
   const [reviewing, setReviewing] = useState(false)
   const [reviewError, setReviewError] = useState<string | null>(null)
+  // Çalışma süresi ihlalleri — yönetici açıkça onaylarsa istek tekrar gönderilir
+  const [reviewViolations, setReviewViolations] = useState<string[]>([])
 
   // ── Doğrudan giriş sekmesi ───────────────────────────────────
   const [employees, setEmployees] = useState<EmployeeWithRole[]>([])
@@ -55,6 +62,7 @@ export function TimeCorrectionReviewPanel() {
   const [directSaving, setDirectSaving] = useState(false)
   const [directError, setDirectError] = useState<string | null>(null)
   const [directSuccess, setDirectSuccess] = useState<string | null>(null)
+  const [directViolations, setDirectViolations] = useState<string[]>([])
 
   const loadRequests = useCallback(async () => {
     setError(null)
@@ -84,9 +92,10 @@ export function TimeCorrectionReviewPanel() {
     setReviewDialog({ open: true, req, action })
     setReviewNote('')
     setReviewError(null)
+    setReviewViolations([])
   }
 
-  const handleReview = async () => {
+  const handleReview = async (acknowledge = false) => {
     if (!reviewDialog.req) return
     setReviewing(true); setReviewError(null)
     try {
@@ -98,22 +107,28 @@ export function TimeCorrectionReviewPanel() {
           request_id: reviewDialog.req.id,
           status: reviewDialog.action === 'approve' ? 'approved' : 'rejected',
           reviewer_note: reviewNote.trim() || null,
+          acknowledge_violations: acknowledge,
         }),
       })
-      const d = await res.json() as { error?: string }
-      if (!res.ok) { setReviewError(d.error ?? 'Hata.'); return }
+      const d = await res.json() as ApiResult
+      if (!res.ok) {
+        if (d.code === 'WORKING_TIME_VIOLATION') setReviewViolations(d.violations ?? [])
+        setReviewError(d.error ?? 'Hata.')
+        return
+      }
       setReviewDialog({ open: false, req: null, action: 'approve' })
+      setReviewViolations([])
       void loadRequests()
     } catch { setReviewError('Bağlantı hatası.') }
     finally { setReviewing(false) }
   }
 
-  const handleDirect = async () => {
-    if (!directForm.date || !directForm.start || !directForm.end || !directForm.reason.trim()) {
+  const handleDirect = async (acknowledge = false) => {
+    if (!directForm.employee_id || !directForm.date || !directForm.start || !directForm.end || !directForm.reason.trim()) {
       setDirectError('Tüm alanlar zorunludur.'); return
     }
-    if (directForm.start >= directForm.end) {
-      setDirectError('Çıkış saati giriş saatinden sonra olmalıdır.'); return
+    if (directForm.start === directForm.end) {
+      setDirectError('Giriş ve çıkış saati aynı olamaz.'); return
     }
     setDirectSaving(true); setDirectError(null); setDirectSuccess(null)
     try {
@@ -123,16 +138,22 @@ export function TimeCorrectionReviewPanel() {
         credentials: 'same-origin',
         body: JSON.stringify({
           direct: true,
-          employee_id:          directForm.employee_id || undefined,
+          employee_id:          directForm.employee_id,
           date:                 directForm.date,
           requested_start_time: directForm.start,
           requested_end_time:   directForm.end,
           reason:               directForm.reason.trim(),
+          acknowledge_violations: acknowledge,
         }),
       })
-      const d = await res.json() as { error?: string }
-      if (!res.ok) { setDirectError(d.error ?? 'Hata.'); return }
+      const d = await res.json() as ApiResult
+      if (!res.ok) {
+        if (d.code === 'WORKING_TIME_VIOLATION') setDirectViolations(d.violations ?? [])
+        setDirectError(d.error ?? 'Hata.')
+        return
+      }
       setDirectSuccess('Mesai düzeltmesi uygulandı.')
+      setDirectViolations([])
       setDirectForm((f) => ({ ...f, date: '', start: '09:00', end: '18:00', reason: '' }))
     } catch { setDirectError('Bağlantı hatası.') }
     finally { setDirectSaving(false) }
@@ -230,20 +251,26 @@ export function TimeCorrectionReviewPanel() {
             Çalışan talebi olmadan doğrudan mesai düzeltmesi girin. Anında uygulanır.
           </Typography>
 
-          {directError && <Alert severity="error" sx={{ mb: 1.5 }} onClose={() => setDirectError(null)}>{directError}</Alert>}
+          {directError && <Alert severity="error" sx={{ mb: 1.5 }} onClose={() => { setDirectError(null); setDirectViolations([]) }}>{directError}</Alert>}
+          <ViolationList items={directViolations} />
           {directSuccess && <Alert severity="success" sx={{ mb: 1.5 }} onClose={() => setDirectSuccess(null)}>{directSuccess}</Alert>}
 
           <Stack spacing={2}>
             <FormControl size="small" fullWidth>
               <InputLabel>Çalışan</InputLabel>
               <Select value={directForm.employee_id} label="Çalışan"
-                onChange={(e: SelectChangeEvent) => setDirectForm((f) => ({ ...f, employee_id: e.target.value }))}>
-                <MenuItem value=""><em>Kendi hesabım</em></MenuItem>
-                {employees.map((emp) => (
+                onChange={(e: SelectChangeEvent) => {
+                  setDirectViolations([])
+                  setDirectForm((f) => ({ ...f, employee_id: e.target.value }))
+                }}>
+                {employees.filter((emp) => emp.id !== me?.id).map((emp) => (
                   <MenuItem key={emp.id} value={emp.id}>{emp.full_name}</MenuItem>
                 ))}
               </Select>
             </FormControl>
+            <Typography variant="caption" color="text.disabled" sx={{ mt: -1 }}>
+              Kendi mesai düzeltmeniz için “Mesai Düzeltme” sayfasından talep oluşturun; başka bir yönetici onaylar.
+            </Typography>
 
             <TextField size="small" label="Tarih" type="date" value={directForm.date}
               onChange={(e) => setDirectForm((f) => ({ ...f, date: e.target.value }))}
@@ -257,14 +284,27 @@ export function TimeCorrectionReviewPanel() {
                 onChange={(e) => setDirectForm((f) => ({ ...f, end: e.target.value }))}
                 inputProps={{ step: 300 }} fullWidth />
             </Box>
+            {directForm.end < directForm.start && (
+              <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
+                Çıkış saati girişten önce — ertesi gün çıkış olarak işlenecek (gece vardiyası).
+              </Typography>
+            )}
 
             <TextField size="small" label="Sebep" value={directForm.reason} multiline rows={2}
               onChange={(e) => setDirectForm((f) => ({ ...f, reason: e.target.value }))} fullWidth />
 
-            <Button variant="contained" startIcon={directSaving ? <CircularProgress size={16} color="inherit" /> : <AddIcon />}
-              onClick={() => void handleDirect()} disabled={directSaving}>
-              Düzeltmeyi Uygula
-            </Button>
+            {directViolations.length > 0 ? (
+              <Button variant="contained" color="warning" disabled={directSaving}
+                startIcon={directSaving ? <CircularProgress size={16} color="inherit" /> : <AddIcon />}
+                onClick={() => void handleDirect(true)}>
+                İhlalleri Onaylayarak Uygula
+              </Button>
+            ) : (
+              <Button variant="contained" startIcon={directSaving ? <CircularProgress size={16} color="inherit" /> : <AddIcon />}
+                onClick={() => void handleDirect()} disabled={directSaving}>
+                Düzeltmeyi Uygula
+              </Button>
+            )}
           </Stack>
         </Box>
       )}
@@ -284,25 +324,42 @@ export function TimeCorrectionReviewPanel() {
             </Box>
           )}
           {reviewError && <Alert severity="error" sx={{ mb: 1.5 }} onClose={() => setReviewError(null)}>{reviewError}</Alert>}
+          <ViolationList items={reviewViolations} />
           <TextField fullWidth multiline rows={2} label="Yönetici Notu (opsiyonel)" value={reviewNote}
             onChange={(e) => setReviewNote(e.target.value)} size="small"
             placeholder={reviewDialog.action === 'reject' ? 'Red sebebini belirtebilirsiniz...' : undefined} />
           {reviewDialog.action === 'approve' && (
             <Alert severity="info" sx={{ mt: 1.5 }} icon={<AccessTimeIcon fontSize="small" />}>
-              Onaylandığında çalışanın takvimi ve çalışma özeti otomatik güncellenecektir.
+              Onaylandığında çalışanın devam kaydı ve çalışma özeti güncellenir; planlanan vardiya korunur.
             </Alert>
           )}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5 }}>
           <Button onClick={() => setReviewDialog((d) => ({ ...d, open: false }))} color="inherit" disabled={reviewing}>İptal</Button>
-          <Button onClick={() => void handleReview()} variant="contained"
-            color={reviewDialog.action === 'approve' ? 'success' : 'error'}
+          <Button onClick={() => void handleReview(reviewViolations.length > 0)} variant="contained"
+            color={reviewViolations.length > 0 ? 'warning' : reviewDialog.action === 'approve' ? 'success' : 'error'}
             disabled={reviewing}
             startIcon={reviewing ? <CircularProgress size={16} color="inherit" /> : reviewDialog.action === 'approve' ? <CheckIcon /> : <CloseIcon />}>
-            {reviewDialog.action === 'approve' ? 'Onayla' : 'Reddet'}
+            {reviewViolations.length > 0 ? 'İhlallere Rağmen Onayla' : reviewDialog.action === 'approve' ? 'Onayla' : 'Reddet'}
           </Button>
         </DialogActions>
       </Dialog>
     </Box>
+  )
+}
+
+function ViolationList({ items }: { items: string[] }) {
+  if (items.length === 0) return null
+  return (
+    <Alert severity="warning" sx={{ mb: 1.5 }}>
+      <Typography variant="caption" fontWeight={700} display="block" sx={{ mb: 0.5 }}>
+        Çalışma süresi ihlalleri (İş Kanunu):
+      </Typography>
+      <Box component="ul" sx={{ m: 0, pl: 2 }}>
+        {items.map((v) => (
+          <li key={v}><Typography variant="caption">{v}</Typography></li>
+        ))}
+      </Box>
+    </Alert>
   )
 }

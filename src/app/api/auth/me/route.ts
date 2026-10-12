@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { IS_DEV_AUTH, DEV_SESSION_COOKIE } from '@/lib/authConfig'
+import { verifyDevSession } from '@/lib/auth/devSession'
 
 const EMPLOYEE_SELECT = `
   id,
@@ -36,19 +37,12 @@ export async function GET(req: NextRequest) {
 
     if (IS_DEV_AUTH) {
       // ── Development: cookie'den employeeId oku ──────────────
-      const cookieVal = req.cookies.get(DEV_SESSION_COOKIE)?.value
-      if (!cookieVal) {
+      // İmzalı çerez — değiştirilmiş / süresi dolmuş çerez reddedilir
+      const session = verifyDevSession(req.cookies.get(DEV_SESSION_COOKIE)?.value)
+      if (!session) {
         return NextResponse.json({ employee: null }, { status: 401 })
       }
-
-      let employeeId: string
-      try {
-        const parsed = JSON.parse(cookieVal) as { employeeId: string }
-        employeeId = parsed.employeeId
-        if (!employeeId) throw new Error('missing employeeId')
-      } catch {
-        return NextResponse.json({ employee: null }, { status: 401 })
-      }
+      const employeeId = session.employeeId
 
       const { data: employee } = await admin
         .from('employees')

@@ -8,17 +8,16 @@ import type { DailyShiftEntry, AttendanceRecord } from '@/types/attendance'
 // ============================================================
 // Mock repository — must be hoisted above imports
 // ============================================================
-vi.mock('@/lib/attendanceRepository', () => ({
+vi.mock('@/lib/api/attendance', () => ({
   fetchDailyShifts: vi.fn(),
-  createAttendanceRecord: vi.fn(),
-  performAttendanceAction: vi.fn(),
+  performManualAttendanceAction: vi.fn(),
 }))
 
 // ============================================================
 // Static imports (after vi.mock hoisting)
 // ============================================================
 import { DailyAttendancePage } from '@/components/daily-attendance/DailyAttendancePage'
-import * as repo from '@/lib/attendanceRepository'
+import * as repo from '@/lib/api/attendance'
 
 // ============================================================
 // Test helpers
@@ -87,7 +86,7 @@ describe('DailyAttendancePage — sayfa yükleme (Senaryo 10)', () => {
   })
 
   it('10. Supabase vardiyaları gösterir', async () => {
-    vi.mocked(repo.fetchDailyShifts).mockResolvedValue([makeShiftEntry()])
+    vi.mocked(repo.fetchDailyShifts).mockResolvedValue({ date: '2026-09-28', entries: [makeShiftEntry()] })
 
     renderPage()
 
@@ -98,7 +97,7 @@ describe('DailyAttendancePage — sayfa yükleme (Senaryo 10)', () => {
   })
 
   it('Boş vardiya listesi için bilgi mesajı gösterilir', async () => {
-    vi.mocked(repo.fetchDailyShifts).mockResolvedValue([])
+    vi.mocked(repo.fetchDailyShifts).mockResolvedValue({ date: '2026-09-28', entries: [] })
 
     renderPage()
 
@@ -114,7 +113,7 @@ describe('DailyAttendancePage — attendance aksiyonları', () => {
   })
 
   it('1. Vardiya bekleyen çalışan "Giriş Yap" butonunu görür', async () => {
-    vi.mocked(repo.fetchDailyShifts).mockResolvedValue([makeShiftEntry()])
+    vi.mocked(repo.fetchDailyShifts).mockResolvedValue({ date: '2026-09-28', entries: [makeShiftEntry()] })
 
     renderPage()
 
@@ -124,9 +123,9 @@ describe('DailyAttendancePage — attendance aksiyonları', () => {
   })
 
   it('2. Giriş yapıldıktan sonra durum Çalışıyor olur', async () => {
-    vi.mocked(repo.fetchDailyShifts).mockResolvedValue([makeShiftEntry()])
+    vi.mocked(repo.fetchDailyShifts).mockResolvedValue({ date: '2026-09-28', entries: [makeShiftEntry()] })
     const workingRecord = makeAttendanceRecord({ status: 'working' })
-    vi.mocked(repo.createAttendanceRecord).mockResolvedValue(workingRecord)
+    vi.mocked(repo.performManualAttendanceAction).mockResolvedValue(workingRecord)
 
     renderPage()
 
@@ -141,9 +140,9 @@ describe('DailyAttendancePage — attendance aksiyonları', () => {
   })
 
   it('4. Çalışan molaya çıkabilir — "Molaya Çık" butonu görünür', async () => {
-    vi.mocked(repo.fetchDailyShifts).mockResolvedValue([
+    vi.mocked(repo.fetchDailyShifts).mockResolvedValue({ date: '2026-09-28', entries: [
       makeShiftEntry({ attendanceRecord: makeAttendanceRecord({ status: 'working' }) }),
-    ])
+    ] })
 
     renderPage()
 
@@ -153,14 +152,14 @@ describe('DailyAttendancePage — attendance aksiyonları', () => {
   })
 
   it('5. Molada iken "Molaya Çık" butonu görünmez', async () => {
-    vi.mocked(repo.fetchDailyShifts).mockResolvedValue([
+    vi.mocked(repo.fetchDailyShifts).mockResolvedValue({ date: '2026-09-28', entries: [
       makeShiftEntry({
         attendanceRecord: makeAttendanceRecord({
           status: 'on_break',
           break_start_at: '2026-09-28T09:00:00Z',
         }),
       }),
-    ])
+    ] })
 
     renderPage()
 
@@ -170,14 +169,14 @@ describe('DailyAttendancePage — attendance aksiyonları', () => {
   })
 
   it('6. Çalışan moladan dönebilir — "Moladan Dön" butonu görünür', async () => {
-    vi.mocked(repo.fetchDailyShifts).mockResolvedValue([
+    vi.mocked(repo.fetchDailyShifts).mockResolvedValue({ date: '2026-09-28', entries: [
       makeShiftEntry({
         attendanceRecord: makeAttendanceRecord({
           status: 'on_break',
           break_start_at: '2026-09-28T09:00:00Z',
         }),
       }),
-    ])
+    ] })
 
     renderPage()
 
@@ -187,9 +186,9 @@ describe('DailyAttendancePage — attendance aksiyonları', () => {
   })
 
   it('7. Çalışan çıkış yapabilir — "Çıkış Yap" butonu görünür', async () => {
-    vi.mocked(repo.fetchDailyShifts).mockResolvedValue([
+    vi.mocked(repo.fetchDailyShifts).mockResolvedValue({ date: '2026-09-28', entries: [
       makeShiftEntry({ attendanceRecord: makeAttendanceRecord({ status: 'working' }) }),
-    ])
+    ] })
 
     renderPage()
 
@@ -199,7 +198,7 @@ describe('DailyAttendancePage — attendance aksiyonları', () => {
   })
 
   it('8. Çıkış yapıldıktan sonra aksiyon butonu yoktur', async () => {
-    vi.mocked(repo.fetchDailyShifts).mockResolvedValue([
+    vi.mocked(repo.fetchDailyShifts).mockResolvedValue({ date: '2026-09-28', entries: [
       makeShiftEntry({
         attendanceRecord: makeAttendanceRecord({
           status: 'clocked_out',
@@ -207,7 +206,7 @@ describe('DailyAttendancePage — attendance aksiyonları', () => {
           clock_out_at: '2026-09-28T14:00:00Z',
         }),
       }),
-    ])
+    ] })
 
     renderPage()
 

@@ -10,7 +10,7 @@ import type { ShiftAssignmentWithDetails } from '@/types/schedule'
 // ============================================================
 // Mocks
 // ============================================================
-vi.mock('@/lib/scheduleRepository', () => ({
+vi.mock('@/lib/api/schedule', () => ({
   fetchWeeklyAssignments: vi.fn(),
   getWeekDays: vi.fn(),
   getWeekRange: vi.fn(),
@@ -19,11 +19,11 @@ vi.mock('@/lib/scheduleRepository', () => ({
   deleteShiftAssignment: vi.fn(),
 }))
 
-vi.mock('@/lib/employeeRepository', () => ({
+vi.mock('@/lib/api/employees', () => ({
   fetchActiveEmployees: vi.fn(),
 }))
 
-vi.mock('@/lib/shiftTemplateRepository', () => ({
+vi.mock('@/lib/api/shiftTemplates', () => ({
   fetchActiveShiftTemplates: vi.fn(),
 }))
 
@@ -36,9 +36,9 @@ vi.mock('next/navigation', () => ({
 // vi.mock ile stub yapmak yerine gerçeği bırakıyoruz
 
 import { WeeklySchedulePage } from '@/components/schedule/WeeklySchedulePage'
-import * as scheduleRepo from '@/lib/scheduleRepository'
-import * as empRepo from '@/lib/employeeRepository'
-import * as tplRepo from '@/lib/shiftTemplateRepository'
+import * as scheduleRepo from '@/lib/api/schedule'
+import * as empRepo from '@/lib/api/employees'
+import * as tplRepo from '@/lib/api/shiftTemplates'
 
 // ============================================================
 // Helpers

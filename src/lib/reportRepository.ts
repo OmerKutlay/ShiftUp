@@ -3,6 +3,7 @@
  * Attendance raporları ve özet istatistikler için veri katmanı.
  * Tüm hesaplamalar burada yapılır — UI sadece görüntüler.
  */
+import { isUuid } from '@/lib/validation'
 import type {
   AttendanceReportRow,
   AttendanceReportFilters,
@@ -28,6 +29,7 @@ export function validateReportFilters(filters: AttendanceReportFilters): string 
   if (isNaN(fromMs) || isNaN(toMs)) return 'Geçersiz tarih formatı.'
   if (toMs < fromMs) return 'Bitiş tarihi başlangıç tarihinden önce olamaz.'
   if ((toMs - fromMs) / (1000 * 60 * 60 * 24) > 366) return 'Tarih aralığı en fazla 366 gün olabilir.'
+  if (filters.employee_id && !isUuid(filters.employee_id)) return 'Geçersiz çalışan.'
   return null
 }
 

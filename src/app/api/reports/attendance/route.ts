@@ -9,6 +9,7 @@ import { createAdminClient } from '@/lib/supabaseAdmin'
 import { requireMinRole, ROLES } from '@/lib/auth'
 import { validateReportFilters } from '@/lib/reportRepository'
 import { queryAttendanceReport } from '@/lib/attendanceReportQuery'
+import { serverError } from '@/lib/apiErrors'
 
 export async function GET(req: NextRequest) {
   const auth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
@@ -30,7 +31,6 @@ export async function GET(req: NextRequest) {
     const rows = await queryAttendanceReport(createAdminClient(), filters)
     return NextResponse.json({ rows })
   } catch (err) {
-    console.error('[GET /api/reports/attendance]', err)
-    return NextResponse.json({ error: 'Rapor yüklenemedi.', code: 'DB_ERROR' }, { status: 500 })
+    return serverError('GET /api/reports/attendance', err, 'Rapor yüklenemedi.')
   }
 }

@@ -6,7 +6,7 @@ import { theme } from '@/lib/theme'
 import type { ShiftTemplate } from '@/types/shiftTemplate'
 import { LOADING_LABEL } from '@/components/common'
 
-vi.mock('@/lib/shiftTemplateRepository', () => ({
+vi.mock('@/lib/api/shiftTemplates', () => ({
   fetchShiftTemplates: vi.fn(),
   createShiftTemplate: vi.fn(),
   updateShiftTemplate: vi.fn(),
@@ -20,7 +20,7 @@ vi.mock('next/navigation', () => ({
 }))
 
 import { ShiftTemplatesPage } from '@/components/shift-templates/ShiftTemplatesPage'
-import * as repo from '@/lib/shiftTemplateRepository'
+import * as repo from '@/lib/api/shiftTemplates'
 
 // ============================================================
 // Helpers

@@ -4,8 +4,8 @@ import type { EmployeeWithRole, Role } from '@/types/employee'
 // ============================================================
 // Supabase mock — gerçek DB çağrısı yapılmaz
 // ============================================================
-vi.mock('@/lib/supabase', () => ({
-  supabase: {
+vi.mock('@/lib/db', () => ({
+  db: {
     from: vi.fn(),
   },
 }))
@@ -18,7 +18,7 @@ import {
   updateEmployee,
   deactivateEmployee,
 } from '@/lib/employeeRepository'
-import { supabase } from '@/lib/supabase'
+import { db as supabase } from '@/lib/db'
 
 // ============================================================
 // Yardımcı factory fonksiyonlar

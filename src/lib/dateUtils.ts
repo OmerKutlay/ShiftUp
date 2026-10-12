@@ -39,6 +39,33 @@ export function formatDateTurkish(date: Date): string {
 }
 
 /**
+ * Verilen anın Türkiye saatine göre takvim tarihi (YYYY-MM-DD).
+ * Sunucu UTC'de çalışsa bile 00:00–03:00 arasında doğru günü verir.
+ */
+export function turkeyDateString(date: Date): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: TURKEY_TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(date)
+}
+
+/** Bugünün Türkiye tarihi (YYYY-MM-DD) */
+export function turkeyToday(): string {
+  return turkeyDateString(new Date())
+}
+
+/** 'YYYY-MM-DD' tarihine n gün ekler (saat diliminden bağımsız, UTC aritmetiği) */
+export function addDaysToDateString(dateStr: string, n: number): string {
+  const d = new Date(`${dateStr}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+
+/** 'YYYY-MM-DD' tarihinin haftanın günü (0=Pazar … 6=Cumartesi), saat diliminden bağımsız */
+export function dayOfWeekFromDateString(dateStr: string): number {
+  return new Date(`${dateStr}T00:00:00Z`).getUTCDay()
+}
+
+/**
  * Format a Date to 'EEEE' (day name) in Turkish locale.
  */
 export function formatDayNameTurkish(date: Date): string {

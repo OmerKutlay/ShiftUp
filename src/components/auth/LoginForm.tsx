@@ -47,11 +47,12 @@ const EMAIL_ERRORS: Record<string, string> = {
   EMPLOYEE_INACTIVE: 'Bu hesap aktif değil. Yöneticinizle iletişime geçin.',
   EMPLOYEE_NOT_FOUND: 'Bu email adresiyle kayıtlı çalışan bulunamadı.',
   INVALID_EMAIL: 'Geçerli bir email adresi giriniz.',
-  RATE_LIMITED: 'Çok fazla kod istendi. Lütfen biraz bekleyip tekrar deneyin.',
+  RATE_LIMITED: 'Çok fazla deneme yapıldı. Lütfen biraz bekleyip tekrar deneyin.',
 }
 
 const OTP_ERRORS: Record<string, string> = {
   OTP_EXPIRED: 'Kodun süresi dolmuş. Yeni kod isteyin.',
+  RATE_LIMITED: 'Çok fazla hatalı deneme. Lütfen 15 dakika sonra tekrar deneyin.',
   EMPLOYEE_NOT_FOUND: 'Bu hesap aktif bir çalışana bağlı değil.',
 }
 
@@ -150,7 +151,7 @@ export function LoginForm({ authMode }: Props) {
         otp: '',
         info: isDevMode
           ? 'Development modu aktif. Giriş kodunuzu girin.'
-          : `${email} adresine giriş kodu gönderildi.`,
+          : `${email} kayıtlı bir çalışana aitse giriş kodu gönderildi.`,
         email,
       })
     } catch {

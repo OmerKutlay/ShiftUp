@@ -8,7 +8,7 @@ import type { EmployeeWithRole, Role } from '@/types/employee'
 // ============================================================
 // Mock repository
 // ============================================================
-vi.mock('@/lib/employeeRepository', () => ({
+vi.mock('@/lib/api/employees', () => ({
   fetchEmployees: vi.fn(),
   fetchRoles: vi.fn(),
   createEmployee: vi.fn(),
@@ -24,7 +24,7 @@ vi.mock('next/navigation', () => ({
 }))
 
 import { EmployeesPage } from '@/components/employees/EmployeesPage'
-import * as repo from '@/lib/employeeRepository'
+import * as repo from '@/lib/api/employees'
 
 // ============================================================
 // Helpers

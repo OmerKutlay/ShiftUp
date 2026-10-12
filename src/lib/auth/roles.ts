@@ -39,6 +39,25 @@ export function roleAtLeast(roleName: string, minRole: RoleName): boolean {
   return roleIdx >= minIdx
 }
 
+/** Rolün hiyerarşideki sırası (bilinmeyen rol / null → -1) */
+export function roleRank(roleName: string | null | undefined): number {
+  return roleName ? ROLE_HIERARCHY.indexOf(roleName as RoleName) : -1
+}
+
+/**
+ * actor, hedef rolündeki bir çalışanı yönetebilir mi (düzenleme/silme/rol atama)?
+ * Yönetici herkesi yönetebilir; diğerleri yalnızca kendinden düşük rolleri.
+ */
+export function canManageRole(
+  actorRole: string | null | undefined,
+  targetRole: string | null | undefined
+): boolean {
+  if (actorRole === ROLES.YONETICI) return true
+  const actor = roleRank(actorRole)
+  if (actor < 0) return false
+  return roleRank(targetRole) < actor
+}
+
 /**
  * Yönetimsel işlemler için minimum gerekli rol grupları.
  * API route'larında requireRole() parametresi olarak kullanılır.

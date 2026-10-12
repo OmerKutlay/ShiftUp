@@ -15,6 +15,7 @@
  */
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { IS_DEV_AUTH, DEV_SESSION_COOKIE } from '@/lib/authConfig'
+import { verifyDevSession } from './devSession'
 import type { RoleName } from './roles'
 
 export interface SessionEmployee {
@@ -65,16 +66,10 @@ export async function getCurrentEmployee(
         cookieVal = cookieStore.get(DEV_SESSION_COOKIE)?.value
       }
 
-      if (!cookieVal) return null
-
-      let employeeId: string
-      try {
-        const parsed = JSON.parse(cookieVal) as { employeeId?: string }
-        if (!parsed.employeeId) return null
-        employeeId = parsed.employeeId
-      } catch {
-        return null
-      }
+      // İmzalı çerez — değiştirilmiş / süresi dolmuş çerez reddedilir
+      const session = verifyDevSession(cookieVal)
+      if (!session) return null
+      const employeeId = session.employeeId
 
       const { data } = await admin
         .from('employees')

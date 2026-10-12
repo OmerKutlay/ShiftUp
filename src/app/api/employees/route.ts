@@ -1,36 +1,63 @@
 /**
- * GET /api/employees?active=true|false
- * Çalışan listesini döner. AppShell employee selector için kullanılır.
- * FAZ 10 Fix
+ * GET  /api/employees?active=true|false — çalışan listesi (rol bilgisiyle).
+ *      Oturum gerektirir; e-posta ve auth bağlantısı yalnızca yöneticilere döner.
+ * POST /api/employees — yeni çalışan (Müdür Yardımcısı+; kendinden düşük rol atanabilir).
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabaseAdmin'
+import { requireAuth, requireMinRole, ROLES, MANAGER_ROLES, hasRole } from '@/lib/auth'
+import { fetchEmployees, fetchActiveEmployees, createEmployee } from '@/lib/employeeRepository'
+import { badRequest, conflict, readJson, serverError } from '@/lib/apiErrors'
+import { validateEmployeeInput } from '@/lib/employeeValidation'
+import type { CreateEmployeePayload, EmployeeWithRole } from '@/types/employee'
+
+
 
 export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req)
+  if ('response' in auth) return auth.response
+
   try {
-    const { searchParams } = new URL(req.url)
-    const activeParam = searchParams.get('active')
-
-    const admin = createAdminClient()
-    let query = admin
-      .from('employees')
-      .select('id, full_name, role, role_id, active, created_at, updated_at')
-      .order('full_name', { ascending: true })
-
+    const activeParam = req.nextUrl.searchParams.get('active')
+    let employees: EmployeeWithRole[]
     if (activeParam === 'true') {
-      query = query.eq('active', true)
-    } else if (activeParam === 'false') {
-      query = query.eq('active', false)
+      employees = await fetchActiveEmployees()
+    } else {
+      employees = await fetchEmployees()
+      if (activeParam === 'false') employees = employees.filter((e) => !e.active)
     }
 
-    const { data, error } = await query
-    if (error) {
-      return NextResponse.json({ error: error.message, code: 'DB_ERROR' }, { status: 500 })
+    // Standart çalışan diğerlerinin iletişim/kimlik bilgilerini görmez
+    if (!hasRole(auth.employee.role_name, MANAGER_ROLES)) {
+      employees = employees.map((e) => ({ ...e, email: null, auth_user_id: null }))
     }
 
-    return NextResponse.json({ employees: data ?? [] })
+    return NextResponse.json({ employees })
   } catch (err) {
-    console.error('[GET /api/employees]', err)
-    return NextResponse.json({ error: 'Sunucu hatası.', code: 'UNKNOWN' }, { status: 500 })
+    return serverError('GET /api/employees', err)
+  }
+}
+
+export async function POST(req: NextRequest) {
+  const auth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
+  if ('response' in auth) return auth.response
+
+  const body = await readJson(req)
+  if (!body) return badRequest('Geçersiz istek gövdesi.')
+
+  try {
+    const result = await validateEmployeeInput(body, auth.employee.role_name, false)
+    if ('error' in result) return badRequest(result.error)
+
+    const employee = await createEmployee({
+      active: true,
+      email: null,
+      ...result.payload,
+    } as CreateEmployeePayload)
+    return NextResponse.json({ employee }, { status: 201 })
+  } catch (err) {
+    if (err instanceof Error && /duplicate|unique|23505/i.test(err.message)) {
+      return conflict('Bu e-posta adresi başka bir çalışana ait.', 'DUPLICATE_EMAIL')
+    }
+    return serverError('POST /api/employees', err)
   }
 }
