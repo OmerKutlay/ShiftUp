@@ -3,7 +3,7 @@ import { LoginForm } from '@/components/auth/LoginForm'
 import { AUTH_MODE } from '@/lib/authConfig'
 
 export const metadata: Metadata = {
-  title: 'Giriş — ShiftUp',
+  title: 'Giriş',
 }
 
 export default function LoginPage() {

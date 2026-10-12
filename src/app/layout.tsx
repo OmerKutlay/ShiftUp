@@ -1,19 +1,23 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import Script from 'next/script'
-import { AppRouterCacheProvider } from '@mui/material-nextjs/v15-appRouter'
+import { AppRouterCacheProvider } from '@mui/material-nextjs/v16-appRouter'
 import { Providers } from './providers'
 
 // latin-ext: Türkçe karakterler (ı, ş, ğ, İ) fallback fonta düşmesin
 const inter = Inter({ subsets: ['latin', 'latin-ext'], display: 'swap' })
 
 export const metadata: Metadata = {
-  title: 'ShiftUp — Mağaza Vardiya Yönetimi',
+  title: { default: 'ShiftUp — Mağaza Vardiya Yönetimi', template: '%s — ShiftUp' },
   description: 'Günlük operasyon, vardiya planlama ve personel devam takip sistemi',
   manifest: '/manifest.json',
   icons: {
-    icon: '/icon-192.svg',
-    apple: '/icon-192.svg',
+    icon: [
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icon-192.svg', type: 'image/svg+xml' },
+    ],
+    // iOS SVG touch icon'u desteklemez
+    apple: { url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
   },
   appleWebApp: {
     capable: true,

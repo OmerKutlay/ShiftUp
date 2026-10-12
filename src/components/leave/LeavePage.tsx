@@ -650,6 +650,7 @@ function LeaveCard({
                 size="small"
                 color="error"
                 onClick={onDelete}
+                aria-label="İzin talebini sil"
                 sx={{
                   border: '1px solid rgba(239,68,68,0.3)',
                   borderRadius: 1,

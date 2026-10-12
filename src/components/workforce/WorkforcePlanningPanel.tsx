@@ -332,17 +332,17 @@ export function WorkforcePlanningPanel() {
     <Box>
       {/* Hafta navigasyonu */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, flexWrap: 'wrap' }}>
-        <IconButton size="small" onClick={prevWeek} sx={{ color: 'text.secondary' }}>
+        <IconButton size="small" onClick={prevWeek} aria-label="Önceki hafta" sx={{ color: 'text.secondary' }}>
           <ChevronLeftIcon />
         </IconButton>
         <Typography variant="body2" fontWeight={600} sx={{ minWidth: 200, textAlign: 'center' }}>
           {weekLabel}
         </Typography>
-        <IconButton size="small" onClick={nextWeek} sx={{ color: 'text.secondary' }}>
+        <IconButton size="small" onClick={nextWeek} aria-label="Sonraki hafta" sx={{ color: 'text.secondary' }}>
           <ChevronRightIcon />
         </IconButton>
         <Tooltip title="Bu hafta">
-          <IconButton size="small" onClick={thisWeek} sx={{ color: 'text.secondary' }}>
+          <IconButton size="small" onClick={thisWeek} aria-label="Bu hafta" sx={{ color: 'text.secondary' }}>
             <TodayIcon fontSize="small" />
           </IconButton>
         </Tooltip>
