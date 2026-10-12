@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { requireAuth } from '@/lib/auth'
+import { notifyManagers } from '@/lib/notificationRepository'
 import { validateShiftAssignment } from '@/lib/workingTimeService'
 import { getWorkingTimeConfig } from '@/lib/workingTimeConfig'
 import { format, startOfWeek, endOfWeek, addDays } from 'date-fns'
@@ -136,6 +137,21 @@ export async function POST(req: NextRequest) {
     if (updateErr) {
       await admin.from('shift_assignments').delete().eq('id', newAssignment.id)
       return NextResponse.json({ error: updateErr.message }, { status: 500 })
+    }
+
+    try {
+      await notifyManagers(
+        admin,
+        {
+          type: 'open_shift_claimed',
+          title: 'Açık vardiya alındı',
+          message: `${currentEmployee.full_name}, ${openShift.work_date} ${openShift.start_time.slice(0, 5)}–${openShift.end_time.slice(0, 5)} açık vardiyasını üstlendi.`,
+          related_id: newAssignment.id,
+        },
+        { excludeEmployeeId: claimingEmployeeId },
+      )
+    } catch (notifErr) {
+      console.error('[POST /api/open-shifts/claim] bildirim gönderilemedi:', notifErr)
     }
 
     return NextResponse.json({

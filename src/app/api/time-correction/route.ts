@@ -13,7 +13,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { requireAuth, requireMinRole, ROLES, MANAGER_ROLES } from '@/lib/auth'
 import { hasRole } from '@/lib/auth'
-import { createNotification } from '@/lib/notificationRepository'
+import { createNotification, notifyManagers } from '@/lib/notificationRepository'
 import { applyTimeCorrection } from '@/lib/timeCorrectionService'
 import type { CreateTimeCorrectionPayload, DirectTimeCorrectionPayload } from '@/types/timeCorrection'
 import { format } from 'date-fns'
@@ -187,29 +187,16 @@ export async function POST(req: NextRequest) {
     // Yöneticilere bildirim
     try {
       const dateLabel = format(new Date(body.date + 'T00:00:00'), 'd MMMM yyyy', { locale: tr })
-      const { data: managers } = await admin
-        .from('employees')
-        .select('id, roles(name)')
-        .eq('active', true)
-
-      if (managers) {
-        const targets = managers.filter((m) => {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const rn = (m as any).roles?.name ?? null
-          return MANAGER_ROLES.includes(rn)
-        })
-        await Promise.allSettled(
-          targets.map((m) =>
-            createNotification(admin, {
-              employee_id: m.id,
-              type: 'time_correction_submitted',
-              title: 'Yeni Mesai Düzeltme Talebi',
-              message: `${currentEmployee.full_name} — ${dateLabel} için ${body.requested_start_time}–${body.requested_end_time} mesai düzeltme talebi oluşturdu.`,
-              related_id: data.id,
-            })
-          )
-        )
-      }
+      await notifyManagers(
+        admin,
+        {
+          type: 'time_correction_submitted',
+          title: 'Yeni Mesai Düzeltme Talebi',
+          message: `${currentEmployee.full_name} — ${dateLabel} için ${body.requested_start_time}–${body.requested_end_time} mesai düzeltme talebi oluşturdu.`,
+          related_id: data.id,
+        },
+        { excludeEmployeeId: currentEmployee.id },
+      )
     } catch (notifErr) {
       console.error('[POST /api/time-correction] bildirim gönderilemedi:', notifErr)
     }

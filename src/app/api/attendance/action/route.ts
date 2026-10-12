@@ -21,6 +21,8 @@ import type { AttendanceRecord, AttendanceStatus } from '@/types/attendance'
 import type { QrActionType } from '@/types/qr'
 import { QR_TO_ATTENDANCE_ACTION, QR_ACTION_LABELS } from '@/types/qr'
 import { format } from 'date-fns'
+import { notifyIfLateAttendance } from '@/lib/attendanceAlerts'
+import { resolveRecordedTime } from '@/lib/attendanceRounding'
 
 function toTurkeyTime(isoString: string): string {
   try {
@@ -155,6 +157,8 @@ export async function POST(req: NextRequest) {
     }
 
     const now = new Date().toISOString()
+    // Giriş/çıkış saati tolerans kuralına göre yuvarlanır (bkz. attendanceRounding)
+    const recorded = resolveRecordedTime(shift, attendanceAction, new Date(now), existingRecord)
 
     // Attendance kaydı oluştur veya güncelle
     let updatedRecord: AttendanceRecord
@@ -166,8 +170,9 @@ export async function POST(req: NextRequest) {
           employee_id: employeeId,
           shift_assignment_id: shift.id,
           status: nextStatus,
-          clock_in_at: now,
+          clock_in_at: recorded.recordedAt,
           verification_method: 'button',
+          ...(recorded.exceptionNote ? { exception_note: recorded.exceptionNote } : {}),
         })
         .select()
         .single()
@@ -180,10 +185,14 @@ export async function POST(req: NextRequest) {
       }
       updatedRecord = created as AttendanceRecord
     } else if (existingRecord) {
-      const patch = buildFieldPatch(currentStatus, attendanceAction, now)
+      const patch = buildFieldPatch(currentStatus, attendanceAction, recorded.recordedAt)
       const { data: updated, error: updateError } = await admin
         .from('attendance_records')
-        .update({ ...patch, verification_method: 'button' })
+        .update({
+          ...patch,
+          verification_method: 'button',
+          ...(recorded.exceptionNote ? { exception_note: recorded.exceptionNote } : {}),
+        })
         .eq('id', existingRecord.id)
         .select()
         .single()
@@ -202,13 +211,27 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const timeStr = toTurkeyTime(now)
+    // Geç giriş / geç çıkış → yöneticilere bildirim (hata attendance işlemini bozmaz)
+    if (attendanceAction === 'clock_in' || attendanceAction === 'clock_out') {
+      await notifyIfLateAttendance(admin, {
+        employeeId,
+        employeeName: employee.full_name,
+        shift,
+        action: attendanceAction,
+        at: new Date(now),
+        recordedAt: new Date(recorded.recordedAt),
+      })
+    }
+
+    const timeStr = toTurkeyTime(recorded.recordedAt)
     return NextResponse.json({
       success: true,
       action_type: actionType,
       new_status: updatedRecord.status,
       timestamp: timeStr,
-      message: `${QR_ACTION_LABELS[actionType]} başarılı — ${timeStr}`,
+      message: recorded.exceptionNote
+        ? `${QR_ACTION_LABELS[actionType]} başarılı — ${toTurkeyTime(now)}'de okutuldu, ${timeStr} olarak işlendi`
+        : `${QR_ACTION_LABELS[actionType]} başarılı — ${timeStr}`,
     })
   } catch (err) {
     console.error('[POST /api/attendance/action]', err)

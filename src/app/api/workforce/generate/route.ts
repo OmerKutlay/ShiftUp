@@ -12,8 +12,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { requireMinRole, ROLES } from '@/lib/auth'
 import { format, startOfWeek, endOfWeek, addDays } from 'date-fns'
-import { runPlanner } from '@/lib/workforcePlanner'
-import type { PlannerEmployee, PlannerShiftTemplate } from '@/lib/workforcePlanner'
+import { runPlanner, kindFromTimes } from '@/lib/workforcePlanner'
+import type { PlannerEmployee, PlannerShiftTemplate, ShiftKind } from '@/lib/workforcePlanner'
 import type { DayOfWeek } from '@/types/workforce'
 
 const DOW_MAP: Record<number, DayOfWeek> = {
@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
   if ('response' in auth) return auth.response
 
   try {
-    const body = (await req.json()) as { week?: string }
+    const body = (await req.json()) as { week?: string; seed?: number }
     const weekParam = body.week ?? format(new Date(), 'yyyy-MM-dd')
     const refDate = new Date(weekParam)
     if (isNaN(refDate.getTime())) {
@@ -72,7 +72,44 @@ export async function POST(req: NextRequest) {
       .lte('start_date', weekEnd)
       .gte('end_date', weekStart)
 
+    // Geçen haftanın vardiyaları (rotasyon için: izin günü ve açılış/kapanış kaydırılır)
+    const prevWeekStart = format(addDays(new Date(weekStart), -7), 'yyyy-MM-dd')
+    const prevWeekEnd   = format(addDays(new Date(weekStart), -1), 'yyyy-MM-dd')
+    const { data: prevShifts } = await admin
+      .from('shift_assignments')
+      .select('employee_id, work_date, start_time, end_time, is_on_leave')
+      .gte('work_date', prevWeekStart)
+      .lte('work_date', prevWeekEnd)
+
+    // Bu hafta zaten çalışılmış vardiyalar (giriş/çıkış kaydı olan) — aktarımda korunur,
+    // bu yüzden planlayıcı da bunları sabit kabul edip limitleri ona göre doldurur
+    const { data: weekShifts } = await admin
+      .from('shift_assignments')
+      .select('employee_id, work_date, start_time, end_time, shift_template_id, attendance_records ( id )')
+      .gte('work_date', weekStart)
+      .lte('work_date', weekEnd)
+    const fixedAssignments = (weekShifts ?? [])
+      .filter((s) => Array.isArray(s.attendance_records) && s.attendance_records.length > 0)
+      .map((s) => ({
+        employee_id:       s.employee_id as string,
+        work_date:         s.work_date as string,
+        start_time:        s.start_time as string,
+        end_time:          s.end_time as string,
+        shift_template_id: s.shift_template_id as string | null,
+      }))
+
     // ── Veri dönüşümü ─────────────────────────────────────────
+
+    // Geçen hafta → employee_id → dow → tür. Mağazada hiç kayıt yoksa geçen hafta bilinmiyor sayılır.
+    const hasPrevWeek = (prevShifts ?? []).length > 0
+    const lastWeekMap = new Map<string, Partial<Record<string, ShiftKind>>>()
+    for (const s of prevShifts ?? []) {
+      if (s.is_on_leave) continue
+      const empId = s.employee_id as string
+      if (!lastWeekMap.has(empId)) lastWeekMap.set(empId, {})
+      lastWeekMap.get(empId)![DOW_MAP[new Date(s.work_date as string).getDay()]] =
+        kindFromTimes(s.start_time as string, s.end_time as string)
+    }
 
     // Availability → employee_id → dow → records[]
     const availMap = new Map<string, Record<string, Array<{ start_time: string; end_time: string; is_available: boolean }>>>()
@@ -114,6 +151,7 @@ export async function POST(req: NextRequest) {
         employment_type: (e.employment_type as 'full_time' | 'part_time') ?? 'full_time',
         availability:    availMap.get(e.id as string) ?? {},
         leaveDays:       leaveMap.get(e.id as string) ?? new Set(),
+        lastWeek:        hasPrevWeek ? lastWeekMap.get(e.id as string) ?? {} : undefined,
       }
     })
 
@@ -131,6 +169,9 @@ export async function POST(req: NextRequest) {
       weekDays,
       employees: plannerEmployees,
       templates: plannerTemplates,
+      fixedAssignments,
+      // Her "Oluştur" farklı bir varyasyon üretir; aynı planı tekrar üretmek için seed gönderilebilir
+      seed: typeof body.seed === 'number' ? body.seed : Math.floor(Math.random() * 2 ** 31),
     })
 
     return NextResponse.json(result)
