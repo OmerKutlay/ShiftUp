@@ -32,7 +32,6 @@ vi.mock('@/lib/auth', () => ({
 vi.mock('@/lib/locationService', () => ({ validateLocationServerSide: vi.fn() }))
 
 import * as qrTokenService from '@/lib/qrTokenService'
-import { signKioskQr, currentStep } from '@/lib/kioskKeyService'
 import * as supabaseAdminModule from '@/lib/supabaseAdmin'
 import * as locationServiceModule from '@/lib/locationService'
 import { POST } from '@/app/api/qr/process/route'
@@ -81,12 +80,16 @@ function mockToken(action: NonNullable<QrToken['action_type']> = 'clock_in') {
   })
 }
 
-const KIOSK_KEY_ID = '11111111-2222-4333-8444-555555555555'
-const KIOSK_SECRET = Buffer.alloc(32, 7).toString('base64url')
+/** Kiosk ekranında gösterilen aktif tek kullanımlık kod */
+const KIOSK_TOKEN = 'k'.repeat(32)
+const KIOSK_QR = `SU2.${KIOSK_TOKEN}`
 
-/** Kiosk ekranının o anda gösterdiği kod (adım kaydırılabilir) */
-function kioskQr(stepOffset = 0): string {
-  return signKioskQr(KIOSK_SECRET, KIOSK_KEY_ID, currentStep() + stepOffset)
+const httpSend = vi.fn()
+const channel = vi.fn(() => ({ httpSend }))
+
+/** Aktif (kullanılmamış) kiosk kodları */
+function activeKioskTokens() {
+  return db.tables.qr_tokens.filter((t) => t.employee_id == null && t.used_at == null)
 }
 
 /** Türkiye saatiyle belirli bir an (UTC+3) */
@@ -105,15 +108,19 @@ function setupDb(opts: { shifts?: Record<string, unknown>[]; records?: Record<st
       ],
       attendance_records: opts.records ?? [],
       notifications: [],
-      kiosk_keys: [{
-        id: KIOSK_KEY_ID, secret: KIOSK_SECRET, revoked_at: null,
-        expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-        employees: { active: true, roles: { name: 'Kiosk' } },
+      qr_tokens: [{
+        id: 'kq-1', token: KIOSK_TOKEN, employee_id: null, action_type: null, used_at: null,
+        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
       }],
-      qr_scan_uses: [],
     },
-    { unique: { attendance_records: [['shift_assignment_id']], qr_scan_uses: [['key_id', 'time_step', 'employee_id']] } }
+    { unique: { attendance_records: [['shift_assignment_id']] } }
   )
+  // Realtime Broadcast (REST) — sunucu yeni kodu "kiosk-qr" kanalına yayınlar
+  httpSend.mockResolvedValue({ success: true })
+  Object.assign(db, {
+    channel,
+    removeChannel: vi.fn().mockResolvedValue('ok'),
+  })
   vi.mocked(supabaseAdminModule.createAdminClient).mockReturnValue(db as never)
 }
 
@@ -299,74 +306,88 @@ describe('/api/qr/process — attendance akışı', () => {
       records: [{ id: 'rec-001', employee_id: 'emp-001', shift_assignment_id: 'shift-001', status: 'working',
         clock_in_at: '2026-09-28T06:00:00Z', completed_break_minutes: 0 }],
     })
-    const { status, body } = await post({ qr_data: kioskQr(), intended_action: 'break_start' })
+    const { status, body } = await post({ qr_data: KIOSK_QR, intended_action: 'break_start' })
     expect(status).toBe(200)
     expect(body.new_status).toBe('on_break')
     expect(qrTokenService.validateAndConsumeToken).not.toHaveBeenCalled()
-    expect(db.tables.qr_scan_uses).toHaveLength(1)
   })
 })
 
 // ============================================================
 // Kiosk QR (yerelde imzalanan, TOTP benzeri)
 // ============================================================
-describe('/api/qr/process — kiosk QR', () => {
-  it('güncel kiosk kodu ile giriş yapılır', async () => {
-    const { status, body } = await post({ qr_data: kioskQr(), intended_action: 'clock_in' })
+describe('/api/qr/process — kiosk QR (tek kullanımlık + Broadcast)', () => {
+  it('okutma onaylanınca kod tüketilir, yeni kod üretilip kanala yayınlanır', async () => {
+    const { status, body } = await post({ qr_data: KIOSK_QR, intended_action: 'clock_in' })
     expect(status).toBe(200)
     expect(body.new_status).toBe('working')
+
+    expect(db.tables.qr_tokens.find((t) => t.token === KIOSK_TOKEN)?.used_at).toBeTruthy()
+    const active = activeKioskTokens()
+    expect(active).toHaveLength(1)
+    expect(active[0].token).not.toBe(KIOSK_TOKEN)
+
+    expect(channel).toHaveBeenCalledWith('kiosk-qr', { config: { private: true } })
+    expect(httpSend).toHaveBeenCalledWith('qr', { qr_data: `SU2.${active[0].token}` })
   })
 
-  it('bir önceki pencerenin kodu (okutma gecikmesi) kabul edilir', async () => {
-    const { status } = await post({ qr_data: kioskQr(-1), intended_action: 'clock_in' })
-    expect(status).toBe(200)
+  it('aynı anda okutanlardan yalnızca ilki kabul edilir, diğeri 409 alır', async () => {
+    setupDb({
+      shifts: [
+        { id: 'shift-001', employee_id: 'emp-001', work_date: '2026-09-28', start_time: '09:00', end_time: '18:00', is_on_leave: false },
+      ],
+    })
+    const results = await Promise.all([
+      post({ qr_data: KIOSK_QR, intended_action: 'clock_in' }),
+      post({ qr_data: KIOSK_QR, intended_action: 'clock_in' }),
+    ])
+    const statuses = results.map((r) => r.status).sort()
+    expect(statuses).toEqual([200, 409])
+    expect(results.find((r) => r.status === 409)?.body.code).toBe('QR_USED')
+    expect(db.tables.attendance_records).toHaveLength(1)
+    expect(activeKioskTokens()).toHaveLength(1)
+    expect(httpSend).toHaveBeenCalledTimes(1)
   })
 
-  it('iki pencere eski kod 410 döner', async () => {
-    const { status, body } = await post({ qr_data: kioskQr(-2), intended_action: 'clock_in' })
-    expect(status).toBe(410)
-    expect(body.code).toBe('QR_EXPIRED')
+  it('kullanılmış kod tekrar okutulamaz', async () => {
+    expect((await post({ qr_data: KIOSK_QR, intended_action: 'clock_in' })).status).toBe(200)
+    const again = await post({ qr_data: KIOSK_QR, intended_action: 'break_start' })
+    expect(again.status).toBe(409)
+    expect(again.body.code).toBe('QR_USED')
   })
 
-  it('imzası değiştirilmiş kod reddedilir', async () => {
-    const qr = kioskQr()
-    const tampered = qr.slice(0, -1) + (qr.endsWith('A') ? 'B' : 'A')
-    const { status, body } = await post({ qr_data: tampered, intended_action: 'clock_in' })
+  it('bilinmeyen / uydurma kiosk kodu reddedilir', async () => {
+    const { status, body } = await post({ qr_data: `SU2.${'x'.repeat(32)}`, intended_action: 'clock_in' })
     expect(status).toBe(400)
     expect(body.code).toBe('QR_INVALID')
+    expect(httpSend).not.toHaveBeenCalled()
   })
 
-  it('başka bir anahtarla üretilmiş kod reddedilir', async () => {
-    const forged = signKioskQr(Buffer.alloc(32, 9).toString('base64url'), KIOSK_KEY_ID, currentStep())
-    const { status } = await post({ qr_data: forged, intended_action: 'clock_in' })
+  it('biçimi bozuk kiosk kodu reddedilir', async () => {
+    const { status } = await post({ qr_data: 'SU2.kisa', intended_action: 'clock_in' })
     expect(status).toBe(400)
   })
 
-  it('iptal edilmiş anahtarın kodu reddedilir', async () => {
-    db.tables.kiosk_keys[0].revoked_at = new Date().toISOString()
-    const { status } = await post({ qr_data: kioskQr(), intended_action: 'clock_in' })
-    expect(status).toBe(410)
+  it('yayın hatası okutmayı bozmaz', async () => {
+    httpSend.mockRejectedValue(new Error('realtime down'))
+    const { status } = await post({ qr_data: KIOSK_QR, intended_action: 'clock_in' })
+    expect(status).toBe(200)
+    expect(activeKioskTokens()).toHaveLength(1)
   })
 
-  it('anahtarın sahibi pasifleştirildiyse kod reddedilir', async () => {
-    db.tables.kiosk_keys[0].employees = { active: false, roles: { name: 'Kiosk' } }
-    const { status } = await post({ qr_data: kioskQr(), intended_action: 'clock_in' })
-    expect(status).toBe(400)
-  })
-
-  it('aynı çalışan aynı kodu ikinci kez kullanamaz', async () => {
-    const qr = kioskQr()
-    expect((await post({ qr_data: qr, intended_action: 'clock_in' })).status).toBe(200)
-    const second = await post({ qr_data: qr, intended_action: 'break_start' })
-    expect(second.status).toBe(400)
-    expect(second.body.code).toBe('QR_USED')
-  })
-
-  it('konum reddedilirse kod tüketilmez', async () => {
+  it('konum reddedilirse kod tüketilmez ve değişmez', async () => {
     vi.mocked(locationServiceModule.validateLocationServerSide).mockResolvedValue(geofence(false, 900))
-    const { status } = await post({ qr_data: kioskQr(), intended_action: 'clock_in' })
+    const { status } = await post({ qr_data: KIOSK_QR, intended_action: 'clock_in' })
     expect(status).toBe(403)
-    expect(db.tables.qr_scan_uses).toHaveLength(0)
+    expect(activeKioskTokens()[0].token).toBe(KIOSK_TOKEN)
+    expect(httpSend).not.toHaveBeenCalled()
+  })
+
+  it('vardiyası olmayan çalışanın okutması kodu tüketmez', async () => {
+    setupDb({ shifts: [] })
+    const { status } = await post({ qr_data: KIOSK_QR, intended_action: 'clock_in' })
+    expect(status).toBe(404)
+    expect(activeKioskTokens()[0].token).toBe(KIOSK_TOKEN)
   })
 
   it('geç girişte ileri yuvarlanan saatten önce mola başlatılamaz', async () => {

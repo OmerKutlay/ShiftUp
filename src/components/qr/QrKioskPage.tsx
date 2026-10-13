@@ -1,68 +1,28 @@
 'use client'
 
 /**
- * QrKioskPage — Yerelde üretilen, zaman tabanlı imzalı QR (TOTP mantığı)
+ * QrKioskPage — Tek kullanımlık kiosk QR'ı, Supabase Realtime Broadcast ile güncellenir.
  *
- * Google Authenticator gibi: ortak gizli anahtar + 15 sn'lik zaman adımı → HMAC kodu.
- * Fark: gizli anahtar kalıcı değil, kısa ömürlü bir "access" anahtarıdır.
- *   - POST /api/kiosk/key → { key_id, secret, expires_at, server_time } (saatte ~1 istek)
- *   - Her 15 sn'de QR = "SU1.<key_id>.<step>.<HMAC-SHA256(secret, …)>" tarayıcıda hesaplanır
- *   - Anahtar bitmeden KEY_REFRESH_BEFORE_MS önce yenilenir; ağ hatasında mevcut anahtar
- *     süresi dolana kadar kullanılmaya devam eder (kiosk ekranı boş kalmaz)
- *   - Gizli anahtar yalnızca bellekte tutulur (localStorage yok); oturum (refresh) Supabase
- *     Auth çerezindedir — sayfa yenilenince yeni anahtar alınır.
- *
- * Çalışan, kendi telefonundaki "QR Tara" ekranıyla okutur; çalışan kimliği okutanın
- * oturumundan, işlem tipi onun seçiminden gelir.
+ * - Ekran private "kiosk-qr" kanalına abone olur (yalnızca aktif Kiosk / Müdür Yardımcısı+;
+ *   yetki realtime.messages RLS politikasıyla veritabanında denetlenir).
+ * - Abonelik kurulunca (ilk açılış ve her yeniden bağlanma) güncel kod GET /api/kiosk/qr ile
+ *   bir kez alınır. Sonrasında kod yalnızca biri okutup onaylandığında, sunucunun yayınıyla değişir.
+ * - Zamanlayıcı / periyodik istek yoktur.
  */
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Box, Typography, Alert, LinearProgress, Paper, Button } from '@mui/material'
+import { Box, Typography, Alert, Paper, Button, Chip } from '@mui/material'
 import QrCode2Icon from '@mui/icons-material/QrCode2'
 import LogoutIcon from '@mui/icons-material/Logout'
 import { QrCodeDisplay } from './QrCodeDisplay'
 import { useAuth } from '@/context/AuthContext'
 import { isKioskRole } from '@/lib/auth/roles'
+import { getSupabaseBrowserClient } from '@/lib/supabase/browser'
 
-const QR_PREFIX = 'SU1'
-const SIG_LENGTH = 22
-/** Anahtar süresi dolmadan bu kadar önce yenilenir */
-const KEY_REFRESH_BEFORE_MS = 5 * 60 * 1000
-const RETRY_MIN_MS = 5_000
-const RETRY_MAX_MS = 60_000
+const TOPIC = 'kiosk-qr'
+const EVENT = 'qr'
 
-interface KioskKeyResponse {
-  key_id: string
-  secret: string
-  expires_at: string
-  step_seconds: number
-  server_time: number
-}
-
-interface ActiveKey {
-  id: string
-  cryptoKey: CryptoKey
-  expiresAt: number
-  stepMs: number
-}
-
-function base64UrlToBytes(value: string): Uint8Array<ArrayBuffer> {
-  const b64 = value.replace(/-/g, '+').replace(/_/g, '/')
-  const bin = atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4))
-  return Uint8Array.from(bin, (c) => c.charCodeAt(0))
-}
-
-function bytesToBase64Url(bytes: Uint8Array): string {
-  let bin = ''
-  for (const b of bytes) bin += String.fromCharCode(b)
-  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}
-
-async function signStep(key: ActiveKey, step: number): Promise<string> {
-  const body = `${QR_PREFIX}.${key.id}.${step}`
-  const sig = await crypto.subtle.sign('HMAC', key.cryptoKey, new TextEncoder().encode(body))
-  return `${body}.${bytesToBase64Url(new Uint8Array(sig)).slice(0, SIG_LENGTH)}`
-}
+type LinkState = 'connecting' | 'live' | 'offline'
 
 export function QrKioskPage() {
   const router = useRouter()
@@ -70,111 +30,82 @@ export function QrKioskPage() {
   const isKiosk = isKioskRole(employee?.roles?.name ?? employee?.role_name)
 
   const [qrData, setQrData] = useState<string | null>(null)
-  const [secondsLeft, setSecondsLeft] = useState(0)
-  const [stepSeconds, setStepSeconds] = useState(15)
+  const [link, setLink] = useState<LinkState>('connecting')
   const [error, setError] = useState<string | null>(null)
+  /** Kod her değiştiğinde artar → QR kutusu kısa bir vurgu animasyonuyla yeniden çizilir */
+  const [changeCount, setChangeCount] = useState(0)
 
-  const keyRef = useRef<ActiveKey | null>(null)
-  /** Sunucu saati - kiosk saati (ms): kiosk saati yanlış olsa da pencere doğru hesaplanır */
-  const offsetRef = useRef(0)
-  const stepRef = useRef<number | null>(null)
-  const loadingKeyRef = useRef(false)
-  const retryMsRef = useRef(RETRY_MIN_MS)
-  const keyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const loadKeyRef = useRef<() => Promise<void>>(async () => {})
+  /** Her yayında artar: yayından eski bir GET yanıtı yeni kodun üzerine yazmasın */
+  const versionRef = useRef(0)
 
-  const scheduleKeyLoad = (delayMs: number) => {
-    if (keyTimerRef.current) clearTimeout(keyTimerRef.current)
-    keyTimerRef.current = setTimeout(() => void loadKeyRef.current(), Math.max(0, delayMs))
-  }
+  useEffect(() => {
+    const supabase = getSupabaseBrowserClient()
+    let disposed = false
 
-  const loadKey = useCallback(async () => {
-    if (loadingKeyRef.current) return
-    loadingKeyRef.current = true
-    try {
-      const requestedAt = Date.now()
-      const res = await fetch('/api/kiosk/key', { method: 'POST', credentials: 'same-origin', cache: 'no-store' })
-      if (res.status === 401) {
-        router.replace('/login?next=/qr-kiosk')
+    const showQr = (data: string) => {
+      setQrData((prev) => {
+        if (prev && prev !== data) setChangeCount((n) => n + 1)
+        return data
+      })
+    }
+
+    const fetchCurrent = async () => {
+      const startedAt = versionRef.current
+      try {
+        const res = await fetch('/api/kiosk/qr', { credentials: 'same-origin', cache: 'no-store' })
+        if (res.status === 401) {
+          router.replace('/login?next=/qr-kiosk')
+          return
+        }
+        if (!res.ok) {
+          const body = (await res.json().catch(() => ({}))) as { error?: string }
+          throw new Error(body.error ?? 'QR kodu alınamadı.')
+        }
+        const { qr_data } = (await res.json()) as { qr_data: string }
+        if (!disposed && versionRef.current === startedAt) showQr(qr_data)
+        setError(null)
+      } catch (err) {
+        if (!disposed) setError(err instanceof Error ? err.message : 'QR kodu alınamadı.')
+      }
+    }
+
+    const channel = supabase.channel(TOPIC, { config: { private: true } })
+
+    const start = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (disposed) return
+      if (!session) {
+        setLink('offline')
+        setError('Gerçek zamanlı bağlantı için oturum bulunamadı. Çıkış yapıp yeniden giriş yapın.')
         return
       }
-      if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string }
-        throw new Error(body.error ?? 'Kiosk anahtarı alınamadı.')
-      }
-      const data = (await res.json()) as KioskKeyResponse
-      // İstek süresinin yarısı kadar gecikme payıyla saat farkı
-      offsetRef.current = data.server_time - (requestedAt + Date.now()) / 2
+      await supabase.realtime.setAuth(session.access_token)
 
-      const cryptoKey = await crypto.subtle.importKey(
-        'raw', base64UrlToBytes(data.secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
-      )
-      const expiresAt = new Date(data.expires_at).getTime()
-      keyRef.current = { id: data.key_id, cryptoKey, expiresAt, stepMs: data.step_seconds * 1000 }
-      stepRef.current = null // yeni anahtarla hemen yeni kod
-      setStepSeconds(data.step_seconds)
-      setError(null)
-      retryMsRef.current = RETRY_MIN_MS
-      scheduleKeyLoad(expiresAt - KEY_REFRESH_BEFORE_MS - (Date.now() + offsetRef.current))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kiosk anahtarı alınamadı.')
-      scheduleKeyLoad(retryMsRef.current)
-      retryMsRef.current = Math.min(retryMsRef.current * 2, RETRY_MAX_MS)
-    } finally {
-      loadingKeyRef.current = false
+      channel
+        .on('broadcast', { event: EVENT }, ({ payload }) => {
+          const data = (payload as { qr_data?: unknown })?.qr_data
+          if (typeof data !== 'string') return
+          versionRef.current += 1
+          showQr(data)
+        })
+        .subscribe((status) => {
+          if (disposed) return
+          if (status === 'SUBSCRIBED') {
+            setLink('live')
+            // İlk açılış / yeniden bağlanma: arada kaçan yayınlar olabilir → güncel kodu bir kez al
+            void fetchCurrent()
+          } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+            setLink('offline')
+          }
+        })
+    }
+    void start()
+
+    return () => {
+      disposed = true
+      void supabase.removeChannel(channel)
     }
   }, [router])
-
-  useEffect(() => { loadKeyRef.current = loadKey }, [loadKey])
-
-  // İlk anahtar + saniyelik kod döngüsü (yalnızca yerel hesaplama, ağ isteği yok)
-  useEffect(() => {
-    void loadKeyRef.current()
-
-    let cancelled = false
-    const tick = async () => {
-      const key = keyRef.current
-      const now = Date.now() + offsetRef.current
-      if (!key) return
-      if (now >= key.expiresAt) {
-        // Yenileme başarısız oldu ve anahtar bitti — eski kodu gösterme
-        keyRef.current = null
-        stepRef.current = null
-        setQrData(null)
-        void loadKeyRef.current()
-        return
-      }
-      const step = Math.floor(now / key.stepMs)
-      setSecondsLeft(Math.ceil((key.stepMs - (now % key.stepMs)) / 1000))
-      if (step !== stepRef.current) {
-        stepRef.current = step
-        const data = await signStep(key, step)
-        if (!cancelled && keyRef.current === key) setQrData(data)
-      }
-    }
-    const interval = setInterval(() => void tick(), 250)
-    return () => {
-      cancelled = true
-      clearInterval(interval)
-      if (keyTimerRef.current) clearTimeout(keyTimerRef.current)
-    }
-  }, [])
-
-  // Uyku/arka plandan dönünce anahtar bitmek üzereyse hemen yenile
-  useEffect(() => {
-    const onVisibility = () => {
-      if (document.hidden) return
-      const key = keyRef.current
-      if (!key || key.expiresAt - (Date.now() + offsetRef.current) < KEY_REFRESH_BEFORE_MS) {
-        void loadKeyRef.current()
-      }
-    }
-    document.addEventListener('visibilitychange', onVisibility)
-    return () => document.removeEventListener('visibilitychange', onVisibility)
-  }, [])
-
-  const progressValue = (secondsLeft / stepSeconds) * 100
-  const progressColor = secondsLeft <= 3 ? '#ef4444' : '#14b8a6'
 
   return (
     <Box sx={{
@@ -212,40 +143,26 @@ export function QrKioskPage() {
         borderRadius: 3, bgcolor: 'background.paper', width: '100%', maxWidth: 400,
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
       }}>
-        {error && (
-          <Alert severity={qrData ? 'warning' : 'error'} sx={{ width: '100%' }}>
-            {qrData ? `${error} Mevcut kod geçerli, tekrar deneniyor.` : error}
-          </Alert>
-        )}
+        <Chip
+          size="small"
+          label={link === 'live' ? 'Canlı' : link === 'connecting' ? 'Bağlanıyor…' : 'Bağlantı yok — yeniden deneniyor'}
+          color={link === 'live' ? 'success' : link === 'connecting' ? 'default' : 'error'}
+          variant="outlined"
+        />
 
-        <Box sx={{ width: '100%', maxWidth: 280, mx: 'auto' }}>
+        {error && <Alert severity="error" sx={{ width: '100%' }}>{error}</Alert>}
+
+        <Box key={changeCount} sx={{
+          width: '100%', maxWidth: 280, mx: 'auto', opacity: link === 'offline' ? 0.35 : 1,
+          '@keyframes kioskQrSwap': { from: { opacity: 0.2, transform: 'scale(0.96)' }, to: { opacity: 1, transform: 'none' } },
+          animation: changeCount > 0 ? 'kioskQrSwap 0.35s ease-out' : 'none',
+        }}>
           <QrCodeDisplay data={qrData ?? ''} size={280} loading={!qrData} />
         </Box>
 
-        {qrData && (
-          <Box sx={{ width: '100%' }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.75 }}>
-              <Typography variant="caption" color="text.secondary">Yeni kod</Typography>
-              <Typography variant="caption" fontWeight={700}
-                color={secondsLeft <= 3 ? 'error.main' : 'text.secondary'}>
-                {secondsLeft}s
-              </Typography>
-            </Box>
-            <LinearProgress
-              variant="determinate"
-              value={progressValue}
-              sx={{
-                height: 5, borderRadius: 3,
-                bgcolor: 'rgba(255,255,255,0.06)',
-                '& .MuiLinearProgress-bar': { bgcolor: progressColor, borderRadius: 3, transition: 'none' },
-              }}
-            />
-          </Box>
-        )}
-
         <Typography variant="caption" color="text.disabled" textAlign="center" sx={{ maxWidth: 260 }}>
-          Kod her {stepSeconds} saniyede bir bu cihazda yenilenir; okutmak için ShiftUp&apos;a
-          giriş yapmış olmanız gerekir.
+          Kod tek kullanımlıktır; biri okutup onaylandığında otomatik olarak yenisi gelir.
+          Okutmak için ShiftUp&apos;a giriş yapmış olmanız gerekir.
         </Typography>
       </Paper>
     </Box>
