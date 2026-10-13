@@ -82,7 +82,7 @@ Bu URL'yi kopyalayın — telefonda bu adresi kullanacaksınız.
    ```
    https://xxxx-xxxx-xxxx-xxxx.trycloudflare.com/qr-kiosk
    ```
-2. Yönetici hesabıyla giriş yapın (kiosk QR'ı yalnızca yöneticiler üretebilir)
+2. Kiosk rolündeki hesapla (veya Müdür Yardımcısı+) giriş yapın — QR kodları cihazda yerelde üretilir
 3. QR kodu ekranda görünür (her 10 sn ve her okutmadan sonra yenilenir)
 
 #### Telefon tarafı (çalışan):
@@ -133,5 +133,5 @@ Safari'de konum "İzin Ver" seçmiş olsanız bile hata alıyorsanız:
 | Konum (GPS) | ✅ HTTPS zorunluluğu Cloudflare ile karşılanıyor |
 | QR içeriği | Relative path değil — QR payload içinde URL yok, sadece token |
 | Tunnel süresi | Geçici — process kapatılınca tunnel sona erer, URL değişir |
-| Rate limit | Kiosk: 120 QR/dakika, okutma: 30 işlem/dakika (çalışan başına) |
+| Rate limit | Kiosk anahtarı: 30/saat (normalde saatte 1), okutma: 30 işlem/dakika (çalışan başına) |
 

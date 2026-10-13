@@ -120,8 +120,7 @@ describe('qrTokenService — validateAndConsumeToken', () => {
 
     const result = await validateAndConsumeToken(qrData)
     expect(result.token.token).toBe(record.token)
-    expect(result.isKiosk).toBe(false)
-    expect((result.payload as import('@/types/qr').QrPayload).action).toBe('clock_in')
+    expect(result.payload.action).toBe('clock_in')
     expect(db.tables.qr_tokens[0].used_at).toBeTruthy()
   })
 

@@ -10,7 +10,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentEmployee, type SessionEmployee } from './session'
-import { roleAtLeast, type RoleName } from './roles'
+import { isKioskRole, roleAtLeast, type RoleName } from './roles'
 
 // ─── Response helpers ────────────────────────────────────────
 
@@ -35,17 +35,24 @@ export function forbidden(message = 'Bu işlem için yetkiniz yok.') {
  * Unauthenticated ise { response: 401 } döner.
  * Authenticated ise { employee } döner.
  *
+ * Kiosk hesapları varsayılan olarak reddedilir (403): kiosk cihazı yalnızca kiosk
+ * route'larını ({ allowKiosk: true }) kullanabilir; çalışan/yönetici API'lerine erişemez.
+ *
  * Kullanım:
  *   const auth = await requireAuth(req)
  *   if ('response' in auth) return auth.response
  *   const { employee } = auth
  */
 export async function requireAuth(
-  req: NextRequest
+  req: NextRequest,
+  { allowKiosk = false }: { allowKiosk?: boolean } = {}
 ): Promise<{ employee: SessionEmployee } | { response: NextResponse }> {
   const employee = await getCurrentEmployee(req)
   if (!employee) {
     return { response: unauthorized() }
+  }
+  if (!allowKiosk && isKioskRole(employee.role_name)) {
+    return { response: forbidden('Kiosk hesabı bu işlemi yapamaz.') }
   }
   return { employee }
 }

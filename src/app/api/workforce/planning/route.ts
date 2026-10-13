@@ -22,6 +22,7 @@ import { getWeekDays } from '@/lib/scheduleUtils'
 import { turkeyToday } from '@/lib/dateUtils'
 import { isValidDate } from '@/lib/validation'
 import { serverError } from '@/lib/apiErrors'
+import { NOT_KIOSK_FILTER } from '@/lib/auth/roles'
 
 export async function GET(req: NextRequest) {
   // Yalnızca Müdür Yardımcısı ve üzeri erişebilir
@@ -70,6 +71,7 @@ export async function GET(req: NextRequest) {
       .from('employees')
       .select('id, full_name, role, role_id, active, employment_type')
       .eq('active', true)
+      .or(NOT_KIOSK_FILTER)
       .order('full_name')
 
     if (empErr) {

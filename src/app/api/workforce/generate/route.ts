@@ -26,6 +26,7 @@ import type { PlannerEmployee, PlannerShiftTemplate, ShiftKind } from '@/lib/wor
 import type { DayOfWeek } from '@/types/workforce'
 import { isAutoWeeklyRest } from '@/types/leave'
 import { grossMins } from '@/lib/laborLaw'
+import { NOT_KIOSK_FILTER } from '@/lib/auth/roles'
 
 const DOW_MAP: Record<number, DayOfWeek> = {
   0: 'sunday', 1: 'monday', 2: 'tuesday', 3: 'wednesday',
@@ -57,6 +58,7 @@ export async function POST(req: NextRequest) {
         .from('employees')
         .select('id, full_name, role, employment_type, active, birth_date, roles ( name )')
         .eq('active', true)
+        .or(NOT_KIOSK_FILTER)
         .order('full_name'),
       admin
         .from('shift_templates')

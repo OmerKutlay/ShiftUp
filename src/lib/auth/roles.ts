@@ -13,9 +13,24 @@ export const ROLES = {
   MAGAZA_MUDURU: 'Mağaza Müdürü',
   MUDUR_YARDIMCISI: 'Müdür Yardımcısı',
   CALISAN: 'Çalışan',
+  /** Kiosk cihaz hesabı — hiyerarşi dışında; yalnızca kiosk ekranını açabilir */
+  KIOSK: 'Kiosk',
 } as const
 
 export type RoleName = (typeof ROLES)[keyof typeof ROLES]
+
+/** roles tablosundaki sabit Kiosk satırı (20261013100000_kiosk_role_and_signing_keys.sql) */
+export const KIOSK_ROLE_ID = '00000000-0000-0000-0000-000000000005'
+
+export function isKioskRole(roleName: string | null | undefined): boolean {
+  return roleName === ROLES.KIOSK
+}
+
+/**
+ * Kiosk hesaplarını çalışan listelerinden (plan, puantaj, raporlar) çıkaran PostgREST filtresi.
+ * role_id NULL olan çalışanlar korunur (neq tek başına NULL'ları da elerdi).
+ */
+export const NOT_KIOSK_FILTER = `role_id.is.null,role_id.neq.${KIOSK_ROLE_ID}`
 
 /**
  * Rol hiyerarşisi — yüksek index = daha fazla yetki

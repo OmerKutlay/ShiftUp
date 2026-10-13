@@ -53,7 +53,7 @@ function makeEmployee(overrides: Partial<EmployeeWithRole> = {}): EmployeeWithRo
 // Chainable Supabase builder helper
 function buildChain(terminal: Record<string, unknown>) {
   const chain: Record<string, unknown> = {}
-  const methods = ['select', 'eq', 'order', 'insert', 'update', 'single', 'maybeSingle']
+  const methods = ['select', 'eq', 'or', 'order', 'insert', 'update', 'single', 'maybeSingle']
   methods.forEach((m) => {
     chain[m] = vi.fn(() => ({ ...chain, ...terminal }))
   })

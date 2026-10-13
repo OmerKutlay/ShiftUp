@@ -1,16 +1,15 @@
 /**
  * POST /api/qr/generate
  *
- * İki mod:
- *   kiosk: true → Evrensel kiosk QR (yalnızca Müdür Yardımcısı+ — kiosk ekranı)
- *   kiosk: false/undefined → Klasik çalışan bazlı QR (yalnızca Müdür Yardımcısı+)
+ * Klasik çalışan bazlı QR (yalnızca Müdür Yardımcısı+).
+ * Kiosk QR'ları sunucuda üretilmez — bkz. /api/kiosk/key ve kioskKeyService.
  *
  * Çalışanlar QR üretemez; aksi halde evden kendi ürettikleri kodu okutarak
  * mağazada bulunma şartını atlayabilirlerdi.
  * Token ömrü en fazla 60 sn — ekran fotoğrafıyla uzaktan okutma penceresini daraltır.
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { generateQrToken, generateKioskQrToken, QrTokenError } from '@/lib/qrTokenService'
+import { generateQrToken, QrTokenError } from '@/lib/qrTokenService'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { checkRateLimit } from '@/lib/rateLimiter'
 import { requireMinRole, ROLES } from '@/lib/auth'
@@ -21,8 +20,6 @@ import type { GenerateQrRequest } from '@/types/qr'
 const VALID_ACTIONS = ['clock_in', 'break_start', 'break_end', 'clock_out'] as const
 const RATE_LIMIT_MAX = 20
 const RATE_LIMIT_WINDOW_MS = 60 * 1000
-// Kiosk 10 sn'de bir + her okutmada yeni QR üretir; yoğun vardiya değişimlerinde de yetmeli
-const KIOSK_RATE_LIMIT_MAX = 120
 const MAX_TTL_SECONDS = 60
 
 export async function POST(req: NextRequest) {
@@ -36,21 +33,9 @@ export async function POST(req: NextRequest) {
         ? Math.min(body.ttl_seconds, MAX_TTL_SECONDS)
         : MAX_TTL_SECONDS
 
-    // ── Kiosk modu ────────────────────────────────────────────
-    if (body.kiosk === true) {
-      // Kiosk cihazını çalıştıran yönetici bazlı limit (global anahtar başkalarınca tüketilemez)
-      const rateCheck = await checkRateLimit(`qr_gen:kiosk:${auth.employee.id}`, KIOSK_RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS)
-      if (!rateCheck.allowed) {
-        return NextResponse.json({ error: 'Çok fazla QR talebi.', code: 'RATE_LIMITED' }, { status: 429 })
-      }
-      const result = await generateKioskQrToken(ttl)
-      return NextResponse.json(result, { status: 201 })
-    }
-
-    // ── Klasik mod ────────────────────────────────────────────
     if (!isUuid(body.employee_id)) {
       return NextResponse.json(
-        { error: 'employee_id veya kiosk:true zorunludur.', code: 'VALIDATION_ERROR' },
+        { error: 'employee_id zorunludur.', code: 'VALIDATION_ERROR' },
         { status: 400 }
       )
     }

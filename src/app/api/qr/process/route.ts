@@ -4,7 +4,8 @@
  * QR token'ı doğrular ve oturumdaki çalışanın devam kaydını günceller.
  *
  * Employee belirleme:
- *   - Kiosk QR: employee session'dan alınır
+ *   - Kiosk QR ("SU1.…", kiosk ekranında yerelde imzalanır): employee session'dan alınır;
+ *     imza + 15 sn'lik pencere + (anahtar, pencere, çalışan) tekrar kullanım kontrolü
  *   - Klasik QR: token'daki employee_id ile session eşleşmeli (spoofing önlemi)
  *
  * Action belirleme:
@@ -16,6 +17,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAndConsumeToken, QrTokenError } from '@/lib/qrTokenService'
+import { isKioskQr, verifyKioskQr, markKioskQrUsed, type VerifiedKioskQr } from '@/lib/kioskKeyService'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { AttendanceRuleError } from '@/lib/attendanceStateMachine'
 import type { AttendanceAction } from '@/lib/attendanceStateMachine'
@@ -109,20 +111,26 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // QR token doğrula + tek kullanım tüket (atomik)
-    const { token: qrToken, isKiosk } = await validateAndConsumeToken(body.qr_data)
-
+    const admin = createAdminClient()
     const employeeId = sessionEmployee.id
 
-    // Klasik QR'da token'daki employee ile session eşleşmeli (başkası adına okutma engeli)
-    if (!isKiosk && qrToken.employee_id && qrToken.employee_id !== employeeId) {
-      return NextResponse.json(
-        { error: 'Bu QR kodu size ait değil. Başkası adına okutamazsınız.', code: 'QR_INVALID' },
-        { status: 403 }
-      )
+    // Kiosk QR: imza/pencere doğrulanır (henüz tüketilmez — çalışan/vardiya kontrollerinden sonra)
+    // Klasik QR: doğrula + tek kullanım tüket (atomik)
+    let kioskQr: VerifiedKioskQr | null = null
+    let classicAction: QrActionType | null = null
+    if (isKioskQr(body.qr_data)) {
+      kioskQr = await verifyKioskQr(admin, body.qr_data)
+    } else {
+      const { token: qrToken } = await validateAndConsumeToken(body.qr_data)
+      // Token'daki employee ile session eşleşmeli (başkası adına okutma engeli)
+      if (qrToken.employee_id && qrToken.employee_id !== employeeId) {
+        return NextResponse.json(
+          { error: 'Bu QR kodu size ait değil. Başkası adına okutamazsınız.', code: 'QR_INVALID' },
+          { status: 403 }
+        )
+      }
+      classicAction = qrToken.action_type
     }
-
-    const admin = createAdminClient()
 
     // Employee aktiflik kontrolü
     const { data: employee, error: empError } = await admin
@@ -144,14 +152,17 @@ export async function POST(req: NextRequest) {
 
     // Klasik QR: token'daki aksiyon bağlayıcı. Kiosk: kullanıcı seçimi ya da otomatik.
     let actionType: QrActionType
-    if (!isKiosk && qrToken.action_type) {
-      actionType = qrToken.action_type
+    if (classicAction) {
+      actionType = classicAction
     } else if (body.intended_action && VALID_ACTIONS.includes(body.intended_action)) {
       actionType = body.intended_action
     } else {
       actionType = ATTENDANCE_TO_QR[suggestNextAction(currentStatus)]
     }
     const attendanceAction = QR_TO_ATTENDANCE_ACTION[actionType] as AttendanceAction
+
+    // Aynı çalışan aynı kiosk kodunu ikinci kez kullanamaz (atomik)
+    if (kioskQr) await markKioskQrUsed(admin, kioskQr, employeeId)
 
     const result = await performAttendanceAction({
       admin,
