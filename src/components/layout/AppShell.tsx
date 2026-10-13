@@ -159,7 +159,7 @@ export function AppShell({ children }: Props) {
               <ListItemButton
                 component={Link}
                 href={item.href}
-                prefetch
+                prefetch={false}
                 onClick={() => {
                   if (isMobile) setMobileOpen(false)
                 }}
