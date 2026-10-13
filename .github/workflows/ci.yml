@@ -17,8 +17,8 @@ jobs:
     env:
       # Build yalnızca derleme yapar; API route'ları çalıştırılmaz. Gerçek anahtar gerekmez.
       NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
-      SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-role-key
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ci-placeholder-publishable-key
+      SUPABASE_SECRET_KEY: ci-placeholder-secret-key
       AUTH_MODE: production
       NEXT_TELEMETRY_DISABLED: 1
     steps:

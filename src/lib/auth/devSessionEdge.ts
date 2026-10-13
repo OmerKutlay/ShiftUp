@@ -21,7 +21,7 @@ function fromBase64Url(value: string): string {
 }
 
 async function hmac(data: string): Promise<string | null> {
-  const s = process.env.DEV_SESSION_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY
+  const s = process.env.DEV_SESSION_SECRET || process.env.SUPABASE_SECRET_KEY
   if (!s) return null
   const enc = new TextEncoder()
   const key = await crypto.subtle.importKey('raw', enc.encode(s), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
