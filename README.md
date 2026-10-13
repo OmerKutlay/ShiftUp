@@ -68,7 +68,7 @@ CI (`.github/workflows/ci.yml`) her PR'da typecheck, lint, test ve build çalı�
   (`requireAuth`, `requireMinRole`, `canAccessEmployee`).
 - **Rol hiyerarşisi:** Yönetici > Mağaza Müdürü > Müdür Yardımcısı > Çalışan. Yöneticiler yalnızca
   kendilerinden düşük roldeki çalışanları düzenleyebilir; kimse kendi talebini onaylayamaz.
-- **Sayfa koruması:** `src/proxy.ts` oturumu, hesabın aktifliğini ve sayfa rolünü kontrol eder;
+- **Sayfa koruması:** `src/middleware.ts` oturumu, hesabın aktifliğini ve sayfa rolünü kontrol eder;
   başka origin'den gelen yazma isteklerini reddeder.
 - **Devam kaydı:** QR + geofence zorunlu, QR token'ları tek kullanımlık ve atomik tüketilir;
   durum geçişleri iyimser kilitle (optimistic lock) yapılır.
@@ -97,7 +97,7 @@ src/
 │   ├── *Repository.ts       # Sunucu tarafı veri erişimi (lib/db)
 │   ├── *Service.ts          # İş kuralları (devam, mesai düzeltme, izin)
 │   └── laborLaw.ts, workingTimeService.ts, workforcePlanner.ts
-├── proxy.ts                 # Oturum + sayfa yetkisi + CSRF
+├── middleware.ts            # Oturum + sayfa yetkisi + CSRF
 └── types/
 supabase/migrations/         # Şema, RLS, kısıtlar
 docs/                        # Geliştirici notları (ör. telefonla QR testi: docs/dev-tunnel.md)

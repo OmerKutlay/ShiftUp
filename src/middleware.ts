@@ -1,5 +1,10 @@
 /**
- * Next.js Proxy (eski adı: Middleware)
+ * Next.js Middleware (Edge runtime)
+ *
+ * Next 16 bu dosyayı proxy.ts olarak yeniden adlandırdı, ancak proxy yalnızca Node.js runtime'ında
+ * çalışır. Cloudflare Workers'ta Node middleware deneyseldir ve Worker paketine Next sunucusunun
+ * ikinci bir kopyasını ekleyerek 3 MB ücretsiz plan sınırını aşar; Next 16 dokümanı Edge için
+ * middleware.ts'in kullanılmaya devam edilmesini söyler.
  *
  * 1. CSRF: başka origin'den gelen yazma istekleri (POST/PATCH/PUT/DELETE) /api'de reddedilir.
  * 2. Oturum: AUTH_MODE=development → imzalı dev_auth_session çerezi;
@@ -12,7 +17,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { DEV_SESSION_COOKIE, IS_DEV_AUTH } from '@/lib/authConfig'
-import { verifyDevSession } from '@/lib/auth/devSession'
+import { verifyDevSessionEdge } from '@/lib/auth/devSessionEdge'
 import { roleAtLeast, ROLES, type RoleName } from '@/lib/auth/roles'
 
 const PUBLIC_PATHS = ['/login', '/offline']
@@ -89,7 +94,7 @@ function redirectToLogin(request: NextRequest) {
   return NextResponse.redirect(loginUrl)
 }
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
   const isApi = pathname.startsWith('/api/')
 
@@ -102,7 +107,7 @@ export async function proxy(request: NextRequest) {
   let identity: { id?: string; authUserId?: string } | null = null
 
   if (IS_DEV_AUTH) {
-    const session = verifyDevSession(request.cookies.get(DEV_SESSION_COOKIE)?.value)
+    const session = await verifyDevSessionEdge(request.cookies.get(DEV_SESSION_COOKIE)?.value)
     if (session) identity = { id: session.employeeId }
   } else {
     const { createSupabaseMiddlewareClient } = await import('@/lib/supabase/middleware-client')
