@@ -13,6 +13,7 @@
  *   - QR onaylandıktan sonra sonuç gösterilir, ardından amaç seçimine geri dönülür.
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
+import dynamic from 'next/dynamic'
 import {
   Box,
   Typography,
@@ -41,10 +42,12 @@ import { QR_ACTION_LABELS } from '@/types/qr'
 import type { ProcessQrResponse } from '@/types/qr'
 import type { GpsCoordinates } from '@/types/location'
 import { useAuth } from '@/context/AuthContext'
-import { QrScanner } from './QrScanner'
 import { LOADING_LABEL } from '@/components/common'
 
 import { CurrentStatusResponse, PageState, ATTENDANCE_STATUS_TR, STATUS_COLORS, STATUS_BG_COLORS, getButtons, getCurrentPosition } from './scanPageHelpers'
+
+// html5-qrcode yalnızca tarayıcıda çalışır; ssr:false ile sunucu paketine (Cloudflare Worker 3 MB sınırı) girmez
+const QrScanner = dynamic(() => import('./QrScanner').then((m) => m.QrScanner), { ssr: false })
 
 // ─── Ana Component ────────────────────────────────────────────
 

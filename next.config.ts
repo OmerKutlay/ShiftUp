@@ -24,11 +24,12 @@ const csp = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
-  // Keep-alive: sayfalar arası geçişte son ziyaret edilen rotalar unmount edilmek yerine
-  // React <Activity mode="hidden"> ile saklanır; geri dönüldüğünde state (yüklenmiş veri,
-  // filtreler, scroll) korunur. Effect'ler yeniden çalıştığı için veri arka planda tazelenir.
-  cacheComponents: true,
-  partialPrefetching: true,
+  // Cache Components (ve ona bağlı keep-alive / partialPrefetching) kapalı: Cloudflare Workers'ta
+  // (OpenNext) staged render workerd üzerinde askıda kalıyor ve sayfalar 500 dönüyor.
+  // Bkz. vercel/next.js#94880, opennextjs/opennextjs-cloudflare#1318 — düzeltme yayınlanınca tekrar açılabilir.
+  // Kapalıyken sayfalar arası geçişte filtre/scroll state'i korunmaz; veri SWR önbelleğinden gelir.
+  cacheComponents: false,
+  partialPrefetching: false,
   experimental: {
     // API route'larındaki try/catch'lerin yakalayıp logladığı prerender bail-out gürültüsünü gizler
     hideLogsAfterAbort: true,

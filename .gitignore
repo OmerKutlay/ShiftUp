@@ -53,3 +53,8 @@ __test_*.json
 # Playwright CLI output (may contain credentials)
 .playwright-cli/
 .playwright/
+
+# Cloudflare (OpenNext / Wrangler)
+.open-next/
+.wrangler/
+.dev.vars*
