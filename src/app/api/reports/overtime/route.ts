@@ -9,6 +9,7 @@ import { requireMinRole, ROLES } from '@/lib/auth'
 import { badRequest, serverError } from '@/lib/apiErrors'
 import { overtimeYearRange, summarizeOvertime, type OvertimeShift } from '@/lib/overtime'
 import type { AttendanceTimes } from '@/lib/attendanceDurations'
+import { NOT_KIOSK_FILTER } from '@/lib/auth/roles'
 
 const PAGE = 1000
 
@@ -26,6 +27,7 @@ export async function GET(req: NextRequest) {
     const { data: employees, error: empErr } = await admin
       .from('employees')
       .select('id, full_name, overtime_consent_at, active')
+      .or(NOT_KIOSK_FILTER)
       .order('full_name')
     if (empErr) return serverError('GET /api/reports/overtime', empErr)
 

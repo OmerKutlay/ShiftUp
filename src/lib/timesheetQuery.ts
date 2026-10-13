@@ -5,6 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { buildTimesheet, timesheetDataRange, type TimesheetRow, type TimesheetShift, type TimesheetEmployee } from '@/lib/timesheet'
 import { turkeyToday } from '@/lib/dateUtils'
 import type { PublicHoliday } from '@/types/holiday'
+import { NOT_KIOSK_FILTER } from '@/lib/auth/roles'
 
 const PAGE = 1000
 
@@ -25,7 +26,7 @@ export async function queryTimesheet(admin: SupabaseClient, month: string): Prom
   const { from, to } = timesheetDataRange(month)
 
   const [employeesRes, holidaysRes] = await Promise.all([
-    admin.from('employees').select('id, full_name, role, employment_type, overtime_consent_at, active').order('full_name'),
+    admin.from('employees').select('id, full_name, role, employment_type, overtime_consent_at, active').or(NOT_KIOSK_FILTER).order('full_name'),
     admin.from('public_holidays').select('date, name, half_day').gte('date', from).lte('date', to),
   ])
   if (employeesRes.error) throw employeesRes.error

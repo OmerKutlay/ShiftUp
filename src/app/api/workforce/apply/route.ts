@@ -34,6 +34,7 @@ import { logAudit } from '@/lib/auditLog'
 import { completedYears, minorWorkViolations } from '@/lib/laborLaw'
 import { netWorkMins } from '@/lib/workingTimeService'
 import type { EmploymentType } from '@/types/employee'
+import { NOT_KIOSK_FILTER } from '@/lib/auth/roles'
 
 const MAX_ASSIGNMENTS = 500
 
@@ -81,7 +82,7 @@ export async function POST(req: NextRequest) {
         .select('*, attendance_records ( id )')
         .gte('work_date', weekStart)
         .lte('work_date', weekEnd),
-      admin.from('employees').select('id, full_name, active, employment_type, birth_date'),
+      admin.from('employees').select('id, full_name, active, employment_type, birth_date').or(NOT_KIOSK_FILTER),
       admin
         .from('leave_requests')
         .select('id, employee_id, leave_type, start_date, end_date, reason, status, reviewed_at, reviewed_by')

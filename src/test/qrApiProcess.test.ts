@@ -32,6 +32,7 @@ vi.mock('@/lib/auth', () => ({
 vi.mock('@/lib/locationService', () => ({ validateLocationServerSide: vi.fn() }))
 
 import * as qrTokenService from '@/lib/qrTokenService'
+import { signKioskQr, currentStep } from '@/lib/kioskKeyService'
 import * as supabaseAdminModule from '@/lib/supabaseAdmin'
 import * as locationServiceModule from '@/lib/locationService'
 import { POST } from '@/app/api/qr/process/route'
@@ -73,14 +74,19 @@ function geofence(allowed: boolean, distance = 50): GeofenceResult {
   }
 }
 
-function mockToken(action: QrToken['action_type'] = 'clock_in', isKiosk = false) {
+function mockToken(action: NonNullable<QrToken['action_type']> = 'clock_in') {
   vi.mocked(qrTokenService.validateAndConsumeToken).mockResolvedValue({
-    token: makeQrToken(isKiosk ? { action_type: null, employee_id: null } : { action_type: action }),
-    isKiosk,
-    payload: isKiosk
-      ? { token: 'abc123', kiosk: true, exp: 9999999999 }
-      : { token: 'abc123', action: action!, employee_id: 'emp-001', exp: 9999999999 },
+    token: makeQrToken({ action_type: action }),
+    payload: { token: 'abc123', action, employee_id: 'emp-001', exp: 9999999999 },
   })
+}
+
+const KIOSK_KEY_ID = '11111111-2222-4333-8444-555555555555'
+const KIOSK_SECRET = Buffer.alloc(32, 7).toString('base64url')
+
+/** Kiosk ekranının o anda gösterdiği kod (adım kaydırılabilir) */
+function kioskQr(stepOffset = 0): string {
+  return signKioskQr(KIOSK_SECRET, KIOSK_KEY_ID, currentStep() + stepOffset)
 }
 
 /** Türkiye saatiyle belirli bir an (UTC+3) */
@@ -99,8 +105,14 @@ function setupDb(opts: { shifts?: Record<string, unknown>[]; records?: Record<st
       ],
       attendance_records: opts.records ?? [],
       notifications: [],
+      kiosk_keys: [{
+        id: KIOSK_KEY_ID, secret: KIOSK_SECRET, revoked_at: null,
+        expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        employees: { active: true, roles: { name: 'Kiosk' } },
+      }],
+      qr_scan_uses: [],
     },
-    { unique: { attendance_records: [['shift_assignment_id']] } }
+    { unique: { attendance_records: [['shift_assignment_id']], qr_scan_uses: [['key_id', 'time_step', 'employee_id']] } }
   )
   vi.mocked(supabaseAdminModule.createAdminClient).mockReturnValue(db as never)
 }
@@ -178,7 +190,6 @@ describe('/api/qr/process — QR token doğrulama', () => {
   it('başkasına ait klasik QR 403 döner', async () => {
     vi.mocked(qrTokenService.validateAndConsumeToken).mockResolvedValue({
       token: makeQrToken({ employee_id: 'emp-999' }),
-      isKiosk: false,
       payload: { token: 'abc123', action: 'clock_in', employee_id: 'emp-999', exp: 9999999999 },
     })
     const { status } = await post({})
@@ -288,10 +299,74 @@ describe('/api/qr/process — attendance akışı', () => {
       records: [{ id: 'rec-001', employee_id: 'emp-001', shift_assignment_id: 'shift-001', status: 'working',
         clock_in_at: '2026-09-28T06:00:00Z', completed_break_minutes: 0 }],
     })
-    mockToken(null, true)
-    const { status, body } = await post({ intended_action: 'break_start' })
+    const { status, body } = await post({ qr_data: kioskQr(), intended_action: 'break_start' })
     expect(status).toBe(200)
     expect(body.new_status).toBe('on_break')
+    expect(qrTokenService.validateAndConsumeToken).not.toHaveBeenCalled()
+    expect(db.tables.qr_scan_uses).toHaveLength(1)
+  })
+})
+
+// ============================================================
+// Kiosk QR (yerelde imzalanan, TOTP benzeri)
+// ============================================================
+describe('/api/qr/process — kiosk QR', () => {
+  it('güncel kiosk kodu ile giriş yapılır', async () => {
+    const { status, body } = await post({ qr_data: kioskQr(), intended_action: 'clock_in' })
+    expect(status).toBe(200)
+    expect(body.new_status).toBe('working')
+  })
+
+  it('bir önceki pencerenin kodu (okutma gecikmesi) kabul edilir', async () => {
+    const { status } = await post({ qr_data: kioskQr(-1), intended_action: 'clock_in' })
+    expect(status).toBe(200)
+  })
+
+  it('iki pencere eski kod 410 döner', async () => {
+    const { status, body } = await post({ qr_data: kioskQr(-2), intended_action: 'clock_in' })
+    expect(status).toBe(410)
+    expect(body.code).toBe('QR_EXPIRED')
+  })
+
+  it('imzası değiştirilmiş kod reddedilir', async () => {
+    const qr = kioskQr()
+    const tampered = qr.slice(0, -1) + (qr.endsWith('A') ? 'B' : 'A')
+    const { status, body } = await post({ qr_data: tampered, intended_action: 'clock_in' })
+    expect(status).toBe(400)
+    expect(body.code).toBe('QR_INVALID')
+  })
+
+  it('başka bir anahtarla üretilmiş kod reddedilir', async () => {
+    const forged = signKioskQr(Buffer.alloc(32, 9).toString('base64url'), KIOSK_KEY_ID, currentStep())
+    const { status } = await post({ qr_data: forged, intended_action: 'clock_in' })
+    expect(status).toBe(400)
+  })
+
+  it('iptal edilmiş anahtarın kodu reddedilir', async () => {
+    db.tables.kiosk_keys[0].revoked_at = new Date().toISOString()
+    const { status } = await post({ qr_data: kioskQr(), intended_action: 'clock_in' })
+    expect(status).toBe(410)
+  })
+
+  it('anahtarın sahibi pasifleştirildiyse kod reddedilir', async () => {
+    db.tables.kiosk_keys[0].employees = { active: false, roles: { name: 'Kiosk' } }
+    const { status } = await post({ qr_data: kioskQr(), intended_action: 'clock_in' })
+    expect(status).toBe(400)
+  })
+
+  it('aynı çalışan aynı kodu ikinci kez kullanamaz', async () => {
+    const qr = kioskQr()
+    expect((await post({ qr_data: qr, intended_action: 'clock_in' })).status).toBe(200)
+    const second = await post({ qr_data: qr, intended_action: 'break_start' })
+    expect(second.status).toBe(400)
+    expect(second.body.code).toBe('QR_USED')
+  })
+
+  it('konum reddedilirse kod tüketilmez', async () => {
+    vi.mocked(locationServiceModule.validateLocationServerSide).mockResolvedValue(geofence(false, 900))
+    const { status } = await post({ qr_data: kioskQr(), intended_action: 'clock_in' })
+    expect(status).toBe(403)
+    expect(db.tables.qr_scan_uses).toHaveLength(0)
   })
 
   it('geç girişte ileri yuvarlanan saatten önce mola başlatılamaz', async () => {

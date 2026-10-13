@@ -8,6 +8,7 @@ import { createAdminClient } from '@/lib/supabaseAdmin'
 import { requireMinRole, ROLES } from '@/lib/auth'
 import { serverError } from '@/lib/apiErrors'
 import { turkeyToday } from '@/lib/dateUtils'
+import { NOT_KIOSK_FILTER } from '@/lib/auth/roles'
 
 interface TodayShift {
   id: string
@@ -39,7 +40,8 @@ export async function GET(req: NextRequest) {
       admin
         .from('employees')
         .select('id', { count: 'exact', head: true })
-        .eq('active', true),
+        .eq('active', true)
+        .or(NOT_KIOSK_FILTER),
       admin
         .from('shift_assignments')
         .select(`

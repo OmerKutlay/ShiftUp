@@ -3,6 +3,7 @@
  * Client bileşenleri '@/lib/api/employees' üzerinden API'yi çağırır.
  */
 import { db } from '@/lib/db'
+import { NOT_KIOSK_FILTER } from '@/lib/auth/roles'
 import type {
   Employee,
   EmployeeWithRole,
@@ -61,7 +62,7 @@ export async function fetchEmployees(): Promise<EmployeeWithRole[]> {
   return (data ?? []) as unknown as EmployeeWithRole[]
 }
 
-/** Sadece aktif çalışanları getirir (vardiya planı için) */
+/** Sadece aktif çalışanları getirir (vardiya planı için) — kiosk cihaz hesapları hariç */
 export async function fetchActiveEmployees(): Promise<EmployeeWithRole[]> {
   const { data, error } = await db
     .from('employees')
@@ -85,6 +86,7 @@ export async function fetchActiveEmployees(): Promise<EmployeeWithRole[]> {
       )
     `)
     .eq('active', true)
+    .or(NOT_KIOSK_FILTER)
     .order('full_name', { ascending: true })
 
   if (error) throw new Error(`Aktif çalışanlar yüklenemedi: ${error.message}`)

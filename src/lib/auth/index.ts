@@ -23,6 +23,9 @@ export {
   roleAtLeast,
   roleRank,
   canManageRole,
+  isKioskRole,
+  KIOSK_ROLE_ID,
+  NOT_KIOSK_FILTER,
 } from './roles'
 export type { RoleName } from './roles'
 

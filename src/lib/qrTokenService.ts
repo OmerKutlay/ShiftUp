@@ -1,13 +1,10 @@
 /**
  * QR Token Service — server-side only
  *
- * İki tür QR token:
- *   1. Kiosk QR (evrensel): employee_id=null, action_type=null
- *      → Kiosk'ta asılı durur, herhangi biri tarar
- *      → process sırasında authenticated employee + state machine belirlenir
+ * Klasik QR (employee bazlı): employee_id + action_type dolu, tek kullanımlık, DB'de saklanır.
  *
- *   2. Klasik QR (employee bazlı): employee_id + action_type dolu
- *      → Geriye dönük uyumluluk için korunur
+ * Kiosk QR'ları artık sunucuda üretilmez: kiosk ekranı imzalama anahtarıyla kodu yerelde
+ * üretir ve /api/qr/process kioskKeyService.verifyKioskQr ile doğrular.
  */
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import type { QrToken, QrActionType, QrPayload, GenerateQrResponse } from '@/types/qr'
@@ -27,46 +24,6 @@ function generateSecureToken(): string {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const crypto = require('crypto') as typeof import('crypto')
   return crypto.randomBytes(32).toString('hex')
-}
-
-/**
- * Kiosk (evrensel) QR token üretir.
- * employee_id ve action_type içermez — process'te belirlenir.
- */
-export async function generateKioskQrToken(
-  ttlSeconds: number = DEFAULT_TTL_SECONDS
-): Promise<GenerateQrResponse> {
-  const admin = createAdminClient()
-  const token = generateSecureToken()
-  const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString()
-
-  const { data, error } = await admin
-    .from('qr_tokens')
-    .insert({ token, action_type: null, employee_id: null, expires_at: expiresAt })
-    .select()
-    .single()
-
-  if (error) {
-    console.error('[qrTokenService] kiosk insert:', error.message)
-    throw new QrTokenError('Kiosk QR token oluşturulamadı.', 'DB_ERROR')
-  }
-
-  const record = data as QrToken
-
-  // QR payload — employee ve action içermez, sadece token + exp
-  const qrPayload: KioskQrPayload = {
-    token: record.token,
-    kiosk: true,
-    exp: Math.floor(new Date(expiresAt).getTime() / 1000),
-  }
-
-  return {
-    token: record.token,
-    action_type: null,
-    employee_id: null,
-    expires_at: expiresAt,
-    qr_data: JSON.stringify(qrPayload),
-  }
 }
 
 /**
@@ -113,14 +70,7 @@ export async function generateQrToken(
 
 export interface ValidatedToken {
   token: QrToken
-  isKiosk: boolean         // true → employee_id & action_type yok, session'dan alınacak
-  payload: QrPayload | KioskQrPayload
-}
-
-export interface KioskQrPayload {
-  token: string
-  kiosk: true
-  exp: number
+  payload: QrPayload
 }
 
 export async function validateAndConsumeToken(rawQrData: string): Promise<ValidatedToken> {
@@ -136,14 +86,10 @@ export async function validateAndConsumeToken(rawQrData: string): Promise<Valida
     throw new QrTokenError('QR kod eksik alan içeriyor.', 'QR_INVALID')
   }
 
-  const isKiosk = rawPayload.kiosk === true
-
-  // Klasik QR için erken alan kontrolü — DB'ye gitmeden önce
-  if (!isKiosk) {
-    const payload = rawPayload as unknown as QrPayload
-    if (!payload.action || !payload.employee_id) {
-      throw new QrTokenError('QR kod eksik alan içeriyor.', 'QR_INVALID')
-    }
+  // Erken alan kontrolü — DB'ye gitmeden önce
+  const payload = rawPayload as unknown as QrPayload
+  if (!payload.action || !payload.employee_id) {
+    throw new QrTokenError('QR kod eksik alan içeriyor.', 'QR_INVALID')
   }
 
   // 2. Client-side expiry pre-check
@@ -168,15 +114,12 @@ export async function validateAndConsumeToken(rawQrData: string): Promise<Valida
   if (record.used_at) throw new QrTokenError('Bu QR kod daha önce kullanılmış.', 'QR_USED')
   if (new Date(record.expires_at) <= new Date()) throw new QrTokenError('QR kodun süresi dolmuş.', 'QR_EXPIRED')
 
-  // Klasik QR için ek doğrulamalar (action/employee eşleşme)
-  if (!isKiosk) {
-    const payload = rawPayload as unknown as QrPayload
-    if (record.action_type && record.action_type !== payload.action) {
-      throw new QrTokenError('QR aksiyon tipi uyumsuz.', 'QR_WRONG_ACTION')
-    }
-    if (record.employee_id && record.employee_id !== payload.employee_id) {
-      throw new QrTokenError('QR koda ait çalışan bulunamadı.', 'QR_INVALID')
-    }
+  // Action/employee eşleşme
+  if (record.action_type && record.action_type !== payload.action) {
+    throw new QrTokenError('QR aksiyon tipi uyumsuz.', 'QR_WRONG_ACTION')
+  }
+  if (record.employee_id && record.employee_id !== payload.employee_id) {
+    throw new QrTokenError('QR koda ait çalışan bulunamadı.', 'QR_INVALID')
   }
 
   // 4. Tek kullanım işaretle — atomik: yalnızca hâlâ kullanılmamış ve süresi
@@ -194,13 +137,7 @@ export async function validateAndConsumeToken(rawQrData: string): Promise<Valida
   if (updateError) throw new QrTokenError('QR token güncellenemedi.', 'DB_ERROR')
   if (!consumed) throw new QrTokenError('Bu QR kod daha önce kullanılmış.', 'QR_USED')
 
-  return {
-    token: record,
-    isKiosk,
-    payload: isKiosk
-      ? (rawPayload as unknown as KioskQrPayload)
-      : (rawPayload as unknown as QrPayload),
-  }
+  return { token: record, payload }
 }
 
 // ─── Temizlik ─────────────────────────────────────────────────
