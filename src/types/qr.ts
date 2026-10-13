@@ -39,10 +39,9 @@ export interface QrPayload {
 
 // /api/qr/generate request
 export interface GenerateQrRequest {
-  employee_id?: string       // kiosk için opsiyonel
-  action_type?: QrActionType // kiosk için opsiyonel
+  employee_id?: string
+  action_type?: QrActionType
   ttl_seconds?: number
-  kiosk?: boolean            // true → evrensel kiosk QR üret
 }
 
 // /api/qr/generate response

@@ -18,7 +18,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { DEV_SESSION_COOKIE, IS_DEV_AUTH } from '@/lib/authConfig'
 import { verifyDevSessionEdge } from '@/lib/auth/devSessionEdge'
-import { roleAtLeast, ROLES, type RoleName } from '@/lib/auth/roles'
+import { isKioskRole, roleAtLeast, ROLES, type RoleName } from '@/lib/auth/roles'
 
 const PUBLIC_PATHS = ['/login', '/offline']
 const PUBLIC_API_PREFIX = '/api/auth/'
@@ -31,12 +31,13 @@ const PAGE_MIN_ROLE: Array<[prefix: string, minRole: RoleName]> = [
   ['/dashboard', ROLES.MUDUR_YARDIMCISI],
   ['/employees', ROLES.MUDUR_YARDIMCISI],
   ['/shift-templates', ROLES.MUDUR_YARDIMCISI],
-  ['/qr-kiosk', ROLES.MUDUR_YARDIMCISI],
   ['/workforce', ROLES.MUDUR_YARDIMCISI],
   ['/reports', ROLES.MUDUR_YARDIMCISI],
 ]
 /** Çalışanların varsayılan sayfası (yönetici sayfasına girmeye çalışırlarsa) */
 const EMPLOYEE_HOME = '/my-schedule'
+/** Kiosk hesabının açabildiği tek sayfa; Müdür Yardımcısı+ da açabilir */
+const KIOSK_PAGE = '/qr-kiosk'
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 
@@ -133,6 +134,14 @@ export async function middleware(request: NextRequest) {
     response = redirectToLogin(request)
     response.cookies.delete(DEV_SESSION_COOKIE)
     return response
+  }
+
+  // Kiosk hesabı yalnızca kiosk ekranını görür; kiosk ekranı da yalnızca kiosk + yöneticilere açık
+  if (isKioskRole(employee.role)) {
+    return pathname === KIOSK_PAGE ? response : NextResponse.redirect(new URL(KIOSK_PAGE, request.url))
+  }
+  if (pathname === KIOSK_PAGE && !(employee.role && roleAtLeast(employee.role, ROLES.MUDUR_YARDIMCISI))) {
+    return NextResponse.redirect(new URL(EMPLOYEE_HOME, request.url))
   }
 
   const minRole = requiredRole(pathname)

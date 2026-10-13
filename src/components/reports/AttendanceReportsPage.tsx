@@ -46,6 +46,7 @@ import {
 import { fetchEmployees } from '@/lib/api/employees'
 import { format, subDays } from 'date-fns'
 import { PageHeader, TableSkeleton } from '@/components/common'
+import { isKioskRole } from '@/lib/auth/roles'
 
 const STATUS_LABELS: Record<string, string> = {
   shift_waiting: 'Gelmedi',
@@ -196,7 +197,7 @@ export function AttendanceReportsPage({ embedded = false }: { embedded?: boolean
     if (employeesLoaded) return
     try {
       const emps = await fetchEmployees()
-      setEmployees(emps)
+      setEmployees(emps.filter((e) => !isKioskRole(e.roles?.name)))
       setEmployeesLoaded(true)
     } catch {
       // non-critical
