@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
   const from = req.nextUrl.searchParams.get('from')
   const to = req.nextUrl.searchParams.get('to')
   if (!isValidDate(from) || !isValidDate(to) || from > to) return badRequest('Geçerli from/to tarihleri gerekli.')
-  if ((Date.parse(to) - Date.parse(from)) / 86_400_000 > 800) return badRequest('Aralık en fazla 800 gün olabilir.')
+  if ((Date.parse(to) - Date.parse(from)) / 86_400_000 > 1100) return badRequest('Aralık en fazla 1100 gün olabilir.')
 
   try {
     return NextResponse.json({ holidays: await fetchHolidaysInRange(from, to) })
