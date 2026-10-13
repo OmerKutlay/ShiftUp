@@ -16,8 +16,8 @@ npm run dev                  # http://localhost:3000
 | Değişken | Zorunlu | Açıklama |
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | ✅ | Supabase proje URL'i |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | Yalnızca Supabase Auth oturumu için kullanılır; tablolara anon erişim kapalıdır |
-| `SUPABASE_SERVICE_ROLE_KEY` | ✅ | Sunucu tarafı veri erişimi — asla istemciye gönderilmez |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | ✅ | Yalnızca Supabase Auth oturumu için kullanılır; tablolara anon erişim kapalıdır |
+| `SUPABASE_SECRET_KEY` | ✅ | Sunucu tarafı veri erişimi — asla istemciye gönderilmez |
 | `AUTH_MODE` | | `production` (varsayılan, e-posta OTP) veya `development` (sabit `DEV_OTP`) |
 | `DEV_OTP` | dev | `AUTH_MODE=development` iken geçerli kod |
 | `DEV_SESSION_SECRET` | | Dev oturum çerezinin HMAC anahtarı (yoksa service role key kullanılır) |

@@ -5,7 +5,7 @@
  * İmzasız / değiştirilmiş / süresi dolmuş çerez reddedilir; böylece istemci
  * başka bir çalışanın id'sini yazarak oturum taklit edemez.
  *
- * Anahtar: DEV_SESSION_SECRET (yoksa sunucuya özel SUPABASE_SERVICE_ROLE_KEY).
+ * Anahtar: DEV_SESSION_SECRET (yoksa sunucuya özel SUPABASE_SECRET_KEY).
  * Yalnızca server tarafında (route handler, proxy — Node.js runtime) kullanılır.
  */
 import { createHmac, timingSafeEqual } from 'crypto'
@@ -17,8 +17,8 @@ export interface DevSessionPayload {
 }
 
 function secret(): string {
-  const s = process.env.DEV_SESSION_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!s) throw new Error('DEV_SESSION_SECRET (veya SUPABASE_SERVICE_ROLE_KEY) tanımlı değil.')
+  const s = process.env.DEV_SESSION_SECRET || process.env.SUPABASE_SECRET_KEY
+  if (!s) throw new Error('DEV_SESSION_SECRET (veya SUPABASE_SECRET_KEY) tanımlı değil.')
   return s
 }
 
