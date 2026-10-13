@@ -76,35 +76,78 @@ function isCrossOriginWrite(request: NextRequest): boolean {
   }
 }
 
+type EmployeeLookup =
+  | { status: 'ok'; active: boolean; role: string | null }
+  | { status: 'missing' }
+  | { status: 'error' }
+
 /** Oturumdaki çalışanın aktifliği ve rolü (service role ile; yalnızca sayfa isteklerinde) */
-async function loadEmployee(by: { id?: string; authUserId?: string }): Promise<{ active: boolean; role: string | null } | null> {
-  const { createAdminClient } = await import('@/lib/supabaseAdmin')
-  const admin = createAdminClient()
-  let query = admin.from('employees').select('active, roles ( name )')
-  query = by.id ? query.eq('id', by.id) : query.eq('auth_user_id', by.authUserId!)
-  const { data } = await query.maybeSingle()
-  if (!data) return null
-  const roles = data.roles as unknown as { name: string } | { name: string }[] | null
-  const role = Array.isArray(roles) ? roles[0]?.name ?? null : roles?.name ?? null
-  return { active: Boolean(data.active), role }
+async function loadEmployee(by: { id?: string; authUserId?: string }): Promise<EmployeeLookup> {
+  try {
+    const { createAdminClient } = await import('@/lib/supabaseAdmin')
+    const admin = createAdminClient()
+    let query = admin.from('employees').select('active, roles ( name )')
+    query = by.id ? query.eq('id', by.id) : query.eq('auth_user_id', by.authUserId!)
+    const { data, error } = await query.maybeSingle()
+    if (error) return { status: 'error' }
+    if (!data) return { status: 'missing' }
+    const roles = data.roles as unknown as { name: string } | { name: string }[] | null
+    const role = Array.isArray(roles) ? roles[0]?.name ?? null : roles?.name ?? null
+    return { status: 'ok', active: Boolean(data.active), role }
+  } catch {
+    return { status: 'error' }
+  }
 }
 
-function redirectToLogin(request: NextRequest) {
+/** Geçersiz kalmış oturum çerezlerini sil (Supabase sb-*-auth-token parçaları + dev çerezi) */
+function clearSessionCookies(request: NextRequest, response: NextResponse) {
+  for (const { name } of request.cookies.getAll()) {
+    if (name === DEV_SESSION_COOKIE || (name.startsWith('sb-') && name.includes('-auth-token'))) {
+      response.cookies.delete(name)
+    }
+  }
+  return response
+}
+
+function homeFor(role: string | null): string {
+  return isKioskRole(role) ? KIOSK_PAGE : '/'
+}
+
+/**
+ * Yönlendirme yanıtı — middleware'de yenilenen oturum çerezlerini (session.cookies) taşır.
+ * NextResponse.redirect yeni bir yanıt üretir; çerezler kopyalanmazsa tarayıcı eski
+ * (Supabase'in döndürüp geçersiz kıldığı) refresh token'ı kullanmaya devam eder, oturum
+ * düşer ve yönlendirme döngüsü oluşur.
+ */
+function redirectWithSession(url: URL, session: NextResponse | null) {
+  const res = NextResponse.redirect(url)
+  for (const cookie of session?.cookies.getAll() ?? []) res.cookies.set(cookie)
+  return res
+}
+
+function redirectToLogin(request: NextRequest, session: NextResponse | null, clearCookies = false) {
   const loginUrl = new URL('/login', request.url)
   loginUrl.searchParams.set('next', request.nextUrl.pathname)
-  return NextResponse.redirect(loginUrl)
+  if (clearCookies) return clearSessionCookies(request, NextResponse.redirect(loginUrl))
+  return redirectWithSession(loginUrl, session)
 }
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
   const isApi = pathname.startsWith('/api/')
 
-  if (isApi && isCrossOriginWrite(request)) {
-    return NextResponse.json({ error: 'Geçersiz istek kaynağı.', code: 'CSRF' }, { status: 403 })
+  if (isApi) {
+    if (isCrossOriginWrite(request)) {
+      return NextResponse.json({ error: 'Geçersiz istek kaynağı.', code: 'CSRF' }, { status: 403 })
+    }
+    // API route'ları oturumu kendileri doğrular (requireAuth → getUser, token yenileme dahil);
+    // burada ikinci kez Supabase'e gitmek her API çağrısında CPU/istek maliyetini ikiye katlar.
+    return NextResponse.next()
   }
+  if (pathname !== '/login' && isPublicPath(pathname)) return NextResponse.next()
 
   // ── Oturum ────────────────────────────────────────────────
-  let response = NextResponse.next({ request: { headers: request.headers } })
+  const response = NextResponse.next({ request: { headers: request.headers } })
   let identity: { id?: string; authUserId?: string } | null = null
 
   if (IS_DEV_AUTH) {
@@ -117,36 +160,41 @@ export async function middleware(request: NextRequest) {
     if (user) identity = { authUserId: user.id }
   }
 
-  if (pathname === '/login' && identity) {
-    return NextResponse.redirect(new URL('/', request.url))
-  }
-  if (isPublicPath(pathname)) return response
-  if (!identity) {
-    if (isApi) return response // API route kendi 401'ini döner
-    return redirectToLogin(request)
-  }
-  if (isApi) return response
+  // /login ve korumalı sayfalar AYNI ölçütü kullanır: geçerli oturum + aktif çalışan kaydı.
+  // (Önceden /login yalnızca oturuma bakıyordu; çalışan kaydı doğrulanamayan oturumda
+  //  "/" → /login → "/" sonsuz yönlendirme döngüsü oluşuyordu.)
+  const lookup = identity ? await loadEmployee(identity) : null
 
-  // ── Sayfa yetkisi ─────────────────────────────────────────
-  const employee = await loadEmployee(identity)
-  if (!employee || !employee.active) {
-    // Bağlı / aktif çalışan kaydı olmayan oturum (ör. pasifleştirilmiş hesap)
-    response = redirectToLogin(request)
-    response.cookies.delete(DEV_SESSION_COOKIE)
-    return response
+  if (pathname === '/login') {
+    if (lookup?.status === 'ok' && lookup.active) {
+      return redirectWithSession(new URL(homeFor(lookup.role), request.url), response)
+    }
+    // Çalışan kaydı olmayan / pasif oturum: çerezleri temizle, giriş formunu göster
+    return lookup?.status === 'missing' || (lookup?.status === 'ok' && !lookup.active)
+      ? clearSessionCookies(request, response)
+      : response
   }
+
+  if (!identity) return redirectToLogin(request, response)
+
+  // Geçici veritabanı hatası: oturumu düşürme, isteği geçir (sayfa verisi API'lerden yetkiyle gelir)
+  if (lookup?.status === 'error') return response
+
+  // Bağlı / aktif çalışan kaydı olmayan oturum (ör. pasifleştirilmiş hesap)
+  if (lookup?.status !== 'ok' || !lookup.active) return redirectToLogin(request, null, true)
+  const employee = lookup
 
   // Kiosk hesabı yalnızca kiosk ekranını görür; kiosk ekranı da yalnızca kiosk + yöneticilere açık
   if (isKioskRole(employee.role)) {
-    return pathname === KIOSK_PAGE ? response : NextResponse.redirect(new URL(KIOSK_PAGE, request.url))
+    return pathname === KIOSK_PAGE ? response : redirectWithSession(new URL(KIOSK_PAGE, request.url), response)
   }
   if (pathname === KIOSK_PAGE && !(employee.role && roleAtLeast(employee.role, ROLES.MUDUR_YARDIMCISI))) {
-    return NextResponse.redirect(new URL(EMPLOYEE_HOME, request.url))
+    return redirectWithSession(new URL(EMPLOYEE_HOME, request.url), response)
   }
 
   const minRole = requiredRole(pathname)
   if (minRole && !(employee.role && roleAtLeast(employee.role, minRole))) {
-    return NextResponse.redirect(new URL(EMPLOYEE_HOME, request.url))
+    return redirectWithSession(new URL(EMPLOYEE_HOME, request.url), response)
   }
 
   return response
