@@ -4,8 +4,9 @@
  * QR token'ı doğrular ve oturumdaki çalışanın devam kaydını günceller.
  *
  * Employee belirleme:
- *   - Kiosk QR ("SU1.…", kiosk ekranında yerelde imzalanır): employee session'dan alınır;
- *     imza + 15 sn'lik pencere + (anahtar, pencere, çalışan) tekrar kullanım kontrolü
+ *   - Kiosk QR ("SU2.…", tek kullanımlık): employee session'dan alınır. Çalışan/vardiya
+ *     kontrollerinden sonra atomik tüketilir — aynı anda okutanlardan yalnızca ilki kazanır —
+ *     ve yeni kod Realtime Broadcast ile kiosk ekranlarına yayınlanır.
  *   - Klasik QR: token'daki employee_id ile session eşleşmeli (spoofing önlemi)
  *
  * Action belirleme:
@@ -17,7 +18,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAndConsumeToken, QrTokenError } from '@/lib/qrTokenService'
-import { isKioskQr, verifyKioskQr, markKioskQrUsed, type VerifiedKioskQr } from '@/lib/kioskKeyService'
+import { isKioskQr, consumeKioskQr, rotateAndBroadcastKioskQr } from '@/lib/kioskQrService'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { AttendanceRuleError } from '@/lib/attendanceStateMachine'
 import type { AttendanceAction } from '@/lib/attendanceStateMachine'
@@ -114,13 +115,11 @@ export async function POST(req: NextRequest) {
     const admin = createAdminClient()
     const employeeId = sessionEmployee.id
 
-    // Kiosk QR: imza/pencere doğrulanır (henüz tüketilmez — çalışan/vardiya kontrollerinden sonra)
+    // Kiosk QR: çalışan/vardiya kontrollerinden sonra tüketilir (aşağıda)
     // Klasik QR: doğrula + tek kullanım tüket (atomik)
-    let kioskQr: VerifiedKioskQr | null = null
+    const kioskQr = isKioskQr(body.qr_data)
     let classicAction: QrActionType | null = null
-    if (isKioskQr(body.qr_data)) {
-      kioskQr = await verifyKioskQr(admin, body.qr_data)
-    } else {
+    if (!kioskQr) {
       const { token: qrToken } = await validateAndConsumeToken(body.qr_data)
       // Token'daki employee ile session eşleşmeli (başkası adına okutma engeli)
       if (qrToken.employee_id && qrToken.employee_id !== employeeId) {
@@ -161,8 +160,11 @@ export async function POST(req: NextRequest) {
     }
     const attendanceAction = QR_TO_ATTENDANCE_ACTION[actionType] as AttendanceAction
 
-    // Aynı çalışan aynı kiosk kodunu ikinci kez kullanamaz (atomik)
-    if (kioskQr) await markKioskQrUsed(admin, kioskQr, employeeId)
+    // Kiosk kodunu tüket (ilk okutan kazanır) → yeni kodu ekranlara yayınla
+    if (kioskQr) {
+      await consumeKioskQr(admin, body.qr_data)
+      await rotateAndBroadcastKioskQr(admin)
+    }
 
     const result = await performAttendanceAction({
       admin,
@@ -190,7 +192,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     if (err instanceof QrTokenError) {
       if (err.code === 'DB_ERROR') return serverError('POST /api/qr/process', err)
-      return NextResponse.json({ error: err.message, code: err.code }, { status: err.code === 'QR_EXPIRED' ? 410 : 400 })
+      return NextResponse.json({ error: err.message, code: err.code }, { status: err.code === 'QR_EXPIRED' ? 410 : err.code === 'QR_USED' ? 409 : 400 })
     }
     if (err instanceof LocationError) {
       return NextResponse.json({ error: err.message, code: err.code }, { status: 403 })

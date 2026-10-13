@@ -1,6 +1,6 @@
 /**
- * kioskAccess.test.ts — Kiosk rolü yetki sınırları ve /api/kiosk/key.
- * getCurrentEmployee mock'lanır; anahtar üretimi bellek içi fake Supabase ile çalışır.
+ * kioskAccess.test.ts — Kiosk rolü yetki sınırları ve GET /api/kiosk/qr.
+ * getCurrentEmployee mock'lanır; kod üretimi bellek içi fake Supabase ile çalışır.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
@@ -18,7 +18,7 @@ function mockSession(employee: unknown) {
   vi.doMock('@/lib/auth/session', () => ({ getCurrentEmployee: vi.fn().mockResolvedValue(employee) }))
 }
 
-const req = () => new NextRequest('http://localhost/api/kiosk/key', { method: 'POST' })
+const req = () => new NextRequest('http://localhost/api/kiosk/qr')
 
 describe('Kiosk rolü — hiyerarşi', () => {
   it('Kiosk hiçbir yönetici/çalışan seviyesini karşılamaz', () => {
@@ -57,45 +57,46 @@ describe('requireAuth — kiosk hesabı', () => {
   })
 })
 
-describe('POST /api/kiosk/key', () => {
+describe('GET /api/kiosk/qr', () => {
   beforeEach(() => vi.resetModules())
 
-  async function callKeyRoute(employee: unknown) {
+  async function callQrRoute(employee: unknown, qrTokens: Record<string, unknown>[] = []) {
     mockSession(employee)
-    const db = createFakeDb({ kiosk_keys: [] })
+    const db = createFakeDb({ qr_tokens: qrTokens })
     vi.doMock('@/lib/supabaseAdmin', () => ({ createAdminClient: () => db }))
     vi.doMock('@/lib/rateLimiter', () => ({ checkRateLimit: vi.fn().mockResolvedValue({ allowed: true, resetAt: 0 }) }))
-    const { POST } = await import('@/app/api/kiosk/key/route')
-    const res = await POST(req())
+    const { GET } = await import('@/app/api/kiosk/qr/route')
+    const res = await GET(req())
     return { res, db }
   }
 
-  it('kiosk hesabı 1 saatlik imzalama anahtarı alır', async () => {
-    const { res, db } = await callKeyRoute(kioskEmployee)
-    expect(res.status).toBe(201)
-    const body = (await res.json()) as { key_id: string; secret: string; expires_at: string; step_seconds: number }
-    expect(body.step_seconds).toBe(15)
-    expect(Buffer.from(body.secret, 'base64url')).toHaveLength(32)
-    const ttlMs = new Date(body.expires_at).getTime() - Date.now()
-    expect(ttlMs).toBeGreaterThan(55 * 60 * 1000)
-    expect(ttlMs).toBeLessThanOrEqual(60 * 60 * 1000)
-    expect(db.tables.kiosk_keys).toHaveLength(1)
-    expect(db.tables.kiosk_keys[0].employee_id).toBe('kiosk-001')
+  it('kiosk hesabı aktif kodu alır; yoksa tek bir kod oluşturulur', async () => {
+    const { res, db } = await callQrRoute(kioskEmployee)
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { qr_data: string }
+    expect(body.qr_data).toMatch(/^SU2.[A-Za-z0-9_-]{32}$/)
+    expect(db.tables.qr_tokens).toHaveLength(1)
+    expect(db.tables.qr_tokens[0].employee_id).toBeNull()
   })
 
-  it('yönetici de anahtar alabilir', async () => {
-    const { res } = await callKeyRoute(manager)
-    expect(res.status).toBe(201)
+  it('aktif kod varsa yenisi oluşturulmaz (istek kodu değiştirmez)', async () => {
+    const token = 'a'.repeat(32)
+    const { res, db } = await callQrRoute(manager, [
+      { id: 'kq-1', token, employee_id: null, action_type: null, used_at: null, expires_at: '2999-01-01T00:00:00Z' },
+    ])
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { qr_data: string }).qr_data).toBe(`SU2.${token}`)
+    expect(db.tables.qr_tokens).toHaveLength(1)
   })
 
-  it('çalışan anahtar alamaz → 403', async () => {
-    const { res, db } = await callKeyRoute(worker)
+  it('çalışan kiosk kodunu göremez → 403', async () => {
+    const { res, db } = await callQrRoute(worker)
     expect(res.status).toBe(403)
-    expect(db.tables.kiosk_keys).toHaveLength(0)
+    expect(db.tables.qr_tokens).toHaveLength(0)
   })
 
   it('oturum yok → 401', async () => {
-    const { res } = await callKeyRoute(null)
+    const { res } = await callQrRoute(null)
     expect(res.status).toBe(401)
   })
 })
