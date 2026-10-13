@@ -16,6 +16,15 @@
 			"service": "shiftup"
 		}
 	],
+	// Gizli olmayan çalışma anı değişkenleri (publishable key herkese açıktır).
+	// Secret'lar (SUPABASE_SECRET_KEY, CRON_SECRET) yalnızca Cloudflare panelinde tutulur.
+	"vars": {
+		"AUTH_MODE": "production",
+		"NEXT_PUBLIC_SUPABASE_URL": "https://kdafwwshxowyrnwegmhv.supabase.co",
+		"NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_zxaINtvro6I52UCF78DGew_GLAvQt2n"
+	},
+	// Varsayılan olarak wrangler deploy panelden eklenen değişkenleri siler; korunsun
+	"keep_vars": true,
 	"observability": {
 		"enabled": true
 	}
