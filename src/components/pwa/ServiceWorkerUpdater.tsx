@@ -41,7 +41,8 @@ export function ServiceWorkerUpdater({ onVisibleChange }: Props) {
       open={open}
       anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       message="Yeni sürüm hazır"
-      sx={{ bottom: { xs: 'calc(16px + env(safe-area-inset-bottom))' } }}
+      // Mobilde alt navigasyonun (64px) üstünde kalsın
+      sx={{ bottom: { xs: 'calc(72px + env(safe-area-inset-bottom))', md: 24 } }}
       action={
         <>
           <Button
