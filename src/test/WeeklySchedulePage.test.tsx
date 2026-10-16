@@ -278,3 +278,34 @@ describe('WeeklySchedulePage — Günlük Operasyon entegrasyon', () => {
     // haftalık planda oluşturulan vardiya, günlük operasyonda otomatik görünür.
   })
 })
+
+describe('WeeklySchedulePage — mobil', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    // useMediaQuery(down('md')) → true: telefon genişliği
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: true, media: query, onchange: null,
+      addListener: vi.fn(), removeListener: vi.fn(),
+      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
+    }))
+  })
+
+  it('mobilde de kart listesi değil, gün sütunlu tablo gösterilir', async () => {
+    setupMocks(
+      [makeEmployee(), makeEmployee({ id: 'emp-002', full_name: 'Ayşe Demir' })],
+      [makeTemplate()],
+      [makeAssignment(), makeAssignment({ id: 'asgn-002', employee_id: 'emp-002', work_date: '2026-09-28', start_time: '13:00', end_time: '22:00' })],
+    )
+    renderPage()
+
+    await waitFor(() => expect(screen.getByText('Ayşe Demir')).toBeInTheDocument())
+    // Tablo başlığı: çalışan sütunu + 7 gün + özet
+    expect(screen.getByText('Çalışan')).toBeInTheDocument()
+    expect(screen.getByText('Özet')).toBeInTheDocument()
+    expect(screen.getByText('28 Eyl')).toBeInTheDocument()
+    expect(screen.getByText('4 Eki')).toBeInTheDocument()
+    // Aynı gündeki iki vardiya yan yana satırlarda, saatleriyle
+    expect(screen.getByText((_, el) => el?.textContent === '09:0018:00' && el.tagName === 'SPAN')).toBeInTheDocument()
+    expect(screen.getByText((_, el) => el?.textContent === '13:0022:00' && el.tagName === 'SPAN')).toBeInTheDocument()
+  })
+})
