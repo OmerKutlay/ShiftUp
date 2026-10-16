@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
-import Script from 'next/script'
 import { AppRouterCacheProvider } from '@mui/material-nextjs/v16-appRouter'
 import { Providers } from './providers'
 
@@ -48,31 +47,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         }}
       >
         <AppRouterCacheProvider>
+          {/* Service Worker kaydı ve güncelleme uyarısı: PwaLayer → ServiceWorkerUpdater */}
           <Providers>{children}</Providers>
         </AppRouterCacheProvider>
-        {/* PWA Service Worker registration */}
-        {/* Dev'de SW kaydedilmez ve varsa kaldırılır: Turbopack dev chunk'ları içerik hash'i
-            taşımadığından cache-first strateji eski JS sunar → hydration mismatch */}
-        <Script id="sw-register" strategy="afterInteractive">{process.env.NODE_ENV !== 'production' ? `
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then(function(regs) {
-    regs.forEach(function(r) { r.unregister(); });
-  });
-  if (window.caches) {
-    caches.keys().then(function(keys) {
-      keys.filter(function(k) { return k.indexOf('shiftup-') === 0; })
-        .forEach(function(k) { caches.delete(k); });
-    });
-  }
-}
-` : `
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', function() {
-    navigator.serviceWorker.register('/sw.js', { scope: '/' })
-      .catch(function(err) { console.warn('SW registration failed:', err); });
-  });
-}
-`}</Script>
       </body>
     </html>
   )

@@ -95,6 +95,16 @@ describe('middleware — /login ile korumalı sayfalar aynı ölçütü kullanı
   })
 })
 
+describe('middleware — mobil "Daha fazla" sayfası', () => {
+  it('Çalışan /more ve /notifications sayfalarını açabilir (yönlendirme yok)', async () => {
+    for (const path of ['/more', '/notifications']) {
+      const res = await middleware(req(path, { cookie: OLD_COOKIE }))
+      expect(res.status).toBe(200)
+      expect(location(res)).toBeNull()
+    }
+  })
+})
+
 describe('middleware — yenilenen oturum çerezleri yönlendirmede korunur', () => {
   it('Çalışan "/" → /my-schedule yönlendirmesi yeni token çerezini taşır', async () => {
     getUser.mockResolvedValue({ user: { id: 'auth-1' }, refreshed: true })
@@ -129,5 +139,16 @@ describe('middleware — API istekleri', () => {
   it('başka origin\'den yazma isteği 403 (CSRF)', async () => {
     const res = await middleware(req('/api/qr/process', { method: 'POST', origin: 'https://evil.example' }))
     expect(res.status).toBe(403)
+  })
+})
+
+describe('middleware — PWA dosyaları oturumsuz erişilebilir', () => {
+  it('/sw.js, /sw-push.js ve /manifest.json oturum kontrolüne girmez', async () => {
+    getUser.mockResolvedValue({ user: null })
+    for (const path of ['/sw.js', '/sw-push.js', '/manifest.json']) {
+      const res = await middleware(req(path))
+      expect(location(res)).toBeNull()
+    }
+    expect(getUser).not.toHaveBeenCalled()
   })
 })
