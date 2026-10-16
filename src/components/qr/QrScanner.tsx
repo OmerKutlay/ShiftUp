@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Box, Typography, CircularProgress } from '@mui/material'
 import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner'
+import { PermissionHelp } from './scanPageHelpers'
 
 interface Props {
   onScan: (data: string) => void
@@ -119,8 +120,8 @@ export function QrScanner({ onScan, onError, active = true }: Props) {
         sx={{
           // Responsive: ekran genişliğine göre max 280px
           width: '100%',
-          maxWidth: 280,
-          aspectRatio: '1 / 1',
+          maxWidth: 320,
+          minHeight: 280,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -139,9 +140,10 @@ export function QrScanner({ onScan, onError, active = true }: Props) {
           Kamera izni gerekli
         </Typography>
         <Typography variant="caption" color="text.secondary">
-          QR taraması için tarayıcı kamera iznine ihtiyaç duyar. Adres çubuğundaki kilit ikonundan
-          izin ver.
+          QR taraması için kamera iznine ihtiyaç var.
         </Typography>
+        {/* Cihaza / kurulu uygulamaya göre adım adım yönlendirme */}
+        <PermissionHelp kind="camera" />
       </Box>
     )
   }

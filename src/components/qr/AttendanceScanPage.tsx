@@ -11,6 +11,8 @@
  * Kurallar:
  *   - Molada iken "Çıkış Yap" seçeneği gösterilmez.
  *   - QR onaylandıktan sonra sonuç gösterilir, ardından amaç seçimine geri dönülür.
+ *   - Çevrimdışıyken hiçbir işlem başlatılamaz: butonlar kapalı, kamera açılmaz. Devam kaydı
+ *     yalnızca sunucuda (QR + konum) doğrulanır; istemcide kuyruğa alınmaz.
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
 import dynamic from 'next/dynamic'
@@ -37,17 +39,35 @@ import LocationOnIcon from '@mui/icons-material/LocationOn'
 import MyLocationIcon from '@mui/icons-material/MyLocation'
 import LocationOffIcon from '@mui/icons-material/LocationOff'
 import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner'
+import WifiOffIcon from '@mui/icons-material/WifiOff'
 import type { QrActionType } from '@/types/qr'
 import { QR_ACTION_LABELS } from '@/types/qr'
 import type { ProcessQrResponse } from '@/types/qr'
 import type { GpsCoordinates } from '@/types/location'
 import { useAuth } from '@/context/AuthContext'
 import { LOADING_LABEL } from '@/components/common'
+import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 
-import { CurrentStatusResponse, PageState, ATTENDANCE_STATUS_TR, STATUS_COLORS, STATUS_BG_COLORS, getButtons, getCurrentPosition } from './scanPageHelpers'
+import {
+  CurrentStatusResponse, PageState, ATTENDANCE_STATUS_TR, STATUS_COLORS, STATUS_BG_COLORS, getButtons, getCurrentPosition,
+  LocationError, PermissionHelp,
+} from './scanPageHelpers'
+import type { LocationErrorKind } from './scanPageHelpers'
 
 // html5-qrcode yalnızca tarayıcıda çalışır; ssr:false ile sunucu paketine (Cloudflare Worker 3 MB sınırı) girmez
 const QrScanner = dynamic(() => import('./QrScanner').then((m) => m.QrScanner), { ssr: false })
+
+const OFFLINE_ACTION_MSG = 'İnternet bağlantısı yok. Giriş, çıkış ve mola kayıtları yalnızca çevrimiçiyken yapılabilir.'
+const NETWORK_ERROR_MSG = 'Sunucuya bağlanılamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.'
+
+/** Çevrimdışı uyarısı — işlem butonlarının yerine / üstünde gösterilir */
+function OfflineActionAlert() {
+  return (
+    <Alert severity="warning" icon={<WifiOffIcon />} sx={{ width: '100%', borderRadius: 1.5 }}>
+      {OFFLINE_ACTION_MSG}
+    </Alert>
+  )
+}
 
 // ─── Ana Component ────────────────────────────────────────────
 
@@ -62,6 +82,8 @@ export function AttendanceScanPage() {
   const [result, setResult] = useState<ProcessQrResponse | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [locationStatus, setLocationStatus] = useState<string | null>(null)
+  const [locationErrorKind, setLocationErrorKind] = useState<LocationErrorKind | null>(null)
+  const online = useOnlineStatus()
 
   // ── Mevcut durumu çek ───────────────────────────────────────
   // silent: durum zaten yüklüyken (keep-alive ile sayfaya geri dönüş) skeleton göstermeden tazele.
@@ -71,6 +93,7 @@ export function AttendanceScanPage() {
     else setPageState('loading_status')
     setScannerActive(false)
     setErrorMsg(null)
+    setLocationErrorKind(null)
     setSelectedAction(null)
     try {
       const res = await fetch('/api/attendance/current-status', {
@@ -87,7 +110,7 @@ export function AttendanceScanPage() {
       hasStatusRef.current = true
       setPageState('select_action')
     } catch {
-      setErrorMsg('Sunucuya bağlanılamadı.')
+      setErrorMsg(NETWORK_ERROR_MSG)
       setPageState('error')
     }
   }, [])
@@ -98,8 +121,27 @@ export function AttendanceScanPage() {
     }
   }, [authStatus, employee, fetchCurrentStatus])
 
+  // ── Bağlantı geri geldi → durumu tazele ─────────────────────
+  // Çevrimdışıyken gösterilen durum eskimiş olabilir; amaç seçimi / hata ekranındaysak yeniden çek.
+  const wasOfflineRef = useRef(false)
+  useEffect(() => {
+    if (!online) {
+      wasOfflineRef.current = true
+      return
+    }
+    if (!wasOfflineRef.current) return
+    wasOfflineRef.current = false
+    if (authStatus !== 'authenticated' || !employee || selectedAction) return
+    if (pageState === 'select_action' || pageState === 'error') {
+      void fetchCurrentStatus({ silent: pageState === 'select_action' && hasStatusRef.current })
+    }
+    // Yalnızca bağlantı değişiminde tetiklenir
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [online])
+
   // ── Amaç seçildi → scanner ekranına geç ─────────────────────
   const handleSelectAction = (action: QrActionType) => {
+    if (!navigator.onLine) return
     setSelectedAction(action)
     setScannerActive(true)
     setPageState('scanning')
@@ -112,6 +154,11 @@ export function AttendanceScanPage() {
     async (qrData: string) => {
       if (pageState !== 'scanning' || !selectedAction) return
       setScannerActive(false)
+      if (!navigator.onLine) {
+        setErrorMsg(OFFLINE_ACTION_MSG)
+        setPageState('error')
+        return
+      }
       setPageState('getting_location')
       setLocationStatus('GPS konumu alınıyor...')
 
@@ -121,6 +168,7 @@ export function AttendanceScanPage() {
         setLocationStatus(`Konum alındı (±${Math.round(location.accuracy)}m)`)
       } catch (locErr) {
         setErrorMsg(locErr instanceof Error ? locErr.message : 'Konum alınamadı.')
+        setLocationErrorKind(locErr instanceof LocationError ? locErr.kind : 'unknown')
         setLocationStatus(null)
         setPageState('error')
         return
@@ -153,7 +201,8 @@ export function AttendanceScanPage() {
           void fetchCurrentStatus()
         }, 4000)
       } catch (err) {
-        setErrorMsg(err instanceof Error ? err.message : 'Bilinmeyen hata.')
+        // fetch'in ağ hatası (TypeError) teknik İngilizce mesaj taşır — anlaşılır metinle değiştir
+        setErrorMsg(err instanceof TypeError ? NETWORK_ERROR_MSG : err instanceof Error ? err.message : 'Bilinmeyen hata.')
         setPageState('error')
       }
     },
@@ -165,13 +214,16 @@ export function AttendanceScanPage() {
     setScannerActive(false)
     setSelectedAction(null)
     setErrorMsg(null)
+    setLocationErrorKind(null)
     setLocationStatus(null)
     setPageState('select_action')
   }
 
   // ── Hata sonrası tekrar dene ─────────────────────────────────
   const handleRetry = () => {
+    if (!navigator.onLine) return
     setErrorMsg(null)
+    setLocationErrorKind(null)
     setResult(null)
     setLocationStatus(null)
     if (selectedAction) {
@@ -224,7 +276,10 @@ export function AttendanceScanPage() {
           p: 3,
         }}
       >
-        <Alert severity="warning">Devam takibi için sisteme giriş yapmanız gerekiyor.</Alert>
+        {/* Çevrimdışı açılışta oturum doğrulanamaz; bağlantı gelince oturum yeniden sorgulanır */}
+        {!online ? <OfflineActionAlert /> : (
+          <Alert severity="warning">Devam takibi için sisteme giriş yapmanız gerekiyor.</Alert>
+        )}
       </Box>
     )
   }
@@ -239,10 +294,16 @@ export function AttendanceScanPage() {
   const resultStatusColor = result ? (STATUS_COLORS[result.new_status] ?? '#94a3b8') : '#94a3b8'
 
   const isLocationError =
-    !!errorMsg &&
-    (errorMsg.toLowerCase().includes('konum') ||
-      errorMsg.toLowerCase().includes('gps') ||
-      errorMsg.toLowerCase().includes('izin'))
+    !!locationErrorKind ||
+    (!!errorMsg &&
+      (errorMsg.toLowerCase().includes('konum') ||
+        errorMsg.toLowerCase().includes('gps') ||
+        errorMsg.toLowerCase().includes('izin')))
+  // Ayar yönlendirmesi yalnızca izin reddinde; zaman aşımı / sinyal yokken "tekrar dene" yeterli
+  const showLocationPermissionHelp =
+    locationErrorKind === 'denied' ||
+    (!locationErrorKind && isLocationError && !!errorMsg && errorMsg.toLowerCase().includes('izin'))
+  const isLocationRetryable = locationErrorKind === 'timeout' || locationErrorKind === 'unavailable'
 
   // ─── Render ──────────────────────────────────────────────────
   return (
@@ -363,6 +424,9 @@ export function AttendanceScanPage() {
           {/* ── AMAÇ SEÇİMİ ── */}
           {pageState === 'select_action' && (
             <Box sx={{ width: '100%' }}>
+              {!online && hasShift && buttons.length > 0 && (
+                <Box sx={{ mb: 2 }}><OfflineActionAlert /></Box>
+              )}
               {/* Vardiya yok */}
               {!hasShift && (
                 <Alert severity="info">Bugün için tanımlı vardiya yok.</Alert>
@@ -438,6 +502,7 @@ export function AttendanceScanPage() {
                       color={btn.color}
                       size="large"
                       fullWidth
+                      disabled={!online}
                       onClick={() => handleSelectAction(btn.action)}
                       sx={{
                         justifyContent: 'flex-start',
@@ -521,11 +586,20 @@ export function AttendanceScanPage() {
                 </Box>
               )}
 
-              <QrScanner
-                onScan={(data) => void handleScan(data)}
-                onError={(e) => setErrorMsg(e)}
-                active={scannerActive}
-              />
+              {/* Çevrimdışıyken kamera hiç açılmaz; bağlantı gelince tarayıcı kendiliğinden başlar */}
+              {online ? (
+                <QrScanner
+                  onScan={(data) => void handleScan(data)}
+                  onError={(e) => setErrorMsg(e)}
+                  active={scannerActive}
+                />
+              ) : (
+                <OfflineActionAlert />
+              )}
+
+              {online && errorMsg && (
+                <Alert severity="error" sx={{ width: '100%', borderRadius: 1.5 }}>{errorMsg}</Alert>
+              )}
 
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                 <LocationOnIcon sx={{ fontSize: 13, color: 'primary.main' }} />
@@ -696,40 +770,16 @@ export function AttendanceScanPage() {
                 {errorMsg ?? 'İşlem başarısız.'}
               </Typography>
 
-              {isLocationError && (
-                <Box
-                  sx={{
-                    bgcolor: 'rgba(239,68,68,0.08)',
-                    border: '1px solid rgba(239,68,68,0.2)',
-                    borderRadius: 2,
-                    px: 2,
-                    py: 1.5,
-                    width: '100%',
-                  }}
-                >
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    display="block"
-                    fontWeight={600}
-                    mb={0.5}
-                  >
-                    📱 Safari konum izni nasıl verilir?
-                  </Typography>
-                  <Typography
-                    variant="caption"
-                    color="text.disabled"
-                    display="block"
-                    component="div"
-                  >
-                    1. Adres çubuğundaki <strong>AA</strong> simgesine dokun
-                    <br />
-                    2. <strong>Site Ayarları</strong> → Konum → <strong>İzin Ver</strong>
-                    <br />
-                    3. Sayfayı yenile ve tekrar dene
-                  </Typography>
-                </Box>
+              {showLocationPermissionHelp && <PermissionHelp kind="location" />}
+
+              {isLocationRetryable && (
+                <Typography variant="caption" color="text.secondary" textAlign="center">
+                  Konum servislerinin açık olduğundan emin olun; açık alanda veya pencere kenarında
+                  tekrar deneyin. QR kodunu yeniden okutmanız gerekir.
+                </Typography>
               )}
+
+              {!online && <OfflineActionAlert />}
 
               <Stack direction="row" spacing={1.5} useFlexGap sx={{ flexWrap: 'wrap', justifyContent: 'center' }}>
                 <Button
@@ -737,6 +787,7 @@ export function AttendanceScanPage() {
                   color="primary"
                   startIcon={<RefreshIcon />}
                   onClick={handleRetry}
+                  disabled={!online}
                 >
                   {isLocationError ? 'Tekrar Tara' : 'Tekrar Dene'}
                 </Button>
