@@ -275,15 +275,15 @@ export function ShiftCell({
         {compact ? (
           <>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, minWidth: 0 }}>
-              <Typography variant="caption" fontWeight={700} color="secondary.main" fontSize="0.62rem" noWrap sx={{ flex: 1, minWidth: 0 }}>
+              <Typography variant="caption" fontWeight={700} color="secondary.main" fontSize="0.7rem" noWrap sx={{ flex: 1, minWidth: 0 }}>
                 {name}
               </Typography>
               {hasWarning && <WarningAmberIcon sx={{ fontSize: 10, flexShrink: 0, color: warningColor }} />}
             </Box>
-            <Typography variant="caption" color="text.secondary" fontSize="0.64rem" lineHeight={1.25}>
+            <Typography variant="caption" color="text.primary" fontSize="0.74rem" fontWeight={600} lineHeight={1.3} sx={{ fontVariantNumeric: "tabular-nums" }}>
               {start}<br />{end}
             </Typography>
-            <Typography variant="caption" fontSize="0.58rem" fontWeight={700} color={dailyOver ? '#ef4444' : 'primary.main'}>
+            <Typography variant="caption" fontSize="0.66rem" fontWeight={700} color={dailyOver ? '#ef4444' : 'primary.main'}>
               {fmtHours(netMins)} net
             </Typography>
           </>
