@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import {
   Box,
   Typography,
@@ -39,7 +39,6 @@ import { tr } from 'date-fns/locale'
 
 import { DAY_LABELS, getRoleSortOrder, JS_DAY_TO_KEY, EmployeeWeekStats, calcEmployeeStats, getAvailStatus } from './scheduleHelpers'
 import { SummaryCell, ShiftCell } from './ScheduleCells'
-import { MobileScheduleView } from './MobileScheduleView'
 
 // ─── Ana bileşen ──────────────────────────────────────────────
 interface WeeklySchedulePageProps {
@@ -243,33 +242,26 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     return availabilityMap.get(dialogEmployee.id)?.get(dayKey) ?? []
   }, [dialogEmployee, dialogDate, availabilityMap])
 
-  if (isMobile) {
-    return (
-      <MobileScheduleView
-        holidayMap={holidayMap}
-        scheduleEntries={scheduleEntries}
-        weekDays={weekDays}
-        loading={isFirstLoad}
-        error={error}
-        currentWeek={currentWeek}
-        onWeekChange={handleWeekChange}
-        onCellClick={openAssignDialog}
-        approvedLeaveMap={approvedLeaveMap}
-        availabilityMap={availabilityMap}
-        dialogOpen={dialogOpen}
-        dialogEmployee={dialogEmployee}
-        dialogDate={dialogDate}
-        dialogExisting={dialogExisting}
-        dialogAvailability={dialogAvailability}
-        templates={templates}
-        saving={saving}
-        onSave={handleSave}
-        onDelete={handleDelete}
-        onDialogClose={() => setDialogOpen(false)}
-        readOnly={readOnly}
-      />
-    )
-  }
+  // Mobilde tablo açılınca bugünün sütunu görünür olsun (ad sütununun hemen yanına kaydır)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const hasGrid = !isFirstLoad && !error && scheduleEntries.length > 0
+  useEffect(() => {
+    if (!isMobile || !hasGrid) return
+    const el = scrollRef.current
+    const todayCol = el?.querySelector<HTMLElement>('[data-today="true"]')
+    if (el) el.scrollLeft = todayCol ? todayCol.offsetLeft - 104 : 0
+  }, [isMobile, hasGrid, weekDays])
+
+  const todayStr = format(new Date(), 'yyyy-MM-dd')
+  // Mobilde de aynı tablo: sabit genişlikli sütunlar + yatay kaydırma, ad sütunu ve gün başlığı sabit
+  const nameColW = isMobile ? 104 : 160
+  const gridCols = isMobile
+    ? `${nameColW}px repeat(7, minmax(64px, 1fr)) 76px`
+    : `${nameColW}px repeat(7, 1fr) 130px`
+  const gridMinWidth = isMobile ? nameColW + 7 * 64 + 76 : undefined
+  // Paper (yarı saydam) + sayfa zemini üzerinde sabit hücrelerin arkası görünmesin diye opak renkler
+  const stickyBg = '#1b2537'
+  const headerBg = '#131c2f'
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: '#0f172a', color: 'text.primary' }}>
@@ -289,30 +281,41 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
       )}
 
       {/* Desktop Grid */}
-      {!isFirstLoad && !error && scheduleEntries.length > 0 && (
+      {hasGrid && (
         <Paper
           elevation={0}
           sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, overflow: 'hidden' }}
         >
+          <Box
+            ref={scrollRef}
+            sx={{
+              overflow: 'auto',
+              // Mobilde tablo kendi içinde kaysın: başlık satırı (üst) ve ad sütunu (sol) sabit kalır
+              maxHeight: isMobile ? 'calc(100dvh - 190px)' : undefined,
+              overscrollBehaviorX: 'contain',
+            }}
+          >
+          <Box sx={{ minWidth: gridMinWidth }}>
           {/* Header row — 7 gün + özet sütunu */}
           <Box
             sx={{
               display: 'grid',
-              gridTemplateColumns: '160px repeat(7, 1fr) 130px',
+              gridTemplateColumns: gridCols,
               borderBottom: '1px solid',
               borderColor: 'divider',
-              bgcolor: 'rgba(15,23,42,0.8)',
+              bgcolor: headerBg,
+              position: 'sticky', top: 0, zIndex: 3,
             }}
           >
-            <Box sx={{ p: 1.5 }}>
+            <Box sx={{ p: isMobile ? 1 : 1.5, position: 'sticky', left: 0, zIndex: 1, bgcolor: headerBg, borderRight: '1px solid', borderColor: 'divider' }}>
               <Typography variant="caption" color="text.secondary" fontWeight={600}>Çalışan</Typography>
             </Box>
             {weekDays.map((d, i) => {
-              const isToday = d === format(new Date(), 'yyyy-MM-dd')
+              const isToday = d === todayStr
               const holiday = holidayMap.get(d)
               return (
-                <Box key={d} title={holiday ? `Resmi tatil: ${holiday.name}${holiday.half_day ? ' (13:00 sonrası)' : ''}` : undefined} sx={{
-                  p: 1.5, textAlign: 'center',
+                <Box key={d} data-today={isToday || undefined} title={holiday ? `Resmi tatil: ${holiday.name}${holiday.half_day ? ' (13:00 sonrası)' : ''}` : undefined} sx={{
+                  p: isMobile ? 0.75 : 1.5, textAlign: 'center',
                   borderLeft: '1px solid', borderColor: 'divider',
                   bgcolor: holiday && !holiday.half_day ? 'rgba(234,179,8,0.10)' : isToday ? 'rgba(20,184,166,0.06)' : 'transparent',
                 }}>
@@ -325,7 +328,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
                   </Typography>
                   {holiday && (
                     <Typography variant="caption" display="block" color="#eab308" fontSize="0.6rem" fontWeight={700} noWrap>
-                      {holiday.half_day ? 'Arife ½' : 'Resmi tatil'}
+                      {holiday.half_day ? 'Arife ½' : isMobile ? 'R. tatil' : 'Resmi tatil'}
                     </Typography>
                   )}
                 </Box>
@@ -333,7 +336,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
             })}
             {/* Özet başlık */}
             <Box sx={{
-              p: 1.5, textAlign: 'center',
+              p: isMobile ? 0.75 : 1.5, textAlign: 'center', alignSelf: 'stretch', display: 'flex', alignItems: 'center', justifyContent: 'center',
               borderLeft: '2px solid', borderColor: 'rgba(20,184,166,0.3)',
               bgcolor: 'rgba(20,184,166,0.04)',
             }}>
@@ -350,16 +353,17 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
                 key={entry.employee.id}
                 sx={{
                   display: 'grid',
-                  gridTemplateColumns: '160px repeat(7, 1fr) 130px',
+                  gridTemplateColumns: gridCols,
                   borderBottom: rowIdx < scheduleEntries.length - 1 ? '1px solid' : 'none',
                   borderColor: 'divider',
                   '&:hover': { bgcolor: 'rgba(255,255,255,0.01)' },
                 }}
               >
-                {/* Çalışan adı */}
+                {/* Çalışan adı — yatay kaydırmada sabit kalır */}
                 <Box sx={{
-                  p: 1.5, display: 'flex', flexDirection: 'column', justifyContent: 'center',
+                  p: isMobile ? 1 : 1.5, display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0,
                   borderRight: '1px solid', borderColor: 'divider',
+                  position: 'sticky', left: 0, zIndex: 2, bgcolor: stickyBg,
                 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6 }}>
                     <Typography variant="caption" fontWeight={700} color="text.primary" noWrap sx={{ flex: 1, minWidth: 0 }}>
@@ -387,7 +391,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
                 {/* Gün hücreleri */}
                 {weekDays.map((d) => {
                   const asgn = entry.dayAssignments[d]
-                  const isToday = d === format(new Date(), 'yyyy-MM-dd')
+                  const isToday = d === todayStr
                   const cellKey = `${entry.employee.id}:${d}`
                   const isOnLeave = asgn?.is_on_leave === true || approvedLeaveMap.has(cellKey)
                   const isRestDay = restDayMap.has(cellKey)
@@ -409,15 +413,18 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
                       dailyMins={stats?.dailyMins[d] ?? 0}
                       onClick={() => openAssignDialog(entry.employee, d)}
                       readOnly={readOnly}
+                      compact={isMobile}
                     />
                   )
                 })}
 
                 {/* Özet sütunu */}
-                <SummaryCell stats={stats} config={config} />
+                <SummaryCell stats={stats} config={config} compact={isMobile} />
               </Box>
             )
           })}
+          </Box>
+          </Box>
         </Paper>
       )}
 
