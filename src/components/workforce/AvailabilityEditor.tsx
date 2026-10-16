@@ -1,7 +1,8 @@
 'use client'
 /**
  * AvailabilityEditor — FAZ 11
- * Seçilen çalışanın haftalık müsaitlik kayıtlarını düzenler.
+ * Haftalık müsaitlik kayıtlarını düzenler. Çalışan yalnızca kendi müsaitliğini görür/düzenler;
+ * manager+ (veri girişi için) herhangi bir çalışanı seçebilir — API de aynı kuralı uygular.
  */
 import { useState, useEffect, useCallback } from 'react'
 import {
@@ -24,10 +25,12 @@ const DAYS: DayOfWeek[] = ['monday','tuesday','wednesday','thursday','friday','s
 
 interface Props {
   employees: EmployeeWithRole[]
+  currentEmployeeId: string
+  isManager: boolean
 }
 
-export function AvailabilityEditor({ employees }: Props) {
-  const [selectedId, setSelectedId] = useState<string>(employees[0]?.id ?? '')
+export function AvailabilityEditor({ employees, currentEmployeeId, isManager }: Props) {
+  const [selectedId, setSelectedId] = useState<string>(currentEmployeeId)
   const [availability, setAvailability] = useState<EmployeeAvailability[]>([])
   const { isFirstLoad, markLoaded } = useLoadedKey(selectedId)
   const [error, setError] = useState<string | null>(null)
@@ -79,14 +82,20 @@ export function AvailabilityEditor({ employees }: Props) {
 
   return (
     <Box>
-      {/* Çalışan seçici */}
-      <EmployeeSelect
-        employees={employees}
-        value={selectedId}
-        label="Çalışan"
-        onChange={setSelectedId}
-        sx={{ mb: 2, minWidth: 260, maxWidth: 360 }}
-      />
+      {/* Çalışan seçici — yalnızca yöneticiler başkası adına veri girebilir */}
+      {isManager ? (
+        <EmployeeSelect
+          employees={employees}
+          value={selectedId}
+          label="Çalışan"
+          onChange={setSelectedId}
+          sx={{ mb: 2, minWidth: 260, maxWidth: 360 }}
+        />
+      ) : (
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Haftalık müsaitliğinizi belirtin; vardiya planlanırken dikkate alınır.
+        </Typography>
+      )}
 
       {error && <Alert severity="error" sx={{ mb: 1 }} onClose={() => setError(null)}>{error}</Alert>}
 
