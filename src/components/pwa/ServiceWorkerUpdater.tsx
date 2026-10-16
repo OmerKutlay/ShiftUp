@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react'
 import { Button, CircularProgress, IconButton, Snackbar } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
 import { applyUpdate, registerServiceWorker } from '@/lib/pwa/registerServiceWorker'
+import { BOTTOM_NAV_OVERLAY_OFFSET } from '@/components/layout/MobileBottomNav'
 
 interface Props {
   /** Uyarı görünürlüğü değişince (PwaLayer diğer alt kartları bu sırada gizler) */
@@ -41,8 +42,8 @@ export function ServiceWorkerUpdater({ onVisibleChange }: Props) {
       open={open}
       anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       message="Yeni sürüm hazır"
-      // Mobilde alt navigasyonun (64px) üstünde kalsın
-      sx={{ bottom: { xs: 'calc(72px + env(safe-area-inset-bottom))', md: 24 } }}
+      // Mobilde alt navigasyonun ve taşan QR butonunun üstünde kalsın
+      sx={{ bottom: { xs: `calc(${BOTTOM_NAV_OVERLAY_OFFSET}px + env(safe-area-inset-bottom))`, md: 24 } }}
       action={
         <>
           <Button
