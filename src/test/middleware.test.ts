@@ -131,3 +131,14 @@ describe('middleware — API istekleri', () => {
     expect(res.status).toBe(403)
   })
 })
+
+describe('middleware — PWA dosyaları oturumsuz erişilebilir', () => {
+  it('/sw.js, /sw-push.js ve /manifest.json oturum kontrolüne girmez', async () => {
+    getUser.mockResolvedValue({ user: null })
+    for (const path of ['/sw.js', '/sw-push.js', '/manifest.json']) {
+      const res = await middleware(req(path))
+      expect(location(res)).toBeNull()
+    }
+    expect(getUser).not.toHaveBeenCalled()
+  })
+})

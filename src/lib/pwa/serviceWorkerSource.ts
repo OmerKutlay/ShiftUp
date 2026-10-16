@@ -1,5 +1,12 @@
 /**
- * ShiftUp Service Worker — PWA
+ * serviceWorkerSource — /sw.js içeriği (src/app/sw.js/route.ts tarafından sunulur).
+ *
+ * Neden public/sw.js değil: SW sürümü her deploy'da değişmeli ki tarayıcı yeni SW'yi kursun ve
+ * eski cache'ler temizlensin. Statik dosyada sürümü elle artırmak unutuluyordu; build sırasında
+ * izlenen dosyayı değiştirmek de çalışma ağacını kirletir. Sürüm next.config.ts `env.APP_BUILD_ID`
+ * (commit SHA / zaman damgası) ile build anında gömülür ve buradaki şablona yerleştirilir.
+ *
+ * Şablon içinde `${…}` yerine string birleştirme kullanılır (TS template literal ile karışmasın).
  *
  * Strateji:
  * - Statik build asset'leri (/_next/static): Cache First (içerik hash'li, değişmez) — en fazla
@@ -7,11 +14,33 @@
  * - HTML sayfaları: Network First; ağ yoksa önbellekteki sayfa, o da yoksa /offline.
  * - API route'ları: Network Only (gerçek zamanlı veri; giriş/çıkış asla önbellekten dönmez).
  * - Diğer GET (ikon, font, görsel): Stale While Revalidate.
+ *
+ * Güncelleme: ilk kurulumda (aktif SW yokken) hemen etkinleşir. Sonraki sürümler "waiting"
+ * durumunda bekler; kullanıcı "Güncelle"ye basınca istemci {type:'SKIP_WAITING'} gönderir
+ * (bkz. src/lib/pwa/registerServiceWorker.ts). Böylece açık formlar sürüm ortasında bozulmaz.
  */
 
-const VERSION = 'v4'
-const CACHE_NAME = `shiftup-${VERSION}`
-const STATIC_CACHE = `shiftup-static-${VERSION}`
+/** SW sürüm etiketinde yalnızca güvenli karakterler kalsın (cache adına girer). */
+export function normalizeSwVersion(raw: string | undefined | null): string {
+  const cleaned = (raw ?? '').replace(/[^\w.-]/g, '').slice(0, 40)
+  return cleaned || 'dev'
+}
+
+export function renderServiceWorker(rawVersion: string | undefined | null): string {
+  const version = normalizeSwVersion(rawVersion)
+  return `/* ShiftUp Service Worker — sürüm: ${version} (otomatik üretilir, bkz. src/lib/pwa/serviceWorkerSource.ts) */
+
+// Push / notificationclick handler'ları ayrı dosyada (public/sw-push.js). Dosya yoksa veya
+// hata verirse ana SW yine kurulur — önbellek/çevrimdışı davranışı push'a bağımlı değildir.
+try {
+  importScripts('/sw-push.js')
+} catch (err) {
+  console.warn('sw-push.js yüklenemedi:', err)
+}
+
+const VERSION = ${JSON.stringify(version)}
+const CACHE_NAME = 'shiftup-' + VERSION
+const STATIC_CACHE = 'shiftup-static-' + VERSION
 const STATIC_MAX_ENTRIES = 150
 const OFFLINE_URL = '/offline'
 
@@ -23,14 +52,22 @@ const PRECACHE = [
   '/icon-192.svg',
 ]
 
-// Install: offline sayfası ve ikonlar
+// Install: offline sayfası ve ikonlar. Yalnızca ilk kurulumda (aktif SW yok) hemen etkinleş;
+// güncellemeler kullanıcı onayını (SKIP_WAITING mesajı) bekler.
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => cache.addAll(PRECACHE))
       .catch(() => { /* offline pre-cache hatası kurulumu engellemesin */ })
-      .then(() => self.skipWaiting())
+      .then(() => {
+        if (!self.registration.active) return self.skipWaiting()
+      })
   )
+})
+
+// İstemci "Güncelle" dediğinde bekleyen SW etkinleşir
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting()
 })
 
 // Activate: eski sürüm cache'lerini temizle
@@ -46,7 +83,7 @@ self.addEventListener('activate', (event) => {
   )
 })
 
-/** Cache'te en fazla `max` kayıt bırakır (en eski eklenenler silinir) */
+/** Cache'te en fazla \`max\` kayıt bırakır (en eski eklenenler silinir) */
 async function trimCache(cacheName, max) {
   const cache = await caches.open(cacheName)
   const keys = await cache.keys()
@@ -123,3 +160,5 @@ self.addEventListener('fetch', (event) => {
     })
   )
 })
+`
+}
