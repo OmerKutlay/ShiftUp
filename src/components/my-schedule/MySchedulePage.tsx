@@ -290,7 +290,7 @@ function DayCard({ entry, isToday }: { entry: DayEntry; isToday: boolean }) {
 // ─── Ana Bileşen ──────────────────────────────────────────────
 
 export function MySchedulePage() {
-  const { employee, status: authStatus } = useAuth()
+  const { employee, status: authStatus, sessionCheck } = useAuth()
   const [currentMonth, setCurrentMonth] = useState(new Date())
 
   const monthStart = format(startOfMonth(currentMonth), 'yyyy-MM-dd')
@@ -320,10 +320,14 @@ export function MySchedulePage() {
   // Ağ hatası (sunucuya ulaşılamadı) ya da navigator.onLine=false → anlık görüntüden göster.
   // Sunucunun döndürdüğü hata (ApiError) çevrimdışı sayılmaz; olduğu gibi gösterilir.
   const online = useOnlineStatus()
-  const networkFailed = !online || (!!reportQ.error && !(reportQ.error instanceof ApiError))
   // Çevrimdışı açılışta /api/auth/me'ye ulaşılamaz (oturum "yok" görünür) → cihazdaki sahibin
   // anlık görüntüsü kullanılır. Sahip çıkışta / başka kullanıcı girişinde silinir.
-  const offlineMode = authStatus === 'unauthenticated' && !online
+  // Oturum sunucuya ulaşılamadığı için bilinmiyorsa (ağ hatası / 5xx) da cihaz sahibinin
+  // anlık görüntüsü gösterilir; sunucu oturumu kesin reddettiyse görüntüler zaten silinmiştir
+  const offlineMode =
+    authStatus === 'unauthenticated' && (!online || sessionCheck?.result === 'unreachable')
+  const networkFailed =
+    !online || offlineMode || (!!reportQ.error && !(reportQ.error instanceof ApiError))
   const ownerId = employee?.id ?? (offlineMode ? getSnapshotOwner() : null)
   const snapshot = useMemo(
     () => (networkFailed ? readScheduleSnapshot(ownerId) : null),

@@ -11,10 +11,15 @@ import { setSnapshot, getSnapshot, getSnapshotOwner } from '@/lib/pwa/offlineSna
 const mockedUseAuth = vi.mocked(useAuth)
 const refreshEmployee = vi.fn(async () => {})
 
-function auth(status: string, employeeId: string | null) {
+function auth(
+  status: string,
+  employeeId: string | null,
+  check: 'authenticated' | 'signed-out' | 'unreachable' | null = null,
+) {
   mockedUseAuth.mockReturnValue({
     status,
     employee: employeeId ? { id: employeeId } : null,
+    sessionCheck: check ? { result: check, at: Date.now() } : null,
     signOut: vi.fn(),
     refreshEmployee,
   } as unknown as ReturnType<typeof useAuth>)
@@ -47,22 +52,30 @@ describe('OfflineSessionGuard', () => {
     expect(getSnapshotOwner()).toBe('emp-2')
   })
 
-  it('çevrimiçiyken oturum yoksa siler, çevrimdışıyken korur', () => {
+  it('sunucu oturumu kesin reddederse siler, ulaşılamıyorsa korur', () => {
     setSnapshot('my-schedule', 'emp-1', { a: 1 })
-    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
-    auth('unauthenticated', null)
-    const { unmount } = render(<OfflineSessionGuard />)
+    auth('unauthenticated', null, 'unreachable')
+    const { rerender } = render(<OfflineSessionGuard />)
     expect(getSnapshot('my-schedule', 'emp-1')).not.toBeNull()
-    unmount()
 
-    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
-    render(<OfflineSessionGuard />)
+    auth('unauthenticated', null, 'signed-out')
+    rerender(<OfflineSessionGuard />)
     expect(getSnapshot('my-schedule', 'emp-1')).toBeNull()
   })
 
-  it('çevrimdışı açılışta bağlantı gelince oturumu yeniden sorgular', () => {
+  it('aynı durum tekrar gelse de yeni "signed-out" sorgusu siler (bağlantı geri geldi senaryosu)', () => {
+    auth('unauthenticated', null, 'unreachable')
+    const { rerender } = render(<OfflineSessionGuard />)
+    setSnapshot('my-schedule', 'emp-1', { a: 1 })
+    // status 'unauthenticated' değişmeden kalır; yalnızca sessionCheck nesnesi yenilenir
+    auth('unauthenticated', null, 'signed-out')
+    rerender(<OfflineSessionGuard />)
+    expect(getSnapshot('my-schedule', 'emp-1')).toBeNull()
+  })
+
+  it('oturum bilinmiyorsa bağlantı gelince yeniden sorgular', () => {
     const onLine = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
-    auth('unauthenticated', null)
+    auth('unauthenticated', null, 'unreachable')
     render(<OfflineSessionGuard />)
     expect(refreshEmployee).not.toHaveBeenCalled()
     onLine.mockReturnValue(true)
