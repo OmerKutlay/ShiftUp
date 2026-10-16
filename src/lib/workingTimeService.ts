@@ -266,10 +266,56 @@ export function checkWeeklyMax(
   return null
 }
 
+export interface AvailabilityRecord {
+  start_time: string
+  end_time: string
+  is_available: boolean
+}
+
+/**
+ * Bir günün availability kayıtlarına göre vardiyanın durumu:
+ *   - 'unavailable': "müsait değil" kaydının saat aralığıyla çakışıyor
+ *     (ör. 08:00–13:00 ders → 14:00–22:00 kapanış olur, 10:00–18:00 açılış olmaz)
+ *   - 'outside': "müsait" pencereleri tanımlı ama vardiya hiçbirine sığmıyor
+ *   - null: uygun (kayıt yoksa da uygun)
+ */
+export function availabilityConflict(
+  dayRecords: AvailabilityRecord[],
+  start: string,
+  end: string,
+): 'unavailable' | 'outside' | null {
+  if (dayRecords.length === 0) return null
+  const toMins = (t: string) => {
+    const [h, m] = t.slice(0, 5).split(':').map(Number)
+    return h * 60 + m
+  }
+  const span = (s: string, e: string): [number, number] => {
+    const sM = toMins(s)
+    let eM = toMins(e)
+    if (eM <= sM) eM += 24 * 60  // gece yarısını geçen aralık
+    return [sM, eM]
+  }
+  const [shiftStart, shiftEnd] = span(start, end)
+
+  const blocked = dayRecords.some((a) => {
+    if (a.is_available) return false
+    const [aS, aE] = span(a.start_time, a.end_time)
+    return shiftStart < aE && shiftEnd > aS
+  })
+  if (blocked) return 'unavailable'
+
+  const windows = dayRecords.filter((a) => a.is_available)
+  if (windows.length === 0) return null
+  return windows.some((a) => {
+    const [aS, aE] = span(a.start_time, a.end_time)
+    return shiftStart >= aS && shiftEnd <= aE
+  }) ? null : 'outside'
+}
+
 /**
  * Availability ihlali kontrolü.
- * Employee'ın belirli günde kayıtlı availability'si varsa,
- * vardiya bu aralığın dışına çıkıyorsa uyarı döner.
+ * "Müsait değil" kaydının saat aralığıyla çakışan ya da tanımlı müsaitlik
+ * penceresinin dışına çıkan vardiya için uyarı döner.
  *
  * Önemli: availability advisory; error değil warning üretir.
  */
@@ -292,32 +338,17 @@ export function checkAvailability(
   const dayKey = DAY_MAP[jsDay]
 
   const dayAvailability = availability.filter((a) => a.day_of_week === dayKey)
-  if (dayAvailability.length === 0) return null  // kayıt yoksa kontrol yapma
+  const conflict = availabilityConflict(dayAvailability, newStart, newEnd)
+  if (conflict === null) return null
 
-  // Müsait olmayan bir kayıt varsa blokla
-  const unavailable = dayAvailability.find((a) => !a.is_available)
-  if (unavailable) {
+  if (conflict === 'unavailable') {
+    const off = dayAvailability.filter((a) => !a.is_available)
+      .map((a) => `${a.start_time.slice(0, 5)}–${a.end_time.slice(0, 5)}`).join(', ')
     return {
       type: 'availability',
-      message: `Çalışan ${DAY_LABELS[dayKey]} günü müsait değil olarak işaretlemiş.`,
+      message: `Çalışan ${DAY_LABELS[dayKey]} günü ${off} arası müsait değil olarak işaretlemiş.`,
       severity: 'warning',
     }
-  }
-
-  // Müsaitlik penceresi dışında mı?
-  const toMins = (t: string) => {
-    const [h, m] = t.slice(0, 5).split(':').map(Number)
-    return h * 60 + m
-  }
-  const shiftStart = toMins(newStart)
-  let shiftEnd = toMins(newEnd)
-  if (shiftEnd <= shiftStart) shiftEnd += 24 * 60  // gece yarısını geçen vardiya
-
-  for (const a of dayAvailability) {
-    const avStart = toMins(a.start_time)
-    let avEnd = toMins(a.end_time)
-    if (avEnd <= avStart) avEnd += 24 * 60
-    if (shiftStart >= avStart && shiftEnd <= avEnd) return null  // tam içinde
   }
 
   return {
