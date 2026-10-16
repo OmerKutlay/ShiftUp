@@ -1,12 +1,16 @@
 {
+  "id": "/",
   "name": "ShiftUp — Vardiya Yönetimi",
   "short_name": "ShiftUp",
   "description": "Mağaza vardiya, personel devam ve izin yönetimi",
   "start_url": "/",
   "display": "standalone",
+  "display_override": ["standalone"],
+  "orientation": "portrait",
   "background_color": "#0f172a",
   "theme_color": "#14b8a6",
   "lang": "tr",
+  "dir": "ltr",
   "scope": "/",
   "categories": ["productivity", "business"],
   "icons": [
@@ -18,13 +22,17 @@
   "shortcuts": [
     {
       "name": "QR Tara",
+      "short_name": "QR Tara",
       "url": "/attendance/scan",
-      "description": "QR kod ile giriş / çıkış"
+      "description": "QR kod ile giriş / çıkış",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
       "name": "Çalışma Özetim",
+      "short_name": "Özetim",
       "url": "/my-schedule",
-      "description": "Vardiyalarım ve çalışma saatlerim"
+      "description": "Vardiyalarım ve çalışma saatlerim",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ]
 }
