@@ -53,6 +53,8 @@ function isPublicPath(pathname: string): boolean {
   if (/^\/icon-[\w-]+\.(svg|png)$/.test(pathname)) return true
   if (pathname === '/apple-touch-icon.png') return true
   if (pathname === '/sw.js') return true
+  // sw.js'nin importScripts ile yüklediği push eklentisi (oturumsuz da yüklenebilmeli)
+  if (pathname === '/sw-push.js') return true
   return false
 }
 

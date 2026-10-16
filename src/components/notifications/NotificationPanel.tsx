@@ -31,6 +31,7 @@ import { tr } from 'date-fns/locale'
 import type { Notification, NotificationType } from '@/types/notification'
 import { ListSkeleton } from '@/components/common'
 import { humanizeIsoDates } from '@/lib/dateUtils'
+import { notificationLink } from '@/lib/notificationLinks'
 
 // ─── Type icon + renk eşlemesi ─────────────────────────────────
 const TYPE_META: Record<
@@ -83,7 +84,8 @@ export function NotificationPanel({
   const handleItemClick = (n: Notification) => {
     if (!n.is_read) onMarkAsRead(n.id)
     onClose()
-    router.push('/notifications')
+    // İlgili sayfaya git (izin → /leave, hatırlatma → /my-schedule …)
+    router.push(notificationLink(n.type))
   }
 
   const handleMarkAll = () => {

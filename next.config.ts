@@ -76,6 +76,14 @@ const nextConfig: NextConfig = {
         ],
       },
       {
+        // Service Worker push eklentisi (sw.js → importScripts) — her deploy'da güncel
+        source: "/sw-push.js",
+        headers: [
+          { key: "Cache-Control", value: "no-store, no-cache, must-revalidate" },
+          { key: "Content-Type", value: "application/javascript" },
+        ],
+      },
+      {
         // Web App Manifest
         source: "/manifest.json",
         headers: [
