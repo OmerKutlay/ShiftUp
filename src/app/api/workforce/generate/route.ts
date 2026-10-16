@@ -10,7 +10,7 @@
  *
  * Ek uyarılar (planlayıcının dışında, sunucuda hesaplanır):
  *   - Bekleyen izin talebi olan güne atama (onaylanırsa vardiya kaldırılır)
- * (Md. 46 ardışık gün sınırı planlayıcıda uygulanır; geçen haftanın serisi prevStreak ile verilir.)
+ * (Md. 46: H.İ. takvim haftası içinde; geçen haftadan gelen seri (prevStreak) planlayıcıda tercih olarak kullanılır.)
  *   - Resmi tatil / arife (13:00 sonrası) günlerine atama — çalışan onayı ve 2 kat ücret (Md. 44, 47)
  */
 import { NextRequest, NextResponse } from 'next/server'
@@ -159,7 +159,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Geçen haftanın sonundan geriye kesintisiz çalışılan gün sayısı (Md. 46 ardışık gün sınırı)
+    // Geçen haftanın sonundan geriye kesintisiz çalışılan gün sayısı (uzun seriden kaçınmak için)
     const prevWorkDays = new Map<string, Set<string>>()
     for (const s of prevShifts) {
       const set = prevWorkDays.get(s.employee_id as string) ?? new Set<string>()

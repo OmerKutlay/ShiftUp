@@ -2,7 +2,7 @@
  * planValidation — plan aktarımı öncesi sunucu tarafı yasal kontroller (saf).
  *
  *   - Çalışma süresi: günlük/haftalık net, dinlenme, gece, part-time (buildWeekSummary)
- *   - Md. 46 hafta tatili: önceki haftanın sonuyla birlikte 6 günden fazla ardışık çalışma olamaz
+ *   - Md. 46 hafta tatili: her takvim haftasında (Pzt–Paz) en az 1 gün hafta tatili (en fazla 6 iş günü)
  */
 import { buildWeekSummary } from '@/lib/workingTimeService'
 import type { WorkingTimeConfig } from '@/lib/workingTimeConfig'
@@ -55,7 +55,6 @@ export function validateWeekPlan(
   config: WorkingTimeConfig
 ): string[] {
   const empById = new Map(employees.map((e) => [e.id, e]))
-  const all = [...weekShifts, ...neighborShifts]
   // Dinlenme kontrolü için yalnızca haftaya bitişik günler (eski haftaların kendi ihlalleri raporlanmasın)
   const dayBefore = addDaysToDateString(weekDays[0], -1)
   const dayAfter = addDaysToDateString(weekDays[6], 1)
@@ -88,21 +87,19 @@ export function validateWeekPlan(
     for (const v of s.violations) messages.push(`${s.employeeName}: ${v.message}`)
   }
 
-  // Md. 46 — 7 günlük dilimde en az 24 saat kesintisiz dinlenme ≈ en fazla 6 ardışık iş günü
-  const byEmp = new Map<string, string[]>()
-  for (const sh of all) {
-    const list = byEmp.get(sh.employee_id) ?? []
-    list.push(sh.work_date)
-    byEmp.set(sh.employee_id, list)
+  // Md. 46 — her takvim haftasında en az 1 gün hafta tatili (H.İ.): en fazla 6 iş günü.
+  // Haftalar arası seri (ör. bir hafta Pazartesi, sonraki hafta Pazar H.İ.) engel değildir.
+  const daysByEmp = new Map<string, Set<string>>()
+  for (const sh of weekShifts) {
+    if (!weekDays.includes(sh.work_date)) continue
+    const set = daysByEmp.get(sh.employee_id) ?? new Set<string>()
+    set.add(sh.work_date)
+    daysByEmp.set(sh.employee_id, set)
   }
-  for (const [empId, dates] of byEmp) {
-    const run = maxConsecutiveDays(dates)
-    // Yalnızca bu haftaya değen seriler raporlanır
-    if (run.length > 6 && run.end! >= weekDays[0] && run.start! <= weekDays[6]) {
+  for (const [empId, days] of daysByEmp) {
+    if (days.size > 6) {
       const name = empById.get(empId)?.full_name ?? empId
-      messages.push(
-        `${name}: ${run.start} – ${run.end} arası ${run.length} gün ardışık çalışma; 7 günde en az bir hafta tatili gerekli (İş Kanunu Md. 46).`
-      )
+      messages.push(`${name}: haftanın 7 günü çalışma; her hafta en az 1 gün hafta tatili gerekli (İş Kanunu Md. 46).`)
     }
   }
 
