@@ -76,3 +76,28 @@ export function formatDayNameTurkish(date: Date): string {
   // Intl küçük harf döndürür ("cuma") — başlıkta "Cuma" görünsün
   return name.charAt(0).toLocaleUpperCase('tr-TR') + name.slice(1)
 }
+
+const TR_MONTHS_SHORT = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara']
+
+/** 'YYYY-MM-DD' → '22 Eki 2026' (saat dilimi dönüşümü yok — takvim günü olduğu gibi) */
+export function formatShortDateTr(dateStr: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr)
+  if (!m) return dateStr
+  return `${Number(m[3])} ${TR_MONTHS_SHORT[Number(m[2]) - 1]} ${m[1]}`
+}
+
+/** İki takvim günü aralığı: aynı günse tek tarih, aynı yılsa yıl bir kez ('18 Eki – 20 Eki 2026') */
+export function formatDateRangeTr(start: string, end: string): string {
+  if (start === end) return formatShortDateTr(start)
+  const s = formatShortDateTr(start)
+  const e = formatShortDateTr(end)
+  return start.slice(0, 4) === end.slice(0, 4) ? `${s.slice(0, -5)} – ${e}` : `${s} – ${e}`
+}
+
+/**
+ * Serbest metindeki ham ISO tarihleri ('2026-10-22') okunur biçime çevirir.
+ * Bildirim mesajları sunucuda bu biçimle üretilip saklandığından, gösterirken düzeltilir.
+ */
+export function humanizeIsoDates(text: string): string {
+  return text.replace(/\b(\d{4}-\d{2}-\d{2})\b/g, (d) => formatShortDateTr(d))
+}

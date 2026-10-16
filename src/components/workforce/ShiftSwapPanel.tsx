@@ -117,6 +117,10 @@ export function ShiftSwapPanel({ employees, assignments, currentEmployeeId, isMa
   const myShifts = assignments.filter((a) => a.employee_id === currentEmployeeId && a.work_date >= today)
   const targetShifts = assignments.filter((a) => a.employee_id === form.target_id && a.work_date >= today)
 
+  // Kart içi gösterim: "3 Kas Sal 12:00–20:00"
+  const fmtSwapShift = (sh: { work_date: string; start_time: string; end_time: string }) =>
+    `${format(new Date(sh.work_date), 'd MMM EEE', { locale: tr })} ${sh.start_time.slice(0,5)}–${sh.end_time.slice(0,5)}`
+
   const fmtShift = (a: ShiftAssignmentWithDetails) =>
     `${format(new Date(a.work_date), 'd MMM', { locale: tr })} ${a.start_time.slice(0,5)}-${a.end_time.slice(0,5)}`
 
@@ -152,31 +156,39 @@ export function ShiftSwapPanel({ employees, assignments, currentEmployeeId, isMa
             const canCancel = isPending && swap.requester_id === currentEmployeeId
             return (
               <Paper key={swap.id} sx={{ p: 1.5, bgcolor: 'rgba(30,41,59,0.5)', border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
-                <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                    <SwapHorizIcon sx={{ color: meta.color, fontSize: 18 }} />
-                    <Box>
-                      <Typography variant="body2" fontWeight={700}>
-                        {swap.requester?.full_name ?? '—'}
-                        {swap.requester_shift ? ` · ${swap.requester_shift.work_date} ${swap.requester_shift.start_time.slice(0,5)}` : ''}
-                      </Typography>
-                      {swap.target && (
-                        <Typography variant="caption" color="text.secondary">
-                          ↔ {swap.target.full_name}
-                          {swap.target_shift ? ` · ${swap.target_shift.work_date} ${swap.target_shift.start_time.slice(0,5)}` : ' (vardiya devri)'}
-                        </Typography>
-                      )}
-                      {swap.requester_note && (
-                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>Not: {swap.requester_note}</Typography>
-                      )}
-                      {swap.reviewer_note && (
-                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>Yönetici notu: {swap.reviewer_note}</Typography>
-                      )}
-                    </Box>
+                {/* Satır 1: ikon + isimler | durum chip'i (sağ üstte sabit) */}
+                <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', alignItems: 'start', columnGap: 1 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, minWidth: 0 }}>
+                    <SwapHorizIcon sx={{ color: meta.color, fontSize: 18, mt: '2px', flexShrink: 0 }} />
+                    <Typography variant="body2" fontWeight={700} sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                      {swap.requester?.full_name ?? '—'}
+                      {swap.target ? ` ↔ ${swap.target.full_name}` : ''}
+                    </Typography>
                   </Box>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Chip label={meta.label} size="small"
-                      sx={{ bgcolor: `${meta.color}22`, color: meta.color, fontWeight: 700, fontSize: '0.65rem' }} />
+                  <Chip label={meta.label} size="small"
+                    sx={{ bgcolor: `${meta.color}22`, color: meta.color, fontWeight: 700, fontSize: '0.65rem', maxWidth: '100%' }} />
+                </Box>
+                {/* Satır 2: vardiyalar + notlar */}
+                <Box sx={{ mt: 0.5, pl: '26px', minWidth: 0 }}>
+                  {swap.requester_shift && (
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                      {swap.requester?.full_name ?? 'Talep eden'}: {fmtSwapShift(swap.requester_shift)}
+                    </Typography>
+                  )}
+                  {swap.target && (
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                      {swap.target.full_name}: {swap.target_shift ? fmtSwapShift(swap.target_shift) : 'vardiya devri'}
+                    </Typography>
+                  )}
+                  {swap.requester_note && (
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', overflowWrap: 'anywhere' }}>Not: {swap.requester_note}</Typography>
+                  )}
+                  {swap.reviewer_note && (
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', overflowWrap: 'anywhere' }}>Yönetici notu: {swap.reviewer_note}</Typography>
+                  )}
+                </Box>
+                {(canRespond || canReview || canCancel) && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, mt: 1 }}>
                     {canRespond && (
                       <>
                         <Button size="small" color="success" variant="outlined" startIcon={<CheckIcon />}
@@ -213,7 +225,7 @@ export function ShiftSwapPanel({ employees, assignments, currentEmployeeId, isMa
                       </Button>
                     )}
                   </Box>
-                </Box>
+                )}
               </Paper>
             )
           })}

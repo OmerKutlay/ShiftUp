@@ -15,6 +15,8 @@ import {
   Button,
   Divider,
   Chip,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material'
 import NotificationsIcon from '@mui/icons-material/Notifications'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
@@ -28,6 +30,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import type { Notification, NotificationType } from '@/types/notification'
 import { ListSkeleton } from '@/components/common'
+import { humanizeIsoDates } from '@/lib/dateUtils'
 
 // ─── Type icon + renk eşlemesi ─────────────────────────────────
 const TYPE_META: Record<
@@ -74,6 +77,8 @@ export function NotificationPanel({
 }: Props) {
   const router = useRouter()
   const open = Boolean(anchorEl)
+  // Telefonda zil üst çubuğun sağında: panel zilin altına, sağa hizalı açılsın (üstünü kapatmasın)
+  const isMobile = useMediaQuery(useTheme().breakpoints.down('md'))
 
   const handleItemClick = (n: Notification) => {
     if (!n.is_read) onMarkAsRead(n.id)
@@ -90,12 +95,12 @@ export function NotificationPanel({
       open={open}
       anchorEl={anchorEl}
       onClose={onClose}
-      anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
-      transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+      anchorOrigin={isMobile ? { vertical: 'bottom', horizontal: 'right' } : { vertical: 'top', horizontal: 'right' }}
+      transformOrigin={isMobile ? { vertical: 'top', horizontal: 'right' } : { vertical: 'top', horizontal: 'left' }}
       slotProps={{
         paper: {
           sx: {
-            width: 340,
+            width: { xs: 'calc(100vw - 32px)', sm: 340 },
             maxHeight: 480,
             display: 'flex',
             flexDirection: 'column',
@@ -145,7 +150,7 @@ export function NotificationPanel({
           <Button
             size="small"
             onClick={handleMarkAll}
-            sx={{ fontSize: '0.7rem', color: 'text.secondary', minHeight: 'unset', p: 0.5 }}
+            sx={{ fontSize: '0.75rem', color: 'text.secondary' }}
           >
             Tümünü okundu işaretle
           </Button>
@@ -223,7 +228,7 @@ export function NotificationPanel({
                               component="span"
                               sx={{ display: 'block', lineHeight: 1.5, mt: 0.25 }}
                             >
-                              {n.message}
+                              {humanizeIsoDates(n.message)}
                             </Typography>
                             <Typography
                               variant="caption"

@@ -178,7 +178,7 @@ export function EmployeeFormDialog({ open, onClose, onSave, employee, roles, loa
 
           {/* Email */}
           <TextField
-            label="Email"
+            label="E-posta"
             type="email"
             value={form.email}
             onChange={handleEmailChange}
@@ -194,7 +194,7 @@ export function EmployeeFormDialog({ open, onClose, onSave, employee, roles, loa
               )
             }
             fullWidth
-            inputProps={{ 'aria-label': 'Email' }}
+            inputProps={{ 'aria-label': 'E-posta' }}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">

@@ -429,7 +429,7 @@ export function AttendanceScanPage() {
                     textAlign="center"
                     sx={{ mb: 0.5, letterSpacing: 0.5 }}
                   >
-                    NE YAPMAK İSTİYORSUNUZ?
+                    Ne yapmak istiyorsunuz?
                   </Typography>
                   {buttons.map((btn) => (
                     <Button
@@ -731,7 +731,7 @@ export function AttendanceScanPage() {
                 </Box>
               )}
 
-              <Stack direction="row" spacing={1.5}>
+              <Stack direction="row" spacing={1.5} useFlexGap sx={{ flexWrap: 'wrap', justifyContent: 'center' }}>
                 <Button
                   variant="outlined"
                   color="primary"
