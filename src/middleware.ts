@@ -52,7 +52,8 @@ function isPublicPath(pathname: string): boolean {
   // PWA / favicon ikonları — tarayıcı oturumsuz da ister
   if (/^\/icon-[\w-]+\.(svg|png)$/.test(pathname)) return true
   if (pathname === '/apple-touch-icon.png') return true
-  if (pathname === '/sw.js') return true
+  // Service Worker (route handler) + importScripts ile yüklenen push handler'ları
+  if (pathname === '/sw.js' || pathname === '/sw-push.js') return true
   return false
 }
 

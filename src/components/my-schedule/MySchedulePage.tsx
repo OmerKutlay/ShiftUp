@@ -12,6 +12,9 @@
  *   - Takvim görünümü (her günün kartı)
  *
  * Çalışan bu ekrandan maaş hesabı yapabilmek için saatlerini görebilir.
+ *
+ * Çevrimdışı: son başarılı aylık yanıtlar (en fazla SNAPSHOT_MONTHS ay) çalışan id'siyle
+ * localStorage'a yazılır; ağ yokken bunlardan, "son güncelleme" uyarısıyla salt-okunur gösterilir.
  */
 import { useState, useMemo } from 'react'
 import useSWR from 'swr'
@@ -33,7 +36,11 @@ import { tr } from 'date-fns/locale'
 import { useAuth } from '@/context/AuthContext'
 import { PageHeader, PageSkeleton, StatCardsSkeleton, DayBlocksSkeleton } from '@/components/common'
 import { shiftDurationMins } from '@/lib/workingTimeService'
-import { apiFetch } from '@/lib/api/http'
+import { apiFetch, ApiError } from '@/lib/api/http'
+import { useOnlineStatus } from '@/hooks/useOnlineStatus'
+import {
+  getSnapshot, getSnapshotOwner, setSnapshot, formatSnapshotTime, SNAPSHOT_MAX_AGE_MS,
+} from '@/lib/pwa/offlineSnapshot'
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -51,6 +58,43 @@ interface DayEntry {
   break_minutes: number | null
   is_on_leave: boolean
   is_manual_correction?: boolean
+}
+
+// ─── Çevrimdışı anlık görüntü ─────────────────────────────────
+
+const SNAPSHOT_NAME = 'my-schedule'
+/** Saklanan en fazla ay sayısı (en son görüntülenenler) */
+const SNAPSHOT_MONTHS = 3
+
+interface MyScheduleSnapshot {
+  profile: { full_name: string; role: string }
+  /** Her ay kendi kayıt zamanıyla tutulur (son güncelleme o aya aittir) */
+  months: { month: string; savedAt: string; rows: DayEntry[] }[]
+}
+
+function readScheduleSnapshot(ownerId: string | null) {
+  const snap = getSnapshot<MyScheduleSnapshot>(SNAPSHOT_NAME, ownerId)
+  if (!snap || !Array.isArray(snap.data?.months)) return null
+  // Süresi dolmuş aylar (SNAPSHOT_MAX_AGE_MS) gösterilmez
+  const now = Date.now()
+  const months = snap.data.months.filter((m) => now - Date.parse(m.savedAt) <= SNAPSHOT_MAX_AGE_MS)
+  return { ...snap, data: { ...snap.data, months } }
+}
+
+/** Başarılı aylık yanıtı anlık görüntüye ekler (aynı ay varsa değiştirir, en yeni başta) */
+function saveScheduleSnapshot(
+  ownerId: string,
+  profile: MyScheduleSnapshot['profile'],
+  month: string,
+  rows: DayEntry[],
+) {
+  const entry = { month, savedAt: new Date().toISOString(), rows }
+  const prev = readScheduleSnapshot(ownerId)?.data.months ?? []
+  const months = [entry, ...prev.filter((m) => m.month !== month)].slice(0, SNAPSHOT_MONTHS)
+  // Boyut sınırı aşılırsa yalnızca bu ayı saklamayı dene
+  if (!setSnapshot<MyScheduleSnapshot>(SNAPSHOT_NAME, ownerId, { profile, months })) {
+    setSnapshot<MyScheduleSnapshot>(SNAPSHOT_NAME, ownerId, { profile, months: [entry] })
+  }
 }
 
 // ─── Yardımcılar ──────────────────────────────────────────────
@@ -246,7 +290,7 @@ function DayCard({ entry, isToday }: { entry: DayEntry; isToday: boolean }) {
 // ─── Ana Bileşen ──────────────────────────────────────────────
 
 export function MySchedulePage() {
-  const { employee, status: authStatus } = useAuth()
+  const { employee, status: authStatus, sessionCheck } = useAuth()
   const [currentMonth, setCurrentMonth] = useState(new Date())
 
   const monthStart = format(startOfMonth(currentMonth), 'yyyy-MM-dd')
@@ -256,10 +300,49 @@ export function MySchedulePage() {
   const reportKey = authStatus === 'authenticated' && employee
     ? `/api/reports/my?${new URLSearchParams({ date_from: monthStart, date_to: monthEnd })}`
     : null
-  const reportQ = useSWR(reportKey, (url: string) => apiFetch<{ rows: DayEntry[] }>(url))
-  const entries = useMemo(() => reportQ.data?.rows ?? [], [reportQ.data])
-  const isFirstLoad = !reportQ.data && !reportQ.error
-  const error = reportQ.error ? (reportQ.error instanceof Error ? reportQ.error.message : 'Veriler yüklenemedi.') : null
+  // Yanıt, ait olduğu URL ile birlikte tutulur: keepPreviousData önceki ayı döndürürken
+  // çevrimdışı görünümde yanlış aya ait veri gösterilmesin
+  const reportQ = useSWR(
+    reportKey,
+    async (url: string) => ({ url, ...(await apiFetch<{ rows: DayEntry[] }>(url)) }),
+    {
+      onSuccess: (data) => {
+        if (!employee) return
+        const month = new URL(data.url, 'http://x').searchParams.get('date_from')
+        if (month) {
+          saveScheduleSnapshot(employee.id, { full_name: employee.full_name, role: employee.role }, month, data.rows)
+        }
+      },
+    },
+  )
+
+  // ── Çevrimdışı ───────────────────────────────────────────────
+  // Ağ hatası (sunucuya ulaşılamadı) ya da navigator.onLine=false → anlık görüntüden göster.
+  // Sunucunun döndürdüğü hata (ApiError) çevrimdışı sayılmaz; olduğu gibi gösterilir.
+  const online = useOnlineStatus()
+  // Çevrimdışı açılışta /api/auth/me'ye ulaşılamaz (oturum "yok" görünür) → cihazdaki sahibin
+  // anlık görüntüsü kullanılır. Sahip çıkışta / başka kullanıcı girişinde silinir.
+  // Oturum sunucuya ulaşılamadığı için bilinmiyorsa (ağ hatası / 5xx) da cihaz sahibinin
+  // anlık görüntüsü gösterilir; sunucu oturumu kesin reddettiyse görüntüler zaten silinmiştir
+  const offlineMode =
+    authStatus === 'unauthenticated' && (!online || sessionCheck?.result === 'unreachable')
+  const networkFailed =
+    !online || offlineMode || (!!reportQ.error && !(reportQ.error instanceof ApiError))
+  const ownerId = employee?.id ?? (offlineMode ? getSnapshotOwner() : null)
+  const snapshot = useMemo(
+    () => (networkFailed ? readScheduleSnapshot(ownerId) : null),
+    [networkFailed, ownerId],
+  )
+  const snapshotMonth = snapshot?.data.months.find((m) => m.month === monthStart) ?? null
+  const liveData = networkFailed && reportQ.data?.url !== reportKey ? undefined : reportQ.data
+
+  const entries = useMemo(() => snapshotMonth?.rows ?? liveData?.rows ?? [], [snapshotMonth, liveData])
+  const isFirstLoad = !snapshotMonth && !liveData && !reportQ.error && !networkFailed
+  const error = snapshotMonth || liveData
+    ? null
+    : networkFailed
+      ? 'Çevrimdışısınız — bu ay için kaydedilmiş veri yok. Bağlantı gelince yeniden yüklenir.'
+      : reportQ.error ? (reportQ.error instanceof Error ? reportQ.error.message : 'Veriler yüklenemedi.') : null
 
   // ── Özet hesapla ─────────────────────────────────────────────
   const summary = useMemo(() => {
@@ -293,10 +376,15 @@ export function MySchedulePage() {
   if (authStatus === 'loading') {
     return <PageSkeleton stats={4} rows={6} maxWidth={900} />
   }
-  if (authStatus === 'unauthenticated' || !employee) {
+  const profile = employee ?? (offlineMode ? snapshot?.data.profile : null)
+  if (!profile) {
     return (
       <Box sx={{ p: 3 }}>
-        <Alert severity="warning">Bu sayfayı görmek için giriş yapmanız gerekiyor.</Alert>
+        {offlineMode ? (
+          <Alert severity="warning">Çevrimdışısınız — bu cihazda kayıtlı çalışma özeti bulunmuyor. Bağlantı gelince tekrar deneyin.</Alert>
+        ) : (
+          <Alert severity="warning">Bu sayfayı görmek için giriş yapmanız gerekiyor.</Alert>
+        )}
       </Box>
     )
   }
@@ -308,8 +396,14 @@ export function MySchedulePage() {
         icon={CalendarMonthIcon}
         overline="Kişisel"
         title="Çalışma Özetim"
-        subtitle={`${employee.full_name} · ${employee.role}`}
+        subtitle={`${profile.full_name} · ${profile.role}`}
       />
+
+      {snapshotMonth && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Çevrimdışı — son güncelleme: {formatSnapshotTime(snapshotMonth.savedAt)}
+        </Alert>
+      )}
 
       {/* Ay navigasyonu */}
       <Paper elevation={0} sx={{
