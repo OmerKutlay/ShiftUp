@@ -22,7 +22,7 @@ import LogoutIcon from '@mui/icons-material/Logout'
 import BeachAccessIcon from '@mui/icons-material/BeachAccess'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import { useRouter } from 'next/navigation'
-import { formatDateTurkish, formatDayNameTurkish } from '@/lib/dateUtils'
+import { formatDateTurkish, formatDayNameTurkish, formatDateRangeTr } from '@/lib/dateUtils'
 import { LEAVE_TYPE_LABELS } from '@/types/leave'
 import { PageHeader, StatCardsSkeleton, ListSkeleton } from '@/components/common'
 
@@ -374,7 +374,7 @@ export function DashboardPage() {
                         />
                       </Box>
                       <Typography variant="caption" color="text.secondary">
-                        {leave.start_date} – {leave.end_date}
+                        {formatDateRangeTr(leave.start_date, leave.end_date)}
                       </Typography>
                     </Paper>
                   )

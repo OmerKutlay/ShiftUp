@@ -222,7 +222,7 @@ export function LoginForm({ authMode }: Props) {
           borderRadius: 3,
         }}
       >
-        <CardContent sx={{ p: 4 }}>
+        <CardContent sx={{ p: { xs: 2.5, sm: 4 } }}>
           {/* Logo + dev badge */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
             <Typography variant="h5" fontWeight={800} color="primary.main" letterSpacing={1}>

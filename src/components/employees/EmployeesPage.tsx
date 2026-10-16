@@ -364,11 +364,11 @@ function EmployeeCard({
             {employee.full_name}
           </Typography>
           {employee.email && (
-            <Typography variant="caption" color="text.disabled" fontSize="0.68rem" noWrap display="block">
+            <Typography variant="caption" color="text.disabled" fontSize="0.75rem" noWrap display="block">
               {employee.email}
             </Typography>
           )}
-          <Box sx={{ display: 'flex', gap: 0.75, mt: 0.3, flexWrap: 'wrap' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.5, flexWrap: 'wrap' }}>
             <Chip
               label={employee.role}
               size="small"
@@ -396,7 +396,7 @@ function EmployeeCard({
               />
             )}
             {/* Mobile status */}
-            <Box sx={{ display: { xs: 'block', md: 'none' } }}>
+            <Box sx={{ display: { xs: 'flex', md: 'none' }, alignItems: 'center' }}>
               <EmployeeStatusChip active={employee.active} />
             </Box>
           </Box>

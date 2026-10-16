@@ -9,6 +9,7 @@ import useSWR from 'swr'
 import {
   Alert, Box, Button, Checkbox, Chip, FormControlLabel, IconButton, Paper, Stack,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Tooltip, Typography,
+  useMediaQuery, useTheme,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import DeleteIcon from '@mui/icons-material/Delete'
@@ -18,6 +19,8 @@ import { turkeyToday } from '@/lib/dateUtils'
 import { DateField, TableSkeleton } from '@/components/common'
 
 export function HolidaysPanel() {
+  const theme = useTheme()
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
   const year = Number(turkeyToday().slice(0, 4))
   const [range] = useState({ from: `${year - 1}-01-01`, to: `${year + 1}-12-31` })
   const key = `/api/holidays?from=${range.from}&to=${range.to}`
@@ -86,7 +89,35 @@ export function HolidaysPanel() {
       )}
       {isLoading && !data && <TableSkeleton rows={6} columns={3} />}
 
-      {data && (
+      {data && isMobile && (
+        // Mobil: tablo yerine liste — ad üstte (sarar), tarih tek satırda altında
+        <Paper elevation={0} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
+          {data.holidays.map((h, i) => (
+            <Box
+              key={h.date}
+              sx={{
+                display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 1,
+                borderTop: i === 0 ? 'none' : '1px solid', borderColor: 'divider',
+              }}
+            >
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography variant="body2" fontWeight={700}>{h.name}</Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+                  {new Date(`${h.date}T12:00:00`).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric', weekday: 'short' })}
+                </Typography>
+              </Box>
+              {h.half_day ? <Chip size="small" label="Yarım gün" /> : <Chip size="small" label="Tam gün" color="warning" variant="outlined" />}
+              <IconButton aria-label={`${h.name} sil`} onClick={() => void remove(h.date)} sx={{ width: 36, height: 36 }}>
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            </Box>
+          ))}
+          {data.holidays.length === 0 && (
+            <Typography variant="body2" sx={{ p: 1.5 }}>Kayıtlı resmi tatil yok.</Typography>
+          )}
+        </Paper>
+      )}
+      {data && !isMobile && (
         <TableContainer component={Paper} elevation={0} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
           <Table size="small">
             <TableHead>

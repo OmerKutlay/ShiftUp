@@ -130,7 +130,7 @@ function NewRequestDialog({ open, onClose, onSave, employees, saving }: NewReque
             </Select>
           </FormControl>
 
-          <Stack direction="row" spacing={2}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
             <DateField
               fullWidth
               size="small"
@@ -230,7 +230,7 @@ function ReviewDialog({ open, request, onClose, onReview, saving }: ReviewDialog
         <TextField
           fullWidth
           size="small"
-          label="Manager Notu (opsiyonel)"
+          label="Yönetici notu (opsiyonel)"
           multiline
           rows={3}
           value={note}
@@ -238,7 +238,7 @@ function ReviewDialog({ open, request, onClose, onReview, saving }: ReviewDialog
           placeholder="Onay veya red sebebini belirtebilirsiniz..."
         />
       </DialogContent>
-      <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
+      <DialogActions sx={{ px: 3, pb: 2, gap: 1, flexWrap: 'wrap' }}>
         <Button onClick={onClose} disabled={saving}>İptal</Button>
         <Button
           variant="outlined"
@@ -592,7 +592,7 @@ function LeaveCard({
     >
       <Box>
         {/* Employee + status */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1, flexWrap: 'wrap' }}>
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, mb: 1 }}>
           <Box
             sx={{
               width: 36,
@@ -611,22 +611,25 @@ function LeaveCard({
           >
             {emp?.full_name?.charAt(0) ?? '?'}
           </Box>
-          <Box>
+          <Box sx={{ minWidth: 0, flex: 1 }}>
             <Typography variant="subtitle2" fontWeight={700}>{emp?.full_name ?? '—'}</Typography>
-            <Typography variant="caption" color="text.secondary">{emp?.role ?? '—'}</Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>{emp?.role ?? '—'}</Typography>
+            {/* Her kartta aynı yerde: rol satırının altında iki chip yan yana */}
+            <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.75, mt: 0.5 }}>
+              <LeaveStatusChip status={request.status} />
+              <Chip
+                label={LEAVE_TYPE_LABELS[request.leave_type]}
+                size="small"
+                sx={{
+                  height: 20,
+                  fontSize: '0.65rem',
+                  bgcolor: 'rgba(99,102,241,0.12)',
+                  color: '#818cf8',
+                  border: '1px solid rgba(99,102,241,0.3)',
+                }}
+              />
+            </Box>
           </Box>
-          <LeaveStatusChip status={request.status} />
-          <Chip
-            label={LEAVE_TYPE_LABELS[request.leave_type]}
-            size="small"
-            sx={{
-              height: 20,
-              fontSize: '0.65rem',
-              bgcolor: 'rgba(99,102,241,0.12)',
-              color: '#818cf8',
-              border: '1px solid rgba(99,102,241,0.3)',
-            }}
-          />
         </Box>
 
         {/* Dates */}

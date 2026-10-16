@@ -183,7 +183,7 @@ export function StoreLocationPage({ embedded = false }: { embedded?: boolean } =
               onChange={(e) => updateField('name', e.target.value)}
             />
 
-            <Stack direction="row" spacing={1}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
               <TextField
                 fullWidth
                 size="small"
@@ -215,7 +215,7 @@ export function StoreLocationPage({ embedded = false }: { embedded?: boolean } =
 
             <Divider sx={{ borderColor: 'divider' }} />
 
-            <Stack direction="row" spacing={1}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
               <TextField
                 fullWidth
                 size="small"
@@ -290,16 +290,17 @@ export function StoreLocationPage({ embedded = false }: { embedded?: boolean } =
                   opacity: loc.active ? 1 : 0.6,
                 }}
               >
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                      <Typography variant="subtitle2" fontWeight={700}>{loc.name}</Typography>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
+                  <Box sx={{ minWidth: 0 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5, minWidth: 0 }}>
+                      <Typography variant="subtitle2" fontWeight={700} noWrap sx={{ minWidth: 0 }}>{loc.name}</Typography>
                       <Chip
                         label={loc.active ? 'Aktif' : 'Pasif'}
                         size="small"
                         sx={{
                           height: 18,
-                          fontSize: '0.6rem',
+                          fontSize: '0.68rem',
+                          flexShrink: 0,
                           bgcolor: loc.active ? 'rgba(20,184,166,0.15)' : 'rgba(255,255,255,0.06)',
                           color: loc.active ? 'primary.main' : 'text.disabled',
                         }}
@@ -316,7 +317,7 @@ export function StoreLocationPage({ embedded = false }: { embedded?: boolean } =
                     size="small"
                     variant="outlined"
                     onClick={() => handleEdit(loc)}
-                    sx={{ fontSize: '0.7rem' }}
+                    sx={{ fontSize: '0.7rem', flexShrink: 0 }}
                   >
                     Düzenle
                   </Button>

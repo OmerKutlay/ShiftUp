@@ -118,7 +118,16 @@ export function AvailabilityEditor({ employees, currentEmployeeId, isManager }: 
                   <Chip
                     key={item.id}
                     icon={item.is_available ? <CheckCircleIcon sx={{ fontSize: 14 }} /> : <BlockIcon sx={{ fontSize: 14 }} />}
-                    label={`${item.start_time.slice(0,5)} – ${item.end_time.slice(0,5)}${item.note ? ` (${item.note})` : ''}`}
+                    label={
+                      <Box component="span" sx={{ display: 'block' }}>
+                        {item.start_time.slice(0,5)} – {item.end_time.slice(0,5)}
+                        {item.note && (
+                          <Box component="span" sx={{ display: 'block', fontWeight: 400, fontSize: '0.7rem', opacity: 0.85, whiteSpace: 'normal' }}>
+                            {item.note}
+                          </Box>
+                        )}
+                      </Box>
+                    }
                     size="small"
                     onDelete={() => handleDelete(item.id)}
                     deleteIcon={<DeleteIcon />}
@@ -126,6 +135,11 @@ export function AvailabilityEditor({ employees, currentEmployeeId, isManager }: 
                       bgcolor: item.is_available ? 'rgba(20,184,166,0.12)' : 'rgba(239,68,68,0.12)',
                       color: item.is_available ? 'primary.main' : 'error.main',
                       fontWeight: 600,
+                      height: 'auto',
+                      minHeight: 24,
+                      maxWidth: '100%',
+                      py: item.note ? 0.25 : 0,
+                      '& .MuiChip-label': { whiteSpace: 'normal' },
                     }}
                   />
                 ))}

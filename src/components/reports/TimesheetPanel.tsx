@@ -60,9 +60,22 @@ export function TimesheetPanel() {
         >
           Excel olarak indir
         </Button>
-        <Typography variant="caption" color="text.secondary">
+        {/* Masaüstü: tek satır açıklama; mobil: taranabilir küçük çiftler */}
+        <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' } }}>
           Kodlar: {Object.entries(TIMESHEET_CODE_LABELS).map(([k, v]) => `${k} ${v}`).join(' · ')}
         </Typography>
+        <Box sx={{ display: { xs: 'flex', sm: 'none' }, flexWrap: 'wrap', gap: 0.5, alignItems: 'center' }}>
+          <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>Kodlar:</Typography>
+          {Object.entries(TIMESHEET_CODE_LABELS).map(([k, v]) => (
+            <Chip
+              key={k}
+              size="small"
+              variant="outlined"
+              label={<><b style={{ color: CODE_COLOR[k as TimesheetCode] }}>{k}</b> {v}</>}
+              sx={{ height: 22, fontSize: '0.68rem' }}
+            />
+          ))}
+        </Box>
       </Stack>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error instanceof Error ? error.message : 'Puantaj yüklenemedi.'}</Alert>}
@@ -80,11 +93,11 @@ export function TimesheetPanel() {
           <Table size="small" stickyHeader>
             <TableHead>
               <TableRow>
-                <TableCell sx={{ position: 'sticky', left: 0, zIndex: 3, bgcolor: 'background.paper', minWidth: 160 }}>Çalışan</TableCell>
+                <TableCell sx={{ position: 'sticky', left: 0, zIndex: 3, bgcolor: 'background.paper', minWidth: { xs: 104, sm: 160 }, maxWidth: { xs: 104, sm: 'none' } }}>Çalışan</TableCell>
                 {days.map((d) => {
                   const h = holidays.get(d)
                   return (
-                    <Tooltip key={d} title={h ? h.name : ''}>
+                    <Tooltip key={d} title={h ? h.name : ''} enterTouchDelay={0} leaveTouchDelay={3000}>
                       <TableCell align="center" sx={{ px: 0.5, minWidth: 34, bgcolor: h && !h.half_day ? 'rgba(234,179,8,0.15)' : undefined }}>
                         {Number(d.slice(8))}
                       </TableCell>
@@ -101,7 +114,7 @@ export function TimesheetPanel() {
             <TableBody>
               {data.rows.map((r) => (
                 <TableRow key={r.employee.id} hover>
-                  <TableCell sx={{ position: 'sticky', left: 0, bgcolor: 'background.paper', fontWeight: 600 }}>
+                  <TableCell sx={{ position: 'sticky', left: 0, bgcolor: 'background.paper', fontWeight: 600, minWidth: { xs: 104, sm: 160 }, maxWidth: { xs: 104, sm: 'none' }, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {r.employee.full_name}
                   </TableCell>
                   {days.map((d) => {
