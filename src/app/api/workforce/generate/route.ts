@@ -10,7 +10,7 @@
  *
  * Ek uyarılar (planlayıcının dışında, sunucuda hesaplanır):
  *   - Bekleyen izin talebi olan güne atama (onaylanırsa vardiya kaldırılır)
- *   - Geçen haftanın sonuyla birlikte 6 günü aşan ardışık çalışma (İş Kanunu Md. 46)
+ * (Md. 46 ardışık gün sınırı planlayıcıda uygulanır; geçen haftanın serisi prevStreak ile verilir.)
  *   - Resmi tatil / arife (13:00 sonrası) günlerine atama — çalışan onayı ve 2 kat ücret (Md. 44, 47)
  */
 import { NextRequest, NextResponse } from 'next/server'
@@ -20,7 +20,6 @@ import { turkeyToday, addDaysToDateString, dayOfWeekFromDateString } from '@/lib
 import { getWeekDays } from '@/lib/scheduleUtils'
 import { isValidDate } from '@/lib/validation'
 import { readJson, serverError } from '@/lib/apiErrors'
-import { maxConsecutiveDays } from '@/lib/planValidation'
 import { runPlanner, kindFromTimes } from '@/lib/workforcePlanner'
 import type { PlannerEmployee, PlannerShiftTemplate, ShiftKind } from '@/lib/workforcePlanner'
 import type { DayOfWeek } from '@/types/workforce'
@@ -146,6 +145,20 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Geçen haftanın sonundan geriye kesintisiz çalışılan gün sayısı (Md. 46 ardışık gün sınırı)
+    const prevWorkDays = new Map<string, Set<string>>()
+    for (const s of prevShifts) {
+      const set = prevWorkDays.get(s.employee_id as string) ?? new Set<string>()
+      set.add(s.work_date as string)
+      prevWorkDays.set(s.employee_id as string, set)
+    }
+    const prevStreakOf = (empId: string) => {
+      const days = prevWorkDays.get(empId)
+      let n = 0
+      while (days?.has(addDaysToDateString(prevWeekEnd, -n))) n++
+      return n
+    }
+
     // Geçen Pazar'ın vardiya bitişi (Pazartesi 00:00'a göre dk) — hafta başı dinlenme kontrolü
     const prevDayEnd = new Map<string, number>()
     for (const s of prevShifts) {
@@ -170,6 +183,8 @@ export async function POST(req: NextRequest) {
         lastWeek:        hasPrevWeek ? lastWeekMap.get(e.id as string) ?? {} : undefined,
         birthDate:       (e.birth_date as string | null) ?? null,
         prevDayEndMins:  prevDayEnd.get(e.id as string),
+        prevStreak:      prevStreakOf(e.id as string),
+        pendingLeaveDays: pendingMap.get(e.id as string) ?? new Set(),
       }
     })
 
@@ -193,28 +208,11 @@ export async function POST(req: NextRequest) {
     })
 
     // ── Ek uyarılar ───────────────────────────────────────────
-    const nameOf = new Map(emps.map((e) => [e.id as string, e.full_name as string]))
     for (const a of result.assignments) {
       if (pendingMap.get(a.employee_id)?.has(a.work_date)) {
         result.warnings.push({
           level: 'warning',
           message: `${a.employee_name}: ${a.work_date} için bekleyen izin talebi var; onaylanırsa vardiya kaldırılır.`,
-        })
-      }
-    }
-    const datesByEmp = new Map<string, string[]>()
-    const tail = prevShifts.filter((s) => (s.work_date as string) >= addDaysToDateString(weekStart, -6))
-    for (const s of [...tail, ...result.assignments]) {
-      const list = datesByEmp.get(s.employee_id as string) ?? []
-      list.push(s.work_date as string)
-      datesByEmp.set(s.employee_id as string, list)
-    }
-    for (const [empId, dates] of datesByEmp) {
-      const run = maxConsecutiveDays(dates)
-      if (run.length > 6 && run.end! >= weekStart) {
-        result.warnings.push({
-          level: 'warning',
-          message: `${nameOf.get(empId) ?? empId}: ${run.start} – ${run.end} arası ${run.length} gün ardışık çalışma (geçen haftayla birlikte). İş Kanunu Md. 46 gereği 7 günde bir hafta tatili verilmeli.`,
         })
       }
     }
