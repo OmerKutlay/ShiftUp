@@ -34,7 +34,7 @@ import CheckIcon from '@mui/icons-material/Check'
 import CloseIcon from '@mui/icons-material/Close'
 import DeleteIcon from '@mui/icons-material/Delete'
 import type { EmployeeWithRole } from '@/types/employee'
-import { DateField, EmployeeSelect, PageHeader, ListSkeleton } from '@/components/common'
+import { DateField, EmployeeSelect, PageHeader, ListSkeleton, useConfirm } from '@/components/common'
 import type {
   LeaveRequestWithEmployee,
   LeaveType,
@@ -332,6 +332,7 @@ function AnnualLeaveCard({ balance }: { balance: AnnualLeaveBalance }) {
 export function LeavePage() {
   const { employee: me } = useAuth()
   const isManager = hasRole(me?.roles?.name ?? me?.role_name ?? null, MANAGER_ROLES)
+  const confirm = useConfirm()
 
   const requestsQ = useSWR('/api/leave', (url: string) => apiFetch<{ requests: LeaveRequestWithEmployee[] }>(url))
   // Çalışan seçimi yalnızca yöneticiler için; çalışan kendi adına talep açar
@@ -379,9 +380,12 @@ export function LeavePage() {
       if (!res.ok) {
         // Yönetici, bakiyeyi aşan yıllık izni (avans izin) açıkça onaylayarak kaydedebilir
         if (data.code === 'ANNUAL_LEAVE_EXCEEDED' && isManager && payload.employee_id !== me?.id &&
-            window.confirm(`${data.error}
-
-Avans izin olarak yine de oluşturulsun mu?`)) {
+            await confirm({
+              title: 'Yıllık İzin Bakiyesi Aşılıyor',
+              message: data.error,
+              footer: 'Avans izin olarak yine de oluşturulsun mu?',
+              confirmText: 'Avans İzin Oluştur',
+            })) {
           return handleNewSave({ ...payload, allow_exceed: true } as CreateLeaveRequestPayload)
         }
         throw new Error(data.error ?? 'Talep oluşturulamadı.')
