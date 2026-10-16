@@ -303,6 +303,12 @@ export function AppShell({ children }: Props) {
           <Typography variant="subtitle1" fontWeight={800} color="primary.main" letterSpacing={1}>
             ShiftUp
           </Typography>
+          {/* Bildirimler menüyü açmadan da erişilebilir olsun */}
+          {authStatus === 'authenticated' && authEmployee && (
+            <Box sx={{ ml: 'auto' }}>
+              <NotificationBell employeeId={authEmployee.id} collapsed />
+            </Box>
+          )}
         </Box>
       )}
 

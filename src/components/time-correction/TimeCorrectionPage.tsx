@@ -9,7 +9,7 @@ import { useState } from 'react'
 import useSWR from 'swr'
 import {
   Box, Typography, Paper, Button, Stack, Chip, CircularProgress, Alert,
-  TextField, Dialog, DialogTitle, DialogContent, DialogActions, Divider,
+  TextField, Dialog, DialogTitle, DialogContent, DialogActions, Tab, Tabs,
 } from '@mui/material'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import AddIcon from '@mui/icons-material/Add'
@@ -42,6 +42,7 @@ export function TimeCorrectionPage() {
   const requests = requestsQ.data?.requests ?? []
   const isFirstLoad = !requestsQ.data && !requestsQ.error
   const error = requestsQ.error ? (requestsQ.error instanceof Error ? requestsQ.error.message : 'Yüklenemedi.') : null
+  const [managerTab, setManagerTab] = useState(0)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -105,7 +106,19 @@ export function TimeCorrectionPage() {
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => void requestsQ.mutate()}>{error}</Alert>}
 
-      {/* Liste */}
+      {/* Yönetici: önce onay bekleyenler (kendi talepleri ayrı sekmede) — mobilde uzun kişisel liste
+          onay işini sayfanın en altına gömüyordu */}
+      {isManager && (
+        <Tabs value={managerTab} onChange={(_, v: number) => setManagerTab(v)} sx={{ mb: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
+          <Tab label="Onay Bekleyenler" />
+          <Tab label={`Taleplerim${requests.length ? ` (${requests.length})` : ''}`} />
+        </Tabs>
+      )}
+
+      {isManager && managerTab === 0 && <TimeCorrectionReviewPanel />}
+
+      {(!isManager || managerTab === 1) && (
+        <>
       {isFirstLoad ? (
         <ListSkeleton count={3} lines={3} avatar={false} actions={1} />
       ) : requests.length === 0 ? (
@@ -119,8 +132,8 @@ export function TimeCorrectionPage() {
             const color = TIME_CORRECTION_STATUS_COLORS[r.status]
             return (
               <Paper key={r.id} elevation={0} sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2, bgcolor: 'rgba(30,41,59,0.4)' }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 1 }}>
-                  <Box>
+                <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', alignItems: 'start', gap: 1.5 }}>
+                  <Box sx={{ minWidth: 0 }}>
                     <Typography variant="subtitle2" fontWeight={700}>{fmtDate(r.date)}</Typography>
                     <Typography variant="caption" color="text.secondary">
                       {r.requested_start_time.slice(0, 5)} – {r.requested_end_time.slice(0, 5)}
@@ -143,12 +156,6 @@ export function TimeCorrectionPage() {
           })}
         </Stack>
       )}
-
-      {/* Yönetici: review paneli */}
-      {isManager && (
-        <>
-          <Divider sx={{ my: 3, borderColor: 'rgba(255,255,255,0.08)' }} />
-          <TimeCorrectionReviewPanel />
         </>
       )}
 

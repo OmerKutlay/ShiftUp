@@ -78,14 +78,35 @@ const STATUS_LABELS: Record<string, string> = {
   working: 'Devam Ediyor',
   on_break: 'Molada',
   working_after_break: 'Devam Ediyor',
-  shift_waiting: 'Gelmedi',
+  absent: 'Gelmedi',
+  upcoming: 'Bekleniyor',
+  planned: 'Planlandı',
 }
 const STATUS_COLORS: Record<string, string> = {
   clocked_out: '#10b981',
   working: '#14b8a6',
   on_break: '#f59e0b',
   working_after_break: '#14b8a6',
-  shift_waiting: '#ef4444',
+  absent: '#ef4444',
+  upcoming: '#94a3b8',
+  planned: '#64748b',
+}
+
+/**
+ * Kayıt yoksa (shift_waiting) vardiyanın zamanına göre anlamlı durum: ileri tarihli vardiya
+ * "Planlandı", bugün bitiş saati geçmemişse "Bekleniyor", ancak vardiya geçmişte kaldıysa "Gelmedi".
+ */
+function displayStatus(entry: DayEntry, now: Date): string {
+  if (entry.status !== 'shift_waiting') return entry.status
+  const todayStr = format(now, 'yyyy-MM-dd')
+  if (entry.work_date > todayStr) return 'planned'
+  if (entry.work_date === todayStr) {
+    const nowHm = format(now, 'HH:mm')
+    const end = entry.end_time.slice(0, 5)
+    // Gece yarısını geçen vardiya (bitiş ≤ başlangıç) bugün içinde bitmez
+    if (end <= entry.start_time.slice(0, 5) || nowHm < end) return 'upcoming'
+  }
+  return 'absent'
 }
 
 // ─── Stat kartı ───────────────────────────────────────────────
@@ -112,7 +133,8 @@ function StatCard({ label, value, sub, color }: {
 // ─── Gün kartı ────────────────────────────────────────────────
 
 function DayCard({ entry, isToday }: { entry: DayEntry; isToday: boolean }) {
-  const statusColor = STATUS_COLORS[entry.status] ?? '#94a3b8'
+  const status = displayStatus(entry, new Date())
+  const statusColor = STATUS_COLORS[status] ?? '#94a3b8'
   const plannedMins = shiftDurationMins(entry.start_time, entry.end_time)
   const workedMins = entry.worked_minutes ?? 0
 
@@ -136,15 +158,15 @@ function DayCard({ entry, isToday }: { entry: DayEntry; isToday: boolean }) {
         </Box>
         {entry.is_on_leave ? (
           <Chip label="İzin" size="small" sx={{
-            height: 18, fontSize: '0.62rem',
+            height: 20, fontSize: '0.7rem',
             bgcolor: 'rgba(251,191,36,0.15)', color: '#fbbf24',
           }} />
         ) : (
           <Chip
-            label={STATUS_LABELS[entry.status] ?? entry.status}
+            label={STATUS_LABELS[status] ?? status}
             size="small"
             sx={{
-              height: 18, fontSize: '0.62rem',
+              height: 20, fontSize: '0.7rem',
               bgcolor: `${statusColor}20`, color: statusColor,
               border: '1px solid', borderColor: `${statusColor}40`,
             }}
@@ -155,7 +177,7 @@ function DayCard({ entry, isToday }: { entry: DayEntry; isToday: boolean }) {
       {/* Planlanan saat */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
         <AccessTimeIcon sx={{ fontSize: 11, color: 'text.disabled' }} />
-        <Typography variant="caption" color="text.secondary" fontSize="0.68rem">
+        <Typography variant="caption" color="text.secondary" fontSize="0.75rem">
           Plan: {entry.start_time.slice(0, 5)} – {entry.end_time.slice(0, 5)}
           {' '}({fmtMins(plannedMins)})
         </Typography>
@@ -166,16 +188,16 @@ function DayCard({ entry, isToday }: { entry: DayEntry; isToday: boolean }) {
         <>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
             <CheckCircleIcon sx={{ fontSize: 11, color: '#10b981' }} />
-            <Typography variant="caption" color="text.secondary" fontSize="0.68rem">
+            <Typography variant="caption" color="text.secondary" fontSize="0.75rem">
               Giriş: {fmtTime(entry.clock_in_at)} → Çıkış: {fmtTime(entry.clock_out_at)}
             </Typography>
           </Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
             <Chip
               label={`Çalışma: ${fmtMins(entry.worked_minutes)}`}
               size="small"
               sx={{
-                height: 16, fontSize: '0.62rem',
+                height: 20, fontSize: '0.7rem',
                 bgcolor: 'rgba(16,185,129,0.12)', color: '#10b981',
               }}
             />
@@ -184,7 +206,7 @@ function DayCard({ entry, isToday }: { entry: DayEntry; isToday: boolean }) {
                 label={`Mola: ${fmtMins(entry.break_minutes)}`}
                 size="small"
                 sx={{
-                  height: 16, fontSize: '0.62rem',
+                  height: 20, fontSize: '0.7rem',
                   bgcolor: 'rgba(245,158,11,0.12)', color: '#f59e0b',
                 }}
               />
@@ -209,10 +231,10 @@ function DayCard({ entry, isToday }: { entry: DayEntry; isToday: boolean }) {
       )}
 
       {/* Gelmedi */}
-      {entry.status === 'shift_waiting' && !entry.is_on_leave && (
+      {status === 'absent' && !entry.is_on_leave && (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.25 }}>
           <CancelIcon sx={{ fontSize: 11, color: '#ef4444' }} />
-          <Typography variant="caption" color="error.main" fontSize="0.68rem">
+          <Typography variant="caption" color="error.main" fontSize="0.75rem">
             Kayıt oluşturulmadı
           </Typography>
         </Box>
@@ -241,6 +263,7 @@ export function MySchedulePage() {
 
   // ── Özet hesapla ─────────────────────────────────────────────
   const summary = useMemo(() => {
+    const now = new Date()
     let plannedMins = 0
     let workedMins = 0
     let breakMins = 0
@@ -255,7 +278,7 @@ export function MySchedulePage() {
         workedMins += e.worked_minutes ?? 0
         breakMins += e.break_minutes ?? 0
         workedDays++
-      } else if (e.status === 'shift_waiting') {
+      } else if (displayStatus(e, now) === 'absent') {
         noShowDays++
       }
     }

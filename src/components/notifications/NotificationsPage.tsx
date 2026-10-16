@@ -31,6 +31,7 @@ import { useNotifications } from '@/hooks/useNotifications'
 import { useAuth } from '@/context/AuthContext'
 import { PageHeader, ListSkeleton } from '@/components/common'
 import type { Notification, NotificationType } from '@/types/notification'
+import { humanizeIsoDates } from '@/lib/dateUtils'
 
 const TYPE_META: Record<
   NotificationType,
@@ -128,7 +129,7 @@ function NotificationItem({
           secondary={
             <Box component="span" sx={{ display: 'block' }}>
               <Typography variant="body2" color="text.secondary" component="span" sx={{ display: 'block', mt: 0.5 }}>
-                {notification.message}
+                {humanizeIsoDates(notification.message)}
               </Typography>
               <Typography
                 variant="caption"
