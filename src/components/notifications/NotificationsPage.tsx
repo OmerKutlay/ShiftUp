@@ -24,6 +24,7 @@ import EventAvailableIcon from '@mui/icons-material/EventAvailableOutlined'
 import EventBusyIcon from '@mui/icons-material/EventBusyOutlined'
 import BuildIcon from '@mui/icons-material/Build'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
+import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive'
 import PersonIcon from '@mui/icons-material/Person'
 import { formatDistanceToNow, format } from 'date-fns'
 import { tr } from 'date-fns/locale'
@@ -57,6 +58,7 @@ const TYPE_META: Record<
   attendance_late_clock_out: { icon: <WarningAmberIcon />,     color: '#f59e0b', label: 'Geç Çıkış' },
   attendance_missed_clock_in:  { icon: <WarningAmberIcon />,   color: '#ef4444', label: 'Giriş Okutulmadı' },
   attendance_missed_clock_out: { icon: <WarningAmberIcon />,   color: '#ef4444', label: 'Çıkış Okutulmadı' },
+  push_test:                 { icon: <NotificationsActiveIcon />, color: '#14b8a6', label: 'Test Bildirimi' },
 }
 
 function NotificationItem({

@@ -23,6 +23,8 @@ import LogoutIcon from '@mui/icons-material/Logout'
 import { useAuth } from '@/context/AuthContext'
 import { getMoreItems, groupNavItems } from '@/components/layout/navItems'
 import { PushPermissionCard } from '@/components/pwa/PushPermissionCard'
+import { PushDiagnosticsPanel } from '@/components/pwa/PushDiagnosticsPanel'
+import { ROLES, roleAtLeast } from '@/lib/auth/roles'
 
 function initials(name: string): string {
   return name
@@ -37,6 +39,8 @@ export function MorePage() {
   const { employee, status, signOut } = useAuth()
   const roleName = employee?.roles?.name ?? employee?.role_name ?? null
   const groups = status === 'loading' ? [] : groupNavItems(getMoreItems(roleName))
+  // Bildirim teşhisi yalnızca Mağaza Müdürü+ (API de aynı kontrolü yapar)
+  const canDiagnose = roleName !== null && roleAtLeast(roleName, ROLES.MAGAZA_MUDURU)
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 640, mx: 'auto', color: 'text.primary' }}>
@@ -110,6 +114,11 @@ export function MorePage() {
       {status === 'authenticated' && (
         <Box sx={{ mb: 2 }}>
           <PushPermissionCard variant="row" />
+          {canDiagnose && (
+            <Box sx={{ mt: 1 }}>
+              <PushDiagnosticsPanel collapsible />
+            </Box>
+          )}
         </Box>
       )}
 

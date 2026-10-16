@@ -23,6 +23,7 @@ export const NOTIFICATION_LINKS: Record<string, string> = {
   attendance_late_clock_out: '/',
   attendance_missed_clock_in: '/',
   attendance_missed_clock_out: '/',
+  push_test: '/more',
 }
 
 export const DEFAULT_NOTIFICATION_LINK = '/notifications'
