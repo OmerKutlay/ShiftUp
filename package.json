@@ -16,7 +16,8 @@
     "test:coverage": "vitest run --coverage",
     "cf:build": "node scripts/patch-opennext.mjs && opennextjs-cloudflare build",
     "preview": "npm run cf:build && opennextjs-cloudflare preview",
-    "deploy": "npm run cf:build && opennextjs-cloudflare deploy"
+    "deploy": "npm run cf:build && opennextjs-cloudflare deploy",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@emotion/react": "^11.13.3",
@@ -39,6 +40,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
+    "@playwright/test": "1.56.1",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.0",
