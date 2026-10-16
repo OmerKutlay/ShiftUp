@@ -186,6 +186,12 @@ describe('checkAvailability', () => {
     expect(result?.severity).toBe('warning')
   })
 
+  it('Müsait olmayan saatlerle çakışmayan vardiya → ihlal yok', () => {
+    const avail = [{ day_of_week: 'monday' as const, start_time: '08:00', end_time: '13:00', is_available: false }]
+    expect(checkAvailability('2026-09-28', '14:00', '22:00', avail)).toBeNull()
+    expect(checkAvailability('2026-09-28', '10:00', '18:00', avail)?.message).toContain('08:00–13:00')
+  })
+
   it('Müsaitlik penceresi dışı → warning', () => {
     const avail = [{ day_of_week: 'monday' as const, start_time: '09:00', end_time: '17:00', is_available: true }]
     // 07:00'da başlayan vardiya pencere dışı

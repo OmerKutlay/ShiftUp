@@ -644,11 +644,11 @@ describe('Senaryo 19 — 18 yaş altı korumaları (Md. 73) ve geçen Pazar → 
 
 // ─── Senaryo 20: Gerçek kadro — tek müdür, birden fazla yardımcı ─────────────
 
-// Canlı veriye benzer: "Yönetici" sistem rolündeki Görsel Uzmanı / Şef Kasiyer yönetici değildir;
-// birden fazla müdür eşleşirse rolü ve pozisyonu müdür olan planlanır, diğerleri yardımcı sayılır.
+// Canlı veriye benzer: kademe yalnızca DB rolünden okunur. "Yönetici" sistem rolündeki
+// Görsel Uzmanı / Şef Kasiyer / pozisyonu "Müdür" ya da "Patron" yazanlar yönetici değildir.
 const REAL: PlannerEmployee[] = [
   makeEmp('seyfullah', 'Müdür',                   'Mağaza Müdürü',    'full_time'),
-  makeEmp('batuhan',   'Patron',                  'Mağaza Müdürü',    'full_time'),
+  makeEmp('batuhan',   'Patron',                  'Yönetici',         'full_time'),
   makeEmp('mertcan',   'Müdür',                   'Yönetici',         'full_time'),
   makeEmp('kader',     'Mağaza Müdür Yardımcısı', 'Müdür Yardımcısı', 'full_time'),
   makeEmp('zehra',     'Görsel Uzmanı',           'Yönetici',         'full_time'),
@@ -666,14 +666,25 @@ const REAL: PlannerEmployee[] = [
   makeEmp('efe',       'Satış Danışmanı',         'Çalışan',          'part_time'),
   makeEmp('beyzanur',  'Satış Danışmanı',         'Çalışan',          'part_time'),
 ]
-const REAL_MANAGERS = new Set(['seyfullah', 'batuhan', 'mertcan', 'kader'])
+const REAL_MANAGERS = new Set(['seyfullah', 'kader'])
 
 describe('Senaryo 20 — Tek müdür + birden fazla yardımcı (gerçek kadro)', () => {
-  test('classifyManagers: rolü ve pozisyonu müdür olan seçilir, Yönetici sistem rolü yönetici sayılmaz', () => {
+  test('classifyManagers: kademe DB rolünden; pozisyonu "Müdür" olan Yönetici rolü yönetici sayılmaz', () => {
     const r = classifyManagers(REAL)
     expect(r.storeManager?.id).toBe('seyfullah')
-    expect(r.assistants.map((e) => e.id).sort()).toEqual(['batuhan', 'kader', 'mertcan'])
-    expect(r.extraStoreManagers.map((e) => e.id).sort()).toEqual(['batuhan', 'mertcan'])
+    expect(r.assistants.map((e) => e.id)).toEqual(['kader'])
+    expect(r.extraStoreManagers).toEqual([])
+  })
+
+  test('birden fazla yardımcı: hepsi yönetici havuzunda, izin günlerini algoritma seçer', () => {
+    const extra = makeEmp('yrd2', 'Mağaza Müdür Yardımcısı', 'Müdür Yardımcısı', 'full_time')
+    const managers = new Set([...REAL_MANAGERS, 'yrd2'])
+    for (let seed = 1; seed <= 10; seed++) {
+      const r = runPlanner({ ...INPUT, employees: [...REAL, extra], seed })
+      expect(r.warnings.filter((w) => w.level === 'error'), `seed ${seed}`).toEqual([])
+      expect(r.assignments.some((a) => managers.has(a.employee_id) && a.shift_kind === 'mid'), `seed ${seed}`).toBe(false)
+      expect(r.stats['yrd2'].workDays, `seed ${seed}`).toBe(6)
+    }
   })
 
   test('30 tohumda: hata yok, müdür Salı çalışmaz, yönetici ortacı almaz, her gün açılış+kapanışta yönetici', () => {
@@ -694,8 +705,10 @@ describe('Senaryo 20 — Tek müdür + birden fazla yardımcı (gerçek kadro)',
     }
   })
 
-  test('fazladan müdür için uyarı verilir', () => {
-    const r = runPlanner({ ...INPUT, employees: REAL, seed: 1 })
+  test('iki Mağaza Müdürü rolü varsa biri müdür, diğeri yardımcı gibi planlanır ve uyarı verilir', () => {
+    const employees = REAL.map((e) => (e.id === 'batuhan' ? { ...e, role_name: 'Mağaza Müdürü' } : e))
+    expect(classifyManagers(employees).storeManager?.id).toBe('seyfullah')
+    const r = runPlanner({ ...INPUT, employees, seed: 1 })
     expect(r.warnings.some((w) => w.level === 'warning' && w.message.includes('Birden fazla Mağaza Müdürü'))).toBe(true)
   })
 
@@ -762,8 +775,8 @@ describe('Senaryo 21 — Geçen haftadan gelen ardışık gün serisi', () => {
 
 // ─── Senaryo 22: Çalışılmış vardiyalardan kaynaklanan ihlaller planı engellemez ─
 
-describe('Senaryo 22 — Çalışılmış vardiya ihlalleri uyarıdır', () => {
-  test('müdürün Salı ve yardımcının ortacı çalışılmış vardiyaları hata değil uyarı', () => {
+describe('Senaryo 22 — Çalışılmış vardiya ihlalleri bilgi olarak raporlanır', () => {
+  test('müdürün Salı ve yardımcının ortacı çalışılmış vardiyaları hata değil bilgi', () => {
     const fixedAssignments = [
       { employee_id: 'mm',  work_date: '2026-10-13', start_time: '10:00', end_time: '22:00' },
       { employee_id: 'mmy', work_date: '2026-10-12', start_time: '12:00', end_time: '20:00' },
@@ -771,9 +784,9 @@ describe('Senaryo 22 — Çalışılmış vardiya ihlalleri uyarıdır', () => {
     const r = runPlanner({ ...STORE_INPUT, fixedAssignments, seed: 2 })
     const tuesday = r.warnings.find((w) => w.message.includes('Müdür Salı günü çalışamaz'))
     const mid = r.warnings.find((w) => w.message.includes('ortacı (mid)'))
-    expect(tuesday?.level).toBe('warning')
+    expect(tuesday?.level).toBe('info')
     expect(tuesday?.message).toContain('çalışılmış vardiya')
-    expect(mid?.level).toBe('warning')
+    expect(mid?.level).toBe('info')
     // Ortacı çalışan yardımcıya ek olarak Pazartesi açılış ve kapanış yönetici kapsamalı
     const monday = r.assignments.filter((a) => a.work_date === '2026-10-12' && (a.employee_id === 'mm' || a.employee_id === 'mmy'))
     expect(monday.some((a) => a.shift_kind === 'opening' || a.shift_kind === 'full')).toBe(true)
@@ -810,5 +823,103 @@ describe('Senaryo 23 — Bekleyen izin günü ve izin düşülmüş haftalık he
       expect(r.stats['s-f1'].totalMins, `seed ${seed}`).toBeGreaterThanOrEqual(36.5 * 60)
       expect(r.warnings.filter((w) => w.message.startsWith('s-f1:') && w.message.includes('hedefine')), `seed ${seed}`).toEqual([])
     }
+  })
+})
+
+// ─── Senaryo 24: Geçmiş günler kapalı ────────────────────────────────────────
+
+describe('Senaryo 24 — Bugünden önceki günlere atama yapılmaz, kapsama aranmaz', () => {
+  // Bugün Cuma: Pzt–Per kapalı; o günlerin mevcut vardiyaları sabit gelir
+  const today = '2026-10-16'
+  const fixedAssignments = [
+    { employee_id: 'mm',  work_date: '2026-10-12', start_time: '10:00', end_time: '18:00', reason: 'Geçmiş gün' },
+    { employee_id: 'k-ft', work_date: '2026-10-13', start_time: '14:00', end_time: '22:00', reason: 'Geçmiş gün' },
+  ]
+
+  test.each([1, 2, 3, 4, 5])('seed %i: geçmiş günlerde yalnızca sabit vardiyalar, hata yok', (seed) => {
+    const r = runPlanner({ ...STORE_INPUT, fixedAssignments, today, seed })
+    const past = r.assignments.filter((a) => a.work_date < today)
+    expect(past.map((a) => `${a.employee_id}|${a.work_date}`).sort()).toEqual(['k-ft|2026-10-13', 'mm|2026-10-12'])
+    expect(past.every((a) => a.worked)).toBe(true)
+    expect(r.warnings.filter((w) => w.level === 'error'), `seed ${seed}`).toEqual([])
+    // Açık günlerde kapsama sürer
+    for (const d of WEEK_DAYS.filter((x) => x >= today)) {
+      const mgr = r.assignments.filter((a) => a.work_date === d && (a.employee_id === 'mm' || a.employee_id === 'mmy'))
+      expect(mgr.some((a) => a.shift_kind === 'opening' || a.shift_kind === 'full'), `${d}`).toBe(true)
+      expect(mgr.some((a) => a.shift_kind === 'closing' || a.shift_kind === 'full'), `${d}`).toBe(true)
+    }
+  })
+
+  test('geçmiş günler kayıp gün sayılır: FT hedef uyarısı çıkmaz', () => {
+    const r = runPlanner({ ...STORE_INPUT, fixedAssignments, today, seed: 1 })
+    expect(r.warnings.filter((w) => w.message.includes('hedefine'))).toEqual([])
+  })
+
+  test('validator geçmiş günlerde kapsama hatası vermez', () => {
+    const errors = validatePlan([], STORE, WEEK_DAYS, '2026-10-19').filter((w) => w.level === 'error')
+    expect(errors).toEqual([])
+  })
+})
+
+// ─── Senaryo 25: Saat aralıklı "müsait değil" kaydı ─────────────────────────
+
+describe('Senaryo 25 — "Müsait değil" yalnızca kendi saat aralığını kapatır', () => {
+  const monday = WEEK_DAYS[0]
+  const morningOff = { monday: [{ start_time: '08:00', end_time: '13:00', is_available: false }] }
+  const eveningOff = { monday: [{ start_time: '18:00', end_time: '23:59', is_available: false }] }
+
+  test.each([1, 2, 3, 4, 5])('seed %i: sabah dersi olan kasiyer Pazartesi yalnızca öğleden sonra başlar', (seed) => {
+    // Pazartesi tek müsait kasiyer sabahı kapalı olan; diğerleri izinli
+    const employees = STORE.map((e) => {
+      if (e.id === 'k-p1') return { ...e, availability: morningOff }
+      if (e.id.startsWith('k-')) return { ...e, leaveDays: new Set([monday]) }
+      return e
+    })
+    const r = runPlanner({ ...STORE_INPUT, employees, seed })
+    const a = r.assignments.find((x) => x.employee_id === 'k-p1' && x.work_date === monday)
+    expect(a, `seed ${seed}`).toBeDefined()
+    expect(a!.start_time >= '13:00', `seed ${seed}`).toBe(true)
+  })
+
+  test('akşamı kapalı yardımcı o gün açılış alır, kapanışı müdür alır', () => {
+    const employees = STORE.map((e) => (e.id === 'mmy' ? { ...e, availability: eveningOff } : e))
+    for (let seed = 1; seed <= 5; seed++) {
+      const r = runPlanner({ ...STORE_INPUT, employees, seed })
+      const y = r.assignments.find((x) => x.employee_id === 'mmy' && x.work_date === monday)
+      if (y) expect(y.end_time <= '18:00', `seed ${seed}`).toBe(true)
+      expect(r.warnings.filter((w) => w.level === 'error'), `seed ${seed}`).toEqual([])
+    }
+  })
+})
+
+// ─── Senaryo 26: FT 45 saat zorunlu, yöneticiler aynı gün birlikte full almaz ─
+
+describe('Senaryo 26 — FT her zaman 45 saat; iki yönetici aynı gün full olmaz', () => {
+  test.each([1, 2, 3, 4, 5, 6, 7, 8])('seed %i: haftalık tatil kaydıyla 5 gün çalışan FT de 45 saat', (seed) => {
+    // s-f1: Salı haftalık tatil kaydı + Pazar bekleyen izin dışı ek tatil → 5 gün
+    const employees = REAL.map((e) => (e.id === 'zeynep'
+      ? { ...e, leaveDays: new Set(['2026-10-13', '2026-10-14']), paidLeaveDays: new Set<string>() }
+      : e))
+    const r = runPlanner({ ...INPUT, employees, seed })
+    expect(r.warnings.filter((w) => w.level === 'error'), `seed ${seed}`).toEqual([])
+    expect(r.stats['zeynep'].totalMins, `seed ${seed}`).toBe(45 * 60)
+    for (const e of REAL.filter((x) => x.employment_type === 'full_time')) {
+      expect(r.stats[e.id].totalMins, `seed ${seed} ${e.id}`).toBe(45 * 60)
+    }
+    for (const d of WEEK_DAYS) {
+      const fulls = r.assignments.filter((a) => a.work_date === d && REAL_MANAGERS.has(a.employee_id) && a.shift_kind === 'full')
+      const managersOnDay = r.assignments.filter((a) => a.work_date === d && REAL_MANAGERS.has(a.employee_id))
+      if (managersOnDay.length > 1) expect(fulls, `seed ${seed} ${d}`).toHaveLength(0)
+    }
+  })
+
+  test('4 güne düşen FT için hata, nedenleriyle', () => {
+    const employees = REAL.map((e) => (e.id === 'zeynep'
+      ? { ...e, leaveDays: new Set(['2026-10-13', '2026-10-14', '2026-10-15']), paidLeaveDays: new Set<string>() }
+      : e))
+    const r = runPlanner({ ...INPUT, employees, seed: 1 })
+    const err = r.warnings.find((w) => w.level === 'error' && w.message.startsWith('zeynep:'))
+    expect(err?.message).toContain('45 saat doldurulamadı')
+    expect(err?.message).toContain('2026-10-13 (izinli)')
   })
 })

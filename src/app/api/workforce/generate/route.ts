@@ -80,10 +80,10 @@ export async function POST(req: NextRequest) {
         .select('employee_id, work_date, start_time, end_time, is_on_leave')
         .gte('work_date', prevWeekStart)
         .lte('work_date', prevWeekEnd),
-      // Bu hafta zaten çalışılmış vardiyalar (giriş/çıkış kaydı olan) — aktarımda korunur
+      // Bu haftanın vardiyaları: giriş/çıkış kaydı olanlar ve geçmiş günlerinkiler aktarımda korunur
       admin
         .from('shift_assignments')
-        .select('employee_id, work_date, start_time, end_time, shift_template_id, attendance_records ( id )')
+        .select('employee_id, work_date, start_time, end_time, shift_template_id, is_on_leave, attendance_records ( id )')
         .gte('work_date', weekStart)
         .lte('work_date', weekEnd),
       admin.from('public_holidays').select('date, name, half_day').gte('date', weekStart).lte('date', weekEnd),
@@ -92,15 +92,24 @@ export async function POST(req: NextRequest) {
       if (r.error) return serverError('POST /api/workforce/generate', r.error)
     }
 
+    // Değiştirilemeyen vardiyalar: giriş/çıkış kaydı olanlar ve bugünden önceki günlerinkiler
+    // (gelinmemiş geçmiş vardiya da devamsızlık kaydıdır; yeniden planlanmaz)
+    const today = turkeyToday()
     const fixedAssignments = (weekRes.data ?? [])
-      .filter((s) => Array.isArray(s.attendance_records) && s.attendance_records.length > 0)
-      .map((s) => ({
-        employee_id:       s.employee_id as string,
-        work_date:         s.work_date as string,
-        start_time:        s.start_time as string,
-        end_time:          s.end_time as string,
-        shift_template_id: s.shift_template_id as string | null,
-      }))
+      .filter((s) => !s.is_on_leave)
+      .flatMap((s) => {
+        const worked = Array.isArray(s.attendance_records) && s.attendance_records.length > 0
+        const past = (s.work_date as string) < today
+        if (!worked && !past) return []
+        return [{
+          employee_id:       s.employee_id as string,
+          work_date:         s.work_date as string,
+          start_time:        s.start_time as string,
+          end_time:          s.end_time as string,
+          shift_template_id: s.shift_template_id as string | null,
+          reason:            worked ? 'Giriş/çıkış kaydı var — mevcut vardiya korunuyor' : 'Geçmiş gün — mevcut vardiya korunuyor',
+        }]
+      })
 
     // ── Veri dönüşümü ─────────────────────────────────────────
     const prevShifts = (prevRes.data ?? []).filter((s) => !s.is_on_leave)
@@ -132,16 +141,21 @@ export async function POST(req: NextRequest) {
 
     // İzin → employee_id → Set<'YYYY-MM-DD'> (onaylı: bloklar; bekleyen: yalnızca uyarı)
     // Otomatik plandan gelen haftalık tatiller yok sayılır — yeniden aktarımda yenilenir
+    // Ücretli izin (onaylı, haftalık tatil dışı) FT 45s hedefinden düşülür
     const leaveMap = new Map<string, Set<string>>()
+    const paidLeaveMap = new Map<string, Set<string>>()
     const pendingMap = new Map<string, Set<string>>()
     for (const lv of leavesRes.data ?? []) {
       if (isAutoWeeklyRest(lv as { leave_type: string; reason: string | null })) continue
-      const target = lv.status === 'approved' ? leaveMap : pendingMap
       const empId = lv.employee_id as string
-      if (!target.has(empId)) target.set(empId, new Set())
-      const set = target.get(empId)!
-      for (let d = lv.start_date as string; d <= (lv.end_date as string); d = addDaysToDateString(d, 1)) {
-        if (d >= weekStart && d <= weekEnd) set.add(d)
+      const targets = lv.status !== 'approved' ? [pendingMap]
+        : lv.leave_type === 'weekly_rest' ? [leaveMap] : [leaveMap, paidLeaveMap]
+      for (const target of targets) {
+        if (!target.has(empId)) target.set(empId, new Set())
+        const set = target.get(empId)!
+        for (let d = lv.start_date as string; d <= (lv.end_date as string); d = addDaysToDateString(d, 1)) {
+          if (d >= weekStart && d <= weekEnd) set.add(d)
+        }
       }
     }
 
@@ -180,6 +194,7 @@ export async function POST(req: NextRequest) {
         employment_type: (e.employment_type as 'full_time' | 'part_time') ?? 'full_time',
         availability:    availMap.get(e.id as string) ?? {},
         leaveDays:       leaveMap.get(e.id as string) ?? new Set(),
+        paidLeaveDays:   paidLeaveMap.get(e.id as string) ?? new Set(),
         lastWeek:        hasPrevWeek ? lastWeekMap.get(e.id as string) ?? {} : undefined,
         birthDate:       (e.birth_date as string | null) ?? null,
         prevDayEndMins:  prevDayEnd.get(e.id as string),
@@ -203,6 +218,7 @@ export async function POST(req: NextRequest) {
       employees: plannerEmployees,
       templates: plannerTemplates,
       fixedAssignments,
+      today,
       // Her "Oluştur" farklı bir varyasyon üretir; aynı planı tekrar üretmek için seed gönderilebilir
       seed: typeof body.seed === 'number' ? body.seed : Math.floor(Math.random() * 2 ** 31),
     })
