@@ -27,9 +27,11 @@ import { fmtHours, shiftDisplayName, EmployeeWeekStats, AvailStatus } from './sc
 export interface SummaryCellProps {
   stats: EmployeeWeekStats | undefined
   config: ReturnType<typeof getWorkingTimeConfig>
+  /** Dar ekran (mobil): yalnızca toplam, ihlal sayısı ve ilerleme çubuğu */
+  compact?: boolean
 }
 
-export function SummaryCell({ stats, config }: SummaryCellProps) {
+export function SummaryCell({ stats, config, compact = false }: SummaryCellProps) {
   if (!stats) {
     return (
       <Box sx={{
@@ -90,7 +92,7 @@ export function SummaryCell({ stats, config }: SummaryCellProps) {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.4, cursor: 'default' }}>
             <WarningAmberIcon sx={{ fontSize: 11, color: '#f97316' }} />
             <Typography variant="caption" color="#f97316" fontSize="0.65rem">
-              {stats.restViolations.length} dinlenme ihlali
+              {stats.restViolations.length}{compact ? '' : ' dinlenme ihlali'}
             </Typography>
           </Box>
         </Tooltip>
@@ -106,8 +108,8 @@ export function SummaryCell({ stats, config }: SummaryCellProps) {
           transition: 'width 0.3s',
         }} />
       </Box>
-      <Typography variant="caption" color="text.disabled" fontSize="0.58rem">
-        net / {maxW}s maks. · {fmtHours(stats.totalBreakMins)} mola
+      <Typography variant="caption" color="text.disabled" fontSize={compact ? '0.55rem' : '0.58rem'}>
+        {compact ? `/ ${maxW}s` : `net / ${maxW}s maks. · ${fmtHours(stats.totalBreakMins)} mola`}
       </Typography>
     </Box>
   )
@@ -115,7 +117,7 @@ export function SummaryCell({ stats, config }: SummaryCellProps) {
 
 // ─── Shift cell ───────────────────────────────────────────────
 export function ShiftCell({
-  assignment, isToday, isOnLeave, isRestDay, availStatus, dailyOver, onClick, readOnly,
+  assignment, isToday, isOnLeave, isRestDay, availStatus, dailyOver, onClick, readOnly, compact = false,
 }: {
   assignment: ShiftAssignmentWithDetails | null
   isToday: boolean
@@ -126,6 +128,8 @@ export function ShiftCell({
   dailyMins: number
   onClick: () => void
   readOnly?: boolean
+  /** Dar ekran (mobil) — hücre ~64px genişliğe sığacak şekilde sadeleşir */
+  compact?: boolean
 }) {
   const cursor = readOnly ? 'default' : 'pointer'
 
@@ -160,7 +164,7 @@ export function ShiftCell({
         }}>
           <EventBusyIcon sx={{ fontSize: 13, color: '#fbbf24' }} />
           <Typography variant="caption" fontWeight={700} color="warning.main" fontSize="0.7rem">İzinli</Typography>
-          {assignment && (
+          {assignment && !compact && (
             <Typography variant="caption" color="text.disabled" fontSize="0.6rem">
               {formatTime(assignment.start_time)}–{formatTime(assignment.end_time)}
             </Typography>
@@ -252,11 +256,14 @@ export function ShiftCell({
     availStatus === 'partial' ? '⚠️ Müsaitlik penceresi dışı' : '',
   ].filter(Boolean).join('\n')
 
+  const hasWarning = dailyOver || availStatus === 'off' || availStatus === 'partial'
+  const warningColor = dailyOver || availStatus === 'off' ? '#ef4444' : '#eab308'
+
   return (
     <Tooltip title={<Box sx={{ whiteSpace: 'pre-line', fontSize: '0.75rem' }}>{tooltipText}</Box>} placement="top">
       <Box onClick={onClick} sx={{
         borderLeft: '1px solid', borderColor: 'divider',
-        bgcolor: bgBase, p: 0.75, minHeight: 64, cursor,
+        bgcolor: bgBase, p: compact ? 0.5 : 0.75, minHeight: 64, cursor, minWidth: 0,
         display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 0.4,
         '&:hover': { bgcolor: readOnly ? bgBase : bgHover },
         // sol kenar rengi ihlal durumuna göre
@@ -265,16 +272,27 @@ export function ShiftCell({
           : 'divider',
         borderLeftWidth: (dailyOver || availStatus !== 'none') ? 2 : 1,
       }}>
+        {compact ? (
+          <>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, minWidth: 0 }}>
+              <Typography variant="caption" fontWeight={700} color="secondary.main" fontSize="0.62rem" noWrap sx={{ flex: 1, minWidth: 0 }}>
+                {name}
+              </Typography>
+              {hasWarning && <WarningAmberIcon sx={{ fontSize: 10, flexShrink: 0, color: warningColor }} />}
+            </Box>
+            <Typography variant="caption" color="text.secondary" fontSize="0.64rem" lineHeight={1.25}>
+              {start}<br />{end}
+            </Typography>
+            <Typography variant="caption" fontSize="0.58rem" fontWeight={700} color={dailyOver ? '#ef4444' : 'primary.main'}>
+              {fmtHours(netMins)} net
+            </Typography>
+          </>
+        ) : (<>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Typography variant="caption" fontWeight={700} color="secondary.main" fontSize="0.7rem" noWrap sx={{ flex: 1 }}>
             {name}
           </Typography>
-          {(dailyOver || availStatus === 'off' || availStatus === 'partial') && (
-            <WarningAmberIcon sx={{
-              fontSize: 10, flexShrink: 0,
-              color: dailyOver || availStatus === 'off' ? '#ef4444' : '#eab308',
-            }} />
-          )}
+          {hasWarning && <WarningAmberIcon sx={{ fontSize: 10, flexShrink: 0, color: warningColor }} />}
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.3 }}>
           <AccessTimeIcon sx={{ fontSize: 10, color: 'text.disabled' }} />
@@ -291,6 +309,7 @@ export function ShiftCell({
           </Typography>
           {!readOnly && <EditIcon sx={{ fontSize: 10, color: 'text.disabled' }} />}
         </Box>
+        </>)}
       </Box>
     </Tooltip>
   )
