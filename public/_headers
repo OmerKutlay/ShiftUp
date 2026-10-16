@@ -1,0 +1,26 @@
+# Cloudflare Workers static assets başlıkları
+# https://developers.cloudflare.com/workers/static-assets/headers
+# https://opennext.js.org/cloudflare/caching#static-assets-caching
+#
+# Neden gerekli: wrangler.jsonc'de assets.run_worker_first yok → public/ ve /_next/static dosyaları
+# Worker çalışmadan doğrudan sunulur; next.config.ts headers() ve middleware bunlara uygulanmaz.
+# Bu dosya yalnızca static asset yanıtlarını etkiler (HTML/API/sw.js Worker'dan gelir ve
+# başlıklarını next.config.ts'ten alır). Content-Type burada ezilmez (uzantıdan otomatik belirlenir).
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Strict-Transport-Security: max-age=63072000; includeSubDomains
+
+# İçerik hash'li build çıktıları — değişmez
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Web App Manifest — kısa önbellek (ikon/kısayol değişiklikleri bir saat içinde yansır)
+/manifest.json
+  Cache-Control: public, max-age=3600
+
+# Ana SW (/sw.js) importScripts ile yükler; push handler değişiklikleri SW güncelleme
+# kontrolünde hemen görünsün
+/sw-push.js
+  Cache-Control: no-cache

@@ -24,6 +24,7 @@ npm run dev                  # http://localhost:3000
 | `CRON_SECRET` | | `/api/attendance/alerts/scan` cron çağrısı için Bearer anahtarı |
 | `ATTENDANCE_REQUIRE_LOCATION` | | `false` yapılmadıkça QR okutmada konum (geofence) zorunludur |
 | `WT_MIN_REST_HOURS` / `WT_MAX_DAILY_HOURS` / `WT_MAX_WEEKLY_HOURS` | | Çalışma süresi sınırlarını sıkılaştırır (yasal üst sınır 11s/gün, 45s/hafta aşılamaz) |
+| `VAPID_PUBLIC_KEY` | | Web Push VAPID açık anahtarı (gizli değil). Yoksa push kapalıdır — bkz. [Push bildirimleri](#push-bildirimleri) |
 
 ## Veritabanı
 
@@ -47,6 +48,59 @@ npx supabase db push         # bağlı (canlı) projeye uygula
 > Bütünlük migration'ı (`20261012100100_integrity_constraints.sql`) mevcut veride çakışma
 > bulursa ilgili tekil kısıtı oluşturmaz ve `WARNING` basar — hiçbir veri silinmez. Çıktıyı
 > kontrol edip uyarıdaki sorguyla kayıtları inceleyin.
+
+## Push bildirimleri
+
+Bildirimler (`notifications` tablosu) eklendiğinde abone cihazlara Web Push gönderilir. Vardiya
+hatırlatmaları repoda olmayan `shift-reminder` Edge Function'ından geldiği için dağıtım
+veritabanından tetiklenir:
+
+```
+INSERT notifications ──trigger (pg_net, async)──▶ send-push Edge Function ──VAPID──▶ FCM / Mozilla / Apple
+                                                   │ push_subscriptions (404/410 → silinir)
+tarayıcı: /api/push/subscription ──▶ push_subscriptions      public/sw-push.js → bildirim + tıklama
+```
+
+- Abonelik: `GET /api/push/config`, `POST`/`DELETE /api/push/subscription` (oturum zorunlu, kiosk hariç).
+  Aynı cihaz başka hesapla açılırsa abonelik yeni hesaba devredilir; çıkışta cihazın aboneliği silinir.
+- Tetikleyici (`20261016100000_push_subscriptions.sql`) pg_net veya Vault secret'ları yoksa sessizce
+  hiçbir şey yapmaz; bildirim eklemeyi asla hata verdirmez. Edge Function içeriği DB'den yeniden okur.
+- iOS/iPadOS'ta push yalnızca 16.4+ sürümde, uygulama **ana ekrana eklenip** oradan açıldığında çalışır.
+- Bildirime tıklanınca açılan sayfa: `src/lib/notificationLinks.ts` (Edge Function'daki kopyası
+  `supabase/functions/send-push/links.ts`; eşitliği testle doğrulanır).
+
+### Kurulum
+
+1. **VAPID anahtarları üret** (bir kez; özel anahtarı kimseyle paylaşmayın):
+   ```bash
+   npx web-push generate-vapid-keys
+   ```
+2. **Uygulama (Cloudflare Workers):** açık anahtarı ekleyin — `wrangler.jsonc` → `vars.VAPID_PUBLIC_KEY`
+   veya panelden / `npx wrangler secret put VAPID_PUBLIC_KEY`. Yerelde `.env.local`.
+3. **Edge Function secret'ları** (`SUPABASE_URL` ve `SUPABASE_SERVICE_ROLE_KEY` otomatik gelir):
+   ```bash
+   npx supabase secrets set \
+     VAPID_PUBLIC_KEY=... VAPID_PRIVATE_KEY=... VAPID_SUBJECT=mailto:destek@ornek.com \
+     PUSH_WEBHOOK_SECRET=$(openssl rand -hex 32)
+   ```
+4. **Fonksiyonu deploy edin** (`supabase/config.toml` → `verify_jwt = false`; kimlik `x-push-secret` ile):
+   ```bash
+   npx supabase functions deploy send-push
+   ```
+5. **Migration'ı uygulayın** — yukarıdaki geçmiş uyarısı geçerlidir, düz `db push` çalıştırmayın.
+   `20261016100000_push_subscriptions.sql` dosyasını SQL Editor'de çalıştırıp geçmişe kaydedin:
+   ```bash
+   npx supabase migration repair --status applied 20261016100000
+   ```
+6. **Vault secret'larını kaydedin** (SQL Editor; anahtar 3. adımdaki `PUSH_WEBHOOK_SECRET` ile aynı):
+   ```sql
+   select vault.create_secret('https://<proje-ref>.supabase.co/functions/v1/send-push', 'push_function_url');
+   select vault.create_secret('<PUSH_WEBHOOK_SECRET>', 'push_webhook_secret');
+   -- değiştirmek için: select vault.update_secret(id, '<yeni>') from vault.secrets where name = 'push_webhook_secret';
+   ```
+7. **Doğrulama:** Bildirimler sayfasındaki karttan "Aç" deyin, sonra kendinize bir bildirim oluşturun.
+   İstek sonuçları: `select * from net._http_response order by created desc limit 10;`
+   ve Edge Function logları (panel › Edge Functions › send-push › Logs).
 
 ## Komutlar
 
