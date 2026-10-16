@@ -23,6 +23,7 @@ import {
 import { useRouter } from 'next/navigation'
 import { useSWRConfig } from 'swr'
 import type { Employee, Role } from '@/types/employee'
+import { runBeforeSignOut } from '@/lib/pwa/sessionEvents'
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -94,6 +95,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchEmployee])
 
   const signOut = useCallback(async () => {
+    // PWA temizliği (push aboneliği, çevrimdışı önbellek) — oturum hâlâ geçerliyken
+    await runBeforeSignOut()
     try {
       await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' })
     } catch { /* sessiz hata */ }
