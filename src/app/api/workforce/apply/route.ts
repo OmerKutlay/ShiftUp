@@ -3,7 +3,7 @@
  *
  * Onaylanmış taslak planı Weekly Schedule'a (shift_assignments) yazar.
  * Haftanın mevcut planı YENİ PLANLA DEĞİŞTİRİLİR (üst üste yazılmaz):
- *   - Giriş/çıkış kaydı olan vardiyalar korunur; taslaktaki aynı çalışan+gün atlanır.
+ *   - Giriş/çıkış kaydı olan ve bugünden önceki günlerin vardiyaları korunur; taslaktaki aynı çalışan+gün atlanır.
  *   - İzinli işaretli (is_on_leave) vardiyalar korunur.
  *   - Diğer tüm vardiyalar silinir (devam kaydı olan vardiya DB'de RESTRICT ile zaten silinemez).
  *
@@ -27,7 +27,7 @@ import { AUTO_WEEKLY_REST_REASON, isAutoWeeklyRest } from '@/types/leave'
 import { badRequest, conflict, readJson, serverError } from '@/lib/apiErrors'
 import { isUuid, isValidDate, isValidTime } from '@/lib/validation'
 import { getWeekDays } from '@/lib/scheduleUtils'
-import { addDaysToDateString } from '@/lib/dateUtils'
+import { addDaysToDateString, turkeyToday } from '@/lib/dateUtils'
 import { getWorkingTimeConfig } from '@/lib/workingTimeConfig'
 import { validateWeekPlan, type PlanShift } from '@/lib/planValidation'
 import { logAudit } from '@/lib/auditLog'
@@ -113,9 +113,11 @@ export async function POST(req: NextRequest) {
     const kept: PlanShift[] = []
     const deleteIds: string[] = []
     const deletedRows: Record<string, unknown>[] = []  // hata olursa aynı id'lerle geri yüklemek için
+    const today = turkeyToday()
     for (const r of existingRes.data ?? []) {
       const hasAttendance = Array.isArray(r.attendance_records) && r.attendance_records.length > 0
-      if (r.is_on_leave || hasAttendance) {
+      // Geçmiş günün vardiyası (gelinmemiş olsa da) devamsızlık kaydıdır; silinip yeniden yazılmaz
+      if (r.is_on_leave || hasAttendance || (r.work_date as string) < today) {
         keepKeys.add(`${r.employee_id}::${r.work_date}`)
         if (!r.is_on_leave) kept.push(r as PlanShift)
       } else {
