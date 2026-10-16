@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   Box,
-  Drawer,
   List,
   ListItemButton,
   ListItemIcon,
@@ -17,58 +16,21 @@ import {
   Divider,
   Tooltip,
 } from '@mui/material'
-import TodayIcon from '@mui/icons-material/Today'
-import PeopleIcon from '@mui/icons-material/People'
-import ScheduleIcon from '@mui/icons-material/Schedule'
-import CalendarMonthIcon from '@mui/icons-material/CalendarMonth'
-import QrCode2Icon from '@mui/icons-material/QrCode2'
-import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner'
-import BarChartIcon from '@mui/icons-material/BarChart'
-import BeachAccessIcon from '@mui/icons-material/BeachAccess'
-import DashboardIcon from '@mui/icons-material/Dashboard'
-import SettingsIcon from '@mui/icons-material/Settings'
 import MenuIcon from '@mui/icons-material/Menu'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import PersonIcon from '@mui/icons-material/Person'
 import LogoutIcon from '@mui/icons-material/Logout'
-import GroupsIcon from '@mui/icons-material/Groups'
-import WorkIcon from '@mui/icons-material/Work'
-import EventNoteIcon from '@mui/icons-material/EventNote'
-import EditNoteIcon from '@mui/icons-material/EditNote'
 
 import { ErrorBoundary } from './ErrorBoundary'
+import { MobileBottomNav, BOTTOM_NAV_HEIGHT } from './MobileBottomNav'
+import { PullToRefresh } from './PullToRefresh'
+import { NAV_ITEMS, SCAN_HREF, filterNavItems, getPageTitle, isNavActive } from './navItems'
 import { NotificationBell } from '@/components/notifications/NotificationBell'
 import { useAuth } from '@/context/AuthContext'
-import { hasRole, MANAGER_ROLES, ADMIN_ROLES } from '@/lib/auth/roles'
 
 const DRAWER_WIDTH = 220
 const DRAWER_COLLAPSED = 64
 const MOBILE_BAR_HEIGHT = 56
-
-interface NavItem {
-  label: string
-  href: string
-  icon: React.ReactNode
-  /** Bu nav item yalnızca belirtilen rollere gösterilir. Undefined = herkese. */
-  requiredRoles?: string[]
-}
-
-const NAV_ITEMS: NavItem[] = [
-  { label: 'Genel Bakış',       href: '/dashboard',       icon: <DashboardIcon />,     requiredRoles: MANAGER_ROLES },
-  { label: 'Günlük Operasyon',  href: '/',                icon: <TodayIcon />,         requiredRoles: MANAGER_ROLES },
-  { label: 'Çalışanlar',        href: '/employees',       icon: <PeopleIcon />,        requiredRoles: MANAGER_ROLES },
-  { label: 'Vardiya Şablonları',href: '/shift-templates', icon: <ScheduleIcon />,      requiredRoles: MANAGER_ROLES },
-  { label: 'Haftalık Plan',     href: '/schedule',        icon: <CalendarMonthIcon /> },
-  { label: 'QR Kiosk',          href: '/qr-kiosk',        icon: <QrCode2Icon />,       requiredRoles: MANAGER_ROLES },
-  { label: 'QR Tara',           href: '/attendance/scan', icon: <QrCodeScannerIcon /> },
-  { label: 'Çalışma Özetim',   href: '/my-schedule',     icon: <EventNoteIcon /> },
-  { label: 'Açık Vardiyalar',   href: '/open-shifts',     icon: <WorkIcon /> },
-  { label: 'İzin Talepleri',    href: '/leave',           icon: <BeachAccessIcon /> },
-  { label: 'Mesai Düzeltme',   href: '/time-correction', icon: <EditNoteIcon /> },
-  { label: 'İş Gücü',           href: '/workforce',       icon: <GroupsIcon />,        requiredRoles: MANAGER_ROLES },
-  { label: 'Raporlar',          href: '/reports',         icon: <BarChartIcon />,      requiredRoles: MANAGER_ROLES },
-  { label: 'Ayarlar',           href: '/settings',        icon: <SettingsIcon />,      requiredRoles: ADMIN_ROLES },
-]
 
 interface Props {
   children: React.ReactNode
@@ -78,11 +40,12 @@ export function AppShell({ children }: Props) {
   const theme = useTheme()
   // noSsr kullanılmaz: ilk client render sunucuyla aynı (false) olmalı, aksi halde hydration mismatch oluşur
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
-  const [mobileOpen, setMobileOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const pathname = usePathname()
   const { employee: authEmployee, signOut, status: authStatus } = useAuth()
   const authRoleName = authEmployee?.roles?.name ?? authEmployee?.role_name ?? null
+
+  const pageTitle = getPageTitle(pathname)
 
   const drawerWidth = collapsed && !isMobile ? DRAWER_COLLAPSED : DRAWER_WIDTH
 
@@ -129,16 +92,6 @@ export function AppShell({ children }: Props) {
             {collapsed ? <MenuIcon fontSize="small" /> : <ChevronLeftIcon fontSize="small" />}
           </IconButton>
         )}
-        {isMobile && (
-          <IconButton
-            size="small"
-            onClick={() => setMobileOpen(false)}
-            aria-label="Menüyü kapat"
-            sx={{ color: 'text.secondary' }}
-          >
-            <ChevronLeftIcon fontSize="small" />
-          </IconButton>
-        )}
       </Box>
 
       <Divider sx={{ borderColor: 'divider' }} />
@@ -146,10 +99,8 @@ export function AppShell({ children }: Props) {
       {/* Nav items */}
       {/* Kısa ekranlarda liste kendi içinde kayar; alttaki kullanıcı/çıkış alanı görünür kalır */}
       <List sx={{ flex: 1, minHeight: 0, overflowY: 'auto', px: 1, pt: 1 }}>
-        {NAV_ITEMS.filter((item) =>
-          !item.requiredRoles || hasRole(authRoleName, item.requiredRoles as never)
-        ).map((item) => {
-          const active = pathname === item.href
+        {filterNavItems(NAV_ITEMS, authRoleName).map((item) => {
+          const active = isNavActive(pathname, item.href)
           return (
             <Tooltip
               key={item.href}
@@ -160,9 +111,6 @@ export function AppShell({ children }: Props) {
                 component={Link}
                 href={item.href}
                 prefetch={false}
-                onClick={() => {
-                  if (isMobile) setMobileOpen(false)
-                }}
                 selected={active}
                 aria-current={active ? 'page' : undefined}
                 aria-label={collapsed && !isMobile ? item.label : undefined}
@@ -282,28 +230,33 @@ export function AppShell({ children }: Props) {
             zIndex: theme.zIndex.appBar,
             height: `calc(${MOBILE_BAR_HEIGHT}px + env(safe-area-inset-top))`,
             pt: 'env(safe-area-inset-top)',
-            pl: 'calc(8px + env(safe-area-inset-left))',
+            pl: 'calc(16px + env(safe-area-inset-left))',
             pr: 'calc(16px + env(safe-area-inset-right))',
             display: 'flex',
             alignItems: 'center',
             gap: 1,
             bgcolor: 'rgba(15,23,42,0.85)',
             backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
             borderBottom: '1px solid',
             borderColor: 'divider',
+            userSelect: 'none',
+            WebkitUserSelect: 'none',
           }}
         >
-          <IconButton
-            onClick={() => setMobileOpen(true)}
-            aria-label="Menüyü aç"
-            sx={{ color: 'text.primary', WebkitTapHighlightColor: 'transparent' }}
+          {/* Navigasyon alt bar + /more'a taşındı; üst bar yalnızca sayfa başlığı + bildirim */}
+          <Typography
+            component="h1"
+            variant="subtitle1"
+            fontWeight={800}
+            color={pageTitle === 'ShiftUp' ? 'primary.main' : 'text.primary'}
+            letterSpacing={pageTitle === 'ShiftUp' ? 1 : 0}
+            noWrap
+            sx={{ flex: 1, minWidth: 0 }}
           >
-            <MenuIcon />
-          </IconButton>
-          <Typography variant="subtitle1" fontWeight={800} color="primary.main" letterSpacing={1}>
-            ShiftUp
+            {pageTitle}
           </Typography>
-          {/* Bildirimler menüyü açmadan da erişilebilir olsun */}
+          {/* Bildirimler her sayfadan tek dokunuşla erişilebilir olsun */}
           {authStatus === 'authenticated' && authEmployee && (
             <Box sx={{ ml: 'auto' }}>
               <NotificationBell employeeId={authEmployee.id} collapsed />
@@ -339,19 +292,8 @@ export function AppShell({ children }: Props) {
         </Box>
       )}
 
-      {/* Mobile drawer */}
-      {isMobile && (
-        <Drawer
-          open={mobileOpen}
-          onClose={() => setMobileOpen(false)}
-          ModalProps={{ keepMounted: true }}
-          PaperProps={{
-            sx: { width: DRAWER_WIDTH, bgcolor: 'transparent' },
-          }}
-        >
-          {drawerContent}
-        </Drawer>
-      )}
+      {/* Mobil alt sekme çubuğu */}
+      {isMobile && <MobileBottomNav />}
 
       {/* Main content */}
       <Box
@@ -363,9 +305,16 @@ export function AppShell({ children }: Props) {
           minHeight: '100dvh',
           // body zaten safe-area-inset-top kadar padding alıyor; burada yalnızca bar yüksekliği eklenir
           pt: isMobile ? `${MOBILE_BAR_HEIGHT}px` : 0,
+          // Alt bar içeriği örtmesin: bar yüksekliği + body'nin safe-area-inset-bottom padding'i
+          // birlikte barın (64px + safe-area) kapladığı alanı karşılar
+          pb: isMobile ? `${BOTTOM_NAV_HEIGHT}px` : 0,
         }}
       >
-        <ErrorBoundary>{children}</ErrorBoundary>
+        {/* Ağaç her boyutta aynı kalsın (breakpoint değişince sayfa state'i sıfırlanmasın);
+            yalnızca mobilde etkin, QR tarayıcıda kamera akışıyla çakışmasın diye kapalı */}
+        <PullToRefresh disabled={!isMobile || isNavActive(pathname, SCAN_HREF)}>
+          <ErrorBoundary>{children}</ErrorBoundary>
+        </PullToRefresh>
       </Box>
     </Box>
   )
