@@ -81,6 +81,29 @@ export async function upsertPushSubscription(
     { onConflict: 'endpoint' },
   )
   if (error) throw error
+  await trimPushSubscriptions(admin, employeeId, input.endpoint)
+}
+
+/** Çalışan başına en fazla bu kadar cihaz aboneliği tutulur (sahte abonelikle push çoğaltmayı önler) */
+export const MAX_SUBSCRIPTIONS_PER_EMPLOYEE = 10
+
+/** Sınırı aşan en eski abonelikleri siler; az önce kaydedilen endpoint her zaman korunur */
+async function trimPushSubscriptions(
+  admin: SupabaseClient,
+  employeeId: string,
+  keepEndpoint: string,
+): Promise<void> {
+  const { data, error } = await admin
+    .from('push_subscriptions')
+    .select('id, endpoint')
+    .eq('employee_id', employeeId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  const others = (data ?? []).filter((row) => row.endpoint !== keepEndpoint)
+  const excess = others.slice(MAX_SUBSCRIPTIONS_PER_EMPLOYEE - 1).map((row) => row.id as string)
+  if (excess.length === 0) return
+  const { error: delError } = await admin.from('push_subscriptions').delete().in('id', excess)
+  if (delError) throw delError
 }
 
 /** Yalnızca çalışanın kendi aboneliğini siler; silinen kayıt sayısını döner */

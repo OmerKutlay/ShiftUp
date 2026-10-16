@@ -38,9 +38,21 @@ export type AuthStatus =
   | 'authenticated'   // Session + aktif employee mevcut
   | 'unauthenticated' // Session yok
 
+/**
+ * Son /api/auth/me sorgusunun sonucu. 'unauthenticated' durumunu ikiye ayırır:
+ *   - 'signed-out': sunucu oturumun olmadığını / hesabın pasif olduğunu söyledi (kesin)
+ *   - 'unreachable': ağ hatası veya 5xx — oturumun durumu bilinmiyor (çevrimdışı olabilir)
+ * Her sorguda yeni nesne üretilir; aynı sonuç tekrar gelse de efektler yeniden çalışır.
+ */
+export interface SessionCheck {
+  result: 'authenticated' | 'signed-out' | 'unreachable'
+  at: number
+}
+
 interface AuthContextValue {
   status: AuthStatus
   employee: AuthEmployee | null
+  sessionCheck: SessionCheck | null
   signOut: () => Promise<void>
   /** Employee bilgisini yeniden yükle */
   refreshEmployee: () => Promise<void>
@@ -51,6 +63,7 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue>({
   status: 'loading',
   employee: null,
+  sessionCheck: null,
   signOut: async () => {},
   refreshEmployee: async () => {},
 })
@@ -60,6 +73,7 @@ const AuthContext = createContext<AuthContextValue>({
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('loading')
   const [employee, setEmployee] = useState<AuthEmployee | null>(null)
+  const [sessionCheck, setSessionCheck] = useState<SessionCheck | null>(null)
   const router = useRouter()
   const { mutate } = useSWRConfig()
 
@@ -70,12 +84,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const fetchEmployee = useCallback(async (): Promise<AuthEmployee | null> => {
+    const record = (result: SessionCheck['result']) => {
+      if (mountedRef.current) setSessionCheck({ result, at: Date.now() })
+    }
     try {
       const res = await fetch('/api/auth/me', { credentials: 'same-origin' })
-      if (!res.ok) return null
+      if (res.status === 401 || res.status === 403) {
+        record('signed-out')
+        return null
+      }
+      if (!res.ok) {
+        record('unreachable')
+        return null
+      }
       const data = (await res.json()) as { employee: AuthEmployee | null }
-      return data.employee ?? null
+      const emp = data.employee ?? null
+      record(emp && emp.active ? 'authenticated' : 'signed-out')
+      return emp
     } catch {
+      record('unreachable')
       return null
     }
   }, [])
@@ -124,7 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchEmployee])
 
   return (
-    <AuthContext.Provider value={{ status, employee, signOut, refreshEmployee }}>
+    <AuthContext.Provider value={{ status, employee, sessionCheck, signOut, refreshEmployee }}>
       {children}
     </AuthContext.Provider>
   )
