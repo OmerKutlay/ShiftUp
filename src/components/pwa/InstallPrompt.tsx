@@ -88,7 +88,8 @@ export function InstallPrompt() {
           position: 'fixed',
           left: 'calc(12px + env(safe-area-inset-left))',
           right: 'calc(12px + env(safe-area-inset-right))',
-          bottom: 'calc(12px + env(safe-area-inset-bottom))',
+          // Mobil alt navigasyonun (64px) üstünde kalsın
+          bottom: 'calc(72px + env(safe-area-inset-bottom))',
           zIndex: theme.zIndex.snackbar - 1,
           p: 2,
           bgcolor: '#1e293b',

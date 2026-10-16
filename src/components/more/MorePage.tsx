@@ -22,6 +22,7 @@ import LogoutIcon from '@mui/icons-material/Logout'
 
 import { useAuth } from '@/context/AuthContext'
 import { getMoreItems, groupNavItems } from '@/components/layout/navItems'
+import { PushPermissionCard } from '@/components/pwa/PushPermissionCard'
 
 function initials(name: string): string {
   return name
@@ -105,6 +106,12 @@ export function MorePage() {
           </Paper>
         </Box>
       ))}
+
+      {status === 'authenticated' && (
+        <Box sx={{ mb: 2 }}>
+          <PushPermissionCard variant="row" />
+        </Box>
+      )}
 
       {status === 'authenticated' && (
         <Button

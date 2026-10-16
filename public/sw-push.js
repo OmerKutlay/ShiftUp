@@ -1,7 +1,7 @@
 /**
  * ShiftUp — Service Worker push eklentisi.
  *
- * Ana service worker (public/sw.js) bu dosyayı `importScripts('/sw-push.js')` ile yükler.
+ * Ana service worker (/sw.js — src/app/sw.js/route.ts) bu dosyayı `importScripts('/sw-push.js')` ile yükler.
  * Düz JS (modül değil); yalnızca push ile ilgili olayları dinler:
  *   push                  → bildirimi göster, açık sekmelere PUSH_RECEIVED gönder, rozeti güncelle
  *   notificationclick     → açık uygulama penceresini öne getirip hedef sayfaya git (yoksa yeni pencere)
