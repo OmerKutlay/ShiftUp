@@ -15,6 +15,8 @@ import {
   DialogContent,
   DialogActions,
   Button,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material'
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth'
 import EventBusyIcon from '@mui/icons-material/EventBusy'
@@ -39,6 +41,7 @@ import { tr } from 'date-fns/locale'
 
 import { DAY_LABELS, getRoleSortOrder, JS_DAY_TO_KEY, EmployeeWeekStats, calcEmployeeStats, getAvailStatus } from './scheduleHelpers'
 import { SummaryCell, ShiftCell } from './ScheduleCells'
+import { MobileDayBoard } from './MobileDayBoard'
 
 // ─── Ana bileşen ──────────────────────────────────────────────
 interface WeeklySchedulePageProps {
@@ -242,23 +245,32 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     return availabilityMap.get(dialogEmployee.id)?.get(dayKey) ?? []
   }, [dialogEmployee, dialogDate, availabilityMap])
 
-  // Mobilde tablo açılınca bugünün sütunu görünür olsun (ad sütununun hemen yanına kaydır)
+  const todayStr = format(new Date(), 'yyyy-MM-dd')
+  const hasData = !isFirstLoad && !error && scheduleEntries.length > 0
+
+  // Mobil: varsayılan "Gün" görünümü (seçili günün vardiyaları), istenirse haftalık tablo
+  const [mobileView, setMobileView] = useState<'day' | 'week'>('day')
+  const [pickedDay, setPickedDay] = useState<string | null>(null)
+  const selectedDay = pickedDay && weekDays.includes(pickedDay)
+    ? pickedDay
+    : weekDays.includes(todayStr) ? todayStr : weekDays[0]
+  const hasGrid = hasData && (!isMobile || mobileView === 'week')
+
+  // Mobilde haftalık tablo açılınca bugünün sütunu görünür olsun (ad sütununun hemen yanına kaydır)
   const scrollRef = useRef<HTMLDivElement>(null)
-  const hasGrid = !isFirstLoad && !error && scheduleEntries.length > 0
   useEffect(() => {
     if (!isMobile || !hasGrid) return
     const el = scrollRef.current
     const todayCol = el?.querySelector<HTMLElement>('[data-today="true"]')
-    if (el) el.scrollLeft = todayCol ? todayCol.offsetLeft - 104 : 0
+    if (el) el.scrollLeft = todayCol ? todayCol.offsetLeft - 112 : 0
   }, [isMobile, hasGrid, weekDays])
 
-  const todayStr = format(new Date(), 'yyyy-MM-dd')
-  // Mobilde de aynı tablo: sabit genişlikli sütunlar + yatay kaydırma, ad sütunu ve gün başlığı sabit
-  const nameColW = isMobile ? 104 : 160
+  // Mobil haftalık tablo: sabit genişlikli sütunlar + yatay kaydırma, ad sütunu ve gün başlığı sabit
+  const nameColW = isMobile ? 112 : 160
   const gridCols = isMobile
-    ? `${nameColW}px repeat(7, minmax(64px, 1fr)) 76px`
+    ? `${nameColW}px repeat(7, minmax(76px, 1fr)) 80px`
     : `${nameColW}px repeat(7, 1fr) 130px`
-  const gridMinWidth = isMobile ? nameColW + 7 * 64 + 76 : undefined
+  const gridMinWidth = isMobile ? nameColW + 7 * 76 + 80 : undefined
   // Paper (yarı saydam) + sayfa zemini üzerinde sabit hücrelerin arkası görünmesin diye opak renkler
   const stickyBg = '#1b2537'
   const headerBg = '#131c2f'
@@ -272,12 +284,42 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
         actions={<WeekNavigator currentWeek={currentWeek} onChange={handleWeekChange} />}
       />
 
-      <Divider sx={{ mb: 3, borderColor: 'rgba(255,255,255,0.08)' }} />
+      <Divider sx={{ mb: isMobile ? 2 : 3, borderColor: 'rgba(255,255,255,0.08)' }} />
+
+      {isMobile && hasData && (
+        <ToggleButtonGroup
+          exclusive
+          fullWidth
+          size="small"
+          value={mobileView}
+          onChange={(_, v: 'day' | 'week' | null) => v && setMobileView(v)}
+          sx={{ mb: 2 }}
+        >
+          <ToggleButton value="day">Gün</ToggleButton>
+          <ToggleButton value="week">Hafta</ToggleButton>
+        </ToggleButtonGroup>
+      )}
 
       {isFirstLoad && <ScheduleGridSkeleton rows={Math.min(Math.max(employees.length, 6), 12)} />}
       {error && <Alert severity="error">{error}</Alert>}
       {!isFirstLoad && !error && scheduleEntries.length === 0 && (
         <Alert severity="info">Aktif çalışan bulunamadı.</Alert>
+      )}
+
+      {isMobile && hasData && mobileView === 'day' && (
+        <MobileDayBoard
+          entries={scheduleEntries}
+          weekDays={weekDays}
+          selectedDay={selectedDay}
+          onSelectDay={setPickedDay}
+          holidayMap={holidayMap}
+          approvedLeaveMap={approvedLeaveMap}
+          restDayMap={restDayMap}
+          availabilityMap={availabilityMap}
+          maxDailyMins={config.maxDailyWorkHours * 60}
+          onCellClick={openAssignDialog}
+          readOnly={readOnly}
+        />
       )}
 
       {/* Desktop Grid */}
@@ -429,7 +471,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
       )}
 
       {/* Legend */}
-      {!isFirstLoad && !error && scheduleEntries.length > 0 && (
+      {hasGrid && (
         <Box sx={{ display: 'flex', gap: 2, mt: 1.5, flexWrap: 'wrap' }}>
           {[
             { color: 'rgba(99,102,241,0.25)', label: 'Haftalık Tatil' },

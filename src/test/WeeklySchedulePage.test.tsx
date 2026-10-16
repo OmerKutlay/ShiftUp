@@ -290,15 +290,35 @@ describe('WeeklySchedulePage — mobil', () => {
     }))
   })
 
-  it('mobilde de kart listesi değil, gün sütunlu tablo gösterilir', async () => {
-    setupMocks(
-      [makeEmployee(), makeEmployee({ id: 'emp-002', full_name: 'Ayşe Demir' })],
-      [makeTemplate()],
-      [makeAssignment(), makeAssignment({ id: 'asgn-002', employee_id: 'emp-002', work_date: '2026-09-28', start_time: '13:00', end_time: '22:00' })],
-    )
+  const mobileData = () => setupMocks(
+    [makeEmployee(), makeEmployee({ id: 'emp-002', full_name: 'Ayşe Demir' }), makeEmployee({ id: 'emp-003', full_name: 'Can Boş' })],
+    [makeTemplate()],
+    [makeAssignment(), makeAssignment({ id: 'asgn-002', employee_id: 'emp-002', work_date: '2026-09-28', start_time: '13:00', end_time: '22:00' })],
+  )
+
+  it('varsayılan gün görünümü: seçili günün vardiyaları saat sırasıyla, çalışmayanlar ayrı', async () => {
+    mobileData()
     renderPage()
 
     await waitFor(() => expect(screen.getByText('Ayşe Demir')).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: /28 Eylül Pazartesi, 2 kişi/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText('2 kişi çalışıyor', { exact: false })).toBeInTheDocument()
+    const times = screen.getAllByText(/^\d{2}:\d{2}–\d{2}:\d{2}$/).map((el) => el.textContent)
+    expect(times).toEqual(['09:00–18:00', '13:00–22:00'])
+    expect(screen.getByText('Çalışmayanlar (1)')).toBeInTheDocument()
+    expect(screen.getByText('Can Boş')).toBeInTheDocument()
+
+    // Başka güne geçiş
+    await userEvent.click(screen.getByRole('button', { name: /29 Eylül Salı/ }))
+    expect(screen.getByText('Bu gün için planlanmış vardiya yok.')).toBeInTheDocument()
+  })
+
+  it('"Hafta" seçilince gün sütunlu tablo gösterilir', async () => {
+    mobileData()
+    renderPage()
+
+    await waitFor(() => expect(screen.getByText('Ayşe Demir')).toBeInTheDocument())
+    await userEvent.click(screen.getByRole('button', { name: 'Hafta' }))
     // Tablo başlığı: çalışan sütunu + 7 gün + özet
     expect(screen.getByText('Çalışan')).toBeInTheDocument()
     expect(screen.getByText('Özet')).toBeInTheDocument()
