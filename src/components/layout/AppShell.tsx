@@ -246,7 +246,7 @@ export function AppShell({ children }: Props) {
         >
           {/* Navigasyon alt bar + /more'a taşındı; üst bar yalnızca sayfa başlığı + bildirim */}
           <Typography
-            component="h1"
+            component="div"
             variant="subtitle1"
             fontWeight={800}
             color={pageTitle === 'ShiftUp' ? 'primary.main' : 'text.primary'}
