@@ -14,6 +14,7 @@ import { requireAuth, forbidden, hasRole, MANAGER_ROLES } from '@/lib/auth'
 import { findCurrentShift, NoShiftError } from '@/lib/attendanceService'
 import { serverError } from '@/lib/apiErrors'
 import { isUuid } from '@/lib/validation'
+import { startTrace, type RequestTrace } from '@/lib/requestTrace'
 import type { AttendanceStatus } from '@/types/attendance'
 import type { QrActionType } from '@/types/qr'
 
@@ -26,7 +27,15 @@ const ATTENDANCE_TO_QR_ACTION: Record<string, QrActionType> = {
 }
 
 export async function GET(req: NextRequest) {
+  const trace = startTrace('current_status', req)
+  const res = await getCurrentStatus(req, trace)
+  trace.end(res.status)
+  return res
+}
+
+async function getCurrentStatus(req: NextRequest, trace: RequestTrace): Promise<NextResponse> {
   const auth = await requireAuth(req)
+  trace.step('auth', { ok: !('response' in auth) })
   if ('response' in auth) return auth.response
 
   const queryEmployeeId = req.nextUrl.searchParams.get('employee_id')
@@ -47,6 +56,7 @@ export async function GET(req: NextRequest) {
     let found: Awaited<ReturnType<typeof findCurrentShift>>
     try {
       found = await findCurrentShift(admin, employeeId)
+      trace.step('shift', { employee_id: employeeId })
     } catch (err) {
       if (err instanceof NoShiftError) {
         return NextResponse.json({

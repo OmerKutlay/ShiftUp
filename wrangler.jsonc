@@ -25,7 +25,20 @@
 	},
 	// Varsayılan olarak wrangler deploy panelden eklenen değişkenleri siler; korunsun
 	"keep_vars": true,
+	// Workers Logs: her istek (invocation) + console.log satırları kaydedilir, örnekleme yok.
+	// 1102 → Observability'de $workers.outcome = exceededCpu / exceededMemory ile bulunur;
+	// aynı cf-ray'li `trace` satırları isteğin hangi adımda kesildiğini gösterir (src/lib/requestTrace.ts).
+	// Traces: her Supabase alt isteğinin (fetch) süresi istek zaman çizelgesinde görünür.
 	"observability": {
-		"enabled": true
+		"enabled": true,
+		"logs": {
+			"enabled": true,
+			"invocation_logs": true,
+			"head_sampling_rate": 1
+		},
+		"traces": {
+			"enabled": true,
+			"head_sampling_rate": 1
+		}
 	}
 }

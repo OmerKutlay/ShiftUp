@@ -19,6 +19,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { DEV_SESSION_COOKIE, IS_DEV_AUTH } from '@/lib/authConfig'
 import { verifyDevSessionEdge } from '@/lib/auth/devSessionEdge'
 import { isKioskRole, roleAtLeast, ROLES, type RoleName } from '@/lib/auth/roles'
+import { startTrace } from '@/lib/requestTrace'
 
 const PUBLIC_PATHS = ['/login', '/offline']
 const PUBLIC_API_PREFIX = '/api/auth/'
@@ -147,6 +148,7 @@ export async function middleware(request: NextRequest) {
   if (pathname !== '/login' && isPublicPath(pathname)) return NextResponse.next()
 
   // ── Oturum ────────────────────────────────────────────────
+  const trace = startTrace('middleware', request, { path: pathname })
   const response = NextResponse.next({ request: { headers: request.headers } })
   let identity: { id?: string; authUserId?: string } | null = null
 
@@ -163,7 +165,9 @@ export async function middleware(request: NextRequest) {
   // /login ve korumalı sayfalar AYNI ölçütü kullanır: geçerli oturum + aktif çalışan kaydı.
   // (Önceden /login yalnızca oturuma bakıyordu; çalışan kaydı doğrulanamayan oturumda
   //  "/" → /login → "/" sonsuz yönlendirme döngüsü oluşuyordu.)
+  trace.step('session', { ok: !!identity })
   const lookup = identity ? await loadEmployee(identity) : null
+  trace.step('employee', { lookup: lookup?.status ?? null })
 
   if (pathname === '/login') {
     if (lookup?.status === 'ok' && lookup.active) {

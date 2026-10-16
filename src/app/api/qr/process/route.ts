@@ -38,6 +38,7 @@ import {
   NoShiftError,
 } from '@/lib/attendanceService'
 import { readJson, serverError } from '@/lib/apiErrors'
+import { startTrace, type RequestTrace } from '@/lib/requestTrace'
 
 const ATTENDANCE_TO_QR: Record<AttendanceAction, QrActionType> = {
   clock_in: 'clock_in',
@@ -63,8 +64,16 @@ function locationRequired(): boolean {
 }
 
 export async function POST(req: NextRequest) {
+  const trace = startTrace('qr_process', req)
+  const res = await processQr(req, trace)
+  trace.end(res.status)
+  return res
+}
+
+async function processQr(req: NextRequest, trace: RequestTrace): Promise<NextResponse> {
   // Authentication zorunlu — employee session'dan alınır
   const auth = await requireAuth(req)
+  trace.step('auth', { ok: !('response' in auth) })
   if ('response' in auth) return auth.response
   const { employee: sessionEmployee } = auth
 
@@ -80,6 +89,7 @@ export async function POST(req: NextRequest) {
 
     // Rate limit: session employee bazlı
     const rateCheck = await checkRateLimit(`qr_proc:${sessionEmployee.id}`, PROCESS_RATE_LIMIT, PROCESS_RATE_WINDOW_MS)
+    trace.step('rate_limit', { employee_id: sessionEmployee.id, allowed: rateCheck.allowed })
     if (!rateCheck.allowed) {
       return NextResponse.json({ error: 'Çok fazla işlem talebi.', code: 'RATE_LIMITED' }, { status: 429 })
     }
@@ -95,6 +105,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Geçersiz GPS koordinatları.', code: 'LOCATION_VALIDATION_FAILED' }, { status: 400 })
       }
       const geofenceResult = await validateLocationServerSide({ latitude: loc.latitude, longitude: loc.longitude, accuracy: loc.accuracy })
+      trace.step('geofence', { allowed: geofenceResult.allowed })
       if (!geofenceResult.allowed) {
         return NextResponse.json(
           { error: geofenceResult.message, code: 'LOCATION_OUT_OF_RANGE', distance_meters: geofenceResult.distance_meters },
@@ -121,6 +132,7 @@ export async function POST(req: NextRequest) {
     let classicAction: QrActionType | null = null
     if (!kioskQr) {
       const { token: qrToken } = await validateAndConsumeToken(body.qr_data)
+      trace.step('classic_consume')
       // Token'daki employee ile session eşleşmeli (başkası adına okutma engeli)
       if (qrToken.employee_id && qrToken.employee_id !== employeeId) {
         return NextResponse.json(
@@ -138,6 +150,7 @@ export async function POST(req: NextRequest) {
       .eq('id', employeeId)
       .maybeSingle()
 
+    trace.step('employee', { kiosk: kioskQr })
     if (empError) return serverError('POST /api/qr/process', empError)
     if (!employee) {
       return NextResponse.json({ error: 'Çalışan kaydı bulunamadı.', code: 'EMPLOYEE_NOT_FOUND' }, { status: 404 })
@@ -148,6 +161,7 @@ export async function POST(req: NextRequest) {
 
     const { shift, record } = await findCurrentShift(admin, employeeId)
     const currentStatus = (record?.status ?? 'shift_waiting') as AttendanceStatus
+    trace.step('shift', { attendance_status: currentStatus })
 
     // Klasik QR: token'daki aksiyon bağlayıcı. Kiosk: kullanıcı seçimi ya da otomatik.
     let actionType: QrActionType
@@ -163,7 +177,9 @@ export async function POST(req: NextRequest) {
     // Kiosk kodunu tüket (ilk okutan kazanır) → yeni kodu ekranlara yayınla
     if (kioskQr) {
       await consumeKioskQr(admin, body.qr_data)
+      trace.step('kiosk_consume')
       await rotateAndBroadcastKioskQr(admin)
+      trace.step('kiosk_rotate')
     }
 
     const result = await performAttendanceAction({
@@ -176,6 +192,7 @@ export async function POST(req: NextRequest) {
       verificationMethod: body.location ? 'qr_location' : 'qr',
       extraFields: locationFields,
     })
+    trace.step('attendance', { action: actionType, adjusted: result.adjusted })
 
     const timeStr = toTurkeyTime(result.recordedAt)
     const response: ProcessQrResponse = {
@@ -190,6 +207,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(response, { status: 200 })
   } catch (err) {
+    trace.step('error', { error: err instanceof Error ? err.name : 'unknown', code: (err as { code?: string } | null)?.code ?? null })
     if (err instanceof QrTokenError) {
       if (err.code === 'DB_ERROR') return serverError('POST /api/qr/process', err)
       return NextResponse.json({ error: err.message, code: err.code }, { status: err.code === 'QR_EXPIRED' ? 410 : err.code === 'QR_USED' ? 409 : 400 })

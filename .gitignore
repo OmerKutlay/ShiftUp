@@ -58,3 +58,5 @@ __test_*.json
 .open-next/
 .wrangler/
 .dev.vars*
+
+.claude/settings.local.json
