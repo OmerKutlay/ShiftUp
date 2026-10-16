@@ -25,6 +25,7 @@ import EventAvailableIcon from '@mui/icons-material/EventAvailable'
 import EventBusyIcon from '@mui/icons-material/EventBusy'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import BuildIcon from '@mui/icons-material/Build'
+import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive'
 import { useRouter } from 'next/navigation'
 import { formatDistanceToNow } from 'date-fns'
 import { tr } from 'date-fns/locale'
@@ -55,6 +56,7 @@ const TYPE_META: Record<
   attendance_late_clock_out: { icon: <WarningAmberIcon fontSize="small" />, color: '#f59e0b', label: 'Geç Çıkış' },
   attendance_missed_clock_in:  { icon: <WarningAmberIcon fontSize="small" />, color: '#ef4444', label: 'Giriş Yok' },
   attendance_missed_clock_out: { icon: <WarningAmberIcon fontSize="small" />, color: '#ef4444', label: 'Çıkış Yok' },
+  push_test:                 { icon: <NotificationsActiveIcon fontSize="small" />, color: '#14b8a6', label: 'Test' },
 }
 
 interface Props {
