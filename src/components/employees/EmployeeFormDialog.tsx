@@ -12,6 +12,8 @@ import AutorenewIcon from '@mui/icons-material/Autorenew'
 import EmailIcon from '@mui/icons-material/Email'
 import type { EmployeeWithRole, Role, CreateEmployeePayload, UpdateEmployeePayload, EmploymentType } from '@/types/employee'
 import { EMPLOYMENT_TYPE_LABELS } from '@/types/employee'
+import { DateField } from '@/components/common'
+import { format } from 'date-fns'
 
 interface Props {
   open: boolean
@@ -292,32 +294,30 @@ export function EmployeeFormDialog({ open, onClose, onSave, employee, roles, loa
 
           {/* Özlük tarihleri — yıllık izin hakkı ve fazla çalışma onayı */}
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
-            <TextField
+            <DateField
               label="İşe Giriş Tarihi"
-              type="date"
               value={form.hire_date}
-              onChange={(e) => setForm((f) => ({ ...f, hire_date: e.target.value }))}
-              InputLabelProps={{ shrink: true }}
+              onChange={(v) => setForm((f) => ({ ...f, hire_date: v }))}
               helperText="Yıllık izin hakkı bu tarihe göre hesaplanır"
+              clearable
               fullWidth
             />
-            <TextField
+            <DateField
               label="Doğum Tarihi"
-              type="date"
               value={form.birth_date}
-              onChange={(e) => setForm((f) => ({ ...f, birth_date: e.target.value }))}
-              InputLabelProps={{ shrink: true }}
+              onChange={(v) => setForm((f) => ({ ...f, birth_date: v }))}
+              max={format(new Date(), 'yyyy-MM-dd')}
               helperText="18 yaş altı / 50 yaş üstü en az 20 gün izin"
+              clearable
               fullWidth
             />
           </Box>
-          <TextField
+          <DateField
             label="Fazla Çalışma Onay Tarihi"
-            type="date"
             value={form.overtime_consent_at}
-            onChange={(e) => setForm((f) => ({ ...f, overtime_consent_at: e.target.value }))}
-            InputLabelProps={{ shrink: true }}
+            onChange={(v) => setForm((f) => ({ ...f, overtime_consent_at: v }))}
             helperText="Çalışanın fazla çalışmaya yazılı onay verdiği tarih (İş K. Md. 41). Boşsa onay yok sayılır."
+            clearable
             fullWidth
           />
 

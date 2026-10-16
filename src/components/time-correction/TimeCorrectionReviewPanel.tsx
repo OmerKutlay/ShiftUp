@@ -10,7 +10,7 @@ import useSWR from 'swr'
 import {
   Box, Typography, Paper, Button, Stack, Chip, CircularProgress, Alert,
   TextField, Dialog, DialogTitle, DialogContent, DialogActions, Tooltip,
-  Divider, FormControl, InputLabel, Select, MenuItem, SelectChangeEvent, Tab, Tabs,
+  Divider, Tab, Tabs,
 } from '@mui/material'
 import CheckIcon from '@mui/icons-material/Check'
 import CloseIcon from '@mui/icons-material/Close'
@@ -20,7 +20,7 @@ import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import type { TimeCorrectionRequest } from '@/types/timeCorrection'
 import { TIME_CORRECTION_STATUS_LABELS, TIME_CORRECTION_STATUS_COLORS } from '@/types/timeCorrection'
-import { ListSkeleton } from '@/components/common'
+import { DateField, EmployeeSelect, ListSkeleton } from '@/components/common'
 import { apiFetch } from '@/lib/api/http'
 import { fetchActiveEmployees } from '@/lib/api/employees'
 import { useAuth } from '@/context/AuthContext'
@@ -239,25 +239,22 @@ export function TimeCorrectionReviewPanel() {
           {directSuccess && <Alert severity="success" sx={{ mb: 1.5 }} onClose={() => setDirectSuccess(null)}>{directSuccess}</Alert>}
 
           <Stack spacing={2}>
-            <FormControl size="small" fullWidth>
-              <InputLabel>Çalışan</InputLabel>
-              <Select value={directForm.employee_id} label="Çalışan"
-                onChange={(e: SelectChangeEvent) => {
-                  setDirectViolations([])
-                  setDirectForm((f) => ({ ...f, employee_id: e.target.value }))
-                }}>
-                {employees.filter((emp) => emp.id !== me?.id).map((emp) => (
-                  <MenuItem key={emp.id} value={emp.id}>{emp.full_name}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <EmployeeSelect
+              employees={employees.filter((emp) => emp.id !== me?.id)}
+              value={directForm.employee_id}
+              label="Çalışan"
+              onChange={(id) => {
+                setDirectViolations([])
+                setDirectForm((f) => ({ ...f, employee_id: id }))
+              }}
+              fullWidth
+            />
             <Typography variant="caption" color="text.disabled" sx={{ mt: -1 }}>
               Kendi mesai düzeltmeniz için “Mesai Düzeltme” sayfasından talep oluşturun; başka bir yönetici onaylar.
             </Typography>
 
-            <TextField size="small" label="Tarih" type="date" value={directForm.date}
-              onChange={(e) => setDirectForm((f) => ({ ...f, date: e.target.value }))}
-              InputLabelProps={{ shrink: true }} fullWidth />
+            <DateField size="small" label="Tarih" value={directForm.date}
+              onChange={(v) => setDirectForm((f) => ({ ...f, date: v }))} fullWidth />
 
             <Box sx={{ display: 'flex', gap: 1 }}>
               <TextField size="small" label="Giriş Saati" type="time" value={directForm.start}

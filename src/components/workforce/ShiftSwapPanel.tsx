@@ -20,7 +20,7 @@ import CloseIcon from '@mui/icons-material/Close'
 import type { ShiftSwapRequest, CreateSwapRequestPayload } from '@/types/workforce'
 import type { ShiftAssignmentWithDetails } from '@/types/schedule'
 import type { EmployeeWithRole } from '@/types/employee'
-import { ListSkeleton } from '@/components/common'
+import { EmployeeSelect, ListSkeleton } from '@/components/common'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { useLoadedKey } from '@/hooks/useLoadedKey'
@@ -240,15 +240,13 @@ export function ShiftSwapPanel({ employees, assignments, currentEmployeeId, isMa
               </Select>
             </FormControl>
           )}
-          <FormControl fullWidth size="small">
-            <InputLabel>Takas Yapılacak Çalışan</InputLabel>
-            <Select value={form.target_id ?? ''} label="Takas Yapılacak Çalışan"
-              onChange={(e) => setForm((f) => ({ ...f, target_id: e.target.value, target_shift_id: undefined }))}>
-              {employees.filter((e) => e.id !== currentEmployeeId).map((e) => (
-                <MenuItem key={e.id} value={e.id}>{e.full_name}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <EmployeeSelect
+            employees={employees.filter((e) => e.id !== currentEmployeeId)}
+            value={form.target_id ?? ''}
+            label="Takas Yapılacak Çalışan"
+            onChange={(id) => setForm((f) => ({ ...f, target_id: id, target_shift_id: undefined }))}
+            fullWidth
+          />
           {form.target_id && targetShifts.length > 0 && (
             <FormControl fullWidth size="small">
               <InputLabel>Karşılığında Alınacak Vardiya (isteğe bağlı)</InputLabel>

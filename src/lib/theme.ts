@@ -31,6 +31,8 @@ export const theme = createTheme({
     h5: { fontWeight: 800 },
     h6: { fontWeight: 700 },
     subtitle2: { fontWeight: 600 },
+    // Sayfa başlığı üstündeki etiket ("Raporlama", "Planlama"…) BÜYÜK HARF değil, yazıldığı gibi
+    overline: { textTransform: 'none', fontSize: '0.8rem' },
   },
   shape: {
     borderRadius: 12,
@@ -62,6 +64,13 @@ export const theme = createTheme({
     MuiTabs: {
       // Dar ekranda sığmayan sekmeler kesilip erişilemez olmasın: kaydırılabilir + oklar
       defaultProps: { variant: 'scrollable', scrollButtons: 'auto', allowScrollButtonsMobile: true },
+    },
+    // Sekme ve toggle etiketleri MUI varsayılanı olan BÜYÜK HARF yerine yazıldığı gibi görünsün
+    MuiTab: {
+      styleOverrides: { root: { textTransform: 'none', fontWeight: 600 } },
+    },
+    MuiToggleButton: {
+      styleOverrides: { root: { textTransform: 'none' } },
     },
     MuiPaper: {
       defaultProps: { elevation: 0 },

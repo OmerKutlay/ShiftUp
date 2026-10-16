@@ -34,7 +34,7 @@ import CheckIcon from '@mui/icons-material/Check'
 import CloseIcon from '@mui/icons-material/Close'
 import DeleteIcon from '@mui/icons-material/Delete'
 import type { EmployeeWithRole } from '@/types/employee'
-import { PageHeader, ListSkeleton } from '@/components/common'
+import { DateField, EmployeeSelect, PageHeader, ListSkeleton } from '@/components/common'
 import type {
   LeaveRequestWithEmployee,
   LeaveType,
@@ -108,23 +108,14 @@ function NewRequestDialog({ open, onClose, onSave, employees, saving }: NewReque
       <DialogContent sx={{ pt: 1 }}>
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
         <Stack spacing={2.5} sx={{ mt: 1 }}>
-          <FormControl fullWidth size="small">
-            <InputLabel>Çalışan *</InputLabel>
-            <Select
-              value={employeeId}
-              label="Çalışan *"
-              onChange={(e: SelectChangeEvent) => setEmployeeId(e.target.value)}
-            >
-              {employees.map((e) => (
-                <MenuItem key={e.id} value={e.id}>
-                  <Box>
-                    <Typography variant="body2" fontWeight={600}>{e.full_name}</Typography>
-                    <Typography variant="caption" color="text.secondary">{e.role}</Typography>
-                  </Box>
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <EmployeeSelect
+            employees={employees}
+            value={employeeId}
+            label="Çalışan *"
+            onChange={setEmployeeId}
+            showRole
+            fullWidth
+          />
 
           <FormControl fullWidth size="small">
             <InputLabel>İzin Tipi *</InputLabel>
@@ -140,24 +131,20 @@ function NewRequestDialog({ open, onClose, onSave, employees, saving }: NewReque
           </FormControl>
 
           <Stack direction="row" spacing={2}>
-            <TextField
+            <DateField
               fullWidth
               size="small"
               label="Başlangıç *"
-              type="date"
               value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              InputLabelProps={{ shrink: true }}
+              onChange={setStartDate}
             />
-            <TextField
+            <DateField
               fullWidth
               size="small"
               label="Bitiş *"
-              type="date"
               value={endDate}
-              inputProps={{ min: startDate }}
-              onChange={(e) => setEndDate(e.target.value)}
-              InputLabelProps={{ shrink: true }}
+              min={startDate || undefined}
+              onChange={setEndDate}
             />
           </Stack>
 
