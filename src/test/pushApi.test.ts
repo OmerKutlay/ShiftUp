@@ -81,6 +81,29 @@ describe('GET /api/push/config', () => {
 
 // ─── POST /api/push/subscription ─────────────────────────────
 describe('POST /api/push/subscription', () => {
+  it('çalışan başına abonelik sayısı sınırlı: en eskiler silinir, yeni kayıt korunur', async () => {
+    for (let i = 0; i < 12; i++) {
+      db.tables.push_subscriptions.push({
+        id: `old-${i}`, employee_id: 'emp-ahmet', endpoint: `https://fcm.googleapis.com/fcm/send/old-${i}`,
+        p256dh: P256DH, auth: AUTH, created_at: `2026-10-01T00:00:${String(i).padStart(2, '0')}Z`,
+      })
+    }
+    db.tables.push_subscriptions.push({
+      id: 'other', employee_id: 'emp-mehmet', endpoint: 'https://fcm.googleapis.com/fcm/send/other',
+      p256dh: P256DH, auth: AUTH, created_at: '2026-09-01T00:00:00Z',
+    })
+    const res = await POST(req('POST', subBody()))
+    expect(res.status).toBeLessThan(300)
+    const mine = db.tables.push_subscriptions.filter((r) => r.employee_id === 'emp-ahmet')
+    expect(mine).toHaveLength(10)
+    expect(mine.some((r) => r.endpoint === ENDPOINT)).toBe(true)
+    // En yeni 9 eski kayıt (old-3..old-11) kalır
+    expect(mine.some((r) => r.id === 'old-2')).toBe(false)
+    expect(mine.some((r) => r.id === 'old-11')).toBe(true)
+    // Başka çalışanın aboneliğine dokunulmaz
+    expect(db.tables.push_subscriptions.some((r) => r.id === 'other')).toBe(true)
+  })
+
   it('oturum yoksa 401', async () => {
     state.employee = null
     const res = await POST(req('POST', subBody()))
