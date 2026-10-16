@@ -8,6 +8,7 @@
  *
  * Durumlar: desteklenmiyor / iOS'ta ana ekrana ekleme gerekli / izin sorulmadı /
  * açık (abone) / izin verilmiş ama abone değil / reddedilmiş (ayarlardan açma yönergesi).
+ * Abone iken "Test bildirimi gönder" düğmesi gösterilir (POST /api/push/test).
  */
 import { Alert, Box, Button, CircularProgress, Paper, Switch, Typography } from '@mui/material'
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive'
@@ -15,6 +16,7 @@ import NotificationsOffIcon from '@mui/icons-material/NotificationsOff'
 import IosShareIcon from '@mui/icons-material/IosShare'
 import { usePushSubscription, type PushStatus } from '@/hooks/usePushSubscription'
 import { isIos } from '@/lib/pwa/push'
+import { PushTestButton } from './PushTestButton'
 
 interface Props {
   variant?: 'card' | 'row'
@@ -69,6 +71,7 @@ export function PushPermissionCard({ variant = 'card', hideWhenSubscribed = fals
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
             {error ?? statusText(status)}
           </Typography>
+          {isOn && <PushTestButton />}
         </Box>
         {busy ? (
           <CircularProgress size={20} />
@@ -124,6 +127,7 @@ export function PushPermissionCard({ variant = 'card', hideWhenSubscribed = fals
               {error}
             </Alert>
           )}
+          {isOn && <PushTestButton />}
         </Box>
       </Box>
       {canEnable && (
