@@ -20,6 +20,8 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import type { QrActionType } from '@/types/qr'
 import type { AttendanceStatus } from '@/types/attendance'
 import type { GpsCoordinates } from '@/types/location'
+import { Box, Typography } from '@mui/material'
+import { detectPlatform, isStandaloneDisplay } from '@/lib/pwa/deviceInfo'
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -152,10 +154,20 @@ export function getButtons(status: AttendanceStatus | null): ActionButton[] {
 
 // ─── GPS yardımcısı ───────────────────────────────────────────
 
+/** Konum hatasının türü — ekranda doğru yönlendirmeyi seçmek için */
+export type LocationErrorKind = 'denied' | 'unavailable' | 'timeout' | 'unsupported' | 'unknown'
+
+export class LocationError extends Error {
+  constructor(message: string, public kind: LocationErrorKind) {
+    super(message)
+    this.name = 'LocationError'
+  }
+}
+
 export function getCurrentPosition(): Promise<GpsCoordinates> {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
-      reject(new Error('Tarayıcınız konum özelliğini desteklemiyor.'))
+      reject(new LocationError('Tarayıcınız konum özelliğini desteklemiyor.', 'unsupported'))
       return
     }
     navigator.geolocation.getCurrentPosition(
@@ -167,17 +179,13 @@ export function getCurrentPosition(): Promise<GpsCoordinates> {
         }),
       (err) => {
         if (err.code === 1) {
-          reject(
-            new Error(
-              'Konum izni alınamadı.\nSafari: Adres çubuğundaki "AA" → Site Ayarları → Konum → İzin Ver.'
-            )
-          )
+          reject(new LocationError('Konum izni alınamadı.', 'denied'))
         } else if (err.code === 2) {
-          reject(new Error('GPS sinyali alınamadı. Açık alanda tekrar deneyin.'))
+          reject(new LocationError('GPS sinyali alınamadı. Açık alanda tekrar deneyin.', 'unavailable'))
         } else if (err.code === 3) {
-          reject(new Error('Konum alınırken zaman aşımı. Tekrar deneyin.'))
+          reject(new LocationError('Konum alınırken zaman aşımı. Tekrar deneyin.', 'timeout'))
         } else {
-          reject(new Error(`Konum alınamadı (${err.message}).`))
+          reject(new LocationError(`Konum alınamadı (${err.message}).`, 'unknown'))
         }
       },
       { maximumAge: 0, timeout: 15000, enableHighAccuracy: true }
@@ -185,3 +193,61 @@ export function getCurrentPosition(): Promise<GpsCoordinates> {
   })
 }
 
+// ─── İzin yönlendirmesi ───────────────────────────────────────
+
+export type PermissionKind = 'camera' | 'location'
+
+/**
+ * Reddedilmiş kamera / konum izninin cihaza göre nasıl açılacağı.
+ * Ana ekrana eklenmiş uygulamada (standalone) adres çubuğu yoktur; yönlendirme buna göre değişir.
+ */
+export function permissionHelpSteps(
+  kind: PermissionKind,
+  platform = detectPlatform(),
+  standalone = isStandaloneDisplay(),
+): string[] {
+  const label = kind === 'camera' ? 'Kamera' : 'Konum'
+  if (platform === 'ios') {
+    const iosSetting = kind === 'camera'
+      ? 'Ayarlar → Safari → Kamera → İzin Ver (veya Sor)'
+      : 'Ayarlar → Gizlilik ve Güvenlik → Konum Servisleri → Safari Web Siteleri → Uygulamayı Kullanırken'
+    return standalone
+      ? [iosSetting, 'ShiftUp uygulamasını tamamen kapatıp yeniden açın', 'Tekrar deneyin; izin sorulursa "İzin Ver" seçin']
+      : [`Adres çubuğundaki "AA" simgesine dokunun → Web Sitesi Ayarları → ${label} → İzin Ver`, `Seçenek görünmüyorsa: ${iosSetting}`, 'Sayfayı yenileyip tekrar deneyin']
+  }
+  if (platform === 'android') {
+    return standalone
+      ? ['ShiftUp simgesine uzun basın → Uygulama bilgisi → İzinler', `${label} → İzin ver`, 'Uygulamayı yeniden açıp tekrar deneyin']
+      : [`Adres çubuğundaki ayar/kilit simgesine dokunun → İzinler → ${label} → İzin ver`, `Alternatif: Chrome → Ayarlar → Site ayarları → ${label}`, 'Sayfayı yenileyip tekrar deneyin']
+  }
+  return [`Adres çubuğundaki kilit simgesinden ${label.toLowerCase()} iznini açın`, 'Sayfayı yenileyip tekrar deneyin']
+}
+
+/** İzin yönlendirme kutusu (kamera / konum reddedildiğinde) */
+export function PermissionHelp({ kind }: { kind: PermissionKind }) {
+  const steps = permissionHelpSteps(kind)
+  return (
+    <Box
+      sx={{
+        bgcolor: 'rgba(239,68,68,0.08)',
+        border: '1px solid rgba(239,68,68,0.2)',
+        borderRadius: 2,
+        px: 2,
+        py: 1.5,
+        width: '100%',
+        textAlign: 'left',
+      }}
+    >
+      <Typography variant="caption" color="text.secondary" display="block" fontWeight={600} mb={0.5}>
+        {kind === 'camera' ? 'Kamera izni nasıl verilir?' : 'Konum izni nasıl verilir?'}
+      </Typography>
+      <Box component="ol" sx={{ m: 0, pl: 2.5 }}>
+        {steps.map((step) => (
+          <Typography key={step} component="li" variant="caption" color="text.disabled">
+            {step}
+          </Typography>
+        ))}
+      </Box>
+    </Box>
+  )
+}
