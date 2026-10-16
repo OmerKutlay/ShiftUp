@@ -91,6 +91,18 @@ async function trimCache(cacheName, max) {
   await Promise.all(keys.slice(0, keys.length - max).map((k) => cache.delete(k)))
 }
 
+/**
+ * Sayfa isteği — Cloudflare 503 (ör. 1102: ücretsiz planda soğuk başlangıç CPU sınırı aşıldı)
+ * dönerse kısa bir beklemeyle bir kez daha dener; kullanıcı hata sayfasını görmez.
+ * Uygulama sayfaları hiçbir zaman kasıtlı 503 döndürmez.
+ */
+async function fetchRetryingLimit(request) {
+  const response = await fetch(request)
+  if (response.status !== 503) return response
+  await new Promise((resolve) => setTimeout(resolve, 400))
+  return fetch(request)
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event
   const url = new URL(request.url)
@@ -132,7 +144,7 @@ self.addEventListener('fetch', (event) => {
   // 3. HTML sayfaları — Network First, sonra önbellek, sonra /offline
   if (request.mode === 'navigate' || request.headers.get('accept')?.includes('text/html')) {
     event.respondWith(
-      fetch(request)
+      fetchRetryingLimit(request)
         .then((response) => {
           // Yalnızca doğrudan 200 sayfalar (yönlendirmeler/hata sayfaları değil)
           if (response.ok && !response.redirected) {

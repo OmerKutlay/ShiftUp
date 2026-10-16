@@ -126,8 +126,10 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Alfabetik sırala
-    summaries.sort((a, b) => a.employeeName.localeCompare(b.employeeName, 'tr'))
+    // Alfabetik sırala (yalnızca vardiyasız çalışan eklendiyse; buildWeekSummary zaten sıralı döner)
+    if (summaries.length > summaryIds.size) {
+      summaries.sort((a, b) => a.employeeName.localeCompare(b.employeeName, 'tr'))
+    }
 
     return NextResponse.json({
       weekStart,

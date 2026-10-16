@@ -18,17 +18,45 @@ export class ApiError extends Error {
   }
 }
 
+/** Cloudflare limit hatasında (1102 vb.) okuma isteklerinin ek deneme bekleme süreleri (ms) */
+const LIMIT_RETRY_DELAYS = [300, 900]
+
+/**
+ * Worker'ın kendisinden değil Cloudflare'den gelen hata sayfası mı?
+ * Ücretsiz planda soğuk başlangıç 10 ms CPU sınırını aşabilir (1102 → HTML 503);
+ * API route'larımız her zaman JSON döner.
+ */
+function isPlatformLimitError(res: Response): boolean {
+  return res.status === 503 && !res.headers.get('content-type')?.includes('application/json')
+}
+
 export async function apiFetch<T>(
   url: string,
   init: Omit<RequestInit, 'body'> & { body?: unknown } = {}
 ): Promise<T> {
   const { body, headers, ...rest } = init
-  const res = await fetch(url, {
-    credentials: 'same-origin',
-    ...rest,
-    headers: body !== undefined ? { 'Content-Type': 'application/json', ...headers } : headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  })
+  const doFetch = () =>
+    fetch(url, {
+      credentials: 'same-origin',
+      ...rest,
+      headers: body !== undefined ? { 'Content-Type': 'application/json', ...headers } : headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    })
+
+  // Yalnızca okuma istekleri tekrarlanır: yarıda kesilen bir yazma tekrar uygulanmamalı
+  const method = (rest.method ?? 'GET').toUpperCase()
+  const retryable = method === 'GET' || method === 'HEAD'
+
+  let res = await doFetch()
+  for (const delay of LIMIT_RETRY_DELAYS) {
+    if (!retryable || !isPlatformLimitError(res)) break
+    await new Promise((resolve) => setTimeout(resolve, delay))
+    res = await doFetch()
+  }
+
+  if (isPlatformLimitError(res)) {
+    throw new ApiError('Sunucu şu an yoğun, lütfen tekrar deneyin.', 'PLATFORM_LIMIT', res.status)
+  }
 
   const json = (await res.json().catch(() => ({}))) as Record<string, unknown>
   if (!res.ok) {
