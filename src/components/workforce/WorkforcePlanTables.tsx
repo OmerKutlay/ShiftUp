@@ -62,7 +62,7 @@ const headCell: SxProps<Theme> = {
   color: 'text.secondary', fontSize: '0.72rem', fontWeight: 700, borderColor: 'divider',
   bgcolor: HEAD_BG, py: 0.75, px: 0.5, lineHeight: 1.3,
 }
-const bodyCell: SxProps<Theme> = { borderColor: 'divider', py: 1, px: 0.5, verticalAlign: "middle", overflow: "hidden" }
+const bodyCell: SxProps<Theme> = { borderColor: 'divider', py: 1, px: 0.5, verticalAlign: 'middle', overflow: 'hidden' }
 const stickyCell: SxProps<Theme> = { position: 'sticky', left: 0, zIndex: 1, bgcolor: STICKY_BG, borderRight: '1px solid', borderRightColor: 'divider' }
 
 function TableFrame({ weekDays, totalLabel, lastLabel, children }: {
@@ -268,7 +268,7 @@ export function DraftPlanTable({ draft, weekDays }: { draft: PlannerResult; week
     <TableFrame
       weekDays={weekDays}
       totalLabel="Toplam"
-      lastLabel={<Tooltip title="Açılış / Kapanış vardiyası sayısı" arrow><span>Açl./Kap.</span></Tooltip>}
+      lastLabel={<Tooltip title="Açılış / Kapanış vardiyası sayısı" arrow><span>A / K</span></Tooltip>}
     >
       {stats.map((stat) => {
         const byDate: Record<string, DraftAssignment> = {}
