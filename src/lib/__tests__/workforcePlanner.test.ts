@@ -937,3 +937,73 @@ describe('Senaryo 26 — FT her zaman 45 saat; iki yönetici aynı gün full olm
     expect(err?.message).toContain('2026-10-13 (izinli)')
   })
 })
+
+// ─── Senaryo 27: Geçmiş günlü haftada gereksiz uyarı yok ─────────────────────
+
+describe('Senaryo 27 — Bugün Cuma: fazla mesai, bekleyen izin ve uzun seri', () => {
+  const today = '2026-10-16'
+  const past = WEEK_DAYS.filter((d) => d < today)
+  const OPEN_DAYS = WEEK_DAYS.filter((d) => d >= today)
+  const fixedFor = (ids: string[], start: string, end: string, skip: (id: string, i: number) => boolean = () => false) =>
+    ids.flatMap((id) => past.filter((_, i) => !skip(id, i)).map((d) => ({ employee_id: id, work_date: d, start_time: start, end_time: end })))
+
+  test('yönetici eksiği önce vardiya uzatmayla kapanır; tam 45 kurulamazsa fazla mesai en az', () => {
+    const extra = makeEmp('yrd2', 'Mağaza Müdür Yardımcısı', 'Müdür Yardımcısı', 'full_time')
+    const managers = ['mm', 'mmy', 'yrd2']
+    // Her yönetici Pzt–Per 3 gün çalıştı; kalan 3 açık günde kapsama bağı yok
+    for (const [start, end, maxOvertime] of [['10:00', '19:00', 0], ['10:00', '20:00', 30]] as const) {
+      const fixedAssignments = fixedFor(managers, start, end, (id, i) => i === managers.indexOf(id))
+      for (let seed = 1; seed <= 8; seed++) {
+        const r = runPlanner({ ...STORE_INPUT, employees: [...STORE, extra], fixedAssignments, today, seed })
+        expect(r.warnings.filter((w) => w.level === 'error'), `${end} seed ${seed}`).toEqual([])
+        for (const id of managers) {
+          expect(r.stats[id].totalMins - 45 * 60, `${end} seed ${seed} ${id}`).toBeLessThanOrEqual(maxOvertime)
+        }
+      }
+    }
+  })
+
+  test('bekleyen izin günü, kalan günlerde 45 saat tutuyorsa doldurulmaz', () => {
+    // s-f2: Pzt–Per geçmiş, Cumartesi bekleyen izin. dep (tüm hafta açık): Cumartesi bekleyen izin,
+    // Pazar sabit izin → Pzt–Cum uzun erken vardiyayla 45 saat
+    const employees = STORE.map((e) => (e.id === 's-f2' || e.id === 'dep' ? { ...e, pendingLeaveDays: new Set(['2026-10-17']) } : e))
+    const fixedAssignments = fixedFor(['s-f2'], '10:00', '18:00')
+    for (let seed = 1; seed <= 8; seed++) {
+      const r = runPlanner({ ...STORE_INPUT, employees, fixedAssignments, today, seed })
+      const rDep = runPlanner({ ...STORE_INPUT, employees, seed })
+      expect(rDep.assignments.some((a) => a.employee_id === 'dep' && a.work_date === '2026-10-17'), `seed ${seed} dep`).toBe(false)
+      expect(rDep.stats['dep'].totalMins, `seed ${seed} dep`).toBe(45 * 60)
+      expect(r.warnings.filter((w) => w.level === 'error'), `seed ${seed}`).toEqual([])
+      expect(r.assignments.some((a) => a.employee_id === 's-f2' && a.work_date === '2026-10-17'), `seed ${seed}`).toBe(false)
+      expect(r.stats['s-f2'].totalMins, `seed ${seed}`).toBeGreaterThanOrEqual(44 * 60)
+    }
+  })
+
+  test('bekleyen izin günü 45 saat için gerekiyorsa doldurulur, hata çıkmaz', () => {
+    // Cumartesi haftalık tatil + Pazar bekleyen izin; Cuma tek başına 45 saati tamamlayamaz
+    const employees = STORE.map((e) => (e.id === 's-f2'
+      ? { ...e, leaveDays: new Set(['2026-10-17']), paidLeaveDays: new Set<string>(), pendingLeaveDays: new Set(['2026-10-18']) }
+      : e))
+    const fixedAssignments = fixedFor(['s-f2'], '10:00', '18:00')
+    const r = runPlanner({ ...STORE_INPUT, employees, fixedAssignments, today, seed: 1 })
+    expect(r.warnings.filter((w) => w.level === 'error')).toEqual([])
+    expect(r.assignments.some((a) => a.employee_id === 's-f2' && a.work_date === '2026-10-18')).toBe(true)
+  })
+
+  test('seri geçmiş günlerde 6 günü aştıysa bilgi; açık günlerde uzarsa uyarı', () => {
+    const emp = { ...STORE.find((e) => e.id === 's-f1')!, prevStreak: 7 }
+    const base = { employee_id: 's-f1', employee_name: 's-f1', shift_template_id: null, reason: '', start_time: '10:00', end_time: '18:00', shift_kind: 'opening' as const }
+    const plan = [
+      ...past.map((d) => ({ ...base, work_date: d, worked: true })),
+      ...OPEN_DAYS.slice(0, 2).map((d) => ({ ...base, work_date: d })),
+    ]
+    const forced = validatePlan(plan, [emp], WEEK_DAYS, today).find((w) => w.message.includes('üst üste'))
+    expect(forced?.level).toBe('info')
+    expect(forced?.message).toContain('13 gün')
+    expect(forced?.message).toContain('geçmiş günlerde 11 güne')
+
+    const avoidable = validatePlan(plan.map((a) => ({ ...a, worked: false })), [{ ...emp, prevStreak: 5 }], WEEK_DAYS)
+      .find((w) => w.message.includes('üst üste'))
+    expect(avoidable?.level).toBe('warning')
+  })
+})
