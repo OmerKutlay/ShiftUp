@@ -33,7 +33,7 @@ export function PageHeader({ icon: Icon, overline, title, subtitle, meta, action
       <Box sx={{ minWidth: 0 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
           <Icon sx={{ fontSize: 18, color: 'primary.main' }} />
-          <Typography variant="overline" color="primary.main" fontWeight={700} letterSpacing={1.5} lineHeight={1.6}>
+          <Typography variant="overline" color="primary.main" fontWeight={700} letterSpacing={0.5} lineHeight={1.6}>
             {overline}
           </Typography>
         </Box>

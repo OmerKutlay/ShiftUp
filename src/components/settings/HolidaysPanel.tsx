@@ -15,7 +15,7 @@ import DeleteIcon from '@mui/icons-material/Delete'
 import { apiFetch } from '@/lib/api/http'
 import type { PublicHoliday } from '@/types/holiday'
 import { turkeyToday } from '@/lib/dateUtils'
-import { TableSkeleton } from '@/components/common'
+import { DateField, TableSkeleton } from '@/components/common'
 
 export function HolidaysPanel() {
   const year = Number(turkeyToday().slice(0, 4))
@@ -60,10 +60,10 @@ export function HolidaysPanel() {
 
       <Paper elevation={0} sx={{ p: 2, mb: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }}>
-          <TextField
-            label="Tarih" type="date" size="small" value={form.date}
-            onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
-            InputLabelProps={{ shrink: true }}
+          <DateField
+            label="Tarih" size="small" value={form.date}
+            onChange={(v) => setForm((f) => ({ ...f, date: v }))}
+            sx={{ minWidth: 210 }}
           />
           <TextField
             label="Ad" size="small" value={form.name} sx={{ flex: 1 }}

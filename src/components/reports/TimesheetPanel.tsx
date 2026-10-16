@@ -7,14 +7,14 @@ import { useState } from 'react'
 import useSWR from 'swr'
 import {
   Alert, Box, Button, Chip, Paper, Stack, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, TextField, Tooltip, Typography,
+  TableHead, TableRow, Tooltip, Typography,
 } from '@mui/material'
 import DownloadIcon from '@mui/icons-material/Download'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import { apiFetch } from '@/lib/api/http'
 import { monthDays, TIMESHEET_CODE_LABELS, type TimesheetCode, type TimesheetRow } from '@/lib/timesheet'
 import { turkeyToday } from '@/lib/dateUtils'
-import { TableSkeleton } from '@/components/common'
+import { MonthField, TableSkeleton } from '@/components/common'
 import type { PublicHoliday } from '@/types/holiday'
 
 const CODE_COLOR: Partial<Record<TimesheetCode, string>> = {
@@ -45,13 +45,11 @@ export function TimesheetPanel() {
   return (
     <Box>
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }} sx={{ mb: 2 }}>
-        <TextField
+        <MonthField
           label="Ay"
-          type="month"
           size="small"
           value={month}
-          onChange={(e) => setMonth(e.target.value)}
-          InputLabelProps={{ shrink: true }}
+          onChange={setMonth}
           sx={{ width: 180 }}
         />
         <Button

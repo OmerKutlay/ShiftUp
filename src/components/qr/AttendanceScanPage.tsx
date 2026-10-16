@@ -259,7 +259,7 @@ export function AttendanceScanPage() {
     >
       {/* Header */}
       <Box sx={{ mb: 3, textAlign: 'center' }}>
-        <Typography variant="overline" color="primary.main" fontWeight={700} letterSpacing={1.5}>
+        <Typography variant="overline" color="primary.main" fontWeight={700} letterSpacing={0.5}>
           QR Tara
         </Typography>
         <Typography variant="h5" fontWeight={800}>

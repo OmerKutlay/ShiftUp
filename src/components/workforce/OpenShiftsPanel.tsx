@@ -21,7 +21,7 @@ import BlockIcon from '@mui/icons-material/Block'
 import type { OpenShift } from '@/types/workforce'
 import { useAuth } from '@/context/AuthContext'
 import { hasRole, MANAGER_ROLES } from '@/lib/auth/roles'
-import { ListSkeleton } from '@/components/common'
+import { DateField, ListSkeleton } from '@/components/common'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { apiFetch } from '@/lib/api/http'
@@ -335,13 +335,11 @@ export function OpenShiftsPanel() {
               İstekli çalışanlar kendi hesaplarından üstlenebilir.
             </Typography>
 
-            <TextField
+            <DateField
               size="small"
               label="Tarih"
-              type="date"
               value={form.work_date}
-              onChange={(e) => setForm((f) => ({ ...f, work_date: e.target.value }))}
-              InputLabelProps={{ shrink: true }}
+              onChange={(v) => setForm((f) => ({ ...f, work_date: v }))}
               fullWidth
             />
             <Box sx={{ display: 'flex', gap: 1 }}>

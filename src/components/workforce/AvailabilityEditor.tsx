@@ -17,7 +17,7 @@ import BlockIcon from '@mui/icons-material/Block'
 import type { EmployeeAvailability, DayOfWeek } from '@/types/workforce'
 import { DAY_OF_WEEK_LABELS } from '@/types/workforce'
 import type { EmployeeWithRole } from '@/types/employee'
-import { DayBlocksSkeleton } from '@/components/common'
+import { DayBlocksSkeleton, EmployeeSelect } from '@/components/common'
 import { useLoadedKey } from '@/hooks/useLoadedKey'
 
 const DAYS: DayOfWeek[] = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']
@@ -80,14 +80,13 @@ export function AvailabilityEditor({ employees }: Props) {
   return (
     <Box>
       {/* Çalışan seçici */}
-      <FormControl size="small" sx={{ mb: 2, minWidth: 200 }}>
-        <InputLabel>Çalışan</InputLabel>
-        <Select value={selectedId} label="Çalışan" onChange={(e) => setSelectedId(e.target.value as string)}>
-          {employees.map((e) => (
-            <MenuItem key={e.id} value={e.id}>{e.full_name}</MenuItem>
-          ))}
-        </Select>
-      </FormControl>
+      <EmployeeSelect
+        employees={employees}
+        value={selectedId}
+        label="Çalışan"
+        onChange={setSelectedId}
+        sx={{ mb: 2, minWidth: 260, maxWidth: 360 }}
+      />
 
       {error && <Alert severity="error" sx={{ mb: 1 }} onClose={() => setError(null)}>{error}</Alert>}
 
