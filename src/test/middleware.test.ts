@@ -95,6 +95,16 @@ describe('middleware — /login ile korumalı sayfalar aynı ölçütü kullanı
   })
 })
 
+describe('middleware — mobil "Daha fazla" sayfası', () => {
+  it('Çalışan /more ve /notifications sayfalarını açabilir (yönlendirme yok)', async () => {
+    for (const path of ['/more', '/notifications']) {
+      const res = await middleware(req(path, { cookie: OLD_COOKIE }))
+      expect(res.status).toBe(200)
+      expect(location(res)).toBeNull()
+    }
+  })
+})
+
 describe('middleware — yenilenen oturum çerezleri yönlendirmede korunur', () => {
   it('Çalışan "/" → /my-schedule yönlendirmesi yeni token çerezini taşır', async () => {
     getUser.mockResolvedValue({ user: { id: 'auth-1' }, refreshed: true })
