@@ -38,6 +38,20 @@ export const theme = createTheme({
     borderRadius: 12,
   },
   components: {
+    // Native uygulama hissi: dokunma vurgusu yok, butonlarda çift dokunma zoom gecikmesi yok.
+    // Masaüstü görünümünü değiştirmez (yalnızca dokunmatik davranış).
+    MuiCssBaseline: {
+      styleOverrides: {
+        html: { WebkitTapHighlightColor: 'transparent' },
+        'button, a, [role="button"], [role="tab"], input[type="button"], input[type="submit"]': {
+          touchAction: 'manipulation',
+        },
+        // Ana ekrana eklenmiş PWA'da sayfa sınırında çift bounce olmasın (çekerek yenileme kendi göstergesini çizer)
+        '@media (display-mode: standalone)': {
+          'html, body': { overscrollBehaviorY: 'contain' },
+        },
+      },
+    },
     MuiAlert: {
       styleOverrides: {
         // Uzun, boşluksuz mesajlar (ör. DB hata metinleri) dar ekranda taşmasın
