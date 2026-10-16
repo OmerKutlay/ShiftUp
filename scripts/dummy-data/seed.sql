@@ -7,6 +7,11 @@
 -- Geç giriş / gelmeme bildirimleri yalnızca son 21 gün için üretilir.
 -- Aralık: 2026-08-03 (Pzt) → 2026-11-15 (Paz). Bugünden önceki vardiyalara
 -- devam kaydı, bugünkü başlamış vardiyalara anlık durum yazılır.
+--
+-- Mod (SET LOCAL dummy.mode = '...'):
+--   full     (varsayılan) tüm aktif çalışanlar (Kiosk hariç), _dummy_seed boş olmalı
+--   yonetici yalnızca henüz dummy vardiyası olmayan Yönetici hesapları; açık vardiya
+--            ve takas üretmez (ilk yükleme Yönetici'yi dışarıda bıraktığı için eklendi)
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS public._dummy_seed (
@@ -76,8 +81,10 @@ DECLARE
   spec RECORD;
   ls DATE; le DATE;
   v_cnt INT := 0;
+  v_mode TEXT := COALESCE(NULLIF(current_setting('dummy.mode', true), ''), 'full');
 BEGIN
-  IF EXISTS (SELECT 1 FROM public._dummy_seed) THEN
+  IF v_mode NOT IN ('full', 'yonetici') THEN RAISE EXCEPTION 'Geçersiz dummy.mode: %', v_mode; END IF;
+  IF v_mode = 'full' AND EXISTS (SELECT 1 FROM public._dummy_seed) THEN
     RAISE EXCEPTION 'Dummy veri zaten yüklü (_dummy_seed dolu). Önce cleanup.sql çalıştırın.';
   END IF;
   PERFORM setseed(0.4242);
@@ -97,7 +104,7 @@ BEGIN
   END IF;
   n_tpl := array_length(tpl_s, 1);
 
-  -- ── Çalışanlar (yalnızca okunur): aktif, Kiosk ve Yönetici hariç ──
+  -- ── Çalışanlar (yalnızca okunur): aktif, Kiosk hariç ──
   SELECT array_agg(e.id ORDER BY e.created_at, e.id),
          array_agg(e.full_name ORDER BY e.created_at, e.id),
          array_agg(e.employment_type = 'part_time' ORDER BY e.created_at, e.id)
@@ -105,9 +112,14 @@ BEGIN
   FROM employees e LEFT JOIN roles ro ON ro.id = e.role_id
   WHERE e.active
     AND e.role_id IS DISTINCT FROM '00000000-0000-0000-0000-000000000005'::uuid
-    AND COALESCE(ro.name, e.role) NOT IN ('Kiosk', 'Yönetici');
+    AND COALESCE(ro.name, e.role) <> 'Kiosk'
+    AND (v_mode = 'full' OR (
+      COALESCE(ro.name, e.role) = 'Yönetici'
+      AND NOT EXISTS (SELECT 1 FROM shift_assignments sa JOIN public._dummy_seed ds ON ds.tbl = 'shift_assignments' AND ds.id = sa.id::text
+                      WHERE sa.employee_id = e.id)
+    ));
   n_emp := COALESCE(array_length(emp_ids, 1), 0);
-  IF n_emp < 4 THEN RAISE EXCEPTION 'Yeterli çalışan yok (%).', n_emp; END IF;
+  IF n_emp < (CASE WHEN v_mode = 'full' THEN 4 ELSE 1 END) THEN RAISE EXCEPTION 'Yeterli çalışan yok (%).', n_emp; END IF;
 
   SELECT array_agg(e.id ORDER BY CASE COALESCE(ro.name, e.role) WHEN 'Mağaza Müdürü' THEN 1 WHEN 'Yönetici' THEN 2 ELSE 3 END, e.created_at)
     INTO mgr_ids
@@ -150,7 +162,8 @@ BEGIN
       (24, 100, 3, 'annual',   'rejected', 'Yıl sonu öncesi kısa tatil.', 'Kasım ortası envanter sayımı var.')
     ) AS s(slot, off, len, ltype, lstatus, reason, rnote)
   LOOP
-    i  := (spec.slot * 5) % n_emp + 1;
+    CONTINUE WHEN v_mode = 'yonetici' AND spec.slot NOT IN (1, 5, 12, 17, 19, 23);
+    i  := CASE WHEN v_mode = 'full' THEN (spec.slot * 5) % n_emp ELSE spec.slot % n_emp END + 1;
     ls := d_start + spec.off;
     le := ls + spec.len - 1;
     v_rev := CASE WHEN emp_ids[i] = reviewer THEN COALESCE(mgr_ids[2], reviewer) ELSE reviewer END;
@@ -354,9 +367,11 @@ BEGIN
     FROM shift_assignments sa
     JOIN public._dummy_seed ds ON ds.tbl = 'shift_assignments' AND ds.id = sa.id::text
     WHERE sa.work_date < v_today
+      AND sa.employee_id = ANY (emp_ids)
       AND NOT EXISTS (SELECT 1 FROM attendance_records ar WHERE ar.shift_assignment_id = sa.id)
+      AND NOT EXISTS (SELECT 1 FROM manual_time_correction_requests m WHERE m.employee_id = sa.employee_id AND m.date = sa.work_date)
     ORDER BY sa.work_date DESC
-    LIMIT 10
+    LIMIT CASE WHEN v_mode = 'full' THEN 10 ELSE 4 END
   LOOP
     k := k + 1;
     v_status := (ARRAY['pending', 'approved', 'approved', 'rejected', 'pending', 'approved', 'direct', 'rejected', 'approved', 'pending'])[k];
@@ -420,6 +435,7 @@ BEGIN
     JOIN shift_assignments sa ON sa.id = ar.shift_assignment_id
     JOIN public._dummy_seed ds ON ds.tbl = 'attendance_records' AND ds.id = ar.id::text
     WHERE ar.clock_out_at IS NULL AND sa.work_date < v_today
+      AND sa.employee_id = ANY (emp_ids)
       AND NOT EXISTS (SELECT 1 FROM manual_time_correction_requests m WHERE m.employee_id = sa.employee_id AND m.date = sa.work_date AND m.status = 'pending')
     ORDER BY sa.work_date
   LOOP
@@ -449,6 +465,7 @@ BEGIN
     END IF;
   END LOOP;
 
+  IF v_mode = 'full' THEN
   -- ============================================================
   -- 4) AÇIK VARDİYALAR
   -- ============================================================
@@ -558,6 +575,8 @@ BEGIN
     END IF;
   END LOOP;
 
+  END IF;  -- açık vardiya + takas yalnızca full modda
+
   -- ============================================================
   -- 6) MÜSAİTLİK
   -- ============================================================
@@ -589,6 +608,8 @@ BEGIN
     SELECT lr.id, lr.status, lr.reviewed_at, lr.employee_id FROM leave_requests lr
     JOIN public._dummy_seed ds ON ds.tbl = 'leave_requests' AND ds.id = lr.id::text
     WHERE lr.leave_type <> 'weekly_rest' AND lr.status <> 'pending'
+      AND lr.employee_id = ANY (emp_ids)
+      AND NOT EXISTS (SELECT 1 FROM audit_logs al WHERE al.entity_id = lr.id::text AND al.action = 'leave.review')
   LOOP
     INSERT INTO audit_logs (actor_id, action, entity_type, entity_id, before, after, created_at)
     VALUES (reviewer, 'leave.review', 'leave_request', rec.id::text, jsonb_build_object('status', 'pending'),
