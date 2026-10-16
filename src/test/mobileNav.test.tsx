@@ -167,6 +167,16 @@ describe('MorePage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Çıkış Yap' }))
     expect(signOut).toHaveBeenCalled()
   })
+
+  it('bildirim teşhisi yalnızca Mağaza Müdürü+ için', () => {
+    asRole('Çalışan')
+    const { unmount } = renderWithProviders(<MorePage />)
+    expect(screen.queryByText('Bildirim teşhisi')).not.toBeInTheDocument()
+    unmount()
+    asRole('Mağaza Müdürü')
+    renderWithProviders(<MorePage />)
+    expect(screen.getByText('Bildirim teşhisi')).toBeInTheDocument()
+  })
 })
 
 describe('PullToRefresh yardımcıları', () => {
