@@ -8,21 +8,108 @@
  * - Abonelik kurulunca (ilk açılış ve her yeniden bağlanma) güncel kod GET /api/kiosk/qr ile
  *   bir kez alınır. Sonrasında kod yalnızca biri okutup onaylandığında, sunucunun yayınıyla değişir.
  * - Zamanlayıcı / periyodik istek yoktur.
+ * - Tarayıcı çevrimdışıyken bağlantı geri gelince (online olayı) güncel kod yine bir kez alınır.
+ * - Sayfa görünürken ekran kilidi (Screen Wake Lock) istenir; destek yoksa sessizce atlanır.
+ *   "Tam ekran" butonu yalnızca Fullscreen API destekleniyorsa ve zaten tam ekran / kurulu
+ *   uygulama değilse görünür.
  */
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useSyncExternalStore } from 'react'
 import { useRouter } from 'next/navigation'
 import { Box, Typography, Alert, Paper, Button, Chip } from '@mui/material'
 import QrCode2Icon from '@mui/icons-material/QrCode2'
 import LogoutIcon from '@mui/icons-material/Logout'
+import FullscreenIcon from '@mui/icons-material/Fullscreen'
 import { QrCodeDisplay } from './QrCodeDisplay'
 import { useAuth } from '@/context/AuthContext'
 import { isKioskRole } from '@/lib/auth/roles'
 import { getSupabaseBrowserClient } from '@/lib/supabase/browser'
+import { isStandaloneDisplay } from '@/lib/pwa/deviceInfo'
 
 const TOPIC = 'kiosk-qr'
 const EVENT = 'qr'
 
 type LinkState = 'connecting' | 'live' | 'offline'
+
+// ─── Ekran kilidi (Screen Wake Lock) ──────────────────────────
+
+interface WakeLockSentinelLike {
+  released: boolean
+  release: () => Promise<void>
+}
+type WakeLockNavigator = Navigator & {
+  wakeLock?: { request: (type: 'screen') => Promise<WakeLockSentinelLike> }
+}
+
+/**
+ * Sayfa görünürken ekranın kararmasını engeller. Kilit sekme gizlenince tarayıcı tarafından
+ * bırakılır; görünür olunca (visibilitychange) yeniden istenir. Destek yoksa / reddedilirse no-op.
+ */
+function useScreenWakeLock() {
+  useEffect(() => {
+    const nav = navigator as WakeLockNavigator
+    if (!nav.wakeLock) return
+    let sentinel: WakeLockSentinelLike | null = null
+    let disposed = false
+
+    const acquire = async () => {
+      if (disposed || document.visibilityState !== 'visible') return
+      if (sentinel && !sentinel.released) return
+      try {
+        const lock = await nav.wakeLock!.request('screen')
+        if (disposed) {
+          void lock.release().catch(() => null)
+          return
+        }
+        sentinel = lock
+      } catch {
+        // Pil tasarrufu / izin politikası reddedebilir — ekran normal davranır
+      }
+    }
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void acquire()
+    }
+
+    void acquire()
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      disposed = true
+      document.removeEventListener('visibilitychange', onVisibility)
+      if (sentinel && !sentinel.released) void sentinel.release().catch(() => null)
+      sentinel = null
+    }
+  }, [])
+}
+
+// ─── Tam ekran ────────────────────────────────────────────────
+
+function subscribeFullscreen(callback: () => void) {
+  document.addEventListener('fullscreenchange', callback)
+  return () => document.removeEventListener('fullscreenchange', callback)
+}
+
+/** Tam ekran butonu gösterilmeli mi? (destek var, şu an tam ekran değil, kurulu uygulama değil) */
+function getCanEnterFullscreen(): boolean {
+  return (
+    typeof document !== 'undefined' &&
+    document.fullscreenEnabled === true &&
+    typeof document.documentElement.requestFullscreen === 'function' &&
+    !document.fullscreenElement &&
+    !isStandaloneDisplay()
+  )
+}
+
+function useCanEnterFullscreen(): boolean {
+  return useSyncExternalStore(subscribeFullscreen, getCanEnterFullscreen, () => false)
+}
+
+function enterFullscreen() {
+  try {
+    void document.documentElement.requestFullscreen?.().catch(() => null)
+  } catch {
+    // kullanıcı hareketi gerekli / destek yok — yok say
+  }
+}
 
 export function QrKioskPage() {
   const router = useRouter()
@@ -37,6 +124,9 @@ export function QrKioskPage() {
 
   /** Her yayında artar: yayından eski bir GET yanıtı yeni kodun üzerine yazmasın */
   const versionRef = useRef(0)
+
+  useScreenWakeLock()
+  const canEnterFullscreen = useCanEnterFullscreen()
 
   useEffect(() => {
     const supabase = getSupabaseBrowserClient()
@@ -101,8 +191,16 @@ export function QrKioskPage() {
     }
     void start()
 
+    // Tarayıcı çevrimdışıyken kaçan yayınlar olabilir: bağlantı geri gelince güncel kodu bir kez al
+    // (Realtime kendi yeniden bağlanmasında da alır; versionRef çakışan yanıtları ayıklar)
+    const onOnline = () => {
+      if (!disposed) void fetchCurrent()
+    }
+    window.addEventListener('online', onOnline)
+
     return () => {
       disposed = true
+      window.removeEventListener('online', onOnline)
       void supabase.removeChannel(channel)
     }
   }, [router])
@@ -114,6 +212,12 @@ export function QrKioskPage() {
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
     }}>
       <Box sx={{ position: 'absolute', top: 12, right: 12, display: 'flex', gap: 1 }}>
+        {canEnterFullscreen && (
+          <Button size="small" color="inherit" startIcon={<FullscreenIcon fontSize="small" />}
+            onClick={enterFullscreen} sx={{ opacity: 0.5 }}>
+            Tam ekran
+          </Button>
+        )}
         {!isKiosk && (
           <Button size="small" color="inherit" onClick={() => router.push('/')} sx={{ opacity: 0.5 }}>
             Panele dön
