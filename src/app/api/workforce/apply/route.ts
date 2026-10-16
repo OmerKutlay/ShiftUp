@@ -10,7 +10,7 @@
  * Sunucu doğrulaması (istemciye güvenilmez):
  *   - Her atama: geçerli çalışan (aktif), tarih (haftanın içinde), saat, şablon
  *   - Onaylı izin gününe atama veya 18 yaş altı gece/8 saat ihlali → 409 (aşılamaz)
- *   - Çalışma süresi / Md. 46 hafta tatili ihlalleri → 422, acknowledge_violations=true ile aşılır
+ *   - Çalışma süresi / Md. 46 (haftanın 7 günü çalışma) ihlalleri → 422, acknowledge_violations=true ile aşılır
  *
  * Haftalık tatil: planda hiç vardiyası olmayan aktif çalışan başına TEK gün otomatik
  * weekly_rest atanır (haftanın son boş günü). Önceki aktarımdan kalan otomatik tatiller
