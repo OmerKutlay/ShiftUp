@@ -4,7 +4,9 @@
  *
  *   node scripts/dummy-data/run.mjs seed-dry      # seed'i dener, geri alır, sayıları gösterir
  *   node scripts/dummy-data/run.mjs seed          # seed'i uygular
- *   node scripts/dummy-data/run.mjs status        # _dummy_seed'deki satır sayıları
+ *   node scripts/dummy-data/run.mjs seed-yonetici-dry / seed-yonetici
+ *                                                 # yalnızca dummy verisi olmayan Yönetici hesaplarına ekler
+ *   node scripts/dummy-data/run.mjs status       # _dummy_seed'deki satır sayıları
  *   node scripts/dummy-data/run.mjs cleanup-dry   # temizliği dener, geri alır
  *   node scripts/dummy-data/run.mjs cleanup       # dummy verileri siler
  *
@@ -54,11 +56,13 @@ let sql
 switch (mode) {
   case 'seed-dry':    sql = 'BEGIN;\n' + read('seed.sql') + DRY_TAIL; break
   case 'seed':        sql = 'BEGIN;\n' + read('seed.sql') + '\nCOMMIT;'; break
+  case 'seed-yonetici-dry': sql = "BEGIN;\nSET LOCAL dummy.mode = 'yonetici';\n" + read('seed.sql') + DRY_TAIL; break
+  case 'seed-yonetici':     sql = "BEGIN;\nSET LOCAL dummy.mode = 'yonetici';\n" + read('seed.sql') + '\nCOMMIT;'; break
   case 'status':      sql = "SELECT tbl, count(*) FROM public._dummy_seed GROUP BY tbl ORDER BY tbl"; break
   case 'cleanup-dry': sql = read('cleanup.sql').replace(/COMMIT;\s*$/, CLEAN_DRY_TAIL); break
   case 'cleanup':     sql = read('cleanup.sql'); break
   default:
-    console.error('Kullanım: node scripts/dummy-data/run.mjs <seed-dry|seed|status|cleanup-dry|cleanup>')
+    console.error('Kullanım: node scripts/dummy-data/run.mjs <seed-dry|seed|seed-yonetici-dry|seed-yonetici|status|cleanup-dry|cleanup>')
     process.exit(1)
 }
 

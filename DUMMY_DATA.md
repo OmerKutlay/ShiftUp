@@ -22,9 +22,11 @@ node scripts/dummy-data/run.mjs cleanup       # TEMİZLE
 
 `seed.sql` ikinci kez çalışmaz (`_dummy_seed` doluysa hata verir); yeniden yüklemek için önce `cleanup`.
 
+`seed-yonetici` modu yalnızca henüz dummy vardiyası olmayan *Yönetici* hesaplarına vardiya, devam, izin, mesai düzeltme, müsaitlik ve bildirim ekler; açık vardiya ve takas üretmez. Aynı `_dummy_seed`'e yazdığı için temizlik değişmez.
+
 ## Ne yüklenir
 
-Aralık **2026-08-03 → 2026-11-15**. Çalışan havuzu: aktif çalışanlar, *Kiosk* ve *Yönetici* rolleri hariç. Onaylayan kişi: ilk *Mağaza Müdürü* (yoksa Yönetici).
+Aralık **2026-08-03 → 2026-11-15**. Çalışan havuzu: aktif çalışanlar, *Kiosk* hariç. Onaylayan kişi: ilk *Mağaza Müdürü* (yoksa Yönetici).
 
 | Alan | Tablo | İçerik |
 |---|---|---|
@@ -53,6 +55,8 @@ Dokunulmayan tablolar: `employees`, `roles`, `shift_templates`, `store_locations
 
 - [x] Yüklendi: 2026-10-16 09:58 (TR). Önce dry-run ve seed+cleanup gidiş-dönüş testi yapıldı (tablo sayıları eşit, `employees` değişmedi).
   - shift_assignments 1020 · attendance_records 681 · leave_requests 218 (195'i haftalık tatil) · manual_time_correction_requests 23 · open_shifts 15 · shift_swap_requests 9 · employee_availability 14 · notifications 439 · audit_logs 35
+- [x] Ek yükleme: 2026-10-16, `seed-yonetici`. İlk yükleme *Yönetici* rolünü dışarıda bıraktığı için bu hesapların "Çalışma Özetim" sayfası boştu; 3 Yönetici hesabına veri eklendi.
+  - Toplam: shift_assignments 1267 · attendance_records 849 · leave_requests 263 · manual_time_correction_requests 29 · open_shifts 15 · shift_swap_requests 9 · employee_availability 16 · notifications 525 · audit_logs 43
 - [ ] Temizlendi: —
 
 > Not: 16 Ekim'den sonraki dummy vardiyaların devam kaydı yok. Günler geçtikçe bu vardiyalar uygulamada "giriş yapılmadı" olarak görünecek; alarm taraması (`/api/attendance/alerts/scan`) bunlar için bildirim üretebilir. Temizlik bu bildirimleri de siler (`related_id`).
