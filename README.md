@@ -69,7 +69,23 @@ tarayıcı: /api/push/subscription ──▶ push_subscriptions      public/sw-p
 - Bildirime tıklanınca açılan sayfa: `src/lib/notificationLinks.ts` (Edge Function'daki kopyası
   `supabase/functions/send-push/links.ts`; eşitliği testle doğrulanır).
 
-### Kurulum
+### Hızlı kurulum (önerilen)
+
+Aşağıdaki adımların hepsini tek komutla yapar; tekrar çalıştırılabilir (anahtarlar
+`.push-keys.local` dosyasında saklanır ve yeniden kullanılır):
+
+```bash
+npx supabase login && npx wrangler login     # bir kez
+export SUPABASE_DB_URL='postgresql://...'     # panel › Connect › Session pooler (psql gerekir)
+bash scripts/setup-push.sh
+```
+
+`SUPABASE_DB_URL` verilmezse veritabanı adımı için `push-setup.local.sql` üretilir; SQL Editor'de
+çalıştırıp dosyayı silin. Kurulumdan sonra uygulamada **Daha fazla › Bildirimler** açılır ve
+**Test bildirimi gönder** ile denenir. Bir halka eksikse **Daha fazla › Bildirim tanılama**
+(Mağaza Müdürü+) hangi adımın eksik olduğunu gösterir.
+
+### Kurulum (elle)
 
 1. **VAPID anahtarları üret** (bir kez; özel anahtarı kimseyle paylaşmayın):
    ```bash
@@ -88,9 +104,10 @@ tarayıcı: /api/push/subscription ──▶ push_subscriptions      public/sw-p
    npx supabase functions deploy send-push
    ```
 5. **Migration'ı uygulayın** — yukarıdaki geçmiş uyarısı geçerlidir, düz `db push` çalıştırmayın.
-   `20261016100000_push_subscriptions.sql` dosyasını SQL Editor'de çalıştırıp geçmişe kaydedin:
+   `20261016100000_push_subscriptions.sql` ve `20261017100000_push_diagnostics.sql` dosyalarını
+   SQL Editor'de çalıştırıp geçmişe kaydedin:
    ```bash
-   npx supabase migration repair --status applied 20261016100000
+   npx supabase migration repair --status applied 20261016100000 20261017100000
    ```
 6. **Vault secret'larını kaydedin** (SQL Editor; anahtar 3. adımdaki `PUSH_WEBHOOK_SECRET` ile aynı):
    ```sql

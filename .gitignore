@@ -63,3 +63,7 @@ __test_*.json
 .dev.vars*
 
 .claude/settings.local.json
+
+# Push kurulum anahtarları / SQL (scripts/setup-push.sh) — gizli
+.push-keys.local
+push-setup.local.sql
