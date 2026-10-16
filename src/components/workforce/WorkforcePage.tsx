@@ -103,7 +103,9 @@ export function WorkforcePage() {
 
       {/* Çalışan/vardiya verisi gelene kadar yalnızca bunlara bağımlı sekmeler skeleton gösterir */}
       {isFirstLoad && (tab === 0 || tab === 2) && <ListSkeleton count={5} actions={1} />}
-      {!isFirstLoad && tab === 0 && employees.length > 0 && <AvailabilityEditor employees={employees} />}
+      {!isFirstLoad && tab === 0 && authEmployee && (
+        <AvailabilityEditor employees={employees} currentEmployeeId={authEmployee.id} isManager={isManager} />
+      )}
       {tab === 1 && <OpenShiftsPanel />}
       {!isFirstLoad && tab === 2 && <ShiftSwapPanel
         employees={employees}
