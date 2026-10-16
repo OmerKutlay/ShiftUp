@@ -7,7 +7,7 @@ export const metadata: Metadata = {
 
 /**
  * Service worker'ın ağ yokken sayfa gezinmelerinde gösterdiği yedek sayfa.
- * Statik olarak önbelleğe alınır (bkz. public/sw.js).
+ * Statik olarak önbelleğe alınır (bkz. src/lib/pwa/serviceWorkerSource.ts).
  */
 export default function OfflinePage() {
   return (
