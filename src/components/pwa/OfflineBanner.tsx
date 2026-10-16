@@ -3,7 +3,7 @@
 /**
  * OfflineBanner — Bağlantı koptuğunda ekranın altında ince bir uyarı bandı.
  *
- * Mobilde alt gezinme çubuğunun (~64px + safe-area) üstünde, masaüstünde alttan 16px yukarıda
+ * Mobilde alt gezinme çubuğunun ve taşan QR butonunun (BOTTOM_NAV_OVERLAY_OFFSET + safe-area) üstünde, masaüstünde alttan 16px yukarıda
  * durur; üstteki mobil bar'ı kapatmaz. Bağlantı geri gelince kısa bir "geri geldi" mesajı
  * gösterip kaybolur.
  */
@@ -12,6 +12,7 @@ import { Alert, Box, Fade } from '@mui/material'
 import WifiOffIcon from '@mui/icons-material/WifiOff'
 import WifiIcon from '@mui/icons-material/Wifi'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
+import { BOTTOM_NAV_OVERLAY_OFFSET } from '@/components/layout/MobileBottomNav'
 
 /** "Bağlantı geri geldi" mesajının ekranda kalma süresi */
 export const BACK_ONLINE_MS = 3000
@@ -44,7 +45,7 @@ export function OfflineBanner() {
           position: 'fixed',
           left: '50%',
           transform: 'translateX(-50%)',
-          bottom: { xs: 'calc(72px + env(safe-area-inset-bottom))', md: 16 },
+          bottom: { xs: `calc(${BOTTOM_NAV_OVERLAY_OFFSET}px + env(safe-area-inset-bottom))`, md: 16 },
           zIndex: (theme) => theme.zIndex.snackbar,
           width: 'max-content',
           maxWidth: 'calc(100vw - 32px)',

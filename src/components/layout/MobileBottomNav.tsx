@@ -14,6 +14,14 @@ import { getActiveTabHref, getBottomTabs, type BottomTab } from './navItems'
 /** Alt bar yüksekliği (safe-area hariç) */
 export const BOTTOM_NAV_HEIGHT = 64
 const CENTER_SIZE = 56
+/** Ortadaki QR butonunun barın üstüne taşan kısmı */
+const CENTER_OVERHANG = CENTER_SIZE / 3
+/**
+ * Mobilde alttan konumlanan katmanların (çevrimdışı bandı, güncelleme uyarısı, kurulum kartı)
+ * alt boşluğu (safe-area hariç): bar + taşan QR butonu + 8px. Yalnızca bar yüksekliği kadar
+ * yukarıda duran katmanlar ortadaki QR butonunun üst kısmını örtüyordu.
+ */
+export const BOTTOM_NAV_OVERLAY_OFFSET = Math.ceil(BOTTOM_NAV_HEIGHT + CENTER_OVERHANG + 8)
 
 export function MobileBottomNav() {
   const pathname = usePathname()
@@ -86,7 +94,7 @@ function TabLink({ tab, active }: { tab: BottomTab; active: boolean }) {
             width: CENTER_SIZE,
             height: CENTER_SIZE,
             // Barın üstüne taşan yükseltilmiş buton
-            mt: `-${CENTER_SIZE / 3}px`,
+            mt: `-${CENTER_OVERHANG}px`,
             borderRadius: '50%',
             display: 'flex',
             alignItems: 'center',
