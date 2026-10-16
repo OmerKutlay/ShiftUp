@@ -623,14 +623,15 @@ function planOnce(input: PlannerInput, seed: number): { result: PlannerResult; f
   }
 
   /**
-   * Bu güne atama yapılırsa (geçen haftayla birlikte) seri 6 günü aşmıyor mu. Kesin kural
+   * Bu güne atama yapılırsa (geçen haftayla birlikte) seri 6 günü kaç gün aşar. Kesin kural
    * değil, tercih: H.İ. takvim haftası içinde verilir; haftalar arası uzun seriden mümkünse
-   * kaçınılır (gün/aday seçiminde öncelik), aşarsa validator uyarı verir.
+   * kaçınılır (gün/aday seçiminde öncelik), aşarsa validator uyarı verir. Aşım kaçınılmazsa
+   * (seri geçmiş günlerde zaten uzunsa) en kısa seri tercih edilir; 0 = sınır içinde.
    */
-  function streakOk(emp: PlannerEmployee, dateStr: string): boolean {
+  function streakExcess(emp: PlannerEmployee, dateStr: string): number {
     const dayMap = slotMap.get(emp.id)!
     const works = (d: string) => d === dateStr || dayMap.has(d)
-    return runAt(weekDays, works, weekDays.indexOf(dateStr), emp.prevStreak) <= MAX_CONSECUTIVE_DAYS
+    return Math.max(0, runAt(weekDays, works, weekDays.indexOf(dateStr), emp.prevStreak) - MAX_CONSECUTIVE_DAYS)
   }
 
   /**
@@ -650,6 +651,17 @@ function planOnce(input: PlannerInput, seed: number): { result: PlannerResult; f
     ))
     const lost = Math.max(0, credited - (otherOff ? 0 : 1))
     return Math.max(0, FT_MAX_MINS - LOST_DAY_MINS * lost)
+  }
+
+  /**
+   * Hedefin altında kabul edilen pay: tam haftada 0. İzin/geçmiş gün düşülmüş hedef gün başı
+   * 7,5s'lik yaklaşık bir değerdir; sabit (çalışılmış/geçmiş) vardiyası olan haftada da kalan
+   * günlerle tam 45s kurulamayabilir — ikisinde de vardiya kombinasyonları için 1 saat pay.
+   * Bu payın içindeki eksik için fazla mesai yazılmaz, bekleyen izin günü doldurulmaz.
+   */
+  function targetSlackMins(emp: PlannerEmployee): number {
+    const hasFixed = [...slotMap.get(emp.id)!.values()].some((s) => s.key === 'fixed')
+    return weeklyTargetMins(emp) < FT_MAX_MINS || hasFixed ? 60 : 0
   }
 
   /** Vardiya hard limitleri ve availability penceresiyle birlikte yerleştirilebilir mi */
@@ -757,7 +769,7 @@ function planOnce(input: PlannerInput, seed: number): { result: PlannerResult; f
     const candidates = shuffled(list.filter((e) => canPlace(e, dateStr, key)))
       .sort((a, b) =>
         Number(hasPendingLeave(a, dateStr)) - Number(hasPendingLeave(b, dateStr)) ||
-        Number(!streakOk(a, dateStr)) - Number(!streakOk(b, dateStr)) ||
+        streakExcess(a, dateStr) - streakExcess(b, dateStr) ||
         (maxDays(b) - getEmpDays(b.id)) - (maxDays(a) - getEmpDays(a.id)) ||
         Number(wasOffLastWeek(b, dateStr)) - Number(wasOffLastWeek(a, dateStr)) ||
         getKindCount(a.id, kind) - getKindCount(b.id, kind) ||
@@ -936,9 +948,11 @@ function planOnce(input: PlannerInput, seed: number): { result: PlannerResult; f
   }
 
   // 1e. Dengeleme: 45 saatin altında kalan FT yönetici boş gününe vardiya alır; saati yetmiyorsa
-  //     kendi full'ünü yarıma indirir ve boşalan tarafı başka yönetici (gerekirse fazla mesaiyle) alır.
+  //     kendi full'ünü yarıma indirir ve boşalan tarafı başka yönetici alır. Bu turda fazla mesai
+  //     yazılmaz: kalan eksik önce FAZ 7'de vardiya uzatmalarıyla kapanır; fazla mesai (boşalan
+  //     tarafı alan yönetici veya son çare yeni gün) yalnızca o da yetmezse ikinci turda yazılır.
   const reasonBalance = 'Yönetici — 45 saat dengeleme'
-  const tryAddDay = (m: PlannerEmployee, dateStr: string): boolean => {
+  const tryAddDay = (m: PlannerEmployee, dateStr: string, allowOvertime: boolean): boolean => {
     const keys: ShiftKey[] = ['closing', 'opening', 'closingShort']
     if (keys.some((k) => place(m, dateStr, k, reasonBalance))) return true
     for (const [f, slot] of [...slotMap.get(m.id)!.entries()]) {
@@ -950,7 +964,7 @@ function planOnce(input: PlannerInput, seed: number): { result: PlannerResult; f
           if (undoOther || o === m) continue
           const prev = slotMap.get(o.id)!.get(f)
           if (prev?.locked) continue
-          overtimeFor = o.id
+          overtimeFor = allowOvertime ? o.id : null
           const ok = prev
             ? replace(o, f, 'full', 'Yönetici kapsaması — fazla mesai')
             : place(o, f, half === 'opening' ? 'closing' : 'opening', 'Yönetici kapsaması — fazla mesai')
@@ -966,39 +980,47 @@ function planOnce(input: PlannerInput, seed: number): { result: PlannerResult; f
         slotMap.get(m.id)!.set(f, slot)
       }
     }
-    // Son çare: 45'in altında kalmaktansa fazla mesai; diğer yöneticinin o günkü full'ü aşağıda yarıma iner
+    if (!allowOvertime) return false
+    // Son çare: 45'in altında kalmaktansa fazla mesai — eksiği kapatan en kısa vardiya
+    // (fazla mesai en az olsun); diğer yöneticinin o günkü full'ü aşağıda yarıma iner
+    const deficit = weeklyTargetMins(m) - getEmpMins(m.id)
+    const byOvertime = [...keys].sort((a, b) =>
+      Number(SHIFT_NET[a] < deficit) - Number(SHIFT_NET[b] < deficit) || SHIFT_NET[a] - SHIFT_NET[b])
     overtimeFor = m.id
-    const ok = keys.some((k) => place(m, dateStr, k, 'Yönetici — 45 saat tamamlama (fazla mesai)'))
+    const ok = byOvertime.some((k) => place(m, dateStr, k, 'Yönetici — 45 saat tamamlama (fazla mesai)'))
     overtimeFor = null
     return ok
   }
-  for (const m of managers.filter((x) => x.employment_type === 'full_time')) {
-    for (const dateStr of [...openDays].sort((a, b) => managersOn(a).length - managersOn(b).length)) {
-      if (getEmpMins(m.id) >= weeklyTargetMins(m) || getEmpDays(m.id) >= maxDays(m)) break
-      if (canWork(m, dateStr)) tryAddDay(m, dateStr)
-    }
-  }
-  // Fazla mesaiyi azalt: başka yöneticinin kapsadığı günde full yarıma iner, gereksiz vardiya düşer
-  for (const m of managers) {
-    for (const [f, slot] of [...slotMap.get(m.id)!.entries()]) {
-      if (getEmpMins(m.id) <= maxMins(m)) break
-      if (slot.locked || slot.key === 'fixed') continue
-      const others = managerKinds(f, m)
-      if (covered(others) && getEmpMins(m.id) - slot.net >= weeklyTargetMins(m)) {
-        slotMap.get(m.id)!.delete(f)
-      } else if (slot.key === 'full') {
-        const half: ShiftKey | null = others.some(isClosingKind) ? 'opening' : others.some(isOpeningKind) ? 'closing' : null
-        // Zaten fazla mesaide; kısaltma da saat sınırına takılmasın
-        overtimeFor = m.id
-        if (half) replace(m, f, half, 'Yönetici (fazla mesai azaltıldı)')
-        overtimeFor = null
+  const balanceManagers = (allowOvertime: boolean) => {
+    for (const m of managers.filter((x) => x.employment_type === 'full_time')) {
+      for (const dateStr of [...openDays].sort((a, b) => managersOn(a).length - managersOn(b).length)) {
+        const slack = allowOvertime ? targetSlackMins(m) : 0
+        if (getEmpMins(m.id) >= weeklyTargetMins(m) - slack || getEmpDays(m.id) >= maxDays(m)) break
+        if (canWork(m, dateStr)) tryAddDay(m, dateStr, allowOvertime)
       }
     }
   }
-  for (const m of managers) {
-    if (getEmpMins(m.id) <= maxMins(m)) continue
-    for (const slot of slotMap.get(m.id)!.values()) if (!slot.locked) slot.assignment.overtime = true
+  // Fazla mesaiyi azalt: başka yöneticinin kapsadığı günde full yarıma iner, gereksiz vardiya düşer
+  const trimOvertime = () => {
+    for (const m of managers) {
+      for (const [f, slot] of [...slotMap.get(m.id)!.entries()]) {
+        if (getEmpMins(m.id) <= maxMins(m)) break
+        if (slot.locked || slot.key === 'fixed') continue
+        const others = managerKinds(f, m)
+        if (covered(others) && getEmpMins(m.id) - slot.net >= weeklyTargetMins(m)) {
+          slotMap.get(m.id)!.delete(f)
+        } else if (slot.key === 'full') {
+          const half: ShiftKey | null = others.some(isClosingKind) ? 'opening' : others.some(isOpeningKind) ? 'closing' : null
+          // Zaten fazla mesaide; kısaltma da saat sınırına takılmasın
+          overtimeFor = m.id
+          if (half) replace(m, f, half, 'Yönetici (fazla mesai azaltıldı)')
+          overtimeFor = null
+        }
+      }
+    }
   }
+  balanceManagers(false)
+  trimOvertime()
 
   for (const dateStr of openDays) {
     if (managers.length === 0) break
@@ -1015,13 +1037,16 @@ function planOnce(input: PlannerInput, seed: number): { result: PlannerResult; f
   // FAZ 2: Görsel Uzman & Depo — Pzt–Cum 08:00–17:00, Cmt 08:00–14:00, Pazar izin
   // ═══════════════════════════════════════════════════════════════════════════
 
+  const placeFixedCrewDay = (emp: PlannerEmployee, dateStr: string): boolean =>
+    dowKey(dateStr) === GORSEL_DEPO_SHORT_DOW
+      ? place(emp, dateStr, 'earlyShort', 'Görsel/Depo Cumartesi kısa mesai (08:00–14:00)')
+      : place(emp, dateStr, 'early', 'Görsel/Depo mesaisi (08:00–17:00)') ||
+        place(emp, dateStr, 'late9', 'Görsel/Depo mesaisi — önceki gün geç bitti, 11s dinlenme için 09:00')
+
+  // Bekleyen izin günü atlanır; 45 saat kalan günlerde tutmuyorsa FAZ 6 sonunda doldurulur
   for (const emp of fixedCrew) {
     for (const dateStr of weekDays) {
-      if (dowKey(dateStr) === GORSEL_DEPO_SHORT_DOW) {
-        place(emp, dateStr, 'earlyShort', 'Görsel/Depo Cumartesi kısa mesai (08:00–14:00)')
-      } else if (!place(emp, dateStr, 'early', 'Görsel/Depo mesaisi (08:00–17:00)')) {
-        place(emp, dateStr, 'late9', 'Görsel/Depo mesaisi — önceki gün geç bitti, 11s dinlenme için 09:00')
-      }
+      if (!hasPendingLeave(emp, dateStr)) placeFixedCrewDay(emp, dateStr)
     }
   }
 
@@ -1055,7 +1080,7 @@ function planOnce(input: PlannerInput, seed: number): { result: PlannerResult; f
   // ═══════════════════════════════════════════════════════════════════════════
 
   if (labelDay) {
-    for (const kFT of kasiyerler.filter((e) => e.employment_type === 'full_time')) {
+    for (const kFT of kasiyerler.filter((e) => e.employment_type === 'full_time' && !hasPendingLeave(e, labelDay))) {
       place(kFT, labelDay, 'full', 'FT kasiyer Perşembe full vardiya tercihi')
     }
   }
@@ -1151,13 +1176,17 @@ function planOnce(input: PlannerInput, seed: number): { result: PlannerResult; f
     return order
   }
 
-  function fillOneDay(emp: PlannerEmployee): boolean {
+  /**
+   * Çalışana bir gün daha ekler. Bekleyen izin günü varsayılan olarak doldurulmaz (onaylanırsa
+   * vardiya kaldırılır, gün boş kalırdı); FT saat hedefi başka türlü tutmuyorsa allowPending ile.
+   */
+  function fillOneDay(emp: PlannerEmployee, allowPending = false): boolean {
     // Geçen hafta izinli olunan gün bu hafta çalışmaya yatkın → izin günü kayar
-    // Bekleyen izin günü en sona kalır: FT'nin tek izin günü olarak tercih edilir
+    // 6 günü aşan seri: aşım ne kadar kısaysa o kadar tercih edilir
     const score = (d: string) =>
       dayLoad(d) - (wasOffLastWeek(emp, d) ? 0.5 : 0) + (hasPendingLeave(emp, d) ? 100 : 0) +
-      (streakOk(emp, d) ? 0 : 50)
-    const days = shuffled(weekDays.filter((d) => canWork(emp, d)))
+      streakExcess(emp, d) * 50
+    const days = shuffled(weekDays.filter((d) => canWork(emp, d) && (allowPending || !hasPendingLeave(emp, d))))
       .sort((a, b) => score(a) - score(b))
     for (const dateStr of days) {
       for (const key of kindOrder(emp, dateStr)) {
@@ -1176,6 +1205,14 @@ function planOnce(input: PlannerInput, seed: number): { result: PlannerResult; f
       if (getEmpDays(emp.id) >= maxDays(emp) || !fillOneDay(emp)) pending.delete(emp)
     }
   }
+  // Bekleyen izin günü atlanınca FT 45 saati kalan günlerde uzatmayla tamamlayamıyorsa o gün de doldurulur
+  const fillPendingDay = (emp: PlannerEmployee): boolean => fixedCrew.includes(emp)
+    ? weekDays.some((d) => hasPendingLeave(emp, d) && placeFixedCrewDay(emp, d))
+    : fillOneDay(emp, true)
+  for (const emp of [...fixedCrew, ...flexible]) {
+    if (emp.employment_type !== 'full_time' || getEmpDays(emp.id) >= maxDays(emp)) continue
+    if (maxReachableMins(emp) < weeklyTargetMins(emp) - targetSlackMins(emp)) fillPendingDay(emp)
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // FAZ 7: FT 45 saat tamamlama
@@ -1186,26 +1223,34 @@ function planOnce(input: PlannerInput, seed: number): { result: PlannerResult; f
   // başka bir yöneticinin de çalıştığı gün full'e çıkmaz (ikisi birden full olmaz).
   // Eşitlikte en az değişiklik, sonra full'lerin yoğun günlere düşmesi tercih edilir.
 
+  /** Tamamlamada bu günün vardiyasının yerine geçebilecek varyantlar (kilitliyse yalnızca kendisi) */
+  function topUpKeys(emp: PlannerEmployee, dateStr: string, slot: Slot): Array<Slot['key']> {
+    if (slot.locked || slot.key === 'fixed') return [slot.key]
+    const sharedManagerDay = managerIds.has(emp.id) && managers.some((o) => o !== emp && slotMap.get(o.id)!.has(dateStr))
+    return (TOPUP_VARIANTS[slot.key] ?? [slot.key]).filter((k) =>
+      k === slot.key || (
+        !(sharedManagerDay && k === 'full') &&
+        fitsAvailabilityWindow(emp, dateStr, SHIFTS[k].start, SHIFTS[k].end) &&
+        minorViolations(emp, dateStr, SHIFTS[k].start, SHIFTS[k].end).length === 0
+      ))
+  }
+
+  /** Mevcut günlerle tamamlamada ulaşılabilecek en yüksek haftalık süre (dinlenme kontrolü hariç) */
+  function maxReachableMins(emp: PlannerEmployee): number {
+    return [...slotMap.get(emp.id)!.entries()].reduce((sum, [dateStr, slot]) =>
+      sum + Math.max(...topUpKeys(emp, dateStr, slot).map((k) => k === 'fixed' ? slot.net : SHIFT_NET[k])), 0)
+  }
+
   const topUp = (emp: PlannerEmployee) => {
     const dayMap = slotMap.get(emp.id)!
     const target = weeklyTargetMins(emp)
     if (getEmpMins(emp.id) >= target) return
 
-    const isManager = managerIds.has(emp.id)
     const entries = [...dayMap.entries()]
     // Kilitli (ve 'fixed') vardiyalar tek seçenek olarak kalır
-    const options: Array<Array<{ key: Slot['key']; net: number }>> = entries.map(([dateStr, slot]) => {
-      if (slot.locked || slot.key === 'fixed') return [{ key: slot.key, net: slot.net }]
-      const sharedManagerDay = isManager && managers.some((o) => o !== emp && slotMap.get(o.id)!.has(dateStr))
-      const variants = (TOPUP_VARIANTS[slot.key] ?? [slot.key]).filter((k) =>
-        k === slot.key || (
-          !(sharedManagerDay && k === 'full') &&
-          fitsAvailabilityWindow(emp, dateStr, SHIFTS[k].start, SHIFTS[k].end) &&
-          minorViolations(emp, dateStr, SHIFTS[k].start, SHIFTS[k].end).length === 0
-        ))
-      // Karıştırma: eşit derecede iyi kombinasyonlardan (hangi gün uzun vb.) rastgele biri seçilir
-      return shuffled(variants).map((k) => ({ key: k, net: SHIFT_NET[k] }))
-    })
+    // Karıştırma: eşit derecede iyi kombinasyonlardan (hangi gün uzun vb.) rastgele biri seçilir
+    const options: Array<Array<{ key: Slot['key']; net: number }>> = entries.map(([dateStr, slot]) =>
+      shuffled(topUpKeys(emp, dateStr, slot)).map((k) => ({ key: k, net: k === slot.key ? slot.net : SHIFT_NET[k as ShiftKey] })))
 
     let best = { total: -1, changes: Infinity, lightFulls: Infinity, keys: [] as Array<Slot['key']> }
     const current: Array<Slot['key']> = []
@@ -1246,9 +1291,60 @@ function planOnce(input: PlannerInput, seed: number): { result: PlannerResult; f
       })
   }
 
+  /**
+   * Son çare fazla mesaiden sonra: uzatılmış vardiyalar aynı ailedeki kısa varyantlara
+   * döndürülerek haftalık süre hedefin üstündeki en küçük değere indirilir (fazla mesai en aza).
+   * Full vardiya ve kilitli vardiyalar değişmez; açılış açılış, kapanış kapanış kalır.
+   */
+  const shortenToTarget = (emp: PlannerEmployee) => {
+    const target = weeklyTargetMins(emp)
+    if (getEmpMins(emp.id) <= Math.max(target, maxMins(emp))) return
+    const entries = [...slotMap.get(emp.id)!.entries()]
+    const options = entries.map(([, slot]) => {
+      if (slot.locked || slot.key === 'fixed' || slot.key === 'full') return [slot.key]
+      const family = Object.values(TOPUP_VARIANTS).find((list) => list.includes(slot.key as ShiftKey)) ?? [slot.key as ShiftKey]
+      return family.filter((k) => k !== 'full' && SHIFT_NET[k] <= slot.net)
+    })
+    let best: { total: number; keys: Array<Slot['key']> } | null = null
+    const current: Array<Slot['key']> = []
+    const search = (i: number, total: number) => {
+      if (i === entries.length) {
+        if (total >= target && (!best || total < best.total)) best = { total, keys: [...current] }
+        return
+      }
+      for (const k of options[i]) {
+        current.push(k)
+        search(i + 1, total + (k === entries[i][1].key ? entries[i][1].net : SHIFT_NET[k as ShiftKey]))
+        current.pop()
+      }
+    }
+    search(0, 0)
+    const chosen = best as { total: number; keys: Array<Slot['key']> } | null
+    if (!chosen) return
+    overtimeFor = emp.id
+    entries.forEach(([dateStr, slot], i) => {
+      const to = chosen.keys[i] as ShiftKey
+      if (to !== slot.key) replace(emp, dateStr, to, `Yönetici ${SHIFTS[to].label.toLowerCase()} (fazla mesai azaltıldı)`)
+    })
+    overtimeFor = null
+  }
+
   const fullTimers = [...managers, ...fixedCrew, ...flexible].filter((e) => e.employment_type === 'full_time')
   // İkinci tur: ilk turda dinlenme vb. nedeniyle uygulanamayan değişikliklerin yerine başka kombinasyon
   for (let round = 0; round < 2; round++) fullTimers.forEach(topUp)
+
+  // Uzatmalar yetmediyse: bekleyen izin günü doldurulur, yönetici ise son çare fazla mesai alır
+  for (const emp of [...fixedCrew, ...flexible]) {
+    if (emp.employment_type !== 'full_time' || getEmpMins(emp.id) >= weeklyTargetMins(emp) - targetSlackMins(emp)) continue
+    if (getEmpDays(emp.id) < maxDays(emp) && fillPendingDay(emp)) topUp(emp)
+  }
+  balanceManagers(true)
+  trimOvertime()
+  managers.forEach(shortenToTarget)
+  for (const m of managers) {
+    if (getEmpMins(m.id) <= maxMins(m)) continue
+    for (const slot of slotMap.get(m.id)!.values()) if (!slot.locked) slot.assignment.overtime = true
+  }
 
   // Veri çelişkisi: FT haftada en fazla 1 gün izin yapar; birden fazla izin günü
   // (haftalık tatil kaydı + sabit izin günü vb.) planlayıcı tarafından değiştirilmez, bildirilir
@@ -1280,9 +1376,7 @@ function planOnce(input: PlannerInput, seed: number): { result: PlannerResult; f
     const finalMins = getEmpMins(emp.id)
     const target = weeklyTargetMins(emp)
     ftDeficit += Math.max(0, target - finalMins)
-    // Tam hafta: 45s birebir. İzin/geçmiş gün düşülmüş hedef gün başı 7,5s'lik yaklaşık
-    // bir değer olduğundan vardiya kombinasyonları için 1 saat pay bırakılır.
-    if (finalMins >= target - (target < FT_MAX_MINS ? 60 : 0)) continue
+    if (finalMins >= target - targetSlackMins(emp)) continue
     const reasonKey: ShiftKey = fixedCrew.includes(emp) ? 'early' : 'opening'
     const offDays = weekDays
       .filter((d) => !slotMap.get(emp.id)!.has(d))
@@ -1502,7 +1596,18 @@ export function validatePlan(
           return i >= Math.max(0, run.startIdx) && i <= run.endIdx
         })
         const pastOnly = !!today && inRun.every((a) => a.worked && a.work_date < today)
-        if (!pastOnly) {
+        // Seri geçmiş (kapalı) günlerde zaten 6 günü aşmışsa plan bunu düzeltemez: bilgi olarak
+        // bildirilir (planlayıcı kalan günlerde seriyi mümkün olduğunca kısa tutar)
+        const firstOpen = today ? weekDays.findIndex((d) => d >= today) : 0
+        const forcedLen = (firstOpen < 0 ? run.endIdx : Math.min(run.endIdx, firstOpen - 1)) - run.startIdx + 1
+        if (!pastOnly && forcedLen > MAX_CONSECUTIVE_DAYS) {
+          warnings.push({
+            level: 'info',
+            message: `${emp.full_name}: ${start} – ${weekDays[run.endIdx]} arası ${run.length} gün üst üste çalışma`
+              + `${run.startIdx < 0 ? ' (geçen haftayla birlikte)' : ''}. Seri geçmiş günlerde ${forcedLen} güne ulaşmıştı; `
+              + 'plan yalnızca kalan günleri değiştirebilir (İş K. Md. 46).',
+          })
+        } else if (!pastOnly) {
           warnings.push({
             level: 'warning',
             message: `${emp.full_name}: ${start} – ${weekDays[run.endIdx]} arası ${run.length} gün üst üste çalışma`

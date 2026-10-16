@@ -9,7 +9,7 @@
  * Response: PlannerResult (assignments, stats, warnings, hasHardViolation)
  *
  * Ek uyarılar (planlayıcının dışında, sunucuda hesaplanır):
- *   - Bekleyen izin talebi olan güne atama (onaylanırsa vardiya kaldırılır)
+ *   - (bilgi) Bekleyen izin talebi olan güne atama — planlayıcı yalnızca gerekirse yazar
  * (Md. 46: H.İ. takvim haftası içinde; geçen haftadan gelen seri (prevStreak) planlayıcıda tercih olarak kullanılır.)
  *   - Resmi tatil / arife (13:00 sonrası) günlerine atama — çalışan onayı ve 2 kat ücret (Md. 44, 47)
  */
@@ -224,11 +224,13 @@ export async function POST(req: NextRequest) {
     })
 
     // ── Ek uyarılar ───────────────────────────────────────────
+    // Planlayıcı bekleyen izin gününü yalnızca kapsama veya FT 45 saat için gerekirse doldurur
     for (const a of result.assignments) {
       if (pendingMap.get(a.employee_id)?.has(a.work_date)) {
         result.warnings.push({
-          level: 'warning',
-          message: `${a.employee_name}: ${a.work_date} için bekleyen izin talebi var; onaylanırsa vardiya kaldırılır.`,
+          level: 'info',
+          message: `${a.employee_name}: ${a.work_date} için bekleyen izin talebi var; kapsama/45 saat için bu gün de planlandı. `
+            + 'Talep onaylanırsa vardiya kaldırılır.',
         })
       }
     }
