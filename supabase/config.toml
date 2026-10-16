@@ -389,6 +389,11 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+# Web Push dağıtımı — notifications tetikleyicisinden (pg_net) çağrılır; JWT yerine
+# x-push-secret başlığı (PUSH_WEBHOOK_SECRET) ile doğrulanır.
+[functions.send-push]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327
