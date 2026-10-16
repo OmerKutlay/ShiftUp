@@ -151,7 +151,7 @@ export function computePushDiagnosticSteps(input: PushDiagnosticsInput): PushDia
     ok: !missing,
     label: 'Veritabanı migration\'ları (push_subscriptions, push_diagnostics)',
     hint: missing
-      ? `20261016100000 / 20261017100000 migration'ları uygulanmamış. supabase db push ile uygulayın (${SETUP}).`
+      ? `20261016100000 / 20261017100000 migration'ları uygulanmamış. ${SETUP} ile uygulayın (düz supabase db push kullanmayın).`
       : null,
   })
 
