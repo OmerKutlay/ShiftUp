@@ -16,9 +16,10 @@ import DeleteIcon from '@mui/icons-material/Delete'
 import { apiFetch } from '@/lib/api/http'
 import type { PublicHoliday } from '@/types/holiday'
 import { turkeyToday } from '@/lib/dateUtils'
-import { DateField, TableSkeleton } from '@/components/common'
+import { DateField, TableSkeleton, useConfirm } from '@/components/common'
 
 export function HolidaysPanel() {
+  const confirm = useConfirm()
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
   const year = Number(turkeyToday().slice(0, 4))
@@ -45,7 +46,12 @@ export function HolidaysPanel() {
   }
 
   const remove = async (date: string) => {
-    if (!window.confirm(`${date} tarihli resmi tatil silinsin mi?`)) return
+    if (!(await confirm({
+      title: 'Resmi Tatili Sil',
+      message: `${date} tarihli resmi tatil silinsin mi?`,
+      confirmText: 'Evet, Sil',
+      tone: 'error',
+    }))) return
     try {
       await apiFetch(`/api/holidays?date=${date}`, { method: 'DELETE' })
       await mutate()

@@ -26,7 +26,7 @@ import { tr } from 'date-fns/locale'
 import type { EmployeeWeekSummary } from '@/lib/workingTimeService'
 import type { OpenShift } from '@/types/workforce'
 import type { PlannerResult, PlanWarning } from '@/lib/workforcePlanner'
-import { ScheduleGridSkeleton } from '@/components/common'
+import { ScheduleGridSkeleton, useConfirm } from '@/components/common'
 import { CurrentPlanTable, DraftPlanTable } from './WorkforcePlanTables'
 import { apiFetch, ApiError } from '@/lib/api/http'
 
@@ -70,6 +70,7 @@ function WarningList({ warnings }: { warnings: PlanWarning[] }) {
 // ─── Ana bileşen ──────────────────────────────────────────────────────────────
 
 export function WorkforcePlanningPanel() {
+  const confirm = useConfirm()
   const [weekRef, setWeekRef] = useState<Date>(() => startOfWeek(new Date(), { weekStartsOn: 1 }))
   const [activeTab, setActiveTab] = useState(0)
   // Skeleton yalnızca bu hafta ilk kez yüklenirken; sayfaya geri dönüşte plan ekranda kalır
@@ -125,10 +126,12 @@ export function WorkforcePlanningPanel() {
     const existingShifts = planData?.summaries.reduce(
       (n, s) => n + Object.values(s.days).reduce((m, d) => m + d.shifts.length, 0), 0,
     ) ?? 0
-    if (!acknowledge && existingShifts > 0 && !window.confirm(
-      `Bu haftanın mevcut planı (${existingShifts} vardiya) silinip yeni planla değiştirilecek.\n\n` +
-      'Giriş/çıkış kaydı olan ve izinli işaretli vardiyalar korunur. Devam edilsin mi?',
-    )) return
+    if (!acknowledge && existingShifts > 0 && !(await confirm({
+      title: 'Mevcut Plan Değiştirilecek',
+      message: `Bu haftanın mevcut planı (${existingShifts} vardiya) silinip yeni planla değiştirilecek.`,
+      footer: 'Giriş/çıkış kaydı olan ve izinli işaretli vardiyalar korunur. Devam edilsin mi?',
+      confirmText: 'Planı Değiştir',
+    }))) return
     setApplyLoading(true)
     try {
       const res = await fetch('/api/workforce/apply', {
@@ -147,11 +150,13 @@ export function WorkforcePlanningPanel() {
       }
       if (!res.ok) {
         // Sunucu yasal ihlal buldu — yönetici açıkça onaylarsa tekrar gönder
-        if (result.code === 'WORKING_TIME_VIOLATION' && window.confirm(
-          'Plan aşağıdaki İş Kanunu kurallarını ihlal ediyor:\n\n' +
-          (result.violations ?? []).map((v) => `• ${v}`).join('\n') +
-          '\n\nYine de uygulansın mı?',
-        )) {
+        if (result.code === 'WORKING_TIME_VIOLATION' && await confirm({
+          title: 'İş Kanunu İhlali',
+          message: 'Plan aşağıdaki İş Kanunu kurallarını ihlal ediyor:',
+          items: result.violations ?? [],
+          footer: 'Yine de uygulansın mı?',
+          confirmText: 'Yine de Uygula',
+        })) {
           setApplyLoading(false)
           return applyDraft(true)
         }

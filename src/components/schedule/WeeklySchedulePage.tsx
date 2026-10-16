@@ -35,7 +35,7 @@ import { useWeeklySchedule } from './useWeeklySchedule'
 import { ApiError } from '@/lib/api/http'
 import { ShiftAssignDialog } from './ShiftAssignDialog'
 import type { ShiftSavePayload } from './ShiftAssignDialog'
-import { PageHeader, ScheduleGridSkeleton } from '@/components/common'
+import { PageHeader, ScheduleGridSkeleton, useConfirm } from '@/components/common'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 
@@ -54,6 +54,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const config = useMemo(() => getWorkingTimeConfig(), [])
+  const confirm = useConfirm()
 
   const [currentWeek, setCurrentWeek] = useState(new Date())
   const {
@@ -214,8 +215,13 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
       // Sunucu İş Kanunu ihlali buldu — yönetici açıkça onaylarsa tekrar gönder
       if (!acknowledge && err instanceof ApiError && err.code === 'WORKING_TIME_VIOLATION') {
         const violations = (err.details.violations as string[] | undefined) ?? []
-        const list = violations.map((v) => `• ${v}`).join('\n')
-        if (window.confirm(`Bu vardiya şu kuralları ihlal ediyor:\n\n${list}\n\nYine de kaydedilsin mi?`)) {
+        if (await confirm({
+          title: 'İş Kanunu İhlali',
+          message: 'Bu vardiya şu kuralları ihlal ediyor:',
+          items: violations,
+          footer: 'Yine de kaydedilsin mi?',
+          confirmText: 'Yine de Kaydet',
+        })) {
           setSaving(false)
           return handleSave(payload, true)
         }

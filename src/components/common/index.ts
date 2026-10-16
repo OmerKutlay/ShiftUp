@@ -12,3 +12,5 @@ export {
 export { EmployeeSelect } from './EmployeeSelect'
 export type { EmployeeOption } from './EmployeeSelect'
 export { DateField, MonthField } from './DateField'
+export { ConfirmProvider, useConfirm } from './ConfirmDialog'
+export type { ConfirmOptions } from './ConfirmDialog'
