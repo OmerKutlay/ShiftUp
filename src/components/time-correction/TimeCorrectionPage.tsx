@@ -18,7 +18,7 @@ import { tr } from 'date-fns/locale'
 import { useAuth } from '@/context/AuthContext'
 import { hasRole, MANAGER_ROLES } from '@/lib/auth/roles'
 import { TimeCorrectionReviewPanel } from './TimeCorrectionReviewPanel'
-import { PageHeader, PageSkeleton, ListSkeleton } from '@/components/common'
+import { DateField, PageHeader, PageSkeleton, ListSkeleton } from '@/components/common'
 import type { TimeCorrectionRequest } from '@/types/timeCorrection'
 import { TIME_CORRECTION_STATUS_LABELS, TIME_CORRECTION_STATUS_COLORS } from '@/types/timeCorrection'
 import { apiFetch } from '@/lib/api/http'
@@ -158,9 +158,8 @@ export function TimeCorrectionPage() {
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             {saveError && <Alert severity="error" onClose={() => setSaveError(null)}>{saveError}</Alert>}
-            <TextField size="small" label="Tarih" type="date" value={form.date}
-              onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
-              InputLabelProps={{ shrink: true }} fullWidth />
+            <DateField size="small" label="Tarih" value={form.date}
+              onChange={(v) => setForm((f) => ({ ...f, date: v }))} fullWidth />
             <Box sx={{ display: 'flex', gap: 1 }}>
               <TextField size="small" label="Giriş Saati" type="time" value={form.start}
                 onChange={(e) => setForm((f) => ({ ...f, start: e.target.value }))}

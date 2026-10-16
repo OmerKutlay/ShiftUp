@@ -10,10 +10,6 @@ import {
   CircularProgress,
   Alert,
   TextField,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
   Table,
   TableBody,
   TableCell,
@@ -22,7 +18,6 @@ import {
   TableRow,
   Chip,
   Tooltip,
-  SelectChangeEvent,
   Accordion,
   AccordionSummary,
   AccordionDetails,
@@ -45,7 +40,7 @@ import {
 } from '@/lib/reportRepository'
 import { fetchEmployees } from '@/lib/api/employees'
 import { format, subDays } from 'date-fns'
-import { PageHeader, TableSkeleton } from '@/components/common'
+import { DateField, EmployeeSelect, PageHeader, TableSkeleton } from '@/components/common'
 import { isKioskRole } from '@/lib/auth/roles'
 
 const STATUS_LABELS: Record<string, string> = {
@@ -291,40 +286,31 @@ export function AttendanceReportsPage({ embedded = false }: { embedded?: boolean
         sx={{ p: 2.5, border: '1px solid', borderColor: 'divider', borderRadius: 2, mb: 3 }}
       >
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'stretch', md: 'flex-end' }}>
-          <TextField
+          <DateField
             label="Başlangıç Tarihi"
-            type="date"
             value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
+            onChange={setDateFrom}
+            max={dateTo || undefined}
             size="small"
-            InputLabelProps={{ shrink: true }}
-            sx={{ minWidth: 160 }}
+            sx={{ minWidth: 210 }}
           />
-          <TextField
+          <DateField
             label="Bitiş Tarihi"
-            type="date"
             value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
+            onChange={setDateTo}
+            min={dateFrom || undefined}
             size="small"
-            InputLabelProps={{ shrink: true }}
-            sx={{ minWidth: 160 }}
+            sx={{ minWidth: 210 }}
           />
-          <FormControl size="small" sx={{ minWidth: 200 }}>
-            <InputLabel>Çalışan (Opsiyonel)</InputLabel>
-            <Select
-              value={selectedEmployee}
-              label="Çalışan (Opsiyonel)"
-              onChange={(e: SelectChangeEvent<string>) => setSelectedEmployee(e.target.value)}
-              onOpen={ensureEmployees}
-            >
-              <MenuItem value="">Tüm Çalışanlar</MenuItem>
-              {employees.map((e) => (
-                <MenuItem key={e.id} value={e.id}>
-                  {e.full_name}{!e.active && ' (Pasif)'}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <EmployeeSelect
+            employees={employees}
+            value={selectedEmployee}
+            label="Çalışan (Opsiyonel)"
+            emptyLabel="Tüm Çalışanlar"
+            onChange={setSelectedEmployee}
+            onOpen={ensureEmployees}
+            sx={{ minWidth: 240 }}
+          />
           <Button
             variant="contained"
             startIcon={<SearchIcon />}
@@ -417,14 +403,14 @@ export function AttendanceReportsPage({ embedded = false }: { embedded?: boolean
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.7rem' }}>ÇALIŞAN</TableCell>
-                      <TableCell sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.7rem' }}>TARİH</TableCell>
-                      <TableCell sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.7rem' }}>VARDİYA</TableCell>
-                      <TableCell sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.7rem' }}>DURUM</TableCell>
-                      <TableCell sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.7rem' }}>GİRİŞ</TableCell>
-                      <TableCell sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.7rem' }}>ÇIKIŞ</TableCell>
-                      <TableCell sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.7rem' }}>NET ÇALIŞMA</TableCell>
-                      <TableCell sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.7rem' }}>DOĞRULAMA</TableCell>
+                      <TableCell sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.75rem' }}>Çalışan</TableCell>
+                      <TableCell sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.75rem' }}>Tarih</TableCell>
+                      <TableCell sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.75rem' }}>Vardiya</TableCell>
+                      <TableCell sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.75rem' }}>Durum</TableCell>
+                      <TableCell sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.75rem' }}>Giriş</TableCell>
+                      <TableCell sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.75rem' }}>Çıkış</TableCell>
+                      <TableCell sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.75rem' }}>Net Çalışma</TableCell>
+                      <TableCell sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.75rem' }}>Doğrulama</TableCell>
                       <TableCell sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.7rem' }}></TableCell>
                     </TableRow>
                   </TableHead>

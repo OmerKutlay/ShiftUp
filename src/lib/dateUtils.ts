@@ -69,8 +69,10 @@ export function dayOfWeekFromDateString(dateStr: string): number {
  * Format a Date to 'EEEE' (day name) in Turkish locale.
  */
 export function formatDayNameTurkish(date: Date): string {
-  return new Intl.DateTimeFormat('tr-TR', {
+  const name = new Intl.DateTimeFormat('tr-TR', {
     weekday: 'long',
     timeZone: TURKEY_TZ,
   }).format(date)
+  // Intl küçük harf döndürür ("cuma") — başlıkta "Cuma" görünsün
+  return name.charAt(0).toLocaleUpperCase('tr-TR') + name.slice(1)
 }
