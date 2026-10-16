@@ -20,7 +20,7 @@ import { DEV_SESSION_COOKIE, IS_DEV_AUTH } from '@/lib/authConfig'
 import { verifyDevSessionEdge } from '@/lib/auth/devSessionEdge'
 import { isKioskRole, roleAtLeast, ROLES, type RoleName } from '@/lib/auth/roles'
 
-const PUBLIC_PATHS = ['/login', '/offline', '/dev-preview'] // TEMP-PREVIEW
+const PUBLIC_PATHS = ['/login', '/offline']
 const PUBLIC_API_PREFIX = '/api/auth/'
 // Cron çağrısı oturumsuz gelir; route kendi içinde CRON_SECRET / rol kontrolü yapar
 const CRON_API_PATHS = ['/api/attendance/alerts/scan']
