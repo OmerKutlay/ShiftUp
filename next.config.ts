@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { execSync } from "node:child_process";
 
 const isDev = process.env.NODE_ENV !== "production";
 
@@ -23,7 +24,32 @@ const csp = [
   "object-src 'none'",
 ].join("; ");
 
+/**
+ * Build kimliği — Service Worker sürümü (src/app/sw.js/route.ts) buradan gelir; her deploy'da
+ * değişir ki tarayıcı yeni SW'yi kursun ve eski cache'leri temizlesin. Cloudflare Workers Builds
+ * WORKERS_CI_COMMIT_SHA verir; yerelde git SHA, git de yoksa yalnızca zaman damgası kullanılır.
+ * Zaman damgası eklenir: aynı commit'in yeniden deploy'u da (ör. bağımlılık güncellemesi) yeni sürümdür.
+ */
+function resolveBuildId(): string {
+  let sha = process.env.WORKERS_CI_COMMIT_SHA ?? process.env.GITHUB_SHA ?? "";
+  if (!sha) {
+    try {
+      sha = execSync("git rev-parse HEAD", { stdio: ["ignore", "pipe", "ignore"] })
+        .toString()
+        .trim();
+    } catch {
+      sha = "";
+    }
+  }
+  const stamp = Date.now().toString(36);
+  return sha ? `${sha.slice(0, 12)}-${stamp}` : stamp;
+}
+
 const nextConfig: NextConfig = {
+  // Build anında koda gömülür (process.env.APP_BUILD_ID) — izlenen dosya değiştirilmez
+  env: {
+    APP_BUILD_ID: resolveBuildId(),
+  },
   // Cache Components (ve ona bağlı keep-alive / partialPrefetching) kapalı: Cloudflare Workers'ta
   // (OpenNext) staged render workerd üzerinde askıda kalıyor ve sayfalar 500 dönüyor.
   // Bkz. vercel/next.js#94880, opennextjs/opennextjs-cloudflare#1318 — düzeltme yayınlanınca tekrar açılabilir.
@@ -37,6 +63,14 @@ const nextConfig: NextConfig = {
   // Cloudflare quick tunnel üzerinden dev sunucusuna erişim (HMR + client JS)
   allowedDevOrigins: ["*.trycloudflare.com"],
   // FAZ 8: Güvenlik başlıkları + FAZ 11: PWA headers
+  //
+  // DİKKAT (Cloudflare / OpenNext): wrangler.jsonc'de `assets.run_worker_first` yok → public/
+  // altındaki dosyalar (manifest.json, sw-push.js, ikonlar) Workers static assets tarafından Worker
+  // ÇALIŞMADAN sunulur; bu headers() ve middleware onlara UYGULANMAZ (bkz. @opennextjs/cloudflare
+  // dist/api/overrides/asset-resolver: "When run_worker_first is false, the assets are served
+  // directly bypassing Next routing"). Bu dosyaların başlıkları public/_headers'ta tanımlıdır;
+  // aşağıdaki public dosya girdileri yalnızca `next dev` / `next start` içindir.
+  // /sw.js route handler olduğundan Worker'dan geçer; buradaki başlıklar ona uygulanır.
   async headers() {
     return [
       {
@@ -72,6 +106,14 @@ const nextConfig: NextConfig = {
         source: "/sw.js",
         headers: [
           { key: "Cache-Control", value: "no-store, no-cache, must-revalidate" },
+          { key: "Content-Type", value: "application/javascript" },
+        ],
+      },
+      {
+        // Push handler'ları — ana SW importScripts ile yükler; değişiklik hemen görünsün
+        source: "/sw-push.js",
+        headers: [
+          { key: "Cache-Control", value: "no-cache" },
           { key: "Content-Type", value: "application/javascript" },
         ],
       },
