@@ -32,6 +32,9 @@ import { useAuth } from '@/context/AuthContext'
 import { PageHeader, ListSkeleton } from '@/components/common'
 import type { Notification, NotificationType } from '@/types/notification'
 import { humanizeIsoDates } from '@/lib/dateUtils'
+import { notificationLink } from '@/lib/notificationLinks'
+import { PushPermissionCard } from '@/components/pwa/PushPermissionCard'
+import { useRouter } from 'next/navigation'
 
 const TYPE_META: Record<
   NotificationType,
@@ -63,6 +66,7 @@ function NotificationItem({
   notification: Notification
   onMarkAsRead: (id: string) => void
 }) {
+  const router = useRouter()
   const meta = TYPE_META[notification.type]
   const timeAgo = formatDistanceToNow(new Date(notification.created_at), {
     addSuffix: true,
@@ -75,6 +79,9 @@ function NotificationItem({
       <ListItemButton
         onClick={() => {
           if (!notification.is_read) onMarkAsRead(notification.id)
+          // İlgili sayfaya git (hedef bildirimler sayfasıysa yalnızca okundu işaretlenir)
+          const href = notificationLink(notification.type)
+          if (href !== '/notifications') router.push(href)
         }}
         sx={{
           px: 2.5,
@@ -199,6 +206,8 @@ export function NotificationsPage() {
           </>
         }
       />
+
+      {authEmployee && <PushPermissionCard />}
 
       {authStatus === 'unauthenticated' && (
         <Alert severity="info" sx={{ mb: 2 }}>
