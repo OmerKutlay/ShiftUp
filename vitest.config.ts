@@ -1,5 +1,5 @@
 /// <reference types="vitest" />
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
@@ -9,6 +9,8 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
+    // e2e/: Playwright testleri (npm run test:e2e); .claude/worktrees: yerel ajan çalışma ağaçları
+    exclude: [...configDefaults.exclude, 'e2e/**', '.claude/worktrees/**', 'playwright-report/**', 'test-results/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

@@ -28,6 +28,7 @@ import AddToHomeScreenIcon from '@mui/icons-material/AddToHomeScreen'
 import CloseIcon from '@mui/icons-material/Close'
 import IosShareIcon from '@mui/icons-material/IosShare'
 import { useAuth } from '@/context/AuthContext'
+import { BOTTOM_NAV_OVERLAY_OFFSET } from '@/components/layout/MobileBottomNav'
 import {
   isInstallPromptHiddenPath,
   isIosSafari,
@@ -88,8 +89,8 @@ export function InstallPrompt() {
           position: 'fixed',
           left: 'calc(12px + env(safe-area-inset-left))',
           right: 'calc(12px + env(safe-area-inset-right))',
-          // Mobil alt navigasyonun (64px) üstünde kalsın
-          bottom: 'calc(72px + env(safe-area-inset-bottom))',
+          // Mobil alt navigasyonun ve taşan QR butonunun üstünde kalsın
+          bottom: `calc(${BOTTOM_NAV_OVERLAY_OFFSET}px + env(safe-area-inset-bottom))`,
           zIndex: theme.zIndex.snackbar - 1,
           p: 2,
           bgcolor: '#1e293b',
