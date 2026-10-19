@@ -180,7 +180,7 @@ export function DashboardPage() {
                     >
                       {entry.start_time.slice(0, 5)} – {entry.end_time.slice(0, 5)}
                     </Typography>
-                    <StatusBadge tone={cfg.tone} label={cfg.label} sx={{ minWidth: 82, justifyContent: 'center' }} />
+                    <StatusBadge tone={cfg.tone} label={cfg.label} className="min-w-[82px]" />
                   </SectionRow>
                 )
               })

@@ -8,8 +8,6 @@
  *   alt başlık
  *   meta (ör. son güncelleme)
  */
-import { Box, Typography } from '@mui/material'
-
 interface PageHeaderProps {
   /** Başlığın üstündeki küçük, soluk satır */
   overline?: React.ReactNode
@@ -19,48 +17,23 @@ interface PageHeaderProps {
   meta?: React.ReactNode
   /** Sağ üstte gösterilecek buton(lar) */
   actions?: React.ReactNode
-  /** Başlığın yanında gösterilecek chip vb. */
+  /** Başlığın yanında gösterilecek rozet vb. */
   titleAdornment?: React.ReactNode
 }
 
 export function PageHeader({ overline, title, subtitle, meta, actions, titleAdornment }: PageHeaderProps) {
   return (
-    <Box
-      component="header"
-      sx={{ mb: 3, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}
-    >
-      <Box sx={{ minWidth: 0 }}>
-        {overline && (
-          <Typography variant="caption" component="p" color="text.secondary" fontWeight={500} sx={{ mb: 0.25 }}>
-            {overline}
-          </Typography>
-        )}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-          <Typography
-            component="h1"
-            color="text.primary"
-            sx={{ fontWeight: 700, fontSize: { xs: '1.6rem', md: '1.85rem' }, lineHeight: 1.2, letterSpacing: '-0.01em' }}
-          >
-            {title}
-          </Typography>
+    <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+      <div className="min-w-0">
+        {overline && <p className="mb-0.5 text-xs font-medium text-ink-secondary">{overline}</p>}
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-[1.6rem] font-bold leading-tight tracking-tight md:text-[1.85rem]">{title}</h1>
           {titleAdornment}
-        </Box>
-        {subtitle && (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-            {subtitle}
-          </Typography>
-        )}
-        {meta && (
-          <Typography variant="caption" color="text.disabled" sx={{ mt: 0.25, display: 'block' }}>
-            {meta}
-          </Typography>
-        )}
-      </Box>
-      {actions && (
-        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap', alignSelf: 'flex-start' }}>
-          {actions}
-        </Box>
-      )}
-    </Box>
+        </div>
+        {subtitle && <div className="mt-1 text-sm text-ink-secondary">{subtitle}</div>}
+        {meta && <p className="mt-0.5 text-xs text-ink-muted">{meta}</p>}
+      </div>
+      {actions && <div className="flex flex-wrap items-center gap-2 self-start">{actions}</div>}
+    </header>
   )
 }

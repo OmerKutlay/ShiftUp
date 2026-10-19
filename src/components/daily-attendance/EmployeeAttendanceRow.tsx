@@ -21,7 +21,7 @@ export function EmployeeAttendanceRow({ entry }: Props) {
   const tone = SHIFT_KIND_TONES[shiftKindOf(undefined, start, end)]
 
   return (
-    <SectionRow sx={{ flexWrap: 'wrap', rowGap: 1 }}>
+    <SectionRow className="flex-wrap gap-y-2">
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, flex: '1 1 220px', minWidth: 0 }}>
         <PersonAvatar name={employee.full_name} size={36} />
         <Box sx={{ minWidth: 0 }}>

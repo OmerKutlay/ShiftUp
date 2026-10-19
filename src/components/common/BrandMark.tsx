@@ -1,30 +1,16 @@
-'use client'
-
 /**
  * BrandMark — kiremit kare logo (beyaz güneş). public/icon-*.png ile aynı çizim.
  */
-import { Box } from '@mui/material'
-import WbSunnyOutlinedIcon from '@mui/icons-material/WbSunnyOutlined'
-import { C } from '@/lib/palette'
+import { Sun } from 'lucide-react'
 
 export function BrandMark({ size = 32 }: { size?: number }) {
   return (
-    <Box
+    <span
       aria-hidden
-      sx={{
-        width: size,
-        height: size,
-        borderRadius: `${Math.round(size * 0.28)}px`,
-        bgcolor: 'primary.main',
-        color: C.white,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexShrink: 0,
-        '& svg': { fontSize: size * 0.62 },
-      }}
+      className="flex shrink-0 items-center justify-center bg-primary text-white"
+      style={{ width: size, height: size, borderRadius: Math.round(size * 0.28) }}
     >
-      <WbSunnyOutlinedIcon />
-    </Box>
+      <Sun style={{ width: size * 0.62, height: size * 0.62 }} strokeWidth={2} />
+    </span>
   )
 }
