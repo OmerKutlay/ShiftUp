@@ -6,7 +6,6 @@
  */
 import Link from 'next/link'
 import {
-  Avatar,
   Box,
   Button,
   List,
@@ -25,16 +24,7 @@ import { getMoreItems, groupNavItems } from '@/components/layout/navItems'
 import { PushPermissionCard } from '@/components/pwa/PushPermissionCard'
 import { PushDiagnosticsPanel } from '@/components/pwa/PushDiagnosticsPanel'
 import { ROLES, roleAtLeast } from '@/lib/auth/roles'
-import { C } from '@/lib/palette'
-
-function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p.charAt(0).toLocaleUpperCase('tr-TR'))
-    .join('')
-}
+import { PageHeader, PersonAvatar } from '@/components/common'
 
 export function MorePage() {
   const { employee, status, signOut } = useAuth()
@@ -45,6 +35,7 @@ export function MorePage() {
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 640, mx: 'auto', color: 'text.primary' }}>
+      <PageHeader title="Daha fazla" />
       {/* Profil özeti */}
       <Paper
         variant="outlined"
@@ -60,9 +51,7 @@ export function MorePage() {
           </>
         ) : (
           <>
-            <Avatar sx={{ width: 48, height: 48, bgcolor: 'primary.dark', color: C.white, fontWeight: 800 }}>
-              {employee ? initials(employee.full_name) : '?'}
-            </Avatar>
+            <PersonAvatar name={employee?.full_name ?? '?'} size={48} />
             <Box sx={{ flex: 1, minWidth: 0 }}>
               <Typography variant="subtitle1" fontWeight={700} noWrap>
                 {employee?.full_name ?? 'Giriş yapılmadı'}

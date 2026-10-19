@@ -1,8 +1,8 @@
 'use client'
 
 /**
- * MobileBottomNav — mobilde (md altı) sabit alt sekme çubuğu.
- * Sekmeler role göre navItems.getBottomTabs'tan gelir; ortadaki QR Tara yükseltilmiş yuvarlak butondur.
+ * MobileBottomNav — mobilde (md altı) alt sekme çubuğu.
+ * Sekmeler role göre navItems.getBottomTabs'tan gelir; ekranın altında yüzen kart, aktif sekme açık kiremit zeminli.
  */
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -12,17 +12,17 @@ import { useAuth } from '@/context/AuthContext'
 import { getActiveTabHref, getBottomTabs, type BottomTab } from './navItems'
 import { C, tint } from '@/lib/palette'
 
-/** Alt bar yüksekliği (safe-area hariç) */
+/** Alt bar kartının yüksekliği (safe-area hariç) */
 export const BOTTOM_NAV_HEIGHT = 64
-const CENTER_SIZE = 56
-/** Ortadaki QR butonunun barın üstüne taşan kısmı */
-const CENTER_OVERHANG = CENTER_SIZE / 3
+/** Kartın ekran kenarlarına uzaklığı (yüzen kart) */
+const NAV_GAP = 10
+/** İçeriğin altta bırakması gereken boşluk: kart + alt boşluk */
+export const BOTTOM_NAV_SPACE = BOTTOM_NAV_HEIGHT + NAV_GAP
 /**
  * Mobilde alttan konumlanan katmanların (çevrimdışı bandı, güncelleme uyarısı, kurulum kartı)
- * alt boşluğu (safe-area hariç): bar + taşan QR butonu + 8px. Yalnızca bar yüksekliği kadar
- * yukarıda duran katmanlar ortadaki QR butonunun üst kısmını örtüyordu.
+ * alt boşluğu (safe-area hariç): yüzen kartın üstünde 8px.
  */
-export const BOTTOM_NAV_OVERLAY_OFFSET = Math.ceil(BOTTOM_NAV_HEIGHT + CENTER_OVERHANG + 8)
+export const BOTTOM_NAV_OVERLAY_OFFSET = BOTTOM_NAV_SPACE + 8
 
 export function MobileBottomNav() {
   const pathname = usePathname()
@@ -33,6 +33,7 @@ export function MobileBottomNav() {
   const activeHref = getActiveTabHref(pathname, tabs)
 
   return (
+    // Dış kutu ekranın altına yapışık ve saydam; görünen kısım içteki yüzen kart
     <Box
       component="nav"
       aria-label="Alt menü"
@@ -42,82 +43,47 @@ export function MobileBottomNav() {
         right: 0,
         bottom: 0,
         zIndex: theme.zIndex.appBar,
-        height: `calc(${BOTTOM_NAV_HEIGHT}px + env(safe-area-inset-bottom))`,
-        pb: 'env(safe-area-inset-bottom)',
-        pl: 'env(safe-area-inset-left)',
-        pr: 'env(safe-area-inset-right)',
-        display: 'flex',
-        alignItems: 'stretch',
-        bgcolor: tint(C.canvas, 0.85),
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
-        borderTop: '1px solid',
-        borderColor: 'divider',
+        pb: `calc(${NAV_GAP}px + env(safe-area-inset-bottom))`,
+        pl: `calc(${NAV_GAP}px + env(safe-area-inset-left))`,
+        pr: `calc(${NAV_GAP}px + env(safe-area-inset-right))`,
+        pointerEvents: 'none',
         userSelect: 'none',
         WebkitUserSelect: 'none',
         WebkitTouchCallout: 'none',
       })}
     >
-      {tabs.map((tab) => (
-        <TabLink key={tab.href} tab={tab} active={tab.href === activeHref} />
-      ))}
+      <Box
+        sx={{
+          height: BOTTOM_NAV_HEIGHT,
+          display: 'flex',
+          alignItems: 'stretch',
+          gap: 0.5,
+          p: 0.75,
+          pointerEvents: 'auto',
+          bgcolor: tint(C.surface, 0.94),
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+          border: '1px solid',
+          borderColor: 'divider',
+          borderRadius: '20px',
+          boxShadow: `0 6px 20px ${tint(C.ink, 0.08)}`,
+        }}
+      >
+        {tabs.map((tab) => (
+          <TabLink key={tab.href} tab={tab} active={tab.href === activeHref} />
+        ))}
+      </Box>
     </Box>
   )
 }
 
 function TabLink({ tab, active }: { tab: BottomTab; active: boolean }) {
-  const common = {
-    href: tab.href,
-    prefetch: false,
-    'aria-current': active ? ('page' as const) : undefined,
-  }
-
-  if (tab.center) {
-    return (
-      <Box
-        component={Link}
-        {...common}
-        aria-label={tab.label}
-        sx={{
-          flex: 1,
-          display: 'flex',
-          justifyContent: 'center',
-          textDecoration: 'none',
-          touchAction: 'manipulation',
-          WebkitTapHighlightColor: 'transparent',
-          outline: 'none',
-          '&:focus-visible > span': { outline: '2px solid', outlineColor: 'primary.light', outlineOffset: 3 },
-        }}
-      >
-        <Box
-          component="span"
-          sx={{
-            width: CENTER_SIZE,
-            height: CENTER_SIZE,
-            // Barın üstüne taşan yükseltilmiş buton
-            mt: `-${CENTER_OVERHANG}px`,
-            borderRadius: '50%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            bgcolor: active ? 'primary.dark' : 'primary.main',
-            color: C.white,
-            boxShadow: `0 6px 16px ${tint(C.brand, 0.35)}, 0 0 0 4px ${C.canvas}`,
-            transition: 'transform 0.15s, background-color 0.15s',
-            '&:active': { transform: 'scale(0.94)' },
-            '& svg': { fontSize: 28 },
-          }}
-        >
-          {tab.icon}
-        </Box>
-      </Box>
-    )
-  }
-
   return (
     <Box
       component={Link}
-      {...common}
+      href={tab.href}
+      prefetch={false}
+      aria-current={active ? 'page' : undefined}
       sx={{
         flex: 1,
         minWidth: 0,
@@ -126,14 +92,17 @@ function TabLink({ tab, active }: { tab: BottomTab; active: boolean }) {
         alignItems: 'center',
         justifyContent: 'center',
         gap: 0.25,
+        borderRadius: '14px',
         textDecoration: 'none',
         color: active ? 'primary.main' : 'text.secondary',
+        bgcolor: active ? C.brandSoft : 'transparent',
+        transition: 'background-color 0.15s',
         touchAction: 'manipulation',
         WebkitTapHighlightColor: 'transparent',
         outline: 'none',
-        '&:focus-visible': { bgcolor: tint(C.brand, 0.12) },
+        '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.light' },
         '&:active': { opacity: 0.7 },
-        '& svg': { fontSize: 24 },
+        '& svg': { fontSize: 22 },
       }}
     >
       {tab.icon}

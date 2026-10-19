@@ -13,23 +13,23 @@ import {
   IconButton,
   useMediaQuery,
   useTheme,
-  Divider,
   Tooltip,
 } from '@mui/material'
 import MenuIcon from '@mui/icons-material/Menu'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
-import PersonIcon from '@mui/icons-material/Person'
+import WbSunnyOutlinedIcon from '@mui/icons-material/WbSunnyOutlined'
 import LogoutIcon from '@mui/icons-material/Logout'
 
 import { ErrorBoundary } from './ErrorBoundary'
-import { MobileBottomNav, BOTTOM_NAV_HEIGHT } from './MobileBottomNav'
+import { MobileBottomNav, BOTTOM_NAV_SPACE } from './MobileBottomNav'
 import { PullToRefresh } from './PullToRefresh'
-import { NAV_ITEMS, SCAN_HREF, filterNavItems, getPageTitle, isNavActive } from './navItems'
+import { NAV_ITEMS, SCAN_HREF, filterNavItems, isNavActive } from './navItems'
 import { NotificationBell } from '@/components/notifications/NotificationBell'
 import { useAuth } from '@/context/AuthContext'
+import { PersonAvatar } from '@/components/common/PersonAvatar'
 import { C, tint } from '@/lib/palette'
 
-const DRAWER_WIDTH = 220
+const DRAWER_WIDTH = 232
 const DRAWER_COLLAPSED = 64
 const MOBILE_BAR_HEIGHT = 56
 
@@ -46,41 +46,38 @@ export function AppShell({ children }: Props) {
   const { employee: authEmployee, signOut, status: authStatus } = useAuth()
   const authRoleName = authEmployee?.roles?.name ?? authEmployee?.role_name ?? null
 
-  const pageTitle = getPageTitle(pathname)
-
   const drawerWidth = collapsed && !isMobile ? DRAWER_COLLAPSED : DRAWER_WIDTH
 
+  const narrow = collapsed && !isMobile
+  const userName = authStatus === 'authenticated' && authEmployee ? authEmployee.full_name : null
+  const userRole = authEmployee?.roles?.name ?? authEmployee?.role ?? ''
+
   const drawerContent = (
-    <Box
-      sx={{
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        bgcolor: tint(C.canvas, 0.98),
-        borderRight: '1px solid',
-        borderColor: 'divider',
-      }}
-    >
-      {/* Logo / Brand */}
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'background.default' }}>
+      {/* Logo / Marka */}
       <Box
         sx={{
-          px: collapsed && !isMobile ? 1 : 2,
-          py: 2,
+          px: narrow ? 1 : 2,
+          pt: 2.5,
+          pb: 2,
           display: 'flex',
           alignItems: 'center',
-          justifyContent: collapsed && !isMobile ? 'center' : 'space-between',
-          minHeight: 56,
+          justifyContent: narrow ? 'center' : 'space-between',
+          gap: 1,
         }}
       >
-        {(!collapsed || isMobile) && (
-          <Typography
-            variant="subtitle1"
-            fontWeight={800}
-            color="primary.main"
-            letterSpacing={1}
-          >
-            ShiftUp
-          </Typography>
+        {!narrow && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}>
+            <BrandMark />
+            <Box sx={{ minWidth: 0 }}>
+              <Typography fontWeight={700} fontSize="0.95rem" lineHeight={1.2} color="text.primary">
+                ShiftUp
+              </Typography>
+              <Typography fontSize="0.7rem" color="text.secondary" noWrap>
+                Vardiya yönetimi
+              </Typography>
+            </Box>
+          </Box>
         )}
         {!isMobile && (
           <IconButton
@@ -95,54 +92,51 @@ export function AppShell({ children }: Props) {
         )}
       </Box>
 
-      <Divider sx={{ borderColor: 'divider' }} />
-
       {/* Nav items */}
       {/* Kısa ekranlarda liste kendi içinde kayar; alttaki kullanıcı/çıkış alanı görünür kalır */}
-      <List sx={{ flex: 1, minHeight: 0, overflowY: 'auto', px: 1, pt: 1 }}>
+      <List sx={{ flex: 1, minHeight: 0, overflowY: 'auto', px: 1, pt: 0.5 }}>
         {filterNavItems(NAV_ITEMS, authRoleName).map((item) => {
           const active = isNavActive(pathname, item.href)
           return (
-            <Tooltip
-              key={item.href}
-              title={collapsed && !isMobile ? item.label : ''}
-              placement="right"
-            >
+            <Tooltip key={item.href} title={narrow ? item.label : ''} placement="right">
               <ListItemButton
                 component={Link}
                 href={item.href}
                 prefetch={false}
                 selected={active}
                 aria-current={active ? 'page' : undefined}
-                aria-label={collapsed && !isMobile ? item.label : undefined}
+                aria-label={narrow ? item.label : undefined}
                 sx={{
-                  borderRadius: 2,
-                  mb: 0.5,
-                  minHeight: 44,
-                  justifyContent: collapsed && !isMobile ? 'center' : 'flex-start',
-                  px: collapsed && !isMobile ? 1.5 : 2,
+                  borderRadius: '10px',
+                  mb: 0.25,
+                  minHeight: 40,
+                  justifyContent: narrow ? 'center' : 'flex-start',
+                  px: narrow ? 1.5 : 1.5,
+                  '&:hover': { bgcolor: tint(C.ink, 0.04) },
                   '&.Mui-selected': {
-                    bgcolor: tint(C.brand, 0.12),
-                    '&:hover': { bgcolor: tint(C.brand, 0.18) },
+                    bgcolor: 'background.paper',
+                    boxShadow: `0 1px 2px ${tint(C.ink, 0.06)}`,
+                    '&:hover': { bgcolor: 'background.paper' },
                   },
+                  '& svg': { fontSize: 20 },
                 }}
               >
                 <ListItemIcon
                   sx={{
                     color: active ? 'primary.main' : 'text.secondary',
-                    minWidth: collapsed && !isMobile ? 0 : 36,
+                    minWidth: narrow ? 0 : 32,
                     justifyContent: 'center',
                   }}
                 >
                   {item.icon}
                 </ListItemIcon>
-                {(!collapsed || isMobile) && (
+                {!narrow && (
                   <ListItemText
                     primary={item.label}
                     primaryTypographyProps={{
                       fontSize: '0.85rem',
                       fontWeight: active ? 700 : 500,
-                      color: active ? 'primary.main' : 'text.secondary',
+                      color: active ? 'text.primary' : 'text.secondary',
                     }}
                   />
                 )}
@@ -152,66 +146,52 @@ export function AppShell({ children }: Props) {
         })}
       </List>
 
-      <Divider sx={{ borderColor: 'divider' }} />
-
-      {/* Aktif çalışan + bildirim */}
-      <Box sx={{ px: collapsed && !isMobile ? 0.5 : 1.5, py: 1.25 }}>
-        {(!collapsed || isMobile) ? (
-          <>
-            {/* Auth bilgisi */}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.75 }}>
-              <PersonIcon sx={{ fontSize: 14, color: 'text.secondary', flexShrink: 0 }} />
-              <Typography variant="caption" color="text.secondary" fontWeight={500} noWrap sx={{ flex: 1 }}>
-                {authStatus === 'authenticated' && authEmployee
-                  ? authEmployee.full_name
-                  : 'Giriş yapılmadı'}
-              </Typography>
-            </Box>
-            {authStatus === 'authenticated' && authEmployee && (
-              <Typography variant="caption" color="text.disabled" noWrap sx={{ display: 'block', mb: 0.75, pl: 2.75 }}>
-                {authEmployee.roles?.name ?? authEmployee.role}
-              </Typography>
-            )}
-            {/* Bildirim + logout satırı */}
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <NotificationBell
-                employeeId={authEmployee?.id ?? null}
-                collapsed={false}
-              />
-              {authStatus === 'authenticated' && (
-                <Tooltip title="Çıkış Yap">
-                  <IconButton
-                    size="small"
-                    onClick={signOut}
-                    sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}
-                    aria-label="Çıkış Yap"
-                  >
-                    <LogoutIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
+      {/* Aktif çalışan + bildirim + çıkış */}
+      <Box
+        sx={{
+          px: narrow ? 0.5 : 1.5,
+          py: 1.5,
+          display: 'flex',
+          flexDirection: narrow ? 'column' : 'row',
+          alignItems: 'center',
+          gap: narrow ? 0.5 : 1,
+        }}
+      >
+        {userName ? (
+          <Tooltip title={narrow ? `${userName} · ${userRole}` : ''} placement="right">
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, flex: narrow ? 'none' : 1 }}>
+              <PersonAvatar name={userName} size={32} />
+              {!narrow && (
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography fontSize="0.8rem" fontWeight={700} noWrap color="text.primary">
+                    {userName}
+                  </Typography>
+                  <Typography fontSize="0.7rem" color="text.secondary" noWrap>
+                    {userRole}
+                  </Typography>
+                </Box>
               )}
             </Box>
-          </>
+          </Tooltip>
         ) : (
-          /* Collapsed: bildirim ikonu + logout */
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5 }}>
-            <NotificationBell
-              employeeId={authEmployee?.id ?? null}
-              collapsed={true}
-            />
-            {authStatus === 'authenticated' && (
-              <Tooltip title="Çıkış Yap" placement="right">
-                <IconButton
-                  size="small"
-                  onClick={signOut}
-                  sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}
-                  aria-label="Çıkış Yap"
-                >
-                  <LogoutIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            )}
-          </Box>
+          !narrow && (
+            <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
+              Giriş yapılmadı
+            </Typography>
+          )
+        )}
+        <NotificationBell employeeId={authEmployee?.id ?? null} collapsed />
+        {authStatus === 'authenticated' && (
+          <Tooltip title="Çıkış Yap" placement={narrow ? 'right' : 'top'}>
+            <IconButton
+              size="small"
+              onClick={signOut}
+              sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}
+              aria-label="Çıkış Yap"
+            >
+              <LogoutIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
         )}
       </Box>
     </Box>
@@ -236,27 +216,20 @@ export function AppShell({ children }: Props) {
             display: 'flex',
             alignItems: 'center',
             gap: 1,
-            bgcolor: tint(C.canvas, 0.85),
+            bgcolor: tint(C.canvas, 0.9),
             backdropFilter: 'blur(12px)',
             WebkitBackdropFilter: 'blur(12px)',
-            borderBottom: '1px solid',
-            borderColor: 'divider',
             userSelect: 'none',
             WebkitUserSelect: 'none',
           }}
         >
-          {/* Navigasyon alt bar + /more'a taşındı; üst bar yalnızca sayfa başlığı + bildirim */}
-          <Typography
-            component="div"
-            variant="subtitle1"
-            fontWeight={800}
-            color={pageTitle === 'ShiftUp' ? 'primary.main' : 'text.primary'}
-            letterSpacing={pageTitle === 'ShiftUp' ? 1 : 0}
-            noWrap
-            sx={{ flex: 1, minWidth: 0 }}
-          >
-            {pageTitle}
-          </Typography>
+          {/* Navigasyon alt bar + /more'a taşındı; sayfa başlığı sayfanın kendisinde (PageHeader) */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1, minWidth: 0 }}>
+            <BrandMark size={28} />
+            <Typography component="div" fontWeight={700} fontSize="1rem" color="text.primary" noWrap>
+              ShiftUp
+            </Typography>
+          </Box>
           {/* Bildirimler her sayfadan tek dokunuşla erişilebilir olsun */}
           {authStatus === 'authenticated' && authEmployee && (
             <Box sx={{ ml: 'auto' }}>
@@ -308,15 +281,51 @@ export function AppShell({ children }: Props) {
           pt: isMobile ? `${MOBILE_BAR_HEIGHT}px` : 0,
           // Alt bar içeriği örtmesin: bar yüksekliği + body'nin safe-area-inset-bottom padding'i
           // birlikte barın (64px + safe-area) kapladığı alanı karşılar
-          pb: isMobile ? `${BOTTOM_NAV_HEIGHT}px` : 0,
+          pb: isMobile ? `${BOTTOM_NAV_SPACE}px` : 0,
+          // Masaüstü: içerik krem zemin üstünde beyaz, yuvarlak köşeli panelde
+          ...(!isMobile && { py: 1.5, pr: 1.5 }),
         }}
       >
+        <Box
+          sx={isMobile ? undefined : {
+            minHeight: 'calc(100dvh - 24px)',
+            bgcolor: 'background.paper',
+            border: '1px solid',
+            borderColor: 'divider',
+            borderRadius: '20px',
+            overflow: 'clip',
+          }}
+        >
         {/* Ağaç her boyutta aynı kalsın (breakpoint değişince sayfa state'i sıfırlanmasın);
             yalnızca mobilde etkin, QR tarayıcıda kamera akışıyla çakışmasın diye kapalı */}
         <PullToRefresh disabled={!isMobile || isNavActive(pathname, SCAN_HREF)}>
           <ErrorBoundary>{children}</ErrorBoundary>
         </PullToRefresh>
+        </Box>
       </Box>
+    </Box>
+  )
+}
+
+/** Kiremit kare logo */
+function BrandMark({ size = 32 }: { size?: number }) {
+  return (
+    <Box
+      aria-hidden
+      sx={{
+        width: size,
+        height: size,
+        borderRadius: `${Math.round(size * 0.28)}px`,
+        bgcolor: 'primary.main',
+        color: C.white,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+        '& svg': { fontSize: size * 0.62 },
+      }}
+    >
+      <WbSunnyOutlinedIcon />
     </Box>
   )
 }

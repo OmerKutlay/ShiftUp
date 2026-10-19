@@ -6,7 +6,6 @@
  */
 import { useState } from 'react'
 import { Box, Tab, Tabs } from '@mui/material'
-import SettingsIcon from '@mui/icons-material/Settings'
 import { PageHeader } from '@/components/common'
 import { StoreLocationPage } from './StoreLocationPage'
 import { HolidaysPanel } from './HolidaysPanel'
@@ -17,8 +16,8 @@ import { PushDiagnosticsPanel } from '@/components/pwa/PushDiagnosticsPanel'
 export function SettingsPage() {
   const [tab, setTab] = useState(0)
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: 'background.default', color: 'text.primary' }}>
-      <PageHeader icon={SettingsIcon} overline="Yönetim" title="Ayarlar" subtitle="Mağaza konumu, resmi tatiller, denetim kaydı ve bildirimler" />
+    <Box sx={{ p: { xs: 2, md: 3 }, color: 'text.primary' }}>
+      <PageHeader title="Ayarlar" subtitle="Mağaza konumu, resmi tatiller, denetim kaydı ve bildirimler" />
       <Tabs
         value={tab}
         onChange={(_, v: number) => setTab(v)}

@@ -14,7 +14,6 @@ import {
   IconButton,
   Tooltip,
 } from '@mui/material'
-import ScheduleIcon from '@mui/icons-material/Schedule'
 import AddIcon from '@mui/icons-material/Add'
 import EditIcon from '@mui/icons-material/Edit'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
@@ -83,10 +82,8 @@ export function ShiftTemplatesPage() {
   const activeCount = templates.filter((t) => t.active).length
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: 'background.default', color: 'text.primary' }}>
+    <Box sx={{ p: { xs: 2, md: 3 }, color: 'text.primary' }}>
       <PageHeader
-        icon={ScheduleIcon}
-        overline="Vardiya"
         title="Vardiya Şablonları"
         subtitle={isFirstLoad ? <Skeleton width={100} /> : `${activeCount} aktif şablon`}
         actions={

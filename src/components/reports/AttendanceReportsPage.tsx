@@ -286,11 +286,9 @@ export function AttendanceReportsPage({ embedded = false }: { embedded?: boolean
   }
 
   return (
-    <Box sx={embedded ? undefined : { p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: 'background.default', color: 'text.primary' }}>
+    <Box sx={embedded ? undefined : { p: { xs: 2, md: 3 }, color: 'text.primary' }}>
       {!embedded && (
         <PageHeader
-          icon={BarChartIcon}
-          overline="Raporlama"
           title="Devam Raporları"
           subtitle="Tarih aralığı ve çalışana göre filtreleyerek rapor oluşturun"
         />

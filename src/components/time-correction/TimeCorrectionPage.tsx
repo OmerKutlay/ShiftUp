@@ -94,8 +94,6 @@ export function TimeCorrectionPage() {
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 720, mx: 'auto' }}>
       <PageHeader
-        icon={AccessTimeIcon}
-        overline="Mesai"
         title="Mesai Düzeltme Talebi"
         subtitle="Eksik veya hatalı giriş/çıkış kayıtları için düzeltme talep edin"
         actions={
