@@ -30,7 +30,7 @@ async function getKioskQr(req: NextRequest, trace: RequestTrace): Promise<NextRe
   const auth = await requireAuth(req, { allowKiosk: true })
   trace.step('auth', { ok: !('response' in auth) })
   if ('response' in auth) return auth.response
-  if (!canViewKioskQr(auth.employee.role_name)) return forbidden()
+  if (!canViewKioskQr(auth.employee.access_level)) return forbidden()
 
   try {
     const rate = await checkRateLimit(`kiosk_qr:${auth.employee.id}`, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS)

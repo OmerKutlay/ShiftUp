@@ -3,6 +3,7 @@ import { runPlanner, validatePlan, classifyManagers } from '../workforcePlanner'
 import type { PlannerEmployee, PlannerShiftTemplate } from '../workforcePlanner'
 import { netWorkMins } from '../workingTimeService'
 import { PART_TIME_RULES } from '@/types/employee'
+import type { PlanningGroup } from '@/lib/auth/roles'
 
 // ─── Test fixtures ────────────────────────────────────────────────────────────
 
@@ -28,16 +29,14 @@ const WEEK_DAYS  = [
 
 function makeEmp(
   id: string,
-  position: string,
-  role_name: string,
+  planning_group: PlanningGroup | null,
   et: 'full_time' | 'part_time',
   leaveDays: string[] = [],
 ): PlannerEmployee {
   return {
     id,
     full_name: id,
-    position,
-    role_name,
+    planning_group,
     employment_type: et,
     availability: {},
     leaveDays: new Set(leaveDays),
@@ -45,17 +44,17 @@ function makeEmp(
 }
 
 const EMPLOYEES: PlannerEmployee[] = [
-  makeEmp('emp-mudur',    'Magaza Muduru',             'Magaza Muduru',         'full_time'),
-  makeEmp('emp-yardimci', 'Mudur Yardimcisi',          'Mudur Yardimcisi',      'full_time'),
-  makeEmp('emp-gorsel',   'Gorsel Uzmani',             'Calisan',               'full_time'),
-  makeEmp('emp-depo',     'Depo Gorevlisi',            'Calisan',               'full_time'),
-  makeEmp('emp-kasiyer1', 'Kasiyer',                   'Calisan',               'full_time'),
-  makeEmp('emp-kasiyer2', 'Kasiyer',                   'Calisan',               'part_time'),
-  makeEmp('emp-kasiyer3', 'Kasiyer',                   'Calisan',               'part_time'),
-  makeEmp('emp-kasiyer4', 'Kasiyer',                   'Calisan',               'full_time'),
-  makeEmp('emp-satis1',   'Satis Danismani',           'Calisan',               'full_time'),
-  makeEmp('emp-satis2',   'Satis Danismani',           'Calisan',               'full_time'),
-  makeEmp('emp-satis3',   'Satis Danismani',           'Calisan',               'part_time'),
+  makeEmp('emp-mudur', 'store_manager',         'full_time'),
+  makeEmp('emp-yardimci', 'assistant_manager',      'full_time'),
+  makeEmp('emp-gorsel', 'visual',               'full_time'),
+  makeEmp('emp-depo', 'stock',               'full_time'),
+  makeEmp('emp-kasiyer1', 'cashier',               'full_time'),
+  makeEmp('emp-kasiyer2', 'cashier',               'part_time'),
+  makeEmp('emp-kasiyer3', 'cashier',               'part_time'),
+  makeEmp('emp-kasiyer4', 'cashier',               'full_time'),
+  makeEmp('emp-satis1', 'sales',               'full_time'),
+  makeEmp('emp-satis2', 'sales',               'full_time'),
+  makeEmp('emp-satis3', 'sales',               'part_time'),
 ]
 
 const INPUT = {
@@ -255,7 +254,7 @@ describe('Senaryo 5 — Günlük yönetici kapsaması', () => {
 describe('Senaryo 6 — Kasiyer minimum ihtiyacı', () => {
   const result = runPlanner(INPUT)
   const kasiyerIds = new Set(
-    EMPLOYEES.filter((e) => e.position.toLowerCase().includes('kasiyer')).map((e) => e.id)
+    EMPLOYEES.filter((e) => e.planning_group === 'cashier').map((e) => e.id)
   )
 
   test.each(WEEK_DAYS)('%s günü en az 2 kasiyer çalışmalı', (dateStr) => {
@@ -355,7 +354,7 @@ describe('Senaryo 10 — Yetersiz personelde hata', () => {
   test('Kasiyer yokken opening kasiyer hatası üretilmeli', () => {
     const noKasiyerResult = runPlanner({
       ...INPUT,
-      employees: EMPLOYEES.filter((e) => !e.position.toLowerCase().includes('kasiyer')),
+      employees: EMPLOYEES.filter((e) => e.planning_group !== 'cashier'),
     })
     const kasiyerErrors = noKasiyerResult.warnings.filter(
       (w) => w.level === 'error' && (
@@ -394,7 +393,7 @@ describe('Senaryo 11 — hasHardViolation planı engeller', () => {
   test('Geçersiz planda hasHardViolation true olmalı', () => {
     const result = runPlanner({
       ...INPUT,
-      employees: EMPLOYEES.filter((e) => !e.position.toLowerCase().includes('kasiyer')),
+      employees: EMPLOYEES.filter((e) => e.planning_group !== 'cashier'),
     })
     expect(result.hasHardViolation).toBe(true)
   })
@@ -509,20 +508,20 @@ describe('Senaryo 15 — FT 45 saat tamamlama ve açılış/kapanış dengesi', 
 
 // Gerçek mağaza kadrosuna benzer: 1 FT + 2 PT kasiyer, 3 FT + 4 PT satış danışmanı
 const STORE: PlannerEmployee[] = [
-  makeEmp('mm',   'Müdür',                    'Mağaza Müdürü',    'full_time'),
-  makeEmp('mmy',  'Mağaza Müdür Yardımcısı',  'Müdür Yardımcısı', 'full_time'),
-  makeEmp('k-ft', 'Kasiyer',                  'Çalışan',          'full_time'),
-  makeEmp('k-p1', 'Kasiyer',                  'Çalışan',          'part_time'),
-  makeEmp('k-p2', 'Kasiyer',                  'Çalışan',          'part_time'),
-  makeEmp('s-f1', 'Satış Danışmanı',          'Çalışan',          'full_time'),
-  makeEmp('s-f2', 'Satış Danışmanı',          'Çalışan',          'full_time'),
-  makeEmp('s-f3', 'Satış Danışmanı',          'Çalışan',          'full_time'),
-  makeEmp('s-p1', 'Satış Danışmanı',          'Çalışan',          'part_time'),
-  makeEmp('s-p2', 'Satış Danışmanı',          'Çalışan',          'part_time'),
-  makeEmp('s-p3', 'Satış Danışmanı',          'Çalışan',          'part_time'),
-  makeEmp('s-p4', 'Satış Danışmanı',          'Çalışan',          'part_time'),
-  makeEmp('gor',  'Görsel Uzmanı',            'Yönetici',         'full_time'),
-  makeEmp('dep',  'Depo Görevlisi',           'Çalışan',          'full_time'),
+  makeEmp('mm', 'store_manager',    'full_time'),
+  makeEmp('mmy', 'assistant_manager', 'full_time'),
+  makeEmp('k-ft', 'cashier',          'full_time'),
+  makeEmp('k-p1', 'cashier',          'part_time'),
+  makeEmp('k-p2', 'cashier',          'part_time'),
+  makeEmp('s-f1', 'sales',          'full_time'),
+  makeEmp('s-f2', 'sales',          'full_time'),
+  makeEmp('s-f3', 'sales',          'full_time'),
+  makeEmp('s-p1', 'sales',          'part_time'),
+  makeEmp('s-p2', 'sales',          'part_time'),
+  makeEmp('s-p3', 'sales',          'part_time'),
+  makeEmp('s-p4', 'sales',          'part_time'),
+  makeEmp('gor', 'visual',         'full_time'),
+  makeEmp('dep', 'stock',          'full_time'),
 ]
 const STORE_INPUT = { ...INPUT, employees: STORE }
 
@@ -617,7 +616,7 @@ describe('Senaryo 18 — Çalışılmış vardiyalar korunur ve limitlere dahil 
 
 describe('Senaryo 19 — 18 yaş altı korumaları (Md. 73) ve geçen Pazar → Pazartesi dinlenme', () => {
   test.each([1, 2, 3, 4, 5])('seed %i: 17 yaşındakine 20:00 sonrası veya 8 saati aşan vardiya verilmez', (seed) => {
-    const genc = { ...makeEmp('genc', 'Satış Danışmanı', 'Çalışan', 'part_time'), birthDate: '2009-06-01' }
+    const genc = { ...makeEmp('genc', 'sales', 'part_time'), birthDate: '2009-06-01' }
     const r = runPlanner({ ...STORE_INPUT, employees: [...STORE, genc], seed })
     const shifts = r.assignments.filter((a) => a.employee_id === 'genc')
     expect(shifts.length).toBeGreaterThan(0)
@@ -629,7 +628,7 @@ describe('Senaryo 19 — 18 yaş altı korumaları (Md. 73) ve geçen Pazar → 
   })
 
   test('validator 18 yaş altı kapanış vardiyasını hata olarak yakalamalı', () => {
-    const genc = { ...makeEmp('genc', 'Satış Danışmanı', 'Çalışan', 'part_time'), birthDate: '2009-06-01' }
+    const genc = { ...makeEmp('genc', 'sales', 'part_time'), birthDate: '2009-06-01' }
     const errors = validatePlan([{
       employee_id: 'genc', employee_name: 'genc', shift_template_id: null, reason: '',
       work_date: '2026-10-14', start_time: '14:00', end_time: '22:00', shift_kind: 'closing',
@@ -647,32 +646,32 @@ describe('Senaryo 19 — 18 yaş altı korumaları (Md. 73) ve geçen Pazar → 
 
 // ─── Senaryo 20: Gerçek kadro — tek müdür, birden fazla yardımcı ─────────────
 
-// Canlı veriye benzer: kademe yalnızca DB rolünden okunur. "Yönetici" sistem rolündeki
-// Görsel Uzmanı / Şef Kasiyer / pozisyonu "Müdür" ya da "Patron" yazanlar yönetici değildir.
+// Canlı kadro: görev yalnızca rolün planning_group alanından okunur. Admin (batuhan, mertcan)
+// planlanmaz; Admin · Kasiyer (omerf) ve Admin · Satış Danışmanı (eminenur) görevine göre planlanır.
 const REAL: PlannerEmployee[] = [
-  makeEmp('seyfullah', 'Müdür',                   'Mağaza Müdürü',    'full_time'),
-  makeEmp('batuhan',   'Patron',                  'Yönetici',         'full_time'),
-  makeEmp('mertcan',   'Müdür',                   'Yönetici',         'full_time'),
-  makeEmp('kader',     'Mağaza Müdür Yardımcısı', 'Müdür Yardımcısı', 'full_time'),
-  makeEmp('zehra',     'Görsel Uzmanı',           'Yönetici',         'full_time'),
-  makeEmp('omerf',     'Şef Kasiyer',             'Yönetici',         'full_time'),
-  makeEmp('tulay',     'Depo Görevlisi',          'Çalışan',          'full_time'),
-  makeEmp('esra',      'Kasiyer',                 'Çalışan',          'full_time'),
-  makeEmp('kayra',     'Kasiyer',                 'Çalışan',          'part_time'),
-  makeEmp('omer',      'Kasiyer',                 'Çalışan',          'part_time'),
-  makeEmp('eminenur',  'Reyon Görevlisi',         'Çalışan',          'full_time'),
-  makeEmp('zeynep',    'Satış Danışmanı',         'Çalışan',          'full_time'),
-  makeEmp('cigdem',    'Satış Danışmanı',         'Çalışan',          'full_time'),
-  makeEmp('sevval',    'Satış Danışmanı',         'Çalışan',          'full_time'),
-  makeEmp('methiye',   'Satış Danışmanı',         'Çalışan',          'part_time'),
-  makeEmp('aleyna',    'Satış Danışmanı',         'Çalışan',          'part_time'),
-  makeEmp('efe',       'Satış Danışmanı',         'Çalışan',          'part_time'),
-  makeEmp('beyzanur',  'Satış Danışmanı',         'Çalışan',          'part_time'),
+  makeEmp('seyfullah', 'store_manager',    'full_time'),
+  makeEmp('batuhan', null,         'full_time'),
+  makeEmp('mertcan', null,         'full_time'),
+  makeEmp('kader', 'assistant_manager', 'full_time'),
+  makeEmp('zehra', 'visual',         'full_time'),
+  makeEmp('omerf', 'cashier',         'full_time'),
+  makeEmp('tulay', 'stock',          'full_time'),
+  makeEmp('esra', 'cashier',          'full_time'),
+  makeEmp('kayra', 'cashier',          'part_time'),
+  makeEmp('omer', 'cashier',          'part_time'),
+  makeEmp('eminenur', 'sales',          'full_time'),
+  makeEmp('zeynep', 'sales',          'full_time'),
+  makeEmp('cigdem', 'sales',          'full_time'),
+  makeEmp('sevval', 'sales',          'full_time'),
+  makeEmp('methiye', 'sales',          'part_time'),
+  makeEmp('aleyna', 'sales',          'part_time'),
+  makeEmp('efe', 'sales',          'part_time'),
+  makeEmp('beyzanur', 'sales',          'part_time'),
 ]
 const REAL_MANAGERS = new Set(['seyfullah', 'kader'])
 
 describe('Senaryo 20 — Tek müdür + birden fazla yardımcı (gerçek kadro)', () => {
-  test('classifyManagers: kademe DB rolünden; pozisyonu "Müdür" olan Yönetici rolü yönetici sayılmaz', () => {
+  test('classifyManagers: yalnızca vardiya yöneticisi görevleri; planlanmayan Admin yönetici sayılmaz', () => {
     const r = classifyManagers(REAL)
     expect(r.storeManager?.id).toBe('seyfullah')
     expect(r.assistants.map((e) => e.id)).toEqual(['kader'])
@@ -680,7 +679,7 @@ describe('Senaryo 20 — Tek müdür + birden fazla yardımcı (gerçek kadro)',
   })
 
   test('birden fazla yardımcı: hepsi yönetici havuzunda, izin günlerini algoritma seçer', () => {
-    const extra = makeEmp('yrd2', 'Mağaza Müdür Yardımcısı', 'Müdür Yardımcısı', 'full_time')
+    const extra = makeEmp('yrd2', 'assistant_manager', 'full_time')
     const managers = new Set([...REAL_MANAGERS, 'yrd2'])
     for (let seed = 1; seed <= 10; seed++) {
       const r = runPlanner({ ...INPUT, employees: [...REAL, extra], seed })
@@ -708,13 +707,13 @@ describe('Senaryo 20 — Tek müdür + birden fazla yardımcı (gerçek kadro)',
   })
 
   test('iki Mağaza Müdürü rolü varsa biri müdür, diğeri yardımcı gibi planlanır ve uyarı verilir', () => {
-    const employees = REAL.map((e) => (e.id === 'batuhan' ? { ...e, role_name: 'Mağaza Müdürü' } : e))
+    const employees = REAL.map((e) => (e.id === 'batuhan' ? { ...e, planning_group: 'store_manager' as const } : e))
     expect(classifyManagers(employees).storeManager?.id).toBe('seyfullah')
     const r = runPlanner({ ...INPUT, employees, seed: 1 })
     expect(r.warnings.some((w) => w.level === 'warning' && w.message.includes('Birden fazla Mağaza Müdürü'))).toBe(true)
   })
 
-  test('Yönetici rolündeki Görsel Uzmanı sabit 08:00 kalıbında çalışır', () => {
+  test('Görsel Uzmanı (yönetici yetkili) sabit 08:00 kalıbında çalışır', () => {
     const r = runPlanner({ ...INPUT, employees: REAL, seed: 3 })
     const z = r.assignments.filter((a) => a.employee_id === 'zehra')
     expect(z).toHaveLength(6)
@@ -917,7 +916,7 @@ describe('Senaryo 26 — FT her zaman 45 saat; iki yönetici aynı gün full olm
     const r = runPlanner({ ...INPUT, employees, seed })
     expect(r.warnings.filter((w) => w.level === 'error'), `seed ${seed}`).toEqual([])
     expect(r.stats['zeynep'].totalMins, `seed ${seed}`).toBe(45 * 60)
-    for (const e of REAL.filter((x) => x.employment_type === 'full_time')) {
+    for (const e of REAL.filter((x) => x.employment_type === 'full_time' && x.planning_group !== null)) {
       expect(r.stats[e.id].totalMins, `seed ${seed} ${e.id}`).toBe(45 * 60)
     }
     for (const d of WEEK_DAYS) {
@@ -948,7 +947,7 @@ describe('Senaryo 27 — Bugün Cuma: fazla mesai, bekleyen izin ve uzun seri', 
     ids.flatMap((id) => past.filter((_, i) => !skip(id, i)).map((d) => ({ employee_id: id, work_date: d, start_time: start, end_time: end })))
 
   test('yönetici eksiği önce vardiya uzatmayla kapanır; tam 45 kurulamazsa fazla mesai en az', () => {
-    const extra = makeEmp('yrd2', 'Mağaza Müdür Yardımcısı', 'Müdür Yardımcısı', 'full_time')
+    const extra = makeEmp('yrd2', 'assistant_manager', 'full_time')
     const managers = ['mm', 'mmy', 'yrd2']
     // Her yönetici Pzt–Per 3 gün çalıştı; kalan 3 açık günde kapsama bağı yok
     for (const [start, end, maxOvertime] of [['10:00', '19:00', 0], ['10:00', '20:00', 30]] as const) {
@@ -1005,5 +1004,100 @@ describe('Senaryo 27 — Bugün Cuma: fazla mesai, bekleyen izin ve uzun seri', 
     const avoidable = validatePlan(plan.map((a) => ({ ...a, worked: false })), [{ ...emp, prevStreak: 5 }], WEEK_DAYS)
       .find((w) => w.message.includes('üst üste'))
     expect(avoidable?.level).toBe('warning')
+  })
+})
+
+// ─── Senaryo 28: Görev yalnızca rolden; tek bir değişiklik planı bozmaz ───────
+
+describe('Senaryo 28 — Rol tabanlı görev ve küçük değişikliklere dayanıklılık', () => {
+  const errorsOf = (r: ReturnType<typeof runPlanner>) => r.warnings.filter((w) => w.level === 'error')
+  const LEADS = new Set(['seyfullah', 'kader'])
+
+  test('planlanmayan rol (Admin) vardiya ve özet satırı almaz; elle yazılan vardiyası korunur', () => {
+    const r = runPlanner({ ...INPUT, employees: REAL, seed: 1 })
+    expect(r.assignments.some((a) => a.employee_id === 'batuhan' || a.employee_id === 'mertcan')).toBe(false)
+    expect(r.stats['batuhan']).toBeUndefined()
+    const fixedAssignments = [{ employee_id: 'mertcan', work_date: WEEK_DAYS[2], start_time: '10:00', end_time: '18:00' }]
+    const kept = runPlanner({ ...INPUT, employees: REAL, fixedAssignments, seed: 1 })
+    expect(kept.assignments.filter((a) => a.employee_id === 'mertcan')).toHaveLength(1)
+    expect(errorsOf(kept)).toEqual([])
+  })
+
+  test('Reyon Sorumlusu açılış/kapanış yönetici kapsamasını sağlar', () => {
+    const employees = REAL.map((e) => (e.id === 'kader' ? { ...e, planning_group: 'floor_lead' as const } : e))
+    for (let seed = 1; seed <= 5; seed++) {
+      const r = runPlanner({ ...INPUT, employees, seed })
+      expect(errorsOf(r), `seed ${seed}`).toEqual([])
+      expect(r.assignments.some((a) => a.employee_id === 'kader' && a.shift_kind === 'mid'), `seed ${seed}`).toBe(false)
+    }
+  })
+
+  test('yönetici dışındaki herhangi bir çalışanın görevi/çalışma tipi değişince hata çıkmaz', () => {
+    const groups: Array<PlanningGroup | null> = [null, 'floor_lead', 'visual', 'stock', 'cashier', 'sales']
+    for (const emp of REAL.filter((e) => !LEADS.has(e.id))) {
+      for (const g of groups) {
+        for (const et of ['full_time', 'part_time'] as const) {
+          const employees = REAL.map((e) => (e.id === emp.id ? { ...e, planning_group: g, employment_type: et } : e))
+          const r = runPlanner({ ...INPUT, employees, seed: 1 })
+          expect(errorsOf(r), `${emp.id} → ${g}/${et}`).toEqual([])
+        }
+      }
+    }
+  })
+
+  test('herhangi bir çalışana tek gün izin / haftalık tatil eklenince hata çıkmaz', () => {
+    for (const emp of REAL) {
+      for (const d of [WEEK_DAYS[1], WEEK_DAYS[5]]) {
+        for (const paid of [true, false]) {
+          const employees = REAL.map((e) => (e.id === emp.id
+            ? { ...e, leaveDays: new Set([d]), paidLeaveDays: new Set(paid ? [d] : []) }
+            : e))
+          const r = runPlanner({ ...INPUT, employees, seed: 1 })
+          expect(errorsOf(r), `${emp.id} ${d} ${paid ? 'izin' : 'H.İ.'}`).toEqual([])
+        }
+      }
+    }
+  })
+
+  test('PT yönetici fazla mesai almaz (30 saat yasal sınır)', () => {
+    const employees = REAL.map((e) => (e.id === 'kader' ? { ...e, employment_type: 'part_time' as const } : e))
+    for (let seed = 1; seed <= 3; seed++) {
+      const r = runPlanner({ ...INPUT, employees, seed })
+      expect(r.stats['kader'].totalMins, `seed ${seed}`).toBeLessThanOrEqual(PART_TIME_RULES.maxWeeklyHours * 60)
+      expect(r.stats['kader'].workDays, `seed ${seed}`).toBeLessThanOrEqual(PART_TIME_RULES.maxWeeklyDays)
+    }
+  })
+
+  test('tek vardiya yöneticisi kalırsa sebebi ve çözümü söyleyen hata verilir', () => {
+    const employees = REAL.map((e) => (e.id === 'kader' ? { ...e, planning_group: 'sales' as const } : e))
+    const r = runPlanner({ ...INPUT, employees, seed: 1 })
+    expect(errorsOf(r).some((w) => w.message.startsWith('Vardiya yöneticisi yetersiz') && w.message.includes('Reyon Sorumlusu'))).toBe(true)
+  })
+
+  test('Görsel/Depo: haftalık tatil başka güne kayıtlıysa Pazar çalışır, iki izin günü uyarısı çıkmaz', () => {
+    const tuesday = WEEK_DAYS[1]
+    const employees = REAL.map((e) => (e.id === 'zehra' || e.id === 'tulay'
+      ? { ...e, leaveDays: new Set([tuesday]), paidLeaveDays: new Set<string>() }
+      : e))
+    const r = runPlanner({ ...INPUT, employees, seed: 1 })
+    expect(errorsOf(r)).toEqual([])
+    for (const id of ['zehra', 'tulay']) {
+      expect(r.assignments.some((a) => a.employee_id === id && a.work_date === WEEK_DAYS[6]), id).toBe(true)
+      expect(r.assignments.some((a) => a.employee_id === id && a.work_date === tuesday), id).toBe(false)
+      expect(r.stats[id].totalMins, id).toBe(45 * 60)
+    }
+    expect(r.warnings.some((w) => w.message.includes('izin/tatil günü tanımlı'))).toBe(false)
+  })
+
+  test('saat limiti yüzünden boş kalan gün: uzatmalar geri çekilip gün eklenir (FT 45 saat)', () => {
+    // Haftada yalnızca 5 gün müsait FT satış danışmanı: 4 full ile 40 saatte kalmamalı
+    const employees = REAL.map((e) => (e.id === 'zeynep'
+      ? { ...e, availability: { monday: [{ start_time: '00:00', end_time: '23:59', is_available: false }] } }
+      : e))
+    for (let seed = 1; seed <= 5; seed++) {
+      const r = runPlanner({ ...INPUT, employees, seed })
+      expect(errorsOf(r), `seed ${seed}`).toEqual([])
+      expect(r.stats['zeynep'].totalMins, `seed ${seed}`).toBe(45 * 60)
+    }
   })
 })

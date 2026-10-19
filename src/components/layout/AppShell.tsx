@@ -44,13 +44,13 @@ export function AppShell({ children }: Props) {
   const [collapsed, setCollapsed] = useState(false)
   const pathname = usePathname()
   const { employee: authEmployee, signOut, status: authStatus } = useAuth()
-  const authRoleName = authEmployee?.roles?.name ?? authEmployee?.role_name ?? null
+  const authRoleName = authEmployee?.roles?.access_level ?? null
 
   const drawerWidth = collapsed && !isMobile ? DRAWER_COLLAPSED : DRAWER_WIDTH
 
   const narrow = collapsed && !isMobile
   const userName = authStatus === 'authenticated' && authEmployee ? authEmployee.full_name : null
-  const userRole = authEmployee?.roles?.name ?? authEmployee?.role ?? ''
+  const userRole = authEmployee?.roles?.name ?? ''
 
   const drawerContent = (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'background.default' }}>

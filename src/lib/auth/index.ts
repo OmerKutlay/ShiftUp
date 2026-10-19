@@ -2,7 +2,7 @@
  * @/lib/auth barrel export
  *
  * ── Client-safe (browser'da import edilebilir) ──────────────
- *   hasRole, ROLES, MANAGER_ROLES, ADMIN_ROLES, roleAtLeast
+ *   hasRole, ACCESS, MANAGER_ROLES, ADMIN_ROLES, roleAtLeast
  *
  * ── Server-only (API routes, middleware) ────────────────────
  *   requireAuth, requireRole, requireMinRole, canAccessEmployee,
@@ -17,7 +17,9 @@
 
 // ── Client-safe ───────────────────────────────────────────────
 export {
-  ROLES,
+  ACCESS,
+  ACCESS_LABELS,
+  accessLevelOf,
   MANAGER_ROLES,
   ADMIN_ROLES,
   roleAtLeast,
@@ -27,7 +29,7 @@ export {
   KIOSK_ROLE_ID,
   NOT_KIOSK_FILTER,
 } from './roles'
-export type { RoleName } from './roles'
+export type { AccessLevel, PlanningGroup } from './roles'
 
 export { hasRole } from './authorization'
 

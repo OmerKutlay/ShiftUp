@@ -16,7 +16,7 @@
 import { randomBytes } from 'crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { QrTokenError } from '@/lib/qrTokenService'
-import { isKioskRole, roleAtLeast, ROLES } from '@/lib/auth/roles'
+import { isKioskRole, roleAtLeast, ACCESS, type AccessLevel } from '@/lib/auth/roles'
 
 export const KIOSK_QR_TOPIC = 'kiosk-qr'
 export const KIOSK_QR_EVENT = 'qr'
@@ -29,8 +29,8 @@ export interface KioskQr {
 }
 
 /** Kiosk hesabı veya Müdür Yardımcısı+ kiosk QR'ını görebilir / kanala katılabilir */
-export function canViewKioskQr(roleName: string | null | undefined): boolean {
-  return isKioskRole(roleName) || (!!roleName && roleAtLeast(roleName, ROLES.MUDUR_YARDIMCISI))
+export function canViewKioskQr(accessLevel: AccessLevel | null | undefined): boolean {
+  return isKioskRole(accessLevel) || (!!accessLevel && roleAtLeast(accessLevel, ACCESS.MANAGER))
 }
 
 export function isKioskQr(qrData: string): boolean {

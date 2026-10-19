@@ -47,14 +47,14 @@ function req(path: string, init: { method?: string; cookie?: string; origin?: st
 const OLD_COOKIE = 'sb-proj-auth-token=OLD_TOKEN'
 const location = (res: Response) => res.headers.get('location')?.replace(BASE, '') ?? null
 
-function asEmployee(role: string, active = true) {
-  employeeRow = { data: { active, roles: { name: role } }, error: null }
+function asEmployee(accessLevel: string, active = true) {
+  employeeRow = { data: { active, roles: { access_level: accessLevel } }, error: null }
 }
 
 beforeEach(() => {
   vi.clearAllMocks()
   getUser.mockResolvedValue({ user: { id: 'auth-1' }, refreshed: false })
-  asEmployee('Çalışan')
+  asEmployee('employee')
 })
 
 describe('middleware — /login ile korumalı sayfalar aynı ölçütü kullanır', () => {
@@ -70,14 +70,14 @@ describe('middleware — /login ile korumalı sayfalar aynı ölçütü kullanı
   })
 
   it('pasif çalışan oturumu da döngüye girmez', async () => {
-    asEmployee('Çalışan', false)
+    asEmployee('employee', false)
     expect(location(await middleware(req('/schedule', { cookie: OLD_COOKIE })))).toBe('/login?next=%2Fschedule')
     expect((await middleware(req('/login', { cookie: OLD_COOKIE }))).status).toBe(200)
   })
 
   it('geçerli oturum: /login → "/" ; kiosk → /qr-kiosk', async () => {
     expect(location(await middleware(req('/login', { cookie: OLD_COOKIE })))).toBe('/')
-    asEmployee('Kiosk')
+    asEmployee('kiosk')
     expect(location(await middleware(req('/login', { cookie: OLD_COOKIE })))).toBe('/qr-kiosk')
   })
 
@@ -121,7 +121,7 @@ describe('middleware — yenilenen oturum çerezleri yönlendirmede korunur', ()
   })
 
   it('kiosk hesabı başka sayfaya giderse /qr-kiosk yönlendirmesi çerezi taşır', async () => {
-    asEmployee('Kiosk')
+    asEmployee('kiosk')
     getUser.mockResolvedValue({ user: { id: 'auth-1' }, refreshed: true })
     const res = await middleware(req('/schedule', { cookie: OLD_COOKIE }))
     expect(location(res)).toBe('/qr-kiosk')

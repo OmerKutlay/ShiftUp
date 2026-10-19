@@ -33,7 +33,7 @@ export interface TimeCorrectionRequest {
   created_at: string
   updated_at: string
   // join
-  employee?: { id: string; full_name: string; role: string } | null
+  employee?: { id: string; full_name: string; roles?: { name: string } | null } | null
   reviewer?: { id: string; full_name: string } | null
 }
 

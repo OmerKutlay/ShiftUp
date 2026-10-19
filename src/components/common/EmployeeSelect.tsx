@@ -9,7 +9,8 @@ import type { SxProps, Theme } from '@mui/material'
 export interface EmployeeOption {
   id: string
   full_name: string
-  role?: string | null
+  /** Sistem rolü (join) — yalnızca ad gösterilir */
+  roles?: { name: string } | null
   active?: boolean
 }
 
@@ -21,7 +22,7 @@ interface EmployeeSelectProps<T extends EmployeeOption> {
   label: string
   /** Seçim yokken gösterilen metin (örn. "Tüm Çalışanlar"); verilirse temizleme butonu da açılır */
   emptyLabel?: string
-  /** Seçenekte pozisyonu ikinci satırda göster */
+  /** Seçenekte rol adını ikinci satırda göster */
   showRole?: boolean
   onOpen?: () => void
   size?: 'small' | 'medium'
@@ -37,7 +38,7 @@ function normalize(s: string): string {
 }
 
 const filter = createFilterOptions<EmployeeOption>({
-  stringify: (o) => normalize(`${o.full_name} ${o.role ?? ''}`),
+  stringify: (o) => normalize(`${o.full_name} ${o.roles?.name ?? ''}`),
 })
 
 export function EmployeeSelect<T extends EmployeeOption>({
@@ -79,7 +80,7 @@ export function EmployeeSelect<T extends EmployeeOption>({
           {showRole ? (
             <Box>
               <Typography variant="body2" fontWeight={600}>{optionLabel(o)}</Typography>
-              {o.role && <Typography variant="caption" color="text.secondary">{o.role}</Typography>}
+              {o.roles?.name && <Typography variant="caption" color="text.secondary">{o.roles.name}</Typography>}
             </Box>
           ) : (
             optionLabel(o)

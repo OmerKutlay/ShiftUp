@@ -46,9 +46,9 @@ export async function POST(req: NextRequest) {
 
     if (openShift.role_needed) {
       const needed = String(openShift.role_needed).toLocaleLowerCase('tr-TR').trim()
-      const mine = (currentEmployee.role ?? '').toLocaleLowerCase('tr-TR').trim()
+      const mine = (currentEmployee.role_name ?? '').toLocaleLowerCase('tr-TR').trim()
       if (needed && needed !== mine) {
-        return forbidden(`Bu vardiya "${openShift.role_needed}" pozisyonu için açılmış.`)
+        return forbidden(`Bu vardiya "${openShift.role_needed}" rolü için açılmış.`)
       }
     }
 

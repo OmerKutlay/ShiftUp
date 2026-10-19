@@ -11,7 +11,7 @@ import {
   getNotificationsByEmployee,
 } from '@/lib/notificationRepository'
 import type { CreateNotificationPayload, NotificationType } from '@/types/notification'
-import { requireAuth, requireMinRole, ROLES, MANAGER_ROLES, hasRole } from '@/lib/auth'
+import { requireAuth, requireMinRole, ACCESS, MANAGER_ROLES, hasRole } from '@/lib/auth'
 import { scanMissedAttendanceThrottled } from '@/lib/attendanceAlerts'
 import { badRequest, readJson, serverError } from '@/lib/apiErrors'
 import { isUuid } from '@/lib/validation'
@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
     const admin = createAdminClient()
 
     // Yönetici bildirimlerini çekerken okutulmamış giriş/çıkış taraması (dakikada en fazla bir kez)
-    if (hasRole(currentEmployee.role_name, MANAGER_ROLES)) await scanMissedAttendanceThrottled(admin)
+    if (hasRole(currentEmployee.access_level, MANAGER_ROLES)) await scanMissedAttendanceThrottled(admin)
 
     const notifications = await getNotificationsByEmployee(admin, currentEmployee.id, limit)
     return NextResponse.json({ notifications })
@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
 
 // ─── POST ───────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
-  const auth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
+  const auth = await requireMinRole(req, ACCESS.MANAGER)
   if ('response' in auth) return auth.response
 
   try {

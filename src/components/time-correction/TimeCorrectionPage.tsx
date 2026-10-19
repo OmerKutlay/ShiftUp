@@ -89,7 +89,7 @@ export function TimeCorrectionPage() {
   if (authStatus === 'loading') return <PageSkeleton rows={4} maxWidth={720} />
   if (authStatus === 'unauthenticated' || !employee) return <Alert severity="warning" sx={{ m: 3 }}>Bu sayfayı görmek için giriş yapmanız gerekiyor.</Alert>
 
-  const isManager = hasRole(employee.roles?.name ?? employee.role_name ?? null, MANAGER_ROLES)
+  const isManager = hasRole(employee.roles?.access_level ?? null, MANAGER_ROLES)
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 720, mx: 'auto' }}>

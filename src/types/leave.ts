@@ -58,7 +58,7 @@ export interface LeaveRequestWithEmployee extends LeaveRequest {
   employees: {
     id: string
     full_name: string
-    role: string
+    roles?: { name: string } | null
   } | null
 }
 

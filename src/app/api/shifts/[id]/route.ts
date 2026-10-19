@@ -4,7 +4,7 @@
  *                           vardiya silinemez (çalışılmış saatler korunur).
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { requireMinRole, ROLES } from '@/lib/auth'
+import { requireMinRole, ACCESS } from '@/lib/auth'
 import { updateShiftAssignment, deleteShiftAssignment } from '@/lib/scheduleRepository'
 import { ShiftConflictError } from '@/types/schedule'
 import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/apiErrors'
@@ -28,7 +28,7 @@ async function loadShift(id: string) {
 }
 
 export async function PATCH(req: NextRequest, { params }: Ctx) {
-  const auth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
+  const auth = await requireMinRole(req, ACCESS.MANAGER)
   if ('response' in auth) return auth.response
 
   const { id } = await params
@@ -98,7 +98,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 }
 
 export async function DELETE(req: NextRequest, { params }: Ctx) {
-  const auth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
+  const auth = await requireMinRole(req, ACCESS.MANAGER)
   if ('response' in auth) return auth.response
 
   const { id } = await params

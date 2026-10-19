@@ -7,9 +7,11 @@
  * göre sabit katalogdan (SHIFTS) gelir; aynı saatlere sahip bir şablon varsa
  * shift_template_id olarak bağlanır.
  *
- * Yönetici kadrosu: tek Mağaza Müdürü + birden fazla olabilen Müdür Yardımcısı; kademe
- * yalnızca DB rolünden okunur. "Yönetici" rolü sistem yetkisidir, mağaza kademesi değildir;
- * bu roldeki çalışan pozisyonuna göre (Görsel Uzmanı, Şef Kasiyer…) planlanır.
+ * Görev yalnızca sistem rolünün planning_group alanından okunur (rol adı ve yetki seviyesi
+ * planlamayı etkilemez): store_manager / assistant_manager / floor_lead → vardiya yöneticisi
+ * (açılış/kapanış kapsaması), visual / stock → 08:00 sabit kalıp, cashier, sales.
+ * planning_group null olan (ör. Admin) çalışan planlanmaz. Tek Mağaza Müdürü planlanır;
+ * fazlası yardımcı gibi planlanır.
  *
  * Bugünden önceki günler kapalıdır: yeni atama yapılmaz, kapsama aranmaz, o günlerin
  * mevcut vardiyaları (çalışılmış ya da gelinmemiş) olduğu gibi korunur.
@@ -18,14 +20,16 @@
  *   1. Yöneticiler: H.İ. günlerini algoritma seçer (sabit gün yok)
  *      (her gün en az bir yönetici kalacak şekilde). İki+ yöneticili günde biri açılış,
  *      biri kapanış; tek yöneticili günde o kişi full (10:00–22:00). Ortacı yok.
- *   2. Görsel Uzman & Depo: Pzt–Cum 08:00–17:00, Cmt 08:00–14:00, Pazar izin (= 45s)
+ *   2. Görsel Uzman & Depo: Pzt–Cum 08:00–17:00, Cmt 08:00–14:00, Pazar izin (= 45s).
+ *      Haftalık tatil başka bir güne kaydedilmişse Pazar çalışma günü olur.
  *   3. Perşembe etiket yenileme: 2 çalışan daha 08:00–17:00
  *   4. FT kasiyer Perşembe full tercihi
  *   5. Günlük minimum kapsama (kasiyer opening/closing, satış danışmanı)
  *   6. Kalan günleri doldur: FT 6 gün, PT 4 gün; gün yükü ve açılış/kapanış dengesine göre
  *   7. FT saat tamamlama: mevcut vardiyalar katalogdaki uzun/kısa varyantlarla
  *      değiştirilerek haftalık hedefe (45s; her kayıp gün için 7,5s düşülür) en yakın
- *      kombinasyon aranır
+ *      kombinasyon aranır. Mevcut günlerle hedefe ulaşılamıyorsa uzatmalar geri alınıp
+ *      boş bir güne vardiya eklenir ve yeniden tamamlanır (ör. 4 full = 40s → 5 gün = 45s).
  *   8. Bağımsız validator ile planın tamamını kontrol et
  *
  * HARD CONSTRAINTS (ihlal → hasHardViolation = true, plan onaylanamaz):
@@ -36,7 +40,7 @@
  *   - Her takvim haftasında 1 gün hafta tatili (FT en fazla 6 gün, İş K. Md. 46). Geçen haftayla
  *     birlikte 6 günü aşan seriden mümkünse kaçınılır; aşarsa yalnızca uyarı verilir.
  *   - Her gün ≥1 opening kasiyer, ≥1 closing kasiyer, toplam ≥2 kasiyer
- *   - Her gün opening + closing'de yönetici (Müdür veya Müdür Yardımcısı) bulunmalı
+ *   - Her gün opening + closing'de yönetici (Müdür, Müdür Yardımcısı veya Reyon Sorumlusu) bulunmalı
  *   - Yönetici ortacı (mid) almaz
  *   - İzin/availability çakışması yok
  *   - Aynı çalışana aynı gün çakışan iki vardiya yok
@@ -50,6 +54,7 @@ import { getWorkingTimeConfig } from './workingTimeConfig'
 import { completedYears, minorWorkViolations } from './laborLaw'
 import { PART_TIME_RULES } from '@/types/employee'
 import { addDaysToDateString } from './dateUtils'
+import { SHIFT_LEAD_GROUPS, type PlanningGroup } from './auth/roles'
 
 // ─── Tipler ─────────────────────────────────────────────────────────────────
 
@@ -65,10 +70,8 @@ export interface PlannerShiftTemplate {
 export interface PlannerEmployee {
   id: string
   full_name: string
-  /** Serbest metin pozisyon (Kasiyer, Satış Danışmanı, Görsel Uzmanı vs.) */
-  position: string
-  /** DB roles.name – Yönetici / Mağaza Müdürü / Müdür Yardımcısı / Çalışan */
-  role_name: string
+  /** Sistem rolündeki görev (roles.planning_group); null = planlanmaz */
+  planning_group: PlanningGroup | null
   employment_type: 'full_time' | 'part_time'
   /** Gün → [availability kayıtları] */
   availability: Record<string, Array<{ start_time: string; end_time: string; is_available: boolean }>>
@@ -204,17 +207,6 @@ const LABEL_DAY_EXTRA_STAFF = 2
 // Yoğun günler (personel planlama önceliği)
 const HEAVY_DAYS = new Set(['thursday', 'friday', 'saturday', 'sunday'])
 
-// Pozisyon eşleştirme listeleri
-const POS_MUDUR           = ['mudur', 'magaza muduru', 'mağaza müdürü', 'store manager']
-const POS_MUDUR_YARDIMCISI = ['yardimci', 'mudur yardimcisi', 'müdür yardımcısı', 'muduru yardimcisi', 'assistant manager']
-const POS_GORSEL_UZMAN    = ['gorsel', 'görsel', 'visual']
-const POS_DEPO            = ['depo', 'storage', 'warehouse']
-const POS_KASIYER         = ['kasiyer', 'kasa', 'cashier']
-const POS_SATIS           = ['satis', 'satış', 'danisman', 'danışman', 'sales', 'reyon']
-// Kısaltmalar (tam eşleşme): M.M = Mağaza Müdürü, M.M.Y = Müdür Yardımcısı
-const ABBR_MUDUR            = ['mm']
-const ABBR_MUDUR_YARDIMCISI = ['mmy']
-
 // ─── Vardiya kataloğu (mağaza 10:00–22:00) ───────────────────────────────────
 
 type ShiftKey =
@@ -275,78 +267,40 @@ const SHIFT_NET: Record<ShiftKey, number> = Object.fromEntries(
 
 // ─── Yardımcı fonksiyonlar ───────────────────────────────────────────────────
 
-function normTR(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/ı/g, 'i').replace(/İ/g, 'i')
-    .replace(/ş/g, 's').replace(/Ş/g, 's')
-    .replace(/ğ/g, 'g').replace(/Ğ/g, 'g')
-    .replace(/ö/g, 'o').replace(/Ö/g, 'o')
-    .replace(/ü/g, 'u').replace(/Ü/g, 'u')
-    .replace(/ç/g, 'c').replace(/Ç/g, 'c')
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+function inGroup(emp: PlannerEmployee, ...groups: PlanningGroup[]): boolean {
+  return emp.planning_group !== null && groups.includes(emp.planning_group)
 }
 
-function positionIs(pos: string, list: string[]): boolean {
-  const n = normTR(pos)
-  return list.some((p) => n.includes(normTR(p)))
-}
-
-function abbrIs(pos: string, list: string[]): boolean {
-  const n = normTR(pos).replace(/[\s.]/g, '')
-  return list.includes(n)
-}
-
-/** Kademe yalnızca DB rolünden okunur; pozisyon metni ("Müdür", "Patron"…) yönetici yapmaz */
-function roleIs(emp: PlannerEmployee, list: string[], abbrs: string[]): boolean {
-  return positionIs(emp.role_name, list) || abbrIs(emp.role_name, abbrs)
-}
-
-/** Müdür Yardımcısı (DB rolü). Önce bu kontrol edilmeli: 'Müdür Yardımcısı' metni 'mudur' da içerir. */
-function isAssistantManager(emp: PlannerEmployee): boolean {
-  return roleIs(emp, POS_MUDUR_YARDIMCISI, ABBR_MUDUR_YARDIMCISI)
-}
-
-/** Mağaza Müdürü (DB rolü, yardımcı değil) */
-function isStoreManager(emp: PlannerEmployee): boolean {
-  return !isAssistantManager(emp) && roleIs(emp, POS_MUDUR, ABBR_MUDUR)
-}
-
-/** Mağaza kademesinde yönetici mi (Müdür veya Müdür Yardımcısı). "Yönetici" sistem rolü sayılmaz. */
+/** Vardiya yöneticisi mi (Müdür, Müdür Yardımcısı, Reyon Sorumlusu) — açılış/kapanış kapsaması */
 function isManagerRole(emp: PlannerEmployee): boolean {
-  return isStoreManager(emp) || isAssistantManager(emp)
+  return inGroup(emp, ...SHIFT_LEAD_GROUPS)
 }
 
 export interface ManagerRoster {
-  /** Planlanan tek Mağaza Müdürü (Salı izinli) */
+  /** Planlanan tek Mağaza Müdürü */
   storeManager: PlannerEmployee | undefined
-  /** Müdür Yardımcıları + fazladan tanımlı müdürler; izin günlerini algoritma seçer */
+  /** Müdür Yardımcıları, Reyon Sorumluları + fazladan tanımlı müdürler; izin günlerini algoritma seçer */
   assistants: PlannerEmployee[]
   /** Birden fazla müdür tanımlıysa müdür olarak planlanmayanlar (assistants içinde de yer alır) */
   extraStoreManagers: PlannerEmployee[]
 }
 
 /**
- * Yönetici kadrosunu DB rolüne göre ayırır. Mağazada tek müdür olur; birden fazla
- * Mağaza Müdürü rolü varsa pozisyonu da müdür olan öncelikli seçilir, diğerleri yardımcı gibi planlanır.
+ * Yönetici kadrosunu rol görevine göre ayırır. Mağazada tek müdür olur; birden fazla
+ * Mağaza Müdürü varsa listedeki ilki müdür, diğerleri yardımcı gibi planlanır.
  */
 export function classifyManagers(employees: PlannerEmployee[]): ManagerRoster {
-  const byPosition = (e: PlannerEmployee) => positionIs(e.position, POS_MUDUR) || abbrIs(e.position, ABBR_MUDUR)
-  const [storeManager, ...extraStoreManagers] = employees
-    .filter(isStoreManager)
-    .map((e, i) => ({ e, i, rank: byPosition(e) ? 0 : 1 }))
-    .sort((a, b) => a.rank - b.rank || a.i - b.i)
-    .map((x) => x.e)
+  const [storeManager, ...extraStoreManagers] = employees.filter((e) => inGroup(e, 'store_manager'))
   return {
     storeManager,
-    assistants: [...employees.filter(isAssistantManager), ...extraStoreManagers],
+    assistants: [...employees.filter((e) => inGroup(e, 'assistant_manager', 'floor_lead')), ...extraStoreManagers],
     extraStoreManagers,
   }
 }
 
 /** Görsel Uzman veya Depo — sabit 08:00 kalıbıyla çalışır */
 function isFixedCrew(emp: PlannerEmployee): boolean {
-  return positionIs(emp.position, POS_GORSEL_UZMAN) || positionIs(emp.position, POS_DEPO)
+  return inGroup(emp, 'visual', 'stock')
 }
 
 function dowKey(dateStr: string): string {
@@ -384,9 +338,21 @@ function minorViolations(emp: PlannerEmployee, dateStr: string, start: string, e
   return minorWorkViolations(age, start, end, netWorkMins(start, end))
 }
 
-/** Pozisyona göre sabit izin günü mü (Görsel/Depo Pazar). Yöneticilerin sabit izin günü yoktur. */
+/**
+ * Bu hafta Pazar dışında kayıtlı haftalık tatili var mı (ücretli izin değil, leaveDays − paidLeaveDays).
+ * paidLeaveDays verilmezse tüm izinler ücretli sayılır.
+ */
+function hasOtherWeeklyRest(emp: PlannerEmployee): boolean {
+  const paid = emp.paidLeaveDays ?? emp.leaveDays
+  return [...emp.leaveDays].some((d) => !paid.has(d) && dowKey(d) !== GORSEL_DEPO_OFF_DOW)
+}
+
+/**
+ * Göreve göre sabit izin günü mü (Görsel/Depo Pazar). Haftalık tatil başka bir güne kaydedilmişse
+ * Pazar izin değildir (FT haftada tek H.İ. yapar). Yöneticilerin sabit izin günü yoktur.
+ */
 function isFixedDayOff(emp: PlannerEmployee, dateStr: string): boolean {
-  return !isManagerRole(emp) && isFixedCrew(emp) && dowKey(dateStr) === GORSEL_DEPO_OFF_DOW
+  return isFixedCrew(emp) && dowKey(dateStr) === GORSEL_DEPO_OFF_DOW && !hasOtherWeeklyRest(emp)
 }
 
 /** Haftanın günlerinde (geçen haftadan gelen seriyle birlikte) en uzun ardışık çalışma serisi */
@@ -473,6 +439,8 @@ function shuffle<T>(list: T[], rng: () => number): T[] {
 interface Slot {
   /** Katalog vardiyası; 'fixed' = dışarıdan gelen, zaten çalışılmış vardiya */
   key: ShiftKey | 'fixed'
+  /** İlk yerleştirilen vardiya (saat tamamlama uzatmalarından önce) — geri çekmede kullanılır */
+  baseKey: ShiftKey | 'fixed'
   def: ShiftDef
   net: number
   /** Tamamlama fazında değiştirilemez (görsel/depo, etiket günü, çalışılmış vardiya) */
@@ -533,12 +501,11 @@ function planOnce(input: PlannerInput, seed: number): { result: PlannerResult; f
   // Müdür önce (izin günü sabit), yardımcılar karışık sırayla izin günü seçer
   const managers = [...(mudur ? [mudur] : []), ...shuffled(roster.assistants)]
   const managerIds = new Set(managers.map((e) => e.id))
-  const fixedCrew = employees.filter((e) => !managerIds.has(e.id) && isFixedCrew(e))
-  const flexible = employees.filter((e) => !managerIds.has(e.id) && !isFixedCrew(e))
-  const kasiyerler = flexible.filter((e) => positionIs(e.position, POS_KASIYER))
-  const satisDanismanlari = flexible.filter(
-    (e) => !positionIs(e.position, POS_KASIYER) && positionIs(e.position, POS_SATIS)
-  )
+  const fixedCrew = employees.filter(isFixedCrew)
+  // Rolü planlamaya girmeyen (planning_group null) çalışan hiçbir gruba girmez, vardiya almaz
+  const flexible = employees.filter((e) => inGroup(e, 'cashier', 'sales'))
+  const kasiyerler = flexible.filter((e) => inGroup(e, 'cashier'))
+  const satisDanismanlari = flexible.filter((e) => inGroup(e, 'sales'))
 
   /** Yalnızca bu çalışan için haftalık saat sınırı aşılabilir (yönetici kapsaması — fazla mesai) */
   let overtimeFor: string | null = null
@@ -556,6 +523,7 @@ function planOnce(input: PlannerInput, seed: number): { result: PlannerResult; f
     const def: ShiftDef = { start, end, kind: kindFromTimes(start, end), label: 'Çalışılmış' }
     dayMap.set(f.work_date, {
       key: 'fixed',
+      baseKey: 'fixed',
       def,
       net: netWorkMins(start, end),
       locked: true,
@@ -574,7 +542,7 @@ function planOnce(input: PlannerInput, seed: number): { result: PlannerResult; f
   }
 
   if (!mudur) warnings.push({ level: 'warning', message: 'Mağaza Müdürü bulunamadı.' })
-  if (roster.assistants.length === 0) warnings.push({ level: 'warning', message: 'Müdür Yardımcısı bulunamadı.' })
+  if (roster.assistants.length === 0) warnings.push({ level: 'warning', message: 'Müdür Yardımcısı veya Reyon Sorumlusu bulunamadı.' })
   if (mudur && roster.extraStoreManagers.length > 0) {
     warnings.push({
       level: 'warning',
@@ -582,8 +550,19 @@ function planOnce(input: PlannerInput, seed: number): { result: PlannerResult; f
         + `${mudur.full_name} müdür olarak planlandı; ${roster.extraStoreManagers.map((e) => e.full_name).join(', ')} müdür yardımcısı gibi planlandı.`,
     })
   }
+  // Tek vardiya yöneticisi 7 günün hepsini kapsayamaz (FT en fazla 6 gün, PT 4 gün):
+  // günlük hatalardan önce asıl sebep ve çözüm söylenir
+  const openDayCount = weekDays.filter((d) => !isClosed(d)).length
+  const leadDayCapacity = managers.reduce((s, m) => s + maxDays(m), 0)
+  if (managers.length > 0 && (managers.length < 2 || leadDayCapacity < openDayCount) && openDayCount > maxDays(managers[0])) {
+    warnings.push({
+      level: 'error',
+      message: `Vardiya yöneticisi yetersiz: yalnızca ${managers.map((m) => m.full_name).join(', ')} açılış/kapanış yöneticisi. `
+        + 'Haftalık tatil nedeniyle her gün kapsanamaz; bir çalışana Müdür Yardımcısı veya Reyon Sorumlusu rolü verin.',
+    })
+  }
   // Kadro uyarıları her denemede aynıdır; plan kalitesi skoruna katılmaz
-  const rosterWarnings = warnings.length
+  const rosterWarnings = warnings.filter((w) => w.level === 'warning').length
 
   // ─── Yardımcı fonksiyonlar ───────────────────────────────────────────────
 
@@ -677,13 +656,16 @@ function planOnce(input: PlannerInput, seed: number): { result: PlannerResult; f
     if (emp.leaveDays.has(dateStr)) return 'izinli'
     if (!isAvailableOnDay(emp, dateStr)) return 'müsait değil'
     if (isFixedDayOff(emp, dateStr)) return 'sabit izin günü'
-    if (getEmpDays(emp.id) >= maxDays(emp)) return 'haftalık gün limiti dolu'
-    if (overtimeFor !== emp.id && getEmpMins(emp.id) + SHIFT_NET[key] > maxMins(emp)) return 'haftalık saat limiti dolu'
+    // Güne/vardiyaya özgü engeller haftalık limitlerden önce: hata mesajında asıl sebep görünsün
     const def = SHIFTS[key]
     const conflict = availabilityConflict(emp.availability[dowKey(dateStr)] ?? [], def.start, def.end)
     if (conflict) return conflict === 'unavailable' ? `${def.start}–${def.end} arası müsait değil` : 'müsaitlik saatleri dışında'
-    if (!restOk(emp, dateStr, def)) return `${minRestMins / 60} saat dinlenme sağlanmıyor`
     if (minorViolations(emp, dateStr, def.start, def.end).length > 0) return '18 yaş altı sınırı'
+    if (!restOk(emp, dateStr, def)) return `${minRestMins / 60} saat dinlenme sağlanmıyor`
+    if (getEmpDays(emp.id) >= maxDays(emp)) return 'haftalık gün limiti dolu'
+    // Fazla mesai istisnası yalnızca FT içindir; PT'nin 30 saati yasal sınırdır
+    const overtimeOk = overtimeFor === emp.id && emp.employment_type === 'full_time'
+    if (!overtimeOk && getEmpMins(emp.id) + SHIFT_NET[key] > maxMins(emp)) return 'haftalık saat limiti dolu'
     return null
   }
 
@@ -719,11 +701,13 @@ function planOnce(input: PlannerInput, seed: number): { result: PlannerResult; f
     key: ShiftKey,
     reason: string,
     locked = false,
+    baseKey: ShiftKey | 'fixed' = key,
   ): boolean {
     if (!canPlace(emp, dateStr, key)) return false
     const def = SHIFTS[key]
     slotMap.get(emp.id)!.set(dateStr, {
       key,
+      baseKey,
       def,
       net: SHIFT_NET[key],
       locked,
@@ -746,7 +730,7 @@ function planOnce(input: PlannerInput, seed: number): { result: PlannerResult; f
     const dayMap = slotMap.get(emp.id)!
     const prev = dayMap.get(dateStr)
     dayMap.delete(dateStr)
-    if (place(emp, dateStr, key, reason, prev?.locked ?? false)) return true
+    if (place(emp, dateStr, key, reason, prev?.locked ?? false, prev?.baseKey ?? key)) return true
     if (prev) dayMap.set(dateStr, prev)
     return false
   }
@@ -1333,10 +1317,39 @@ function planOnce(input: PlannerInput, seed: number): { result: PlannerResult; f
   // İkinci tur: ilk turda dinlenme vb. nedeniyle uygulanamayan değişikliklerin yerine başka kombinasyon
   for (let round = 0; round < 2; round++) fullTimers.forEach(topUp)
 
-  // Uzatmalar yetmediyse: bekleyen izin günü doldurulur, yönetici ise son çare fazla mesai alır
+  /**
+   * Mevcut günlerle hedefe ulaşılamıyorsa (ör. 4 full = 40s; boş günler "saat limiti dolu"):
+   * uzatılmış vardiyalar ilk hâllerine geri çekilir, boş bir güne vardiya eklenir ve yeniden
+   * tamamlanır. Toplam artmazsa her şey eski hâline döner. Kilitli vardiyalar değişmez;
+   * açılış açılış, kapanış kapanış kalır (kapsama bozulmaz).
+   */
+  const addDayWithRoom = (emp: PlannerEmployee, allowPending: boolean): boolean => {
+    const dayMap = slotMap.get(emp.id)!
+    const before = getEmpMins(emp.id)
+    const snapshot = [...dayMap.entries()]
+    for (const [dateStr, slot] of snapshot) {
+      if (slot.locked || slot.key === 'fixed' || slot.baseKey === 'fixed' || slot.baseKey === slot.key) continue
+      replace(emp, dateStr, slot.baseKey, slot.assignment.reason)
+    }
+    const added = fixedCrew.includes(emp)
+      ? weekDays.some((d) => canWork(emp, d) && (allowPending || !hasPendingLeave(emp, d)) && placeFixedCrewDay(emp, d))
+      : fillOneDay(emp, allowPending)
+    if (added) {
+      for (let round = 0; round < 2; round++) topUp(emp)
+      if (getEmpMins(emp.id) > before) return true
+    }
+    dayMap.clear()
+    for (const [d, slot] of snapshot) dayMap.set(d, slot)
+    return false
+  }
+
+  // Uzatmalar yetmediyse: önce boş bir gün eklenir (gerekirse uzatmalar geri çekilerek), sonra
+  // bekleyen izin günü doldurulur; yönetici ise son çare fazla mesai alır
+  const belowTarget = (emp: PlannerEmployee) =>
+    emp.employment_type === 'full_time' && getEmpMins(emp.id) < weeklyTargetMins(emp) - targetSlackMins(emp)
   for (const emp of [...fixedCrew, ...flexible]) {
-    if (emp.employment_type !== 'full_time' || getEmpMins(emp.id) >= weeklyTargetMins(emp) - targetSlackMins(emp)) continue
-    if (getEmpDays(emp.id) < maxDays(emp) && fillPendingDay(emp)) topUp(emp)
+    while (belowTarget(emp) && getEmpDays(emp.id) < maxDays(emp) && addDayWithRoom(emp, false)) { /* bir gün daha */ }
+    while (belowTarget(emp) && getEmpDays(emp.id) < maxDays(emp) && addDayWithRoom(emp, true)) { /* bekleyen izin günü */ }
   }
   balanceManagers(true)
   trimOvertime()
@@ -1400,6 +1413,8 @@ function planOnce(input: PlannerInput, seed: number): { result: PlannerResult; f
       .map((x) => x.assignment)
       .sort((a, b) => a.work_date.localeCompare(b.work_date))
     allAssignments.push(...empAssignments)
+    // Planlamaya girmeyen rol (ör. Admin): korunan vardiyası yoksa özet tabloda gösterilmez
+    if (emp.planning_group === null && empAssignments.length === 0) continue
 
     stats[emp.id] = {
       employeeId:      emp.id,
@@ -1463,7 +1478,7 @@ function planOnce(input: PlannerInput, seed: number): { result: PlannerResult; f
  *   2. FT çalışan haftalık gün ≤ 6
  *   3. PT çalışan haftalık net saat ≤ 30s
  *   4. PT çalışan haftalık gün ≤ 4
- *   5. Sabit izin günü ihlali (Müdür Salı, Görsel/Depo Pazar)
+ *   5. Sabit izin günü ihlali (Görsel/Depo Pazar)
  *   6. Onaylı izin günü ihlali
  *   7. Aynı çalışana aynı gün çakışan iki atama
  *   8. Her gün ≥1 opening kasiyer, ≥1 closing kasiyer, toplam ≥2 kasiyer
@@ -1630,9 +1645,7 @@ export function validatePlan(
   }
 
   // 8. Her gün kasiyer minimum ihtiyacı
-  const kasiyerIds = new Set(
-    employees.filter((e) => !isManagerRole(e) && positionIs(e.position, POS_KASIYER)).map((e) => e.id)
-  )
+  const kasiyerIds = new Set(employees.filter((e) => inGroup(e, 'cashier')).map((e) => e.id))
   for (const dateStr of coverageDays) {
     const kasiyerAssigns = assignments.filter((a) => kasiyerIds.has(a.employee_id) && a.work_date === dateStr)
 
@@ -1657,10 +1670,10 @@ export function validatePlan(
     const dayAssigns = assignments.filter((a) => a.work_date === dateStr && managerIds.has(a.employee_id))
 
     if (!dayAssigns.some((a) => isOpeningKind(a.shift_kind))) {
-      warnings.push({ level: 'error', message: `${dateStr}: Açılışta yönetici (Müdür/Müdür Yardımcısı) yok.` })
+      warnings.push({ level: 'error', message: `${dateStr}: Açılışta yönetici (Müdür/Müdür Yardımcısı/Reyon Sorumlusu) yok.` })
     }
     if (!dayAssigns.some((a) => isClosingKind(a.shift_kind))) {
-      warnings.push({ level: 'error', message: `${dateStr}: Kapanışta yönetici (Müdür/Müdür Yardımcısı) yok.` })
+      warnings.push({ level: 'error', message: `${dateStr}: Kapanışta yönetici (Müdür/Müdür Yardımcısı/Reyon Sorumlusu) yok.` })
     }
   }
 

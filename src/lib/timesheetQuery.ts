@@ -6,6 +6,7 @@ import { buildTimesheet, timesheetDataRange, type TimesheetRow, type TimesheetSh
 import { turkeyToday } from '@/lib/dateUtils'
 import type { PublicHoliday } from '@/types/holiday'
 import { NOT_KIOSK_FILTER } from '@/lib/auth/roles'
+import { unwrapJoin } from '@/lib/roleJoin'
 
 const PAGE = 1000
 
@@ -26,7 +27,7 @@ export async function queryTimesheet(admin: SupabaseClient, month: string): Prom
   const { from, to } = timesheetDataRange(month)
 
   const [employeesRes, holidaysRes] = await Promise.all([
-    admin.from('employees').select('id, full_name, role, employment_type, overtime_consent_at, active').or(NOT_KIOSK_FILTER).order('full_name'),
+    admin.from('employees').select('id, full_name, employment_type, overtime_consent_at, active, roles ( name )').or(NOT_KIOSK_FILTER).order('full_name'),
     admin.from('public_holidays').select('date, name, half_day').gte('date', from).lte('date', to),
   ])
   if (employeesRes.error) throw employeesRes.error
@@ -69,8 +70,9 @@ export async function queryTimesheet(admin: SupabaseClient, month: string): Prom
 
   // Aktif çalışanlar + ay içinde kaydı olan pasif çalışanlar
   const withData = new Set(shifts.map((s) => s.employee_id))
-  const employees = ((employeesRes.data ?? []) as Array<TimesheetEmployee & { active: boolean }>)
+  const employees: TimesheetEmployee[] = ((employeesRes.data ?? []) as unknown as Array<Omit<TimesheetEmployee, 'role_name'> & { active: boolean; roles?: { name: string } | { name: string }[] | null }>)
     .filter((e) => e.active || withData.has(e.id))
+    .map(({ roles, active: _active, ...rest }) => ({ ...rest, role_name: unwrapJoin(roles)?.name ?? '' }))
 
   const rows = buildTimesheet({
     month,

@@ -16,7 +16,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { createNotification, notifyManagers } from '@/lib/notificationRepository'
-import { requireAuth, roleAtLeast, forbidden, ROLES } from '@/lib/auth'
+import { requireAuth, roleAtLeast, forbidden, ACCESS } from '@/lib/auth'
 import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/apiErrors'
 import { isUuid } from '@/lib/validation'
 import { checkAssignmentRules, shiftsHaveAttendance } from '@/lib/shiftAssignmentRules'
@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Yönetici kararı ────────────────────────────────────────
-    if (!currentEmployee.role_name || !roleAtLeast(currentEmployee.role_name, ROLES.MUDUR_YARDIMCISI)) {
+    if (!roleAtLeast(currentEmployee.access_level, ACCESS.MANAGER)) {
       return forbidden('Takas talebini yalnızca yöneticiler onaylayabilir veya reddedebilir.')
     }
     if (swap.requester_id === currentEmployee.id || swap.target_id === currentEmployee.id) {

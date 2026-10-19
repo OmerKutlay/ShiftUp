@@ -56,7 +56,7 @@ export function WeekGrid(props: WeekGridProps) {
   } = props
 
   const groups = ROLE_GROUPS
-    .map((g) => ({ ...g, entries: entries.filter((e) => roleGroupOf(e.employee.role ?? '') === g.key) }))
+    .map((g) => ({ ...g, entries: entries.filter((e) => roleGroupOf(e.employee.roles) === g.key) }))
     .filter((g) => g.entries.length > 0)
 
   const counts = weekDays.map((d) => workingCount(entries, d, approvedLeaveMap, restDayMap))
@@ -146,7 +146,7 @@ export function WeekGrid(props: WeekGridProps) {
             {g.entries.map((entry) => {
               const stats = statsMap.get(entry.employee.id)
               const emp = entry.employee
-              const roleText = [emp.role, emp.employment_type === 'part_time' && (compact ? 'PT' : 'yarı zamanlı')].filter(Boolean).join(' · ')
+              const roleText = [emp.roles?.name, emp.employment_type === 'part_time' && (compact ? 'PT' : 'yarı zamanlı')].filter(Boolean).join(' · ')
               const rest = stats?.restViolations.length ?? 0
               const over = stats ? stats.totalMins > weeklyLimitMins(stats, config) : false
               return (

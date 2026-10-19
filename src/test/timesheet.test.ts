@@ -9,7 +9,7 @@ import {
   type TimesheetEmployee,
 } from '@/lib/timesheet'
 
-const EMP: TimesheetEmployee = { id: 'e1', full_name: 'Ayşe', role: 'Kasiyer', employment_type: 'full_time', overtime_consent_at: null }
+const EMP: TimesheetEmployee = { id: 'e1', full_name: 'Ayşe', role_name: 'Kasiyer', employment_type: 'full_time', overtime_consent_at: null }
 
 /** Türkiye saatiyle giriş/çıkışlı, 60 dk molalı tamamlanmış vardiya */
 function worked(date: string, start = '09:00', end = '18:00', breakMins = 60): TimesheetShift {
