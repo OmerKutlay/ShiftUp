@@ -20,10 +20,11 @@ import {
   useRef,
   type ReactNode,
 } from 'react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useSWRConfig } from 'swr'
 import type { Employee, Role } from '@/types/employee'
 import { runBeforeSignOut } from '@/lib/pwa/sessionEvents'
+import { UNAUTHORIZED_EVENT } from '@/lib/api/http'
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -58,6 +59,12 @@ interface AuthContextValue {
   refreshEmployee: () => Promise<void>
 }
 
+/** Oturumsuz açılabilen sayfalar — oturum düştüğünde buralardan /login'e yönlendirilmez */
+const PUBLIC_PAGES = ['/login', '/offline']
+
+/** /api/auth/me ağ hatası / 5xx'te (ör. Cloudflare soğuk başlangıç 503) ek deneme bekleme süreleri (ms) */
+const ME_RETRY_DELAYS = [500, 1500]
+
 // ─── Context ─────────────────────────────────────────────────
 
 const AuthContext = createContext<AuthContextValue>({
@@ -75,6 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [employee, setEmployee] = useState<AuthEmployee | null>(null)
   const [sessionCheck, setSessionCheck] = useState<SessionCheck | null>(null)
   const router = useRouter()
+  const pathname = usePathname()
   const { mutate } = useSWRConfig()
 
   const mountedRef = useRef(true)
@@ -87,23 +95,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const record = (result: SessionCheck['result']) => {
       if (mountedRef.current) setSessionCheck({ result, at: Date.now() })
     }
-    try {
-      const res = await fetch('/api/auth/me', { credentials: 'same-origin' })
-      if (res.status === 401 || res.status === 403) {
-        record('signed-out')
-        return null
-      }
-      if (!res.ok) {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const res = await fetch('/api/auth/me', { credentials: 'same-origin' })
+        if (res.status === 401 || res.status === 403) {
+          record('signed-out')
+          return null
+        }
+        if (res.ok) {
+          const data = (await res.json()) as { employee: AuthEmployee | null }
+          const emp = data.employee ?? null
+          record(emp && emp.active ? 'authenticated' : 'signed-out')
+          return emp
+        }
+      } catch { /* ağ hatası — aşağıda yeniden denenir */ }
+      // Geçici sunucu hatası tek seferde "giriş yapılmadı" durumuna düşürmesin;
+      // çevrimdışıyken beklemek anlamsız (çevrimdışı anlık görüntüler hemen gösterilmeli)
+      const delay = ME_RETRY_DELAYS[attempt]
+      if (delay === undefined || !navigator.onLine) {
         record('unreachable')
         return null
       }
-      const data = (await res.json()) as { employee: AuthEmployee | null }
-      const emp = data.employee ?? null
-      record(emp && emp.active ? 'authenticated' : 'signed-out')
-      return emp
-    } catch {
-      record('unreachable')
-      return null
+      await new Promise((resolve) => setTimeout(resolve, delay))
     }
   }, [])
 
@@ -149,6 +162,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStatus('unauthenticated')
     }
   }, [fetchEmployee])
+
+  // Herhangi bir API isteği 401 alırsa oturumu yeniden doğrula (süresi dolmuş / iptal edilmiş oturum)
+  useEffect(() => {
+    let pending = false
+    const onUnauthorized = () => {
+      if (pending) return
+      pending = true
+      void refreshEmployee().finally(() => { pending = false })
+    }
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized)
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized)
+  }, [refreshEmployee])
+
+  // Sunucu oturumun olmadığını kesin söylediyse korumalı sayfada bırakma: giriş ekranına yönlendir.
+  // Tam sayfa geçişi: middleware geçersiz çerezleri temizler, istemci durumu sıfırlanır.
+  // 'unreachable' (çevrimdışı / geçici hata) yönlendirmez — çevrimdışı görüntüleme bozulmasın.
+  useEffect(() => {
+    if (sessionCheck?.result !== 'signed-out' || PUBLIC_PAGES.includes(pathname)) return
+    void mutate(() => true, undefined, { revalidate: false })
+    window.location.replace(`/login?next=${encodeURIComponent(pathname)}`)
+  }, [sessionCheck, pathname, mutate])
 
   return (
     <AuthContext.Provider value={{ status, employee, sessionCheck, signOut, refreshEmployee }}>

@@ -5,7 +5,7 @@
  * sayfalar (gruplu) ve çıkış. Liste navItems'tan gelir; rol filtresi yan menüyle aynıdır.
  */
 import Link from 'next/link'
-import { ChevronRight, LogOut } from 'lucide-react'
+import { ChevronRight, LogIn, LogOut } from 'lucide-react'
 
 import { useAuth } from '@/context/AuthContext'
 import { getMoreItems, groupNavItems } from '@/components/layout/navItems'
@@ -78,6 +78,14 @@ export function MorePage() {
         >
           <LogOut />
           Çıkış Yap
+        </Button>
+      )}
+      {status === 'unauthenticated' && (
+        <Button asChild className="mt-1 w-full">
+          <a href="/login?next=%2Fmore">
+            <LogIn />
+            Giriş Yap
+          </a>
         </Button>
       )}
     </div>
