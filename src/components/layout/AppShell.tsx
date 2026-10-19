@@ -4,7 +4,7 @@ import { useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { ChevronsLeft, LogOut, PanelLeftOpen } from 'lucide-react'
+import { ChevronsLeft, LogIn, LogOut, PanelLeftOpen } from 'lucide-react'
 
 import { ErrorBoundary } from './ErrorBoundary'
 import { MobileBottomNav, BOTTOM_NAV_SPACE } from './MobileBottomNav'
@@ -35,6 +35,10 @@ export function AppShell({ children }: Props) {
   const pathname = usePathname()
   const { employee: authEmployee, signOut, status: authStatus } = useAuth()
   const authRoleName = authEmployee?.roles?.name ?? authEmployee?.role_name ?? null
+
+  // Oturum doğrulanamadıysa (ör. geçici sunucu hatası) kullanıcı içeride sıkışmasın: giriş ekranına çıkış
+  // Tam sayfa geçişi: middleware oturumu yeniden değerlendirir (geçerliyse ana sayfaya döner)
+  const loginHref = `/login?next=${encodeURIComponent(pathname)}`
 
   const drawerWidth = collapsed && !isMobile ? DRAWER_COLLAPSED : DRAWER_WIDTH
 
@@ -141,6 +145,18 @@ export function AppShell({ children }: Props) {
             <TooltipContent side={narrow ? 'right' : 'top'}>Çıkış Yap</TooltipContent>
           </Tooltip>
         )}
+        {authStatus === 'unauthenticated' && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button asChild variant="ghost" size="icon-sm" className="text-ink-secondary hover:text-primary">
+                <a href={loginHref} aria-label="Giriş Yap">
+                  <LogIn />
+                </a>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side={narrow ? 'right' : 'top'}>Giriş Yap</TooltipContent>
+          </Tooltip>
+        )}
       </div>
     </div>
   )
@@ -160,6 +176,13 @@ export function AppShell({ children }: Props) {
           {/* Bildirimler her sayfadan tek dokunuşla erişilebilir olsun */}
           {authStatus === 'authenticated' && authEmployee && (
             <NotificationBell employeeId={authEmployee.id} collapsed />
+          )}
+          {authStatus === 'unauthenticated' && (
+            <Button asChild variant="ghost" size="icon-sm" className="text-ink-secondary">
+              <a href={loginHref} aria-label="Giriş Yap">
+                <LogIn />
+              </a>
+            </Button>
           )}
         </header>
       )}
