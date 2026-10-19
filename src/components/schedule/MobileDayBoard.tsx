@@ -20,6 +20,7 @@ import type { PublicHoliday } from '@/types/holiday'
 import { formatTime } from '@/types/shiftTemplate'
 import { netWorkMins } from '@/lib/workingTimeService'
 import { DAY_LABELS, fmtHours, shiftDisplayName, getAvailStatus, type AvailabilityMap, type AvailStatus } from './scheduleHelpers'
+import { C, tint } from '@/lib/palette'
 
 export interface MobileDayBoardProps {
   entries: WeeklyScheduleEntry[]
@@ -38,10 +39,10 @@ export interface MobileDayBoardProps {
 type OffKind = 'leave' | 'rest' | 'unavailable' | 'unassigned'
 
 const OFF_META: Record<OffKind, { label: string; color: string; icon: typeof EventBusyIcon }> = {
-  leave: { label: 'İzinli', color: '#fbbf24', icon: EventBusyIcon },
-  rest: { label: 'Hafta tatili', color: '#818cf8', icon: WeekendIcon },
-  unavailable: { label: 'Müsait değil', color: '#f87171', icon: BlockIcon },
-  unassigned: { label: 'Vardiya yok', color: '#64748b', icon: AddIcon },
+  leave: { label: 'İzinli', color: C.warning, icon: EventBusyIcon },
+  rest: { label: 'Hafta tatili', color: C.plum, icon: WeekendIcon },
+  unavailable: { label: 'Müsait değil', color: C.danger, icon: BlockIcon },
+  unassigned: { label: 'Vardiya yok', color: C.neutral, icon: AddIcon },
 }
 
 const toMins = (t: string) => {
@@ -59,9 +60,9 @@ function spanOf(a: ShiftAssignmentWithDetails): [number, number] {
 
 /** Başlangıç saatine göre renk: sabah / öğle / akşam — aynı ekipteki kişiler göz ucuyla gruplanır */
 function shiftColor(startMins: number): string {
-  if (startMins < 12 * 60) return '#14b8a6'
-  if (startMins < 15 * 60) return '#6366f1'
-  return '#a855f7'
+  if (startMins < 12 * 60) return C.brand
+  if (startMins < 15 * 60) return C.plum
+  return C.plum
 }
 
 interface WorkingRow {
@@ -163,8 +164,8 @@ export function MobileDayBoard({
               aria-label={`${format(new Date(`${d}T00:00:00`), 'd MMMM EEEE', { locale: tr })}, ${countByDay[d]} kişi`}
               sx={{
                 flexDirection: 'column', py: 0.75, borderRadius: 2, position: 'relative',
-                border: '1px solid', borderColor: sel ? 'primary.main' : isToday ? 'rgba(20,184,166,0.4)' : 'divider',
-                bgcolor: sel ? 'rgba(20,184,166,0.15)' : 'transparent',
+                border: '1px solid', borderColor: sel ? 'primary.main' : isToday ? tint(C.brand, 0.4) : 'divider',
+                bgcolor: sel ? tint(C.brand, 0.15) : 'transparent',
               }}
             >
               <Typography fontSize="0.68rem" fontWeight={600} color={sel || isToday ? 'primary.main' : 'text.secondary'}>
@@ -177,7 +178,7 @@ export function MobileDayBoard({
                 {countByDay[d]} kişi
               </Typography>
               {h && (
-                <Box sx={{ position: 'absolute', top: 4, right: 4, width: 6, height: 6, borderRadius: '50%', bgcolor: '#eab308' }} />
+                <Box sx={{ position: 'absolute', top: 4, right: 4, width: 6, height: 6, borderRadius: '50%', bgcolor: C.warning }} />
               )}
             </ButtonBase>
           )
@@ -194,7 +195,7 @@ export function MobileDayBoard({
           {working.length > 0 && ` · ${formatTime(working[0].asgn.start_time)}–${fmtHour(axisEnd)}:00`}
         </Typography>
         {holiday && (
-          <Typography variant="body2" sx={{ color: '#eab308', fontWeight: 600 }}>
+          <Typography variant="body2" sx={{ color: C.warning, fontWeight: 600 }}>
             {holiday.half_day ? `Arife (13:00 sonrası tatil) — ${holiday.name}` : `Resmi tatil — ${holiday.name}`}
           </Typography>
         )}
@@ -204,7 +205,7 @@ export function MobileDayBoard({
       {working.length > 0 && (
         <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, overflow: 'hidden', mb: 2 }}>
           {/* Eksen başlığı + saatlik yoğunluk */}
-          <Box sx={{ display: 'grid', gridTemplateColumns: `1fr ${TRACK_COL}`, px: 1.5, pt: 1, pb: 0.75, bgcolor: 'rgba(15,23,42,0.6)', borderBottom: '1px solid', borderColor: 'divider' }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: `1fr ${TRACK_COL}`, px: 1.5, pt: 1, pb: 0.75, bgcolor: tint(C.canvas, 0.6), borderBottom: '1px solid', borderColor: 'divider' }}>
             <Typography fontSize="0.7rem" color="text.secondary" fontWeight={600} sx={{ alignSelf: 'end' }}>Çalışan</Typography>
             <Box>
               <Box sx={{ position: 'relative', height: 14 }}>
@@ -218,14 +219,14 @@ export function MobileDayBoard({
               <Box sx={{ display: 'flex', gap: '1px', height: 6, mt: 0.5 }} aria-label="Saatlik çalışan sayısı">
                 {coverage.map((c, i) => (
                   <Box key={i} title={`${fmtHour(axisStart + i * 60)}:00 — ${c} kişi`}
-                    sx={{ flex: 1, borderRadius: '1px', bgcolor: c === 0 ? 'rgba(239,68,68,0.35)' : `rgba(20,184,166,${0.2 + 0.7 * (c / maxCov)})` }} />
+                    sx={{ flex: 1, borderRadius: '1px', bgcolor: c === 0 ? tint(C.danger, 0.35) : tint(C.brand, 0.2 + 0.7 * (c / maxCov)) }} />
                 ))}
               </Box>
             </Box>
           </Box>
 
           {working.map((r, idx) => {
-            const color = r.warn === 'over' || r.warn === 'off' ? '#ef4444' : r.warn === 'partial' ? '#eab308' : shiftColor(r.span[0])
+            const color = r.warn === 'over' || r.warn === 'off' ? C.danger : r.warn === 'partial' ? C.warning : shiftColor(r.span[0])
             return (
               <ButtonBase
                 key={r.emp.id}
@@ -242,7 +243,7 @@ export function MobileDayBoard({
                   <Typography fontSize="0.85rem" fontWeight={700} noWrap>
                     {r.emp.full_name}
                     {r.emp.employment_type === 'part_time' && (
-                      <Box component="span" sx={{ ml: 0.5, fontSize: '0.6rem', color: '#818cf8', fontWeight: 700 }}>PT</Box>
+                      <Box component="span" sx={{ ml: 0.5, fontSize: '0.6rem', color: C.plum, fontWeight: 700 }}>PT</Box>
                     )}
                   </Typography>
                   <Typography fontSize="0.7rem" color="text.secondary" noWrap>{r.emp.role}</Typography>
@@ -257,13 +258,13 @@ export function MobileDayBoard({
                       {shiftDisplayName(r.asgn.shift_templates?.name, r.asgn.start_time, r.asgn.end_time)}
                     </Typography>
                   </Box>
-                  <Box sx={{ position: 'relative', height: 8, borderRadius: 4, bgcolor: 'rgba(148,163,184,0.12)' }}>
+                  <Box sx={{ position: 'relative', height: 8, borderRadius: 4, bgcolor: tint(C.neutral, 0.12) }}>
                     {/* Eksen saatleriyle hizalı ince çizgiler — çubuğun hangi saate denk geldiği okunsun */}
                     {ticks.slice(1, -1).map((t) => (
-                      <Box key={t} sx={{ position: 'absolute', top: -2, bottom: -2, left: pct(t), width: '1px', bgcolor: 'rgba(148,163,184,0.18)' }} />
+                      <Box key={t} sx={{ position: 'absolute', top: -2, bottom: -2, left: pct(t), width: '1px', bgcolor: tint(C.neutral, 0.18) }} />
                     ))}
                     {nowMins !== null && (
-                      <Box sx={{ position: 'absolute', top: -3, bottom: -3, left: pct(nowMins), width: '2px', bgcolor: '#f1f5f9', opacity: 0.7, zIndex: 1 }} />
+                      <Box sx={{ position: 'absolute', top: -3, bottom: -3, left: pct(nowMins), width: '2px', bgcolor: C.ink, opacity: 0.7, zIndex: 1 }} />
                     )}
                     <Box sx={{
                       position: 'absolute', top: 0, bottom: 0, borderRadius: 4, bgcolor: color,

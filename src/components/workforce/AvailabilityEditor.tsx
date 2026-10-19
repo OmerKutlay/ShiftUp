@@ -20,6 +20,7 @@ import { DAY_OF_WEEK_LABELS } from '@/types/workforce'
 import type { EmployeeWithRole } from '@/types/employee'
 import { DayBlocksSkeleton, EmployeeSelect } from '@/components/common'
 import { useLoadedKey } from '@/hooks/useLoadedKey'
+import { C, tint } from '@/lib/palette'
 
 const DAYS: DayOfWeek[] = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']
 
@@ -104,7 +105,7 @@ export function AvailabilityEditor({ employees, currentEmployeeId, isManager }: 
       ) : (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
           {grouped.map(({ day, items }) => (
-            <Paper key={day} sx={{ p: 1.5, bgcolor: 'rgba(30,41,59,0.5)', border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
+            <Paper key={day} sx={{ p: 1.5, bgcolor: C.surface, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: items.length > 0 ? 1 : 0 }}>
                 <Typography variant="body2" fontWeight={700} color={items.length > 0 ? 'text.primary' : 'text.secondary'}>
                   {DAY_OF_WEEK_LABELS[day]}
@@ -132,7 +133,7 @@ export function AvailabilityEditor({ employees, currentEmployeeId, isManager }: 
                     onDelete={() => handleDelete(item.id)}
                     deleteIcon={<DeleteIcon />}
                     sx={{
-                      bgcolor: item.is_available ? 'rgba(20,184,166,0.12)' : 'rgba(239,68,68,0.12)',
+                      bgcolor: item.is_available ? tint(C.brand, 0.12) : tint(C.danger, 0.12),
                       color: item.is_available ? 'primary.main' : 'error.main',
                       fontWeight: 600,
                       height: 'auto',

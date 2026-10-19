@@ -52,6 +52,7 @@ import { useAuth } from '@/context/AuthContext'
 import { hasRole, MANAGER_ROLES } from '@/lib/auth/roles'
 import { apiFetch } from '@/lib/api/http'
 import type { AnnualLeaveBalance } from '@/lib/annualLeave'
+import { C, tint } from '@/lib/palette'
 
 // ─── Helpers ─────────────────────────────────────────────────
 
@@ -215,7 +216,7 @@ function ReviewDialog({ open, request, onClose, onReview, saving }: ReviewDialog
             border: '1px solid',
             borderColor: 'divider',
             borderRadius: 2,
-            bgcolor: 'rgba(255,255,255,0.02)',
+            bgcolor: tint(C.ink, 0.02),
           }}
         >
           <Typography variant="subtitle2" fontWeight={700}>{emp?.full_name ?? '—'}</Typography>
@@ -439,7 +440,7 @@ export function LeavePage() {
     : requests
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: '#0f172a', color: 'text.primary' }}>
+    <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: 'background.default', color: 'text.primary' }}>
       <PageHeader
         icon={BeachAccessIcon}
         overline="İzin Yönetimi"
@@ -480,7 +481,7 @@ export function LeavePage() {
                 <Chip
                   label={pendingCount}
                   size="small"
-                  sx={{ height: 18, fontSize: '0.6rem', bgcolor: '#f59e0b20', color: '#f59e0b', border: '1px solid #f59e0b40' }}
+                  sx={{ height: 18, fontSize: '0.6rem', bgcolor: '#f59e0b20', color: C.warning, border: '1px solid #f59e0b40' }}
                 />
               )}
             </Box>
@@ -583,7 +584,7 @@ function LeaveCard({
       sx={{
         p: { xs: 2, md: 2.5 },
         border: '1px solid',
-        borderColor: request.status === 'pending' ? 'rgba(245,158,11,0.3)' : 'divider',
+        borderColor: request.status === 'pending' ? tint(C.warning, 0.3) : 'divider',
         borderRadius: 2,
         bgcolor: 'background.paper',
         display: 'grid',
@@ -602,8 +603,8 @@ function LeaveCard({
               width: 36,
               height: 36,
               borderRadius: '50%',
-              bgcolor: 'rgba(20,184,166,0.12)',
-              border: '2px solid rgba(20,184,166,0.25)',
+              bgcolor: tint(C.brand, 0.12),
+              border: `2px solid ${tint(C.brand, 0.25)}`,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -627,9 +628,9 @@ function LeaveCard({
                 sx={{
                   height: 20,
                   fontSize: '0.65rem',
-                  bgcolor: 'rgba(99,102,241,0.12)',
-                  color: '#818cf8',
-                  border: '1px solid rgba(99,102,241,0.3)',
+                  bgcolor: tint(C.plum, 0.12),
+                  color: C.plum,
+                  border: `1px solid ${tint(C.plum, 0.3)}`,
                 }}
               />
             </Box>
@@ -682,9 +683,9 @@ function LeaveCard({
                 onClick={onDelete}
                 aria-label="İzin talebini sil"
                 sx={{
-                  border: '1px solid rgba(239,68,68,0.3)',
+                  border: `1px solid ${tint(C.danger, 0.3)}`,
                   borderRadius: 1,
-                  '&:hover': { bgcolor: 'rgba(239,68,68,0.08)' },
+                  '&:hover': { bgcolor: tint(C.danger, 0.08) },
                 }}
               >
                 <DeleteIcon fontSize="small" />

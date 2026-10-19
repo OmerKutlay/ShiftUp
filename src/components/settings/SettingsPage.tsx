@@ -17,7 +17,7 @@ import { PushDiagnosticsPanel } from '@/components/pwa/PushDiagnosticsPanel'
 export function SettingsPage() {
   const [tab, setTab] = useState(0)
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: '#0f172a', color: 'text.primary' }}>
+    <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: 'background.default', color: 'text.primary' }}>
       <PageHeader icon={SettingsIcon} overline="Yönetim" title="Ayarlar" subtitle="Mağaza konumu, resmi tatiller, denetim kaydı ve bildirimler" />
       <Tabs
         value={tab}

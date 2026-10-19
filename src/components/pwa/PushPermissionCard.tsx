@@ -17,6 +17,7 @@ import IosShareIcon from '@mui/icons-material/IosShare'
 import { usePushSubscription, type PushStatus } from '@/hooks/usePushSubscription'
 import { isIos } from '@/lib/pwa/push'
 import { PushTestButton } from './PushTestButton'
+import { C, tint } from '@/lib/palette'
 
 interface Props {
   variant?: 'card' | 'row'
@@ -107,9 +108,9 @@ export function PushPermissionCard({ variant = 'card', hideWhenSubscribed = fals
         alignItems: { xs: 'flex-start', sm: 'center' },
         flexDirection: { xs: 'column', sm: 'row' },
         gap: 1.5,
-        bgcolor: isOn ? 'rgba(16,185,129,0.08)' : 'rgba(20,184,166,0.08)',
+        bgcolor: isOn ? tint(C.success, 0.08) : tint(C.brand, 0.08),
         border: '1px solid',
-        borderColor: isOn ? 'rgba(16,185,129,0.3)' : 'rgba(20,184,166,0.3)',
+        borderColor: isOn ? tint(C.success, 0.3) : tint(C.brand, 0.3),
         borderRadius: 2,
       }}
     >

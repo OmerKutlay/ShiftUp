@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react'
 import { Box, Typography, Skeleton } from '@mui/material'
 import QRCode from 'qrcode'
+import { C, tint } from '@/lib/palette'
 
 interface Props {
   data: string
@@ -24,8 +25,8 @@ export function QrCodeDisplay({ data, size = 240, loading = false, expired = fal
       width: size,
       margin: 2,
       color: {
-        dark: '#0f172a',
-        light: '#f8fafc',
+        dark: C.ink,
+        light: C.white,
       },
       errorCorrectionLevel: 'M',
     }).catch((err: unknown) => {
@@ -61,10 +62,10 @@ export function QrCodeDisplay({ data, size = 240, loading = false, expired = fal
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          bgcolor: 'rgba(239,68,68,0.08)',
+          bgcolor: tint(C.danger, 0.08),
           borderRadius: 2,
           border: '2px solid',
-          borderColor: 'rgba(239,68,68,0.4)',
+          borderColor: tint(C.danger, 0.4),
           gap: 1,
         }}
       >
@@ -89,7 +90,7 @@ export function QrCodeDisplay({ data, size = 240, loading = false, expired = fal
         overflow: 'hidden',
         border: '3px solid',
         borderColor: 'primary.main',
-        boxShadow: '0 0 20px rgba(20,184,166,0.25)',
+        boxShadow: `0 0 20px ${tint(C.brand, 0.25)}`,
       }}
     >
       {/*

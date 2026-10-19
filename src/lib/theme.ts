@@ -1,41 +1,53 @@
 import { createTheme } from '@mui/material/styles'
 
+import { C, tint } from './palette'
+
 export const theme = createTheme({
   palette: {
-    mode: 'dark',
+    mode: 'light',
     primary: {
-      main: '#14b8a6',    // teal-500
-      dark: '#0d9488',    // teal-600
-      light: '#2dd4bf',
+      main: C.brand,
+      dark: C.brandDark,
+      light: C.brandLight,
+      contrastText: C.white,
     },
     secondary: {
-      main: '#6366f1',    // indigo-500
-      dark: '#4f46e5',
+      main: C.plumFill,
+      dark: C.plum,
+      contrastText: C.white,
     },
     background: {
-      default: '#0f172a', // slate-950
-      paper: 'rgba(30, 41, 59, 0.8)',  // slate-800 with transparency
+      default: C.canvas,
+      paper: C.surface,
     },
     text: {
-      primary: '#f1f5f9',  // slate-100
-      secondary: '#94a3b8', // slate-400
+      primary: C.ink,
+      secondary: C.inkSecondary,
+      disabled: C.inkMuted,
     },
-    divider: 'rgba(255, 255, 255, 0.08)',
-    error: { main: '#ef4444' },
-    warning: { main: '#f59e0b' },
-    success: { main: '#10b981' },
-    info: { main: '#60a5fa' },
+    divider: C.border,
+    error: { main: C.danger, light: C.dangerFill },
+    warning: { main: C.warning, light: C.warningFill },
+    success: { main: C.success, light: C.successFill },
+    info: { main: C.info, light: C.infoFill },
+    action: {
+      hover: tint(C.ink, 0.04),
+      selected: tint(C.brand, 0.08),
+    },
   },
   typography: {
-    fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
-    h5: { fontWeight: 800 },
+    fontFamily: '"Figtree", "Helvetica", "Arial", sans-serif',
+    h4: { fontWeight: 700, letterSpacing: '-0.01em' },
+    h5: { fontWeight: 700, letterSpacing: '-0.01em' },
     h6: { fontWeight: 700 },
+    subtitle1: { fontWeight: 600 },
     subtitle2: { fontWeight: 600 },
+    button: { fontWeight: 600 },
     // Sayfa başlığı üstündeki etiket ("Raporlama", "Planlama"…) BÜYÜK HARF değil, yazıldığı gibi
     overline: { textTransform: 'none', fontSize: '0.8rem' },
   },
   shape: {
-    borderRadius: 12,
+    borderRadius: 8,
   },
   components: {
     // Native uygulama hissi: dokunma vurgusu yok, butonlarda çift dokunma zoom gecikmesi yok.
@@ -62,8 +74,7 @@ export const theme = createTheme({
       styleOverrides: {
         // Telefonda 32px kenar boşluğu form alanlarını gereksiz daraltıyor
         paper: ({ theme }) => ({
-          // Varsayılan paper rengi yarı saydam; modal içeriğin arkasındaki sayfa okunabilirliği bozuyor
-          backgroundColor: '#1e293b',
+          borderRadius: 16,
           [theme.breakpoints.down('sm')]: {
             margin: 16,
             '&.MuiDialog-paperFullWidth': { width: 'calc(100% - 32px)' },
@@ -73,18 +84,19 @@ export const theme = createTheme({
       },
     },
     MuiPopover: {
-      styleOverrides: { paper: { backgroundColor: '#1e293b' } },
+      styleOverrides: { paper: { border: `1px solid ${C.border}`, boxShadow: `0 12px 32px ${tint(C.ink, 0.12)}` } },
+    },
+    // Sekme ve toggle etiketleri MUI varsayılanı olan BÜYÜK HARF yerine yazıldığı gibi görünsün
+    MuiTab: {
+      styleOverrides: { root: { textTransform: 'none', fontWeight: 600, color: C.inkSecondary, '&.Mui-selected': { color: C.ink } } },
     },
     MuiTabs: {
       // Dar ekranda sığmayan sekmeler kesilip erişilemez olmasın: kaydırılabilir + oklar
       defaultProps: { variant: 'scrollable', scrollButtons: 'auto', allowScrollButtonsMobile: true },
-    },
-    // Sekme ve toggle etiketleri MUI varsayılanı olan BÜYÜK HARF yerine yazıldığı gibi görünsün
-    MuiTab: {
-      styleOverrides: { root: { textTransform: 'none', fontWeight: 600 } },
+      styleOverrides: { indicator: { height: 2, borderRadius: 2 } },
     },
     MuiToggleButton: {
-      styleOverrides: { root: { textTransform: 'none' } },
+      styleOverrides: { root: { textTransform: 'none', fontWeight: 600 } },
     },
     MuiPaper: {
       defaultProps: { elevation: 0 },
@@ -92,6 +104,7 @@ export const theme = createTheme({
         root: {
           backgroundImage: 'none',
         },
+        outlined: { borderColor: C.border },
       },
     },
     MuiButton: {
@@ -99,7 +112,9 @@ export const theme = createTheme({
         root: {
           textTransform: 'none',
           fontWeight: 600,
-          borderRadius: 8,
+          borderRadius: 10,
+          boxShadow: 'none',
+          '&:hover': { boxShadow: 'none' },
           // WCAG 2.5.5: minimum touch target 44×44px
           minHeight: 44,
         },
@@ -130,16 +145,34 @@ export const theme = createTheme({
         },
       },
     },
-    // Sayfa yükleme skeleton'ları — koyu arka planda yumuşak wave efekti
+    MuiOutlinedInput: {
+      styleOverrides: {
+        root: { backgroundColor: C.surface, borderRadius: 10 },
+        notchedOutline: { borderColor: C.border },
+      },
+    },
+    MuiTableCell: {
+      styleOverrides: {
+        root: { borderColor: C.border },
+        head: { color: C.inkSecondary, fontWeight: 600 },
+      },
+    },
+    MuiTooltip: {
+      styleOverrides: { tooltip: { backgroundColor: C.ink, fontSize: '0.75rem' } },
+    },
+    MuiAvatar: {
+      styleOverrides: { root: { fontWeight: 700, fontSize: '0.8rem' } },
+    },
+    // Sayfa yükleme skeleton'ları — açık zeminde yumuşak wave efekti
     MuiSkeleton: {
       defaultProps: { animation: 'wave' },
       styleOverrides: {
         root: {
-          backgroundColor: 'rgba(148, 163, 184, 0.10)', // slate-400 @ 10%
+          backgroundColor: tint(C.ink, 0.06),
         },
         wave: {
           '&::after': {
-            background: 'linear-gradient(90deg, transparent, rgba(148, 163, 184, 0.08), transparent)',
+            background: `linear-gradient(90deg, transparent, ${tint(C.surface, 0.6)}, transparent)`,
           },
         },
       },

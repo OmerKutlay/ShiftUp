@@ -22,6 +22,7 @@ import type { AttendanceStatus } from '@/types/attendance'
 import type { GpsCoordinates } from '@/types/location'
 import { Box, Typography } from '@mui/material'
 import { detectPlatform, isStandaloneDisplay } from '@/lib/pwa/deviceInfo'
+import { C, tint } from '@/lib/palette'
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -65,19 +66,19 @@ export const ATTENDANCE_STATUS_TR: Record<string, string> = {
 }
 
 export const STATUS_COLORS: Record<string, string> = {
-  working: '#10b981',
-  on_break: '#f59e0b',
-  working_after_break: '#10b981',
-  clocked_out: '#818cf8',
-  shift_waiting: '#64748b',
+  working: C.success,
+  on_break: C.warning,
+  working_after_break: C.success,
+  clocked_out: C.plum,
+  shift_waiting: C.neutral,
 }
 
 export const STATUS_BG_COLORS: Record<string, string> = {
-  working: 'rgba(16,185,129,0.08)',
-  on_break: 'rgba(245,158,11,0.08)',
-  working_after_break: 'rgba(16,185,129,0.08)',
-  clocked_out: 'rgba(129,140,248,0.08)',
-  shift_waiting: 'rgba(100,116,139,0.08)',
+  working: tint(C.success, 0.08),
+  on_break: tint(C.warning, 0.08),
+  working_after_break: tint(C.success, 0.08),
+  clocked_out: tint(C.plum, 0.08),
+  shift_waiting: tint(C.neutral, 0.08),
 }
 
 // ─── Aksiyon buton tanımları ──────────────────────────────────
@@ -229,8 +230,8 @@ export function PermissionHelp({ kind }: { kind: PermissionKind }) {
   return (
     <Box
       sx={{
-        bgcolor: 'rgba(239,68,68,0.08)',
-        border: '1px solid rgba(239,68,68,0.2)',
+        bgcolor: tint(C.danger, 0.08),
+        border: `1px solid ${tint(C.danger, 0.2)}`,
         borderRadius: 2,
         px: 2,
         py: 1.5,

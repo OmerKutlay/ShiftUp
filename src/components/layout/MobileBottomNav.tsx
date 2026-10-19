@@ -10,6 +10,7 @@ import { Box, Typography } from '@mui/material'
 
 import { useAuth } from '@/context/AuthContext'
 import { getActiveTabHref, getBottomTabs, type BottomTab } from './navItems'
+import { C, tint } from '@/lib/palette'
 
 /** Alt bar yüksekliği (safe-area hariç) */
 export const BOTTOM_NAV_HEIGHT = 64
@@ -47,7 +48,7 @@ export function MobileBottomNav() {
         pr: 'env(safe-area-inset-right)',
         display: 'flex',
         alignItems: 'stretch',
-        bgcolor: 'rgba(15,23,42,0.85)',
+        bgcolor: tint(C.canvas, 0.85),
         backdropFilter: 'blur(12px)',
         WebkitBackdropFilter: 'blur(12px)',
         borderTop: '1px solid',
@@ -100,8 +101,8 @@ function TabLink({ tab, active }: { tab: BottomTab; active: boolean }) {
             alignItems: 'center',
             justifyContent: 'center',
             bgcolor: active ? 'primary.dark' : 'primary.main',
-            color: '#0f172a',
-            boxShadow: '0 6px 16px rgba(20,184,166,0.35), 0 0 0 4px #0f172a',
+            color: C.white,
+            boxShadow: `0 6px 16px ${tint(C.brand, 0.35)}, 0 0 0 4px ${C.canvas}`,
             transition: 'transform 0.15s, background-color 0.15s',
             '&:active': { transform: 'scale(0.94)' },
             '& svg': { fontSize: 28 },
@@ -130,7 +131,7 @@ function TabLink({ tab, active }: { tab: BottomTab; active: boolean }) {
         touchAction: 'manipulation',
         WebkitTapHighlightColor: 'transparent',
         outline: 'none',
-        '&:focus-visible': { bgcolor: 'rgba(20,184,166,0.12)' },
+        '&:focus-visible': { bgcolor: tint(C.brand, 0.12) },
         '&:active': { opacity: 0.7 },
         '& svg': { fontSize: 24 },
       }}

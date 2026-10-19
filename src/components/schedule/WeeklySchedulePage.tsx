@@ -42,6 +42,7 @@ import { tr } from 'date-fns/locale'
 import { DAY_LABELS, getRoleSortOrder, JS_DAY_TO_KEY, EmployeeWeekStats, calcEmployeeStats, getAvailStatus } from './scheduleHelpers'
 import { SummaryCell, ShiftCell } from './ScheduleCells'
 import { MobileDayBoard } from './MobileDayBoard'
+import { C, tint } from '@/lib/palette'
 
 // ─── Ana bileşen ──────────────────────────────────────────────
 interface WeeklySchedulePageProps {
@@ -278,11 +279,11 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     : `${nameColW}px repeat(7, 1fr) 130px`
   const gridMinWidth = isMobile ? nameColW + 7 * 76 + 80 : undefined
   // Paper (yarı saydam) + sayfa zemini üzerinde sabit hücrelerin arkası görünmesin diye opak renkler
-  const stickyBg = '#1b2537'
-  const headerBg = '#131c2f'
+  const stickyBg = C.surface
+  const headerBg = C.surfaceAlt
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: '#0f172a', color: 'text.primary' }}>
+    <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: 'background.default', color: 'text.primary' }}>
       <PageHeader
         icon={CalendarMonthIcon}
         overline="Planlama"
@@ -290,7 +291,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
         actions={<WeekNavigator currentWeek={currentWeek} onChange={handleWeekChange} />}
       />
 
-      <Divider sx={{ mb: isMobile ? 2 : 3, borderColor: 'rgba(255,255,255,0.08)' }} />
+      <Divider sx={{ mb: isMobile ? 2 : 3, borderColor: tint(C.ink, 0.08) }} />
 
       {isMobile && hasData && (
         <ToggleButtonGroup
@@ -365,7 +366,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
                 <Box key={d} data-today={isToday || undefined} title={holiday ? `Resmi tatil: ${holiday.name}${holiday.half_day ? ' (13:00 sonrası)' : ''}` : undefined} sx={{
                   p: isMobile ? 0.75 : 1.5, textAlign: 'center',
                   borderLeft: '1px solid', borderColor: 'divider',
-                  bgcolor: holiday && !holiday.half_day ? 'rgba(234,179,8,0.10)' : isToday ? 'rgba(20,184,166,0.06)' : 'transparent',
+                  bgcolor: holiday && !holiday.half_day ? tint(C.warning, 0.1) : isToday ? tint(C.brand, 0.06) : 'transparent',
                 }}>
                   <Typography variant="caption" fontWeight={700}
                     color={isToday ? 'primary.main' : 'text.secondary'} display="block">
@@ -375,7 +376,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
                     {format(new Date(d + 'T00:00:00'), 'd MMM', { locale: tr })}
                   </Typography>
                   {holiday && (
-                    <Typography variant="caption" display="block" color="#eab308" fontSize="0.6rem" fontWeight={700} noWrap>
+                    <Typography variant="caption" display="block" color={C.warning} fontSize="0.6rem" fontWeight={700} noWrap>
                       {holiday.half_day ? 'Arife ½' : isMobile ? 'R. tatil' : 'Resmi tatil'}
                     </Typography>
                   )}
@@ -385,8 +386,8 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
             {/* Özet başlık */}
             <Box sx={{
               p: isMobile ? 0.75 : 1.5, textAlign: 'center', alignSelf: 'stretch', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              borderLeft: '2px solid', borderColor: 'rgba(20,184,166,0.3)',
-              bgcolor: 'rgba(20,184,166,0.04)',
+              borderLeft: '2px solid', borderColor: tint(C.brand, 0.3),
+              bgcolor: tint(C.brand, 0.04),
             }}>
               <Typography variant="caption" color="primary.main" fontWeight={700}>Özet</Typography>
             </Box>
@@ -404,7 +405,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
                   gridTemplateColumns: gridCols,
                   borderBottom: rowIdx < scheduleEntries.length - 1 ? '1px solid' : 'none',
                   borderColor: 'divider',
-                  '&:hover': { bgcolor: 'rgba(255,255,255,0.01)' },
+                  '&:hover': { bgcolor: tint(C.ink, 0.01) },
                 }}
               >
                 {/* Çalışan adı — yatay kaydırmada sabit kalır */}
@@ -422,8 +423,8 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
                         component="span"
                         sx={{
                           fontSize: '0.55rem', fontWeight: 700, letterSpacing: 0.2,
-                          color: '#818cf8', flexShrink: 0,
-                          border: '1px solid rgba(129,140,248,0.4)',
+                          color: C.plum, flexShrink: 0,
+                          border: `1px solid ${tint(C.plum, 0.4)}`,
                           borderRadius: '3px', px: '3px', lineHeight: '14px',
                         }}
                       >
@@ -480,11 +481,11 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
       {hasGrid && (
         <Box sx={{ display: 'flex', gap: 2, mt: 1.5, flexWrap: 'wrap' }}>
           {[
-            { color: 'rgba(99,102,241,0.25)', label: 'Haftalık Tatil' },
-            { color: 'rgba(251,191,36,0.3)', label: 'İzinli' },
-            { color: 'rgba(239,68,68,0.25)', label: 'Müsait değil' },
-            { color: 'rgba(234,179,8,0.2)', label: 'Müsaitlik dışı vardiya' },
-            { color: 'rgba(239,68,68,0.15)', label: 'Günlük max aşıldı' },
+            { color: tint(C.plum, 0.25), label: 'Haftalık Tatil' },
+            { color: tint(C.warning, 0.3), label: 'İzinli' },
+            { color: tint(C.danger, 0.25), label: 'Müsait değil' },
+            { color: tint(C.warning, 0.2), label: 'Müsaitlik dışı vardiya' },
+            { color: tint(C.danger, 0.15), label: 'Günlük max aşıldı' },
           ].map(({ color, label }) => (
             <Box key={label} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
               <Box sx={{ width: 12, height: 12, borderRadius: 0.5, bgcolor: color, flexShrink: 0 }} />

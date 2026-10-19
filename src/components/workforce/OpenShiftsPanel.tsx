@@ -25,6 +25,7 @@ import { DateField, ListSkeleton } from '@/components/common'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { apiFetch } from '@/lib/api/http'
+import { C } from '@/lib/palette'
 
 const STATUS_LABELS: Record<string, string> = {
   open: 'Açık',
@@ -32,9 +33,9 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: 'İptal',
 }
 const STATUS_COLORS: Record<string, string> = {
-  open: '#14b8a6',
-  filled: '#10b981',
-  cancelled: '#94a3b8',
+  open: C.brand,
+  filled: C.success,
+  cancelled: C.inkMuted,
 }
 
 export function OpenShiftsPanel() {
@@ -229,7 +230,7 @@ export function OpenShiftsPanel() {
               key={shift.id}
               sx={{
                 p: 1.5,
-                bgcolor: 'rgba(30,41,59,0.5)',
+                bgcolor: C.surface,
                 border: '1px solid',
                 borderColor: 'divider',
                 borderRadius: 2,

@@ -53,6 +53,7 @@ import {
   LocationError, PermissionHelp,
 } from './scanPageHelpers'
 import type { LocationErrorKind } from './scanPageHelpers'
+import { C, tint } from '@/lib/palette'
 
 // html5-qrcode yalnızca tarayıcıda çalışır; ssr:false ile sunucu paketine (Cloudflare Worker 3 MB sınırı) girmez
 const QrScanner = dynamic(() => import('./QrScanner').then((m) => m.QrScanner), { ssr: false })
@@ -241,7 +242,7 @@ export function AttendanceScanPage() {
       <Box
         sx={{
           minHeight: '100dvh',
-          bgcolor: '#0f172a',
+          bgcolor: 'background.default',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -269,7 +270,7 @@ export function AttendanceScanPage() {
       <Box
         sx={{
           minHeight: '100dvh',
-          bgcolor: '#0f172a',
+          bgcolor: 'background.default',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -286,12 +287,12 @@ export function AttendanceScanPage() {
 
   // ─── Yardımcı değerler ───────────────────────────────────────
   const currentStatus = statusData?.current_status ?? null
-  const statusColor = STATUS_COLORS[currentStatus ?? ''] ?? '#94a3b8'
-  const statusBg = STATUS_BG_COLORS[currentStatus ?? ''] ?? 'rgba(100,116,139,0.08)'
+  const statusColor = STATUS_COLORS[currentStatus ?? ''] ?? C.inkMuted
+  const statusBg = STATUS_BG_COLORS[currentStatus ?? ''] ?? tint(C.neutral, 0.08)
   const statusLabel = ATTENDANCE_STATUS_TR[currentStatus ?? ''] ?? '—'
   const buttons = getButtons(currentStatus)
   const hasShift = statusData?.has_shift ?? false
-  const resultStatusColor = result ? (STATUS_COLORS[result.new_status] ?? '#94a3b8') : '#94a3b8'
+  const resultStatusColor = result ? (STATUS_COLORS[result.new_status] ?? C.inkMuted) : C.inkMuted
 
   const isLocationError =
     !!locationErrorKind ||
@@ -310,7 +311,7 @@ export function AttendanceScanPage() {
     <Box
       sx={{
         minHeight: '100dvh',
-        bgcolor: '#0f172a',
+        bgcolor: 'background.default',
         color: 'text.primary',
         p: { xs: 2, md: 4 },
         display: 'flex',
@@ -361,9 +362,9 @@ export function AttendanceScanPage() {
             gap: 1.25,
             mb: 3,
             p: 1.5,
-            bgcolor: 'rgba(20,184,166,0.06)',
+            bgcolor: tint(C.brand, 0.06),
             borderRadius: 1.5,
-            border: '1px solid rgba(20,184,166,0.15)',
+            border: `1px solid ${tint(C.brand, 0.15)}`,
           }}
         >
           {(pageState === 'scanning') && (
@@ -402,7 +403,7 @@ export function AttendanceScanPage() {
           )}
         </Box>
 
-        <Divider sx={{ mb: 3, borderColor: 'rgba(255,255,255,0.08)' }} />
+        <Divider sx={{ mb: 3, borderColor: tint(C.ink, 0.08) }} />
 
         <Stack spacing={2.5} alignItems="center">
 
@@ -443,8 +444,8 @@ export function AttendanceScanPage() {
                     py: 3,
                   }}
                 >
-                  <CheckCircleIcon sx={{ fontSize: 56, color: '#818cf8' }} />
-                  <Typography variant="subtitle1" fontWeight={700} color="#818cf8">
+                  <CheckCircleIcon sx={{ fontSize: 56, color: C.plum }} />
+                  <Typography variant="subtitle1" fontWeight={700} color={C.plum}>
                     Vardiya tamamlandı
                   </Typography>
                   <Typography variant="body2" color="text.secondary" textAlign="center">
@@ -525,10 +526,10 @@ export function AttendanceScanPage() {
                           borderRadius: 1.5,
                           bgcolor:
                             btn.color === 'primary'
-                              ? 'rgba(20,184,166,0.1)'
+                              ? tint(C.brand, 0.1)
                               : btn.color === 'warning'
-                              ? 'rgba(245,158,11,0.1)'
-                              : 'rgba(239,68,68,0.1)',
+                              ? tint(C.warning, 0.1)
+                              : tint(C.danger, 0.1),
                           flexShrink: 0,
                         }}
                       >
@@ -569,9 +570,9 @@ export function AttendanceScanPage() {
                     gap: 1,
                     px: 2,
                     py: 1,
-                    bgcolor: 'rgba(20,184,166,0.08)',
+                    bgcolor: tint(C.brand, 0.08),
                     borderRadius: 2,
-                    border: '1px solid rgba(20,184,166,0.2)',
+                    border: `1px solid ${tint(C.brand, 0.2)}`,
                     width: '100%',
                     justifyContent: 'center',
                   }}
@@ -659,8 +660,8 @@ export function AttendanceScanPage() {
               </Typography>
               <Box
                 sx={{
-                  bgcolor: 'rgba(20,184,166,0.08)',
-                  border: '1px solid rgba(20,184,166,0.2)',
+                  bgcolor: tint(C.brand, 0.08),
+                  border: `1px solid ${tint(C.brand, 0.2)}`,
                   borderRadius: 2,
                   px: 2,
                   py: 1.5,
@@ -710,11 +711,11 @@ export function AttendanceScanPage() {
                 width: '100%',
               }}
             >
-              <CheckCircleIcon sx={{ fontSize: 72, color: '#10b981' }} />
+              <CheckCircleIcon sx={{ fontSize: 72, color: C.success }} />
               <Typography
                 variant="h6"
                 fontWeight={800}
-                color="#10b981"
+                color={C.success}
                 textAlign="center"
               >
                 {result.message}
@@ -735,7 +736,7 @@ export function AttendanceScanPage() {
                 }}
               />
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <LocationOnIcon sx={{ fontSize: 13, color: '#10b981' }} />
+                <LocationOnIcon sx={{ fontSize: 13, color: C.success }} />
                 <Typography variant="caption" color="text.disabled">
                   {QR_ACTION_LABELS[result.action_type]} — {result.timestamp}
                 </Typography>

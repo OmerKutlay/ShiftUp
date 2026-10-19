@@ -46,6 +46,7 @@ import { format, subDays } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { DateField, EmployeeSelect, PageHeader, TableSkeleton } from '@/components/common'
 import { isKioskRole } from '@/lib/auth/roles'
+import { C } from '@/lib/palette'
 
 const STATUS_LABELS: Record<string, string> = {
   shift_waiting: 'Gelmedi',
@@ -58,13 +59,13 @@ const STATUS_LABELS: Record<string, string> = {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  shift_waiting: '#ef4444',
-  working: '#10b981',
-  on_break: '#f59e0b',
-  working_after_break: '#10b981',
-  clocked_out: '#818cf8',
-  on_leave: '#38bdf8',
-  upcoming: '#94a3b8',
+  shift_waiting: C.danger,
+  working: C.success,
+  on_break: C.warning,
+  working_after_break: C.success,
+  clocked_out: C.plum,
+  on_leave: C.info,
+  upcoming: C.inkMuted,
 }
 
 function formatMinutes(mins: number | null): string {
@@ -285,7 +286,7 @@ export function AttendanceReportsPage({ embedded = false }: { embedded?: boolean
   }
 
   return (
-    <Box sx={embedded ? undefined : { p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: '#0f172a', color: 'text.primary' }}>
+    <Box sx={embedded ? undefined : { p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: 'background.default', color: 'text.primary' }}>
       {!embedded && (
         <PageHeader
           icon={BarChartIcon}
@@ -377,7 +378,7 @@ export function AttendanceReportsPage({ embedded = false }: { embedded?: boolean
                   >
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 1 }}>
                       <Typography variant="body2" fontWeight={700} noWrap>{s.full_name}</Typography>
-                      <Typography variant="caption" fontWeight={700} color="#10b981" sx={{ flexShrink: 0 }}>
+                      <Typography variant="caption" fontWeight={700} color={C.success} sx={{ flexShrink: 0 }}>
                         {formatMinutes(s.total_worked_minutes)}
                       </Typography>
                     </Box>
@@ -386,10 +387,10 @@ export function AttendanceReportsPage({ embedded = false }: { embedded?: boolean
                         Katılım <b>{s.attended_shifts}/{s.expected_shifts}</b>
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        Tamamlanan <b style={{ color: '#818cf8' }}>{s.clocked_out_count}</b>
+                        Tamamlanan <b style={{ color: C.plum }}>{s.clocked_out_count}</b>
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        Gelmedi <b style={{ color: '#ef4444' }}>{s.no_show_count}</b>
+                        Gelmedi <b style={{ color: C.danger }}>{s.no_show_count}</b>
                       </Typography>
                       {s.on_leave_count > 0 && (
                         <Typography variant="caption" color="text.secondary">
@@ -424,15 +425,15 @@ export function AttendanceReportsPage({ embedded = false }: { embedded?: boolean
                   <Stack spacing={0.5}>
                     <SummaryRow label="Toplam Vardiya" value={String(s.total_shifts)} />
                     <SummaryRow label="Katılım" value={`${s.attended_shifts}/${s.expected_shifts}`} />
-                    <SummaryRow label="Tamamlanan" value={String(s.clocked_out_count)} color="#818cf8" />
-                    <SummaryRow label="Gelmedi" value={String(s.no_show_count)} color="#ef4444" />
+                    <SummaryRow label="Tamamlanan" value={String(s.clocked_out_count)} color={C.plum} />
+                    <SummaryRow label="Gelmedi" value={String(s.no_show_count)} color={C.danger} />
                     {s.on_leave_count > 0 && (
                       <SummaryRow label="İzinli" value={String(s.on_leave_count)} color={STATUS_COLORS.on_leave} />
                     )}
                     {s.upcoming_count > 0 && (
                       <SummaryRow label="Başlamadı" value={String(s.upcoming_count)} color={STATUS_COLORS.upcoming} />
                     )}
-                    <SummaryRow label="Net Çalışma" value={formatMinutes(s.total_worked_minutes)} color="#10b981" />
+                    <SummaryRow label="Net Çalışma" value={formatMinutes(s.total_worked_minutes)} color={C.success} />
                   </Stack>
                 </Paper>
               ))}
@@ -458,7 +459,7 @@ export function AttendanceReportsPage({ embedded = false }: { embedded?: boolean
               {isMobile ? (
                 <Stack divider={<Box sx={{ height: 1, bgcolor: 'divider' }} />}>
                   {rows.map((row, i) => {
-                    const color = STATUS_COLORS[row.status] ?? '#94a3b8'
+                    const color = STATUS_COLORS[row.status] ?? C.inkMuted
                     return (
                       <Box key={`${row.employee_id}-${row.work_date}-${i}`} sx={{ p: 1.5 }}>
                         <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
@@ -495,7 +496,7 @@ export function AttendanceReportsPage({ embedded = false }: { embedded?: boolean
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', columnGap: 2, rowGap: 0.25, mt: 0.75 }}>
                           <Typography variant="caption">Giriş: {formatTime(row.clock_in_at)}</Typography>
                           <Typography variant="caption">Çıkış: {formatTime(row.clock_out_at)}</Typography>
-                          <Typography variant="caption" color={row.worked_minutes ? '#10b981' : 'text.disabled'} fontWeight={600}>
+                          <Typography variant="caption" color={row.worked_minutes ? C.success : 'text.disabled'} fontWeight={600}>
                             Net: {formatMinutes(row.worked_minutes)}
                           </Typography>
                           <Typography variant="caption" color="text.disabled">
@@ -552,9 +553,9 @@ export function AttendanceReportsPage({ embedded = false }: { embedded?: boolean
                             sx={{
                               height: 20,
                               fontSize: '0.65rem',
-                              bgcolor: `${STATUS_COLORS[row.status] ?? '#94a3b8'}20`,
-                              color: STATUS_COLORS[row.status] ?? '#94a3b8',
-                              border: `1px solid ${STATUS_COLORS[row.status] ?? '#94a3b8'}40`,
+                              bgcolor: `${STATUS_COLORS[row.status] ?? C.inkMuted}20`,
+                              color: STATUS_COLORS[row.status] ?? C.inkMuted,
+                              border: `1px solid ${STATUS_COLORS[row.status] ?? C.inkMuted}40`,
                             }}
                           />
                         </TableCell>
@@ -565,7 +566,7 @@ export function AttendanceReportsPage({ embedded = false }: { embedded?: boolean
                           <Typography variant="caption">{formatTime(row.clock_out_at)}</Typography>
                         </TableCell>
                         <TableCell>
-                          <Typography variant="caption" color={row.worked_minutes ? '#10b981' : 'text.disabled'} fontWeight={600}>
+                          <Typography variant="caption" color={row.worked_minutes ? C.success : 'text.disabled'} fontWeight={600}>
                             {formatMinutes(row.worked_minutes)}
                           </Typography>
                         </TableCell>
