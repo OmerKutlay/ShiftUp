@@ -28,6 +28,7 @@ import {
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive'
 import CloseIcon from '@mui/icons-material/Close'
 import { useAuth } from '@/context/AuthContext'
+import { C, tint } from '@/lib/palette'
 import { BOTTOM_NAV_OVERLAY_OFFSET } from '@/components/layout/MobileBottomNav'
 import { usePushSubscription } from '@/hooks/usePushSubscription'
 import { isDismissedRecently, isInstallPromptHiddenPath, useIsStandalone } from '@/lib/pwa/install'
@@ -94,15 +95,17 @@ function PushPromptCard({ onDismiss }: { onDismiss: () => void }) {
           position: 'fixed',
           left: 'calc(12px + env(safe-area-inset-left))',
           right: 'calc(12px + env(safe-area-inset-right))',
-          // Mobil alt navigasyonun ve taşan QR butonunun üstünde kalsın
+          // Mobil yüzen alt navigasyon kartının üstünde kalsın
           bottom: `calc(${BOTTOM_NAV_OVERLAY_OFFSET}px + env(safe-area-inset-bottom))`,
           maxWidth: 480,
           mx: 'auto',
           zIndex: theme.zIndex.snackbar - 1,
           p: 2,
-          bgcolor: '#1e293b',
+          bgcolor: 'background.paper',
           border: '1px solid',
           borderColor: 'divider',
+          borderRadius: '16px',
+          boxShadow: `0 8px 24px ${tint(C.ink, 0.12)}`,
         }}
       >
         <Stack direction="row" spacing={1.5} alignItems="flex-start">
