@@ -143,7 +143,7 @@ cat <<EOF
 $(ok "Kurulum tamamlandı")
 Sonraki adımlar:
   1. Telefonda uygulamayı ANA EKRANDAN açın (iPhone'da şart) › Daha fazla › Bildirimler: Aç
-  2. "Test bildirimi gönder" ile deneyin; uygulamayı arka plana alın
+  2. Bir çalışan izin talebi oluştursun; uygulamayı arka plana alıp bildirimi bekleyin
   3. Sorun olursa: Daha fazla › Bildirim tanılama (Mağaza Müdürü+) hangi adımın eksik olduğunu gösterir
 
 $KEYS_FILE dosyasını güvenli bir yerde yedekleyin; kaybolursa ROTATE_KEYS=1 ile yeniden
