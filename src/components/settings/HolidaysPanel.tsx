@@ -72,7 +72,7 @@ export function HolidaysPanel() {
           <DateField
             label="Tarih" size="small" value={form.date}
             onChange={(v) => setForm((f) => ({ ...f, date: v }))}
-            sx={{ minWidth: 210 }}
+            className="sm:min-w-[210px]"
           />
           <TextField
             label="Ad" size="small" value={form.name} sx={{ flex: 1 }}
