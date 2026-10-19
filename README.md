@@ -82,7 +82,7 @@ bash scripts/setup-push.sh
 
 `SUPABASE_DB_URL` verilmezse veritabanı adımı için `push-setup.local.sql` üretilir; SQL Editor'de
 çalıştırıp dosyayı silin. Kurulumdan sonra uygulama açıldığında çıkan **Bildirimleri aç** kartıyla
-(veya **Bildirimler** sayfasındaki kart) cihaz kaydolur. Bir halka eksikse **Daha fazla › Bildirim tanılama**
+(veya **Bildirimler** sayfasındaki kart) cihaz kaydolur. Bir halka eksikse **Ayarlar › Bildirimler**
 (Mağaza Müdürü+) hangi adımın eksik olduğunu gösterir.
 
 ### Kurulum (elle)

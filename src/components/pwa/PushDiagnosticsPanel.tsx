@@ -7,7 +7,7 @@
  * başarısız adımın ipucu ne yapılacağını söyler (çoğunlukla scripts/setup-push.sh).
  * Bu cihazın aboneliği sunucuda kayıtlı mı diye kontrol için endpoint de gönderilir.
  *
- * collapsible: başlığa tıklanınca açılır ve ancak o zaman yüklenir (/more sayfası için).
+ * collapsible: başlığa tıklanınca açılır ve ancak o zaman yüklenir (varsayılan: hep açık).
  */
 import { useCallback, useEffect, useState } from 'react'
 import {

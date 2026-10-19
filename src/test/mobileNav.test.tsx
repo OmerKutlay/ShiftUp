@@ -156,14 +156,10 @@ describe('MorePage', () => {
     expect(signOut).toHaveBeenCalled()
   })
 
-  it('bildirim teşhisi yalnızca Mağaza Müdürü+ için', () => {
-    asRole('Çalışan')
-    const { unmount } = renderWithProviders(<MorePage />)
-    expect(screen.queryByText('Bildirim teşhisi')).not.toBeInTheDocument()
-    unmount()
+  it('bildirim teşhisi Daha fazla sayfasında gösterilmez (Ayarlar › Bildirimler\'de)', () => {
     asRole('Mağaza Müdürü')
     renderWithProviders(<MorePage />)
-    expect(screen.getByText('Bildirim teşhisi')).toBeInTheDocument()
+    expect(screen.queryByText('Bildirim teşhisi')).not.toBeInTheDocument()
   })
 })
 

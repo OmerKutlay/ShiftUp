@@ -142,9 +142,9 @@ cat <<EOF
 
 $(ok "Kurulum tamamlandı")
 Sonraki adımlar:
-  1. Telefonda uygulamayı ANA EKRANDAN açın (iPhone'da şart) › Daha fazla › Bildirimler: Aç
+  1. Telefonda uygulamayı ANA EKRANDAN açın (iPhone'da şart) › çıkan "Bildirimleri aç" kartına dokunun
   2. Bir çalışan izin talebi oluştursun; uygulamayı arka plana alıp bildirimi bekleyin
-  3. Sorun olursa: Daha fazla › Bildirim tanılama (Mağaza Müdürü+) hangi adımın eksik olduğunu gösterir
+  3. Sorun olursa: Ayarlar › Bildirimler (Mağaza Müdürü+) hangi adımın eksik olduğunu gösterir
 
 $KEYS_FILE dosyasını güvenli bir yerde yedekleyin; kaybolursa ROTATE_KEYS=1 ile yeniden
 üretilir ama tüm cihazların bildirimleri yeniden açması gerekir.
