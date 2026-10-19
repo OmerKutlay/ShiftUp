@@ -16,18 +16,20 @@ import { monthDays, TIMESHEET_CODE_LABELS, type TimesheetCode, type TimesheetRow
 import { turkeyToday } from '@/lib/dateUtils'
 import { MonthField, TableSkeleton } from '@/components/common'
 import type { PublicHoliday } from '@/types/holiday'
+import { C, tint } from '@/lib/palette'
 
+// Yeni UI puantaj lejantı: çalıştı yeşil, resmi tatilde çalıştı kiremit, devamsız kırmızı …
 const CODE_COLOR: Partial<Record<TimesheetCode, string>> = {
-  'Ç': '#10b981',
-  'RTÇ': '#f59e0b',
-  'HT': '#94a3b8',
-  'RT': '#eab308',
-  'Yİ': '#60a5fa',
-  'Rİ': '#f472b6',
-  'Üİ': '#9ca3af',
-  'Mİ': '#a78bfa',
-  'D': '#ef4444',
-  'P': '#64748b',
+  'Ç': C.success,
+  'RTÇ': C.brand,
+  'HT': C.inkMuted,
+  'RT': C.warning,
+  'Yİ': C.info,
+  'Rİ': C.plum,
+  'Üİ': C.inkMuted,
+  'Mİ': C.plum,
+  'D': C.danger,
+  'P': C.neutral,
 }
 
 const hours = (mins: number) => (Math.round((mins / 60) * 10) / 10).toLocaleString('tr-TR')
@@ -98,7 +100,7 @@ export function TimesheetPanel() {
                   const h = holidays.get(d)
                   return (
                     <Tooltip key={d} title={h ? h.name : ''} enterTouchDelay={0} leaveTouchDelay={3000}>
-                      <TableCell align="center" sx={{ px: 0.5, minWidth: 34, bgcolor: h && !h.half_day ? 'rgba(234,179,8,0.15)' : undefined }}>
+                      <TableCell align="center" sx={{ px: 0.5, minWidth: 34, bgcolor: h && !h.half_day ? tint(C.warning, 0.15) : undefined }}>
                         {Number(d.slice(8))}
                       </TableCell>
                     </Tooltip>

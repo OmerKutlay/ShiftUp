@@ -25,6 +25,7 @@ import { getMoreItems, groupNavItems } from '@/components/layout/navItems'
 import { PushPermissionCard } from '@/components/pwa/PushPermissionCard'
 import { PushDiagnosticsPanel } from '@/components/pwa/PushDiagnosticsPanel'
 import { ROLES, roleAtLeast } from '@/lib/auth/roles'
+import { C } from '@/lib/palette'
 
 function initials(name: string): string {
   return name
@@ -59,7 +60,7 @@ export function MorePage() {
           </>
         ) : (
           <>
-            <Avatar sx={{ width: 48, height: 48, bgcolor: 'primary.dark', color: '#0f172a', fontWeight: 800 }}>
+            <Avatar sx={{ width: 48, height: 48, bgcolor: 'primary.dark', color: C.white, fontWeight: 800 }}>
               {employee ? initials(employee.full_name) : '?'}
             </Avatar>
             <Box sx={{ flex: 1, minWidth: 0 }}>

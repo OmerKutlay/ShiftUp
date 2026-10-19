@@ -14,7 +14,7 @@ import { OvertimePanel } from './OvertimePanel'
 export function ReportsPage() {
   const [tab, setTab] = useState(0)
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: '#0f172a', color: 'text.primary' }}>
+    <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: 'background.default', color: 'text.primary' }}>
       <PageHeader
         icon={BarChartIcon}
         overline="Raporlama"

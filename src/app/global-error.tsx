@@ -3,7 +3,7 @@
 /**
  * Kök hata sınırı — root layout / provider'lar çökerse gösterilir.
  * Kendi <html>/<body> etiketini tanımlar; MUI teması yüklenmeyebileceği için
- * yalnızca satır içi stil kullanır (uygulamanın koyu temasıyla uyumlu renkler).
+ * yalnızca satır içi stil kullanır (renkler src/lib/palette.ts ile aynı).
  */
 export default function GlobalError({
   error,
@@ -21,8 +21,8 @@ export default function GlobalError({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: '#0f172a',
-          color: '#e2e8f0',
+          background: '#F5EFE6',
+          color: '#2B211B',
           fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
           padding: 16,
         }}
@@ -30,7 +30,7 @@ export default function GlobalError({
         <title>Hata — ShiftUp</title>
         <main role="alert" style={{ maxWidth: 420, textAlign: 'center' }}>
           <h1 style={{ fontSize: 22, margin: '0 0 8px' }}>Uygulama yüklenemedi</h1>
-          <p style={{ color: '#94a3b8', fontSize: 14, lineHeight: 1.5, margin: '0 0 24px' }}>
+          <p style={{ color: '#605853', fontSize: 14, lineHeight: 1.5, margin: '0 0 24px' }}>
             Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin; sorun sürerse yöneticinize bildirin.
             {error.digest && (
               <span style={{ display: 'block', marginTop: 8, fontFamily: 'monospace', fontSize: 12 }}>
@@ -41,8 +41,8 @@ export default function GlobalError({
           <button
             onClick={() => retry()}
             style={{
-              background: '#14b8a6',
-              color: '#042f2e',
+              background: '#C2532D',
+              color: '#FFFFFF',
               border: 0,
               borderRadius: 8,
               padding: '10px 20px',

@@ -22,6 +22,7 @@ import { PART_TIME_RULES } from '@/types/employee'
 import { getWorkingTimeConfig } from '@/lib/workingTimeConfig'
 
 import { fmtHours, shiftDisplayName, EmployeeWeekStats, AvailStatus } from './scheduleHelpers'
+import { C, tint } from '@/lib/palette'
 
 // ─── Özet sütunu hücresi ──────────────────────────────────────
 export interface SummaryCellProps {
@@ -35,8 +36,8 @@ export function SummaryCell({ stats, config, compact = false }: SummaryCellProps
   if (!stats) {
     return (
       <Box sx={{
-        borderLeft: '2px solid', borderColor: 'rgba(20,184,166,0.3)',
-        bgcolor: 'rgba(20,184,166,0.02)', p: 1, minHeight: 64,
+        borderLeft: '2px solid', borderColor: tint(C.brand, 0.3),
+        bgcolor: tint(C.brand, 0.02), p: 1, minHeight: 64,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
         <Typography variant="caption" color="text.disabled" fontSize="0.68rem">—</Typography>
@@ -58,8 +59,8 @@ export function SummaryCell({ stats, config, compact = false }: SummaryCellProps
 
   return (
     <Box sx={{
-      borderLeft: '2px solid', borderColor: 'rgba(20,184,166,0.3)',
-      bgcolor: 'rgba(20,184,166,0.02)', p: 1, minHeight: 64,
+      borderLeft: '2px solid', borderColor: tint(C.brand, 0.3),
+      bgcolor: tint(C.brand, 0.02), p: 1, minHeight: 64,
       display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 0.5,
     }}>
       {/* Haftalık toplam */}
@@ -69,7 +70,7 @@ export function SummaryCell({ stats, config, compact = false }: SummaryCellProps
             variant="caption"
             fontWeight={700}
             fontSize="0.82rem"
-            color={overWeekly ? '#ef4444' : 'primary.main'}
+            color={overWeekly ? C.danger : 'primary.main'}
           >
             {totalH}s
           </Typography>
@@ -90,8 +91,8 @@ export function SummaryCell({ stats, config, compact = false }: SummaryCellProps
           arrow
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.4, cursor: 'default' }}>
-            <WarningAmberIcon sx={{ fontSize: 11, color: '#f97316' }} />
-            <Typography variant="caption" color="#f97316" fontSize="0.65rem">
+            <WarningAmberIcon sx={{ fontSize: 11, color: C.peach }} />
+            <Typography variant="caption" color={C.peach} fontSize="0.65rem">
               {stats.restViolations.length}{compact ? '' : ' dinlenme ihlali'}
             </Typography>
           </Box>
@@ -99,11 +100,11 @@ export function SummaryCell({ stats, config, compact = false }: SummaryCellProps
       )}
 
       {/* Haftalık progress bar */}
-      <Box sx={{ width: '100%', height: 3, bgcolor: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' }}>
+      <Box sx={{ width: '100%', height: 3, bgcolor: tint(C.ink, 0.06), borderRadius: 2, overflow: 'hidden' }}>
         <Box sx={{
           height: '100%',
           width: `${Math.min(100, (stats.totalMins / (maxW * 60)) * 100)}%`,
-          bgcolor: overWeekly ? '#ef4444' : '#14b8a6',
+          bgcolor: overWeekly ? C.danger : C.brand,
           borderRadius: 2,
           transition: 'width 0.3s',
         }} />
@@ -138,13 +139,13 @@ export function ShiftCell({
     return (
       <Tooltip title="Haftalık tatil — tıklayarak kaldırabilirsiniz" placement="top">
         <Box onClick={onClick} sx={{
-          borderLeft: '2px solid rgba(99,102,241,0.5)',
-          bgcolor: 'rgba(99,102,241,0.08)', p: 0.75, minHeight: 64, cursor,
+          borderLeft: '1px solid', borderColor: 'divider',
+          bgcolor: C.surfaceMuted, p: 0.75, minHeight: 64, cursor,
           display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: 0.4,
-          '&:hover': { bgcolor: readOnly ? 'rgba(99,102,241,0.08)' : 'rgba(99,102,241,0.16)' },
+          '&:hover': { bgcolor: readOnly ? C.surfaceMuted : tint(C.neutral, 0.16) },
         }}>
-          <WeekendIcon sx={{ fontSize: 14, color: '#818cf8' }} />
-          <Typography variant="caption" fontWeight={700} color="#818cf8" fontSize="0.7rem">Tatil</Typography>
+          <WeekendIcon sx={{ fontSize: 14, color: C.neutral }} />
+          <Typography variant="caption" fontWeight={700} color={C.neutral} fontSize="0.7rem">Tatil</Typography>
         </Box>
       </Tooltip>
     )
@@ -158,12 +159,12 @@ export function ShiftCell({
         : 'İzin onaylandı'} placement="top">
         <Box onClick={onClick} sx={{
           borderLeft: '1px solid', borderColor: 'divider',
-          bgcolor: 'rgba(251,191,36,0.08)', p: 0.75, minHeight: 64, cursor,
+          bgcolor: C.successSoft, p: 0.75, minHeight: 64, cursor,
           display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: 0.4,
-          '&:hover': { bgcolor: readOnly ? 'rgba(251,191,36,0.08)' : 'rgba(251,191,36,0.14)' },
+          '&:hover': { bgcolor: readOnly ? C.successSoft : tint(C.success, 0.18) },
         }}>
-          <EventBusyIcon sx={{ fontSize: 13, color: '#fbbf24' }} />
-          <Typography variant="caption" fontWeight={700} color="warning.main" fontSize="0.7rem">İzinli</Typography>
+          <EventBusyIcon sx={{ fontSize: 13, color: C.success }} />
+          <Typography variant="caption" fontWeight={700} color="success.main" fontSize="0.7rem">İzinli</Typography>
           {assignment && !compact && (
             <Typography variant="caption" color="text.disabled" fontSize="0.6rem">
               {formatTime(assignment.start_time)}–{formatTime(assignment.end_time)}
@@ -180,9 +181,9 @@ export function ShiftCell({
       <Tooltip title="Çalışan bu gün müsait değil (off day)" placement="top">
         <Box onClick={onClick} sx={{
           borderLeft: '1px solid', borderColor: 'divider',
-          bgcolor: 'rgba(239,68,68,0.08)', p: 0.75, minHeight: 64, cursor,
+          bgcolor: tint(C.danger, 0.08), p: 0.75, minHeight: 64, cursor,
           display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: 0.4,
-          '&:hover': { bgcolor: readOnly ? 'rgba(239,68,68,0.08)' : 'rgba(239,68,68,0.14)' },
+          '&:hover': { bgcolor: readOnly ? tint(C.danger, 0.08) : tint(C.danger, 0.14) },
         }}>
           <Typography variant="caption" color="error.main" fontSize="0.65rem">Off</Typography>
           {!readOnly && <AddIcon sx={{ fontSize: 13, color: 'error.main', opacity: 0.5 }} />}
@@ -196,12 +197,12 @@ export function ShiftCell({
     // Availability durumuna göre arkaplan
     const bgColor =
       availStatus === 'full'
-        ? isToday ? 'rgba(20,184,166,0.09)' : 'rgba(20,184,166,0.05)'
-        : isToday ? 'rgba(20,184,166,0.03)' : 'transparent'
+        ? isToday ? tint(C.brand, 0.09) : tint(C.brand, 0.05)
+        : isToday ? tint(C.brand, 0.03) : 'transparent'
     const bgHoverColor =
       availStatus === 'full'
-        ? 'rgba(20,184,166,0.13)'
-        : 'rgba(20,184,166,0.08)'
+        ? tint(C.brand, 0.13)
+        : tint(C.brand, 0.08)
 
     const tooltipAvail =
       availStatus === 'full' ? 'Çalışan bu gün müsait (availability kaydı var)' :
@@ -211,7 +212,7 @@ export function ShiftCell({
       <Tooltip title={tooltipAvail} placement="top" disableHoverListener={!tooltipAvail}>
         <Box onClick={onClick} sx={{
           borderLeft: '2px solid',
-          borderColor: availStatus === 'full' ? 'rgba(20,184,166,0.35)' : 'divider',
+          borderColor: availStatus === 'full' ? tint(C.brand, 0.35) : 'divider',
           bgcolor: bgColor, display: 'flex', alignItems: 'center', justifyContent: 'center',
           minHeight: 64, cursor, position: 'relative',
           '&:hover': { bgcolor: readOnly ? bgColor : bgHoverColor, '& .add-icon': { opacity: readOnly ? 0 : 1 } },
@@ -221,7 +222,7 @@ export function ShiftCell({
             <Box sx={{
               position: 'absolute', top: 5, right: 5,
               width: 5, height: 5, borderRadius: '50%',
-              bgcolor: 'rgba(20,184,166,0.5)',
+              bgcolor: tint(C.brand, 0.5),
             }} />
           )}
           {!readOnly && (
@@ -242,11 +243,11 @@ export function ShiftCell({
   const breakMins = grossMins - netMins
 
   // Renk: ihlal > partial availability > normal
-  let bgBase = isToday ? 'rgba(20,184,166,0.05)' : 'rgba(99,102,241,0.05)'
-  let bgHover = isToday ? 'rgba(20,184,166,0.1)' : 'rgba(99,102,241,0.12)'
-  if (dailyOver) { bgBase = 'rgba(239,68,68,0.1)'; bgHover = 'rgba(239,68,68,0.16)' }
-  else if (availStatus === 'off') { bgBase = 'rgba(239,68,68,0.1)'; bgHover = 'rgba(239,68,68,0.16)' }
-  else if (availStatus === 'partial') { bgBase = 'rgba(234,179,8,0.08)'; bgHover = 'rgba(234,179,8,0.15)' }
+  let bgBase = isToday ? tint(C.brand, 0.05) : tint(C.plum, 0.05)
+  let bgHover = isToday ? tint(C.brand, 0.1) : tint(C.plum, 0.12)
+  if (dailyOver) { bgBase = tint(C.danger, 0.1); bgHover = tint(C.danger, 0.16) }
+  else if (availStatus === 'off') { bgBase = tint(C.danger, 0.1); bgHover = tint(C.danger, 0.16) }
+  else if (availStatus === 'partial') { bgBase = tint(C.warning, 0.08); bgHover = tint(C.warning, 0.15) }
 
   const tooltipText = [
     `${name}: ${start}–${end}`,
@@ -257,7 +258,7 @@ export function ShiftCell({
   ].filter(Boolean).join('\n')
 
   const hasWarning = dailyOver || availStatus === 'off' || availStatus === 'partial'
-  const warningColor = dailyOver || availStatus === 'off' ? '#ef4444' : '#eab308'
+  const warningColor = dailyOver || availStatus === 'off' ? C.danger : C.warning
 
   return (
     <Tooltip title={<Box sx={{ whiteSpace: 'pre-line', fontSize: '0.75rem' }}>{tooltipText}</Box>} placement="top">
@@ -267,8 +268,8 @@ export function ShiftCell({
         display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 0.4,
         '&:hover': { bgcolor: readOnly ? bgBase : bgHover },
         // sol kenar rengi ihlal durumuna göre
-        borderLeftColor: dailyOver || availStatus === 'off' ? 'rgba(239,68,68,0.5)'
-          : availStatus === 'partial' ? 'rgba(234,179,8,0.5)'
+        borderLeftColor: dailyOver || availStatus === 'off' ? tint(C.danger, 0.5)
+          : availStatus === 'partial' ? tint(C.warning, 0.5)
           : 'divider',
         borderLeftWidth: (dailyOver || availStatus !== 'none') ? 2 : 1,
       }}>
@@ -283,7 +284,7 @@ export function ShiftCell({
             <Typography variant="caption" color="text.primary" fontSize="0.74rem" fontWeight={600} lineHeight={1.3} sx={{ fontVariantNumeric: "tabular-nums" }}>
               {start}<br />{end}
             </Typography>
-            <Typography variant="caption" fontSize="0.66rem" fontWeight={700} color={dailyOver ? '#ef4444' : 'primary.main'}>
+            <Typography variant="caption" fontSize="0.66rem" fontWeight={700} color={dailyOver ? C.danger : 'primary.main'}>
               {fmtHours(netMins)} net
             </Typography>
           </>
@@ -302,7 +303,7 @@ export function ShiftCell({
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Typography variant="caption" fontSize="0.6rem" noWrap>
-            <Box component="span" sx={{ color: dailyOver ? '#ef4444' : 'primary.main', fontWeight: 700 }}>
+            <Box component="span" sx={{ color: dailyOver ? C.danger : 'primary.main', fontWeight: 700 }}>
               {fmtHours(netMins)} net
             </Box>
             <Box component="span" sx={{ color: 'text.disabled' }}> · {fmtHours(breakMins)} mola</Box>

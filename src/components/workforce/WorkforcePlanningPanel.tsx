@@ -29,6 +29,7 @@ import type { PlannerResult, PlanWarning } from '@/lib/workforcePlanner'
 import { ScheduleGridSkeleton, useConfirm } from '@/components/common'
 import { CurrentPlanTable, DraftPlanTable } from './WorkforcePlanTables'
 import { apiFetch, ApiError } from '@/lib/api/http'
+import { C, tint } from '@/lib/palette'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -280,7 +281,7 @@ export function WorkforcePlanningPanel() {
               ? <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                   <span>Taslak</span>
                   {draft.hasHardViolation && (
-                    <WarningAmberIcon sx={{ fontSize: 14, color: '#ef4444' }} />
+                    <WarningAmberIcon sx={{ fontSize: 14, color: C.danger }} />
                   )}
                 </Box>
               : 'Taslak'
@@ -312,7 +313,7 @@ export function WorkforcePlanningPanel() {
                 {planData.openShiftsThisWeek.length > 0 && (
                   <Chip size="small" icon={<WorkOutlineIcon sx={{ fontSize: '12px !important' }} />}
                     label={`${planData.openShiftsThisWeek.length} açık vardiya`}
-                    sx={{ fontSize: '0.7rem', bgcolor: 'rgba(234,179,8,0.1)', color: '#eab308' }} />
+                    sx={{ fontSize: '0.7rem', bgcolor: tint(C.warning, 0.1), color: C.warning }} />
                 )}
                 {planData.summaries.some((s) => s.violations.length > 0) && (
                   <Chip size="small" icon={<WarningAmberIcon sx={{ fontSize: '12px !important' }} />}
@@ -348,7 +349,7 @@ export function WorkforcePlanningPanel() {
           {/* Özet istatistikler */}
           <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
             <Chip size="small" label={`${draft.assignments.length} atama`}
-              sx={{ fontSize: '0.7rem', bgcolor: 'rgba(20,184,166,0.1)', color: 'primary.main' }} />
+              sx={{ fontSize: '0.7rem', bgcolor: tint(C.brand, 0.1), color: 'primary.main' }} />
             <Chip size="small"
               label={`${draft.warnings.filter((w) => w.level === 'error').length} kritik uyarı`}
               color={draft.warnings.some((w) => w.level === 'error') ? 'error' : 'default'}
@@ -370,7 +371,7 @@ export function WorkforcePlanningPanel() {
           {!applyResult && (
             <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
               {draft.hasHardViolation && (
-                <Typography variant="caption" sx={{ color: '#ef4444', fontSize: '0.72rem', mr: 'auto' }}>
+                <Typography variant="caption" sx={{ color: C.danger, fontSize: '0.72rem', mr: 'auto' }}>
                   ⚠ Kritik ihlaller giderilmeden plan onaylanamaz.
                 </Typography>
               )}

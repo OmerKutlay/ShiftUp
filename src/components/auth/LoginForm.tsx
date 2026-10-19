@@ -35,6 +35,7 @@ import EmailIcon from '@mui/icons-material/Email'
 import LockIcon from '@mui/icons-material/Lock'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import BugReportIcon from '@mui/icons-material/BugReport'
+import { C, tint } from '@/lib/palette'
 
 type Step = 'email' | 'otp'
 
@@ -216,7 +217,7 @@ export function LoginForm({ authMode }: Props) {
         sx={{
           width: '100%',
           maxWidth: 400,
-          bgcolor: 'rgba(15,23,42,0.98)',
+          bgcolor: tint(C.canvas, 0.98),
           border: '1px solid',
           borderColor: 'divider',
           borderRadius: 3,

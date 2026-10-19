@@ -28,6 +28,7 @@ import {
 import { ShiftTemplateFormDialog } from './ShiftTemplateFormDialog'
 import { PageHeader, ListSkeleton } from '@/components/common'
 import { useLoadedKey } from '@/hooks/useLoadedKey'
+import { C, tint } from '@/lib/palette'
 
 export function ShiftTemplatesPage() {
   const [templates, setTemplates] = useState<ShiftTemplate[]>([])
@@ -82,7 +83,7 @@ export function ShiftTemplatesPage() {
   const activeCount = templates.filter((t) => t.active).length
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: '#0f172a', color: 'text.primary' }}>
+    <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: 'background.default', color: 'text.primary' }}>
       <PageHeader
         icon={ScheduleIcon}
         overline="Vardiya"
@@ -101,7 +102,7 @@ export function ShiftTemplatesPage() {
         }
       />
 
-      <Divider sx={{ mb: 3, borderColor: 'rgba(255,255,255,0.08)' }} />
+      <Divider sx={{ mb: 3, borderColor: tint(C.ink, 0.08) }} />
 
       {/* Content */}
       {isFirstLoad && <ListSkeleton count={4} actions={2} />}
@@ -189,9 +190,9 @@ function ShiftTemplateCard({
               height: 18,
               fontSize: '0.65rem',
               fontWeight: 600,
-              bgcolor: 'rgba(20,184,166,0.1)',
+              bgcolor: tint(C.brand, 0.1),
               color: 'primary.main',
-              border: '1px solid rgba(20,184,166,0.25)',
+              border: `1px solid ${tint(C.brand, 0.25)}`,
             }}
           />
           {template.description && (
@@ -212,9 +213,9 @@ function ShiftTemplateCard({
             height: 22,
             fontSize: '0.7rem',
             fontWeight: 600,
-            bgcolor: template.active ? 'rgba(16,185,129,0.1)' : 'rgba(100,116,139,0.1)',
-            color: template.active ? '#10b981' : '#94a3b8',
-            borderColor: template.active ? 'rgba(16,185,129,0.3)' : 'rgba(100,116,139,0.3)',
+            bgcolor: template.active ? tint(C.success, 0.1) : tint(C.neutral, 0.1),
+            color: template.active ? C.success : C.inkMuted,
+            borderColor: template.active ? tint(C.success, 0.3) : tint(C.neutral, 0.3),
           }}
         />
       </Box>
@@ -230,9 +231,9 @@ function ShiftTemplateCard({
               height: 22,
               fontSize: '0.7rem',
               fontWeight: 600,
-              bgcolor: template.active ? 'rgba(16,185,129,0.1)' : 'rgba(100,116,139,0.1)',
-              color: template.active ? '#10b981' : '#94a3b8',
-              borderColor: template.active ? 'rgba(16,185,129,0.3)' : 'rgba(100,116,139,0.3)',
+              bgcolor: template.active ? tint(C.success, 0.1) : tint(C.neutral, 0.1),
+              color: template.active ? C.success : C.inkMuted,
+              borderColor: template.active ? tint(C.success, 0.3) : tint(C.neutral, 0.3),
             }}
           />
         </Box>

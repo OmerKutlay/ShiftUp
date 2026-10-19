@@ -1,10 +1,10 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter } from 'next/font/google'
+import { Figtree } from 'next/font/google'
 import { AppRouterCacheProvider } from '@mui/material-nextjs/v16-appRouter'
 import { Providers } from './providers'
 
 // latin-ext: Türkçe karakterler (ı, ş, ğ, İ) fallback fonta düşmesin
-const inter = Inter({ subsets: ['latin', 'latin-ext'], display: 'swap' })
+const figtree = Figtree({ subsets: ['latin', 'latin-ext'], display: 'swap' })
 
 export const metadata: Metadata = {
   title: { default: 'ShiftUp — Mağaza Vardiya Yönetimi', template: '%s — ShiftUp' },
@@ -20,7 +20,8 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    statusBarStyle: 'black-translucent',
+    // Açık tema: koyu durum çubuğu metni (black-translucent beyaz metin verir)
+    statusBarStyle: 'default',
     title: 'ShiftUp',
   },
 }
@@ -31,7 +32,7 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
-  themeColor: '#14b8a6',
+  themeColor: '#F5EFE6', // palette C.canvas
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -39,7 +40,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="tr">
       {/* paddingTop/Bottom: iOS notch + home-indicator için safe-area inset */}
       <body
-        className={inter.className}
+        className={figtree.className}
         style={{
           margin: 0,
           paddingTop: 'env(safe-area-inset-top)',

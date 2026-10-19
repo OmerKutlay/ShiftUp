@@ -3,6 +3,7 @@
 import { Chip } from '@mui/material'
 import type { AttendanceStatus as AttendanceStatusType } from '@/types/attendance'
 import { ATTENDANCE_STATUS_LABELS } from '@/types/attendance'
+import { C, tint } from '@/lib/palette'
 
 interface Props {
   status: AttendanceStatusType
@@ -13,29 +14,29 @@ const STATUS_STYLES: Record<
   { bgcolor: string; color: string; borderColor: string }
 > = {
   shift_waiting: {
-    bgcolor: 'rgba(100, 116, 139, 0.15)',
-    color: '#94a3b8',
-    borderColor: 'rgba(100, 116, 139, 0.3)',
+    bgcolor: tint(C.neutral, 0.15),
+    color: C.inkMuted,
+    borderColor: tint(C.neutral, 0.3),
   },
   working: {
-    bgcolor: 'rgba(16, 185, 129, 0.15)',
-    color: '#10b981',
-    borderColor: 'rgba(16, 185, 129, 0.3)',
+    bgcolor: tint(C.success, 0.15),
+    color: C.success,
+    borderColor: tint(C.success, 0.3),
   },
   on_break: {
-    bgcolor: 'rgba(245, 158, 11, 0.15)',
-    color: '#f59e0b',
-    borderColor: 'rgba(245, 158, 11, 0.3)',
+    bgcolor: tint(C.warning, 0.15),
+    color: C.warning,
+    borderColor: tint(C.warning, 0.3),
   },
   working_after_break: {
-    bgcolor: 'rgba(16, 185, 129, 0.15)',
-    color: '#10b981',
-    borderColor: 'rgba(16, 185, 129, 0.3)',
+    bgcolor: tint(C.success, 0.15),
+    color: C.success,
+    borderColor: tint(C.success, 0.3),
   },
   clocked_out: {
-    bgcolor: 'rgba(99, 102, 241, 0.15)',
-    color: '#818cf8',
-    borderColor: 'rgba(99, 102, 241, 0.3)',
+    bgcolor: tint(C.plum, 0.15),
+    color: C.plum,
+    borderColor: tint(C.plum, 0.3),
   },
 }
 
