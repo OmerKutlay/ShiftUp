@@ -93,7 +93,7 @@ const FIELD_LABELS: Record<string, string> = {
   break_minutes: 'Mola süresi',
   full_name: 'Ad soyad',
   email: 'E-posta',
-  role: 'Pozisyon',
+  role: 'Pozisyon', // eski denetim kayıtları için (sütun kaldırıldı)
   role_id: 'Sistem rolü',
   active: 'Hesap durumu',
   employment_type: 'Çalışma tipi',

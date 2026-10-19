@@ -160,7 +160,7 @@ function PersonName({ row }: { row: TimesheetRow }) {
       <PersonAvatar name={row.employee.full_name} size={32} />
       <Box sx={{ minWidth: 0 }}>
         <Typography fontWeight={700} fontSize="0.85rem" noWrap>{row.employee.full_name}</Typography>
-        <Typography fontSize="0.72rem" color="text.secondary" noWrap>{row.employee.role}</Typography>
+        <Typography fontSize="0.72rem" color="text.secondary" noWrap>{row.employee.role_name}</Typography>
       </Box>
     </Box>
   )
@@ -261,7 +261,7 @@ export function PersonDetail({ row, days, today, monthText, compact }: {
         <PersonAvatar name={row.employee.full_name} size={compact ? 44 : 40} />
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography fontWeight={700} fontSize={compact ? '1.1rem' : '1rem'} noWrap>{row.employee.full_name}</Typography>
-          <Typography fontSize="0.78rem" color="text.secondary" noWrap>{row.employee.role} · {monthText}</Typography>
+          <Typography fontSize="0.78rem" color="text.secondary" noWrap>{[row.employee.role_name, monthText].filter(Boolean).join(' · ')}</Typography>
         </Box>
         {row.overtimeWithoutConsent && (
           <Chip size="small" label="Onay yok" sx={{ ...badgeSx, bgcolor: C.dangerSoft, color: C.danger }} />

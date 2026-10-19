@@ -1,11 +1,18 @@
 // Employee & Role domain types — FAZ 2 / FAZ AUTH
 // attendance.ts'teki Employee tipi korunur; bu dosya genişletilmiş tipleri içerir.
 
+import type { AccessLevel, PlanningGroup } from '@/lib/auth/roles'
+
+/** Sistem rolü: yetki seviyesi + planlamadaki görev (kod rol adına bakmaz; ad yalnızca gösterim) */
 export interface Role {
   id: string
   name: string
   description: string | null
-  created_at: string
+  access_level: AccessLevel
+  /** Vardiya planlayıcısındaki görev; null = planlanmaz */
+  planning_group: PlanningGroup | null
+  sort_order: number
+  created_at?: string
 }
 
 /** Çalışma tipi — DB CHECK constraint ile senkron tutulur */
@@ -27,7 +34,6 @@ export interface Employee {
   id: string
   full_name: string
   email: string | null      // FAZ AUTH: login email
-  role: string              // serbest metin (geriye dönük uyumluluk + attendance sistemine destek)
   role_id: string | null
   active: boolean
   employment_type: EmploymentType  // 'full_time' | 'part_time'
@@ -46,15 +52,12 @@ export interface Employee {
 // Not: Supabase nested select 'roles' alanını tekil obje (to-one) olarak döndürür
 export interface EmployeeWithRole extends Employee {
   roles: Role | null  // Supabase join: employees → roles (many-to-one, tekil obje)
-  /** roles tablosundan gelen yapılandırılmış rol adı — authorization için kullan */
-  role_name?: string | null
 }
 
 // Yeni çalışan oluşturma payload
 export interface CreateEmployeePayload {
   full_name: string
   email: string | null      // FAZ AUTH: login email (benzersiz olmalı)
-  role: string              // pozisyon / unvan (serbest metin)
   role_id: string | null
   active: boolean
   employment_type: EmploymentType
@@ -67,7 +70,6 @@ export interface CreateEmployeePayload {
 export interface UpdateEmployeePayload {
   full_name?: string
   email?: string | null
-  role?: string
   role_id?: string | null
   active?: boolean
   employment_type?: EmploymentType

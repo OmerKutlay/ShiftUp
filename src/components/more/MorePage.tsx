@@ -25,7 +25,7 @@ import { PageHeader, PersonAvatar } from '@/components/common'
 
 export function MorePage() {
   const { employee, status, signOut } = useAuth()
-  const roleName = employee?.roles?.name ?? employee?.role_name ?? null
+  const roleName = employee?.roles?.access_level ?? null
   const groups = status === 'loading' ? [] : groupNavItems(getMoreItems(roleName))
 
   return (
@@ -53,7 +53,7 @@ export function MorePage() {
               </Typography>
               {employee && (
                 <Typography variant="body2" color="text.secondary" noWrap>
-                  {employee.roles?.name ?? employee.role}
+                  {employee.roles?.name}
                 </Typography>
               )}
             </Box>

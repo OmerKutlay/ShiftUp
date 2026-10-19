@@ -249,7 +249,7 @@ export function MobileDayBoard({
                           <Box component="span" sx={{ ml: 0.5, fontSize: '0.6rem', color: C.plum, fontWeight: 700 }}>PT</Box>
                         )}
                       </Typography>
-                      <Typography fontSize="0.68rem" color="text.secondary" noWrap>{r.emp.role}</Typography>
+                      <Typography fontSize="0.68rem" color="text.secondary" noWrap>{r.emp.roles?.name}</Typography>
                     </Box>
                   </Box>
                   <Box sx={{ minWidth: 0 }}>

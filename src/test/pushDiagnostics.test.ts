@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { NextRequest } from 'next/server'
-import { ROLES } from '@/lib/auth/roles'
+import { ACCESS } from '@/lib/auth/roles'
 import { createFakeDb, type FakeDb } from './helpers/fakeSupabase'
 import {
   computePushDiagnosticSteps,
@@ -23,11 +23,11 @@ vi.mock('@/lib/supabaseAdmin', () => ({ createAdminClient: vi.fn(() => state.db)
 import { GET as getDiagnostics } from '@/app/api/push/diagnostics/route'
 
 // ── Sabitler ─────────────────────────────────────────────────
-const base = { email: null, role: 'Kasiyer', role_id: null, active: true }
-const ahmet = { ...base, id: 'emp-ahmet', full_name: 'Ahmet', role_name: ROLES.CALISAN }
-const yardimci = { ...base, id: 'emp-yrd', full_name: 'Yardımcı', role_name: ROLES.MUDUR_YARDIMCISI }
-const mudur = { ...base, id: 'emp-mudur', full_name: 'Müdür', role_name: ROLES.MAGAZA_MUDURU }
-const kiosk = { ...base, id: 'kiosk-1', full_name: 'Kiosk', role: 'Kiosk', role_name: ROLES.KIOSK }
+const base = { email: null, role_id: null, active: true }
+const ahmet = { ...base, id: 'emp-ahmet', full_name: 'Ahmet', access_level: ACCESS.EMPLOYEE }
+const yardimci = { ...base, id: 'emp-yrd', full_name: 'Yardımcı', access_level: ACCESS.MANAGER }
+const mudur = { ...base, id: 'emp-mudur', full_name: 'Müdür', access_level: ACCESS.STORE_MANAGER }
+const kiosk = { ...base, id: 'kiosk-1', full_name: 'Kiosk', access_level: ACCESS.KIOSK }
 
 const ENDPOINT = 'https://fcm.googleapis.com/fcm/send/device-1'
 
@@ -262,7 +262,7 @@ describe('GET /api/push/diagnostics', () => {
   })
 
   it('Yönetici de erişebilir', async () => {
-    state.employee = { ...mudur, id: 'emp-yon', role_name: ROLES.YONETICI }
+    state.employee = { ...mudur, id: 'emp-yon', access_level: ACCESS.ADMIN }
     expect((await getDiagnostics(req('GET', '/api/push/diagnostics'))).status).toBe(200)
   })
 

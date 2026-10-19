@@ -7,6 +7,7 @@ import { formatInTimeZone } from '@/lib/dateUtils'
 import { PersonAvatar, SectionRow } from '@/components/common'
 import { shiftKindOf } from '@/components/schedule/scheduleHelpers'
 import { C, SHIFT_KIND_TONES } from '@/lib/palette'
+import { roleNameOf } from '@/lib/roleJoin'
 
 interface Props {
   entry: DailyShiftEntry
@@ -26,7 +27,7 @@ export function EmployeeAttendanceRow({ entry }: Props) {
         <PersonAvatar name={employee.full_name} size={36} />
         <Box sx={{ minWidth: 0 }}>
           <Typography fontSize="0.875rem" fontWeight={700} noWrap>{employee.full_name}</Typography>
-          <Typography fontSize="0.72rem" color="text.secondary" noWrap>{employee.role}</Typography>
+          <Typography fontSize="0.72rem" color="text.secondary" noWrap>{roleNameOf(employee)}</Typography>
         </Box>
       </Box>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap', flex: '2 1 320px', minWidth: 0 }}>

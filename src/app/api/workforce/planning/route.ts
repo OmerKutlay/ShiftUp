@@ -15,7 +15,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
-import { requireMinRole, ROLES } from '@/lib/auth'
+import { requireMinRole, ACCESS } from '@/lib/auth'
 import { buildWeekSummary } from '@/lib/workingTimeService'
 import { getWorkingTimeConfig } from '@/lib/workingTimeConfig'
 import { getWeekDays } from '@/lib/scheduleUtils'
@@ -26,7 +26,7 @@ import { NOT_KIOSK_FILTER } from '@/lib/auth/roles'
 
 export async function GET(req: NextRequest) {
   // Yalnızca Müdür Yardımcısı ve üzeri erişebilir
-  const auth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
+  const auth = await requireMinRole(req, ACCESS.MANAGER)
   if ('response' in auth) return auth.response
 
   try {
@@ -69,7 +69,7 @@ export async function GET(req: NextRequest) {
     // Aktif çalışanlar (vardiyası olmayan çalışanlar da listelenmeli)
     const { data: employees, error: empErr } = await admin
       .from('employees')
-      .select('id, full_name, role, role_id, active, employment_type')
+      .select('id, full_name, role_id, active, employment_type')
       .eq('active', true)
       .or(NOT_KIOSK_FILTER)
       .order('full_name')

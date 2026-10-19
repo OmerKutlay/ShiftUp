@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { NextRequest } from 'next/server'
-import { ROLES } from '@/lib/auth/roles'
+import { ACCESS } from '@/lib/auth/roles'
 import { createFakeDb, type FakeDb } from './helpers/fakeSupabase'
 import { isValidPushEndpoint, parsePushSubscription } from '@/lib/pushSubscriptionRepository'
 
@@ -18,10 +18,10 @@ import { GET as getConfig } from '@/app/api/push/config/route'
 import { POST, DELETE } from '@/app/api/push/subscription/route'
 
 // ── Sabitler ─────────────────────────────────────────────────
-const base = { email: null, role: 'Kasiyer', role_id: null, active: true }
-const ahmet = { ...base, id: 'emp-ahmet', full_name: 'Ahmet', role_name: ROLES.CALISAN }
-const mehmet = { ...base, id: 'emp-mehmet', full_name: 'Mehmet', role_name: ROLES.CALISAN }
-const kiosk = { ...base, id: 'kiosk-1', full_name: 'Kiosk', role: 'Kiosk', role_name: ROLES.KIOSK }
+const base = { email: null, role_id: null, active: true }
+const ahmet = { ...base, id: 'emp-ahmet', full_name: 'Ahmet', access_level: ACCESS.EMPLOYEE }
+const mehmet = { ...base, id: 'emp-mehmet', full_name: 'Mehmet', access_level: ACCESS.EMPLOYEE }
+const kiosk = { ...base, id: 'kiosk-1', full_name: 'Kiosk', access_level: ACCESS.KIOSK }
 
 const ENDPOINT = 'https://fcm.googleapis.com/fcm/send/device-token-123'
 const P256DH = 'B' + 'A'.repeat(86) // 65 bayt → 87 karakter base64url

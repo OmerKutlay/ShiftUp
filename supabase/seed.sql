@@ -2,10 +2,11 @@
 -- Çalıştırmak için: npx supabase db reset  (migration'lardan sonra otomatik çalışır)
 
 -- Çalışanlar
-INSERT INTO employees (id, full_name, role, active, role_id, employment_type) VALUES
-  ('a1000000-0000-0000-0000-000000000001', 'Ahmet Kaya',   'Kasiyer',           TRUE, '00000000-0000-0000-0000-000000000004', 'full_time'),
-  ('a1000000-0000-0000-0000-000000000002', 'Ayşe Demir',   'Reyon Görevlisi',   TRUE, '00000000-0000-0000-0000-000000000004', 'full_time'),
-  ('a1000000-0000-0000-0000-000000000003', 'Mehmet Can',   'Depo Sorumlusu',    TRUE, '00000000-0000-0000-0000-000000000004', 'part_time')
+-- role_id: 0006 Kasiyer, 0009 Reyon Sorumlusu, 0007 Depo Çalışanı
+INSERT INTO employees (id, full_name, active, role_id, employment_type) VALUES
+  ('a1000000-0000-0000-0000-000000000001', 'Ahmet Kaya',   TRUE, '00000000-0000-0000-0000-000000000006', 'full_time'),
+  ('a1000000-0000-0000-0000-000000000002', 'Ayşe Demir',   TRUE, '00000000-0000-0000-0000-000000000009', 'full_time'),
+  ('a1000000-0000-0000-0000-000000000003', 'Mehmet Can',   TRUE, '00000000-0000-0000-0000-000000000007', 'part_time')
 ON CONFLICT (id) DO NOTHING;
 
 -- Bugünün vardiyaları — "bugün" Türkiye saatine göre (DB sunucusu UTC'de çalışır)

@@ -27,7 +27,7 @@ import {
   timesOverlap,
 } from '@/lib/workingTimeService'
 import type { WorkingTimeConfig } from '@/lib/workingTimeConfig'
-import { hasRole, MANAGER_ROLES, ROLES } from '@/lib/auth/roles'
+import { hasRole, MANAGER_ROLES, ACCESS } from '@/lib/auth/roles'
 
 const BASE_CONFIG: WorkingTimeConfig = {
   minRestHours: 11,
@@ -291,15 +291,15 @@ describe('buildWeekSummary', () => {
 // ─── 9. Workforce Planning — authorization ──────────────────
 describe('hasRole — workforce planning authorization', () => {
   it('9. Çalışan rolü MANAGER_ROLES içinde değil', () => {
-    expect(hasRole(ROLES.CALISAN, MANAGER_ROLES)).toBe(false)
+    expect(hasRole(ACCESS.EMPLOYEE, MANAGER_ROLES)).toBe(false)
   })
 
   it('Mağaza Müdürü MANAGER_ROLES içinde', () => {
-    expect(hasRole(ROLES.MAGAZA_MUDURU, MANAGER_ROLES)).toBe(true)
+    expect(hasRole(ACCESS.STORE_MANAGER, MANAGER_ROLES)).toBe(true)
   })
 
   it('Müdür Yardımcısı MANAGER_ROLES içinde', () => {
-    expect(hasRole(ROLES.MUDUR_YARDIMCISI, MANAGER_ROLES)).toBe(true)
+    expect(hasRole(ACCESS.MANAGER, MANAGER_ROLES)).toBe(true)
   })
 })
 

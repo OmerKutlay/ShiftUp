@@ -14,14 +14,15 @@
  *
  * Haftalık tatil: planda hiç vardiyası olmayan aktif çalışan başına TEK gün otomatik
  * weekly_rest atanır (haftanın son boş günü). Önceki aktarımdan kalan otomatik tatiller
- * yenileriyle değiştirilir; elle atanan tatiller ve diğer izinler korunur.
+ * yenileriyle değiştirilir; elle atanan tatiller ve diğer izinler korunur. Rolü planlamaya
+ * girmeyen (ör. Admin) ve vardiyası olmayan çalışana tatil yazılmaz.
  *
  * Body: { assignments: DraftAssignment[], weekStart?: string, acknowledge_violations?: boolean }
  * Response: { created, replaced, skipped, restDays, warnings }
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
-import { requireMinRole, ROLES } from '@/lib/auth'
+import { requireMinRole, ACCESS } from '@/lib/auth'
 import type { DraftAssignment } from '@/lib/workforcePlanner'
 import { AUTO_WEEKLY_REST_REASON, isAutoWeeklyRest } from '@/types/leave'
 import { badRequest, conflict, readJson, serverError } from '@/lib/apiErrors'
@@ -39,7 +40,7 @@ import { NOT_KIOSK_FILTER } from '@/lib/auth/roles'
 const MAX_ASSIGNMENTS = 500
 
 export async function POST(req: NextRequest) {
-  const auth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
+  const auth = await requireMinRole(req, ACCESS.MANAGER)
   if ('response' in auth) return auth.response
 
   try {
@@ -82,7 +83,7 @@ export async function POST(req: NextRequest) {
         .select('*, attendance_records ( id )')
         .gte('work_date', weekStart)
         .lte('work_date', weekEnd),
-      admin.from('employees').select('id, full_name, active, employment_type, birth_date').or(NOT_KIOSK_FILTER),
+      admin.from('employees').select('id, full_name, active, employment_type, birth_date, roles ( planning_group )').or(NOT_KIOSK_FILTER),
       admin
         .from('leave_requests')
         .select('id, employee_id, leave_type, start_date, end_date, reason, status, reviewed_at, reviewed_by')
@@ -98,9 +99,18 @@ export async function POST(req: NextRequest) {
       if (r.error) return serverError('POST /api/workforce/apply', r.error)
     }
 
-    const employees = (empsRes.data ?? []) as Array<{
-      id: string; full_name: string; active: boolean; employment_type: EmploymentType | null; birth_date: string | null
-    }>
+    const employees = (empsRes.data ?? []).map((e) => {
+      const role = Array.isArray(e.roles) ? e.roles[0] : e.roles
+      return {
+        id: e.id as string,
+        full_name: e.full_name as string,
+        active: e.active as boolean,
+        employment_type: e.employment_type as EmploymentType | null,
+        birth_date: e.birth_date as string | null,
+        /** Rolü vardiya planına giriyor mu (roles.planning_group) */
+        planned: !!(role as { planning_group?: string | null } | null)?.planning_group,
+      }
+    })
     const empById = new Map(employees.map((e) => [e.id, e]))
     for (const a of assignments) {
       const emp = empById.get(a.employee_id)
@@ -193,6 +203,8 @@ export async function POST(req: NextRequest) {
     const reviewedAt = new Date().toISOString()
     const restRows = []
     for (const e of employees.filter((x) => x.active)) {
+      // Planlanmayan rol (ör. Admin) vardiyası yoksa haftalık tatil kaydı da almaz
+      if (!e.planned && !weekDays.some((day) => seen.has(`${e.id}::${day}`))) continue
       const empLeaves = blockingLeaves.filter((l) => l.employee_id === e.id)
       const hasManualRest = empLeaves.some((l) => l.leave_type === 'weekly_rest')
       if (hasManualRest) continue

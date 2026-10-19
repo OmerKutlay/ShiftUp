@@ -144,7 +144,7 @@ export function EmployeesPage() {
     const matchSearch =
       search === '' ||
       e.full_name.toLowerCase().includes(search.toLowerCase()) ||
-      e.role.toLowerCase().includes(search.toLowerCase())
+      (e.roles?.name ?? '').toLowerCase().includes(search.toLowerCase())
     const matchFilter =
       filter === 'all' ||
       (filter === 'active' && e.active) ||
@@ -221,7 +221,7 @@ export function EmployeesPage() {
       {!isFirstLoad && !error && filtered.length > 0 && (
         <Stack spacing={2}>
           {ROLE_GROUPS.map((g) => {
-            const list = filtered.filter((e) => roleGroupOf(e.role ?? '') === g.key)
+            const list = filtered.filter((e) => roleGroupOf(e.roles) === g.key)
             if (list.length === 0) return null
             return (
               <SectionCard key={g.key} title={g.label} count={list.length}>
@@ -327,7 +327,7 @@ function EmployeeRow({
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography fontSize="0.875rem" fontWeight={700} noWrap>{employee.full_name}</Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
-          <Typography fontSize="0.72rem" color="text.secondary" noWrap sx={{ flexShrink: 0 }}>{employee.role}</Typography>
+          <Typography fontSize="0.72rem" color="text.secondary" noWrap sx={{ flexShrink: 0 }}>{employee.roles?.name}</Typography>
           {employee.email && (
             <Typography fontSize="0.72rem" color="text.disabled" noWrap sx={{ display: { xs: 'none', sm: 'block' } }}>
               · {employee.email}
@@ -337,7 +337,6 @@ function EmployeeRow({
       </Box>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
         {employee.employment_type === 'part_time' && <StatusBadge tone="plum" label="Yarı zamanlı" />}
-        {employee.roles && <StatusBadge tone="neutral" label={employee.roles.name} sx={{ display: { xs: 'none', md: 'inline-flex' } }} />}
         <EmployeeStatusChip active={employee.active} />
       </Box>
       <Box sx={{ display: 'flex', alignItems: 'center' }}>
