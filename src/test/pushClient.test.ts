@@ -192,14 +192,29 @@ describe('unsubscribe / sync / çıkış kancası', () => {
     expect(sub.unsubscribe).toHaveBeenCalled()
   })
 
-  it('syncSubscription izin + abonelik varsa yeniden kaydeder, yoksa hiçbir şey yapmaz', async () => {
+  it('syncSubscription izin + abonelik varsa yeniden kaydeder', async () => {
     installPushApis('granted')
+    currentSub = makeSubscription('https://fcm.googleapis.com/fcm/send/x', null)
+    const { syncSubscription } = await import('@/lib/pwa/push')
+    expect(await syncSubscription()).toBe(true)
+    expect(pushManager.subscribe).not.toHaveBeenCalled()
+    expect(fetchMock).toHaveBeenCalledWith('/api/push/subscription', expect.objectContaining({ method: 'POST' }))
+  })
+
+  it('syncSubscription izin var ama abonelik yoksa sessizce yeniden abone olur', async () => {
+    const N = installPushApis('granted')
+    const { syncSubscription } = await import('@/lib/pwa/push')
+    expect(await syncSubscription()).toBe(true)
+    expect(N.requestPermission).not.toHaveBeenCalled()
+    expect(pushManager.subscribe).toHaveBeenCalledOnce()
+    expect(fetchMock).toHaveBeenCalledWith('/api/push/subscription', expect.objectContaining({ method: 'POST' }))
+  })
+
+  it('syncSubscription izin verilmemişse hiçbir şey yapmaz', async () => {
+    installPushApis('default')
     const { syncSubscription } = await import('@/lib/pwa/push')
     expect(await syncSubscription()).toBe(false)
     expect(fetchMock).not.toHaveBeenCalled()
-    currentSub = makeSubscription('https://fcm.googleapis.com/fcm/send/x', null)
-    expect(await syncSubscription()).toBe(true)
-    expect(fetchMock).toHaveBeenCalledWith('/api/push/subscription', expect.objectContaining({ method: 'POST' }))
   })
 
   it('çıkışta bu cihazın aboneliği kaldırılır', async () => {

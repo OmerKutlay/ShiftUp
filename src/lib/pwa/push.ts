@@ -200,14 +200,16 @@ export async function unsubscribe(): Promise<boolean> {
 }
 
 /**
- * İzin verilmiş ve abonelik varsa sunucuya yeniden kaydeder (oturum başına bir kez çağrılır).
+ * İzin verilmişse aboneliği sunucuya yeniden kaydeder (oturum başına bir kez çağrılır).
  * Cihaz başka hesapla açıldıysa kayıt bu hesaba devredilir; SW'nin kaçırdığı
  * pushsubscriptionchange yenilemeleri de böylece sunucuya ulaşır.
+ * İzin var ama abonelik yoksa (ör. çıkış → yeniden giriş) sessizce yeniden abone olunur;
+ * izin zaten verildiği için kullanıcı etkileşimi gerekmez.
  */
 export async function syncSubscription(): Promise<boolean> {
   if (getPermissionState() !== 'granted') return false
   const sub = await getCurrentSubscription()
-  if (!sub) return false
+  if (!sub) return (await subscribe()).ok
   try {
     return await saveSubscription(sub)
   } catch {
