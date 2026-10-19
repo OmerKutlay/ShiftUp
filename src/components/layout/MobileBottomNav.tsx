@@ -2,25 +2,22 @@
 
 /**
  * MobileBottomNav — mobilde (md altı) alt sekme çubuğu.
- * Sekmeler role göre navItems.getBottomTabs'tan gelir; ekranın altında yüzen kart, aktif sekme açık kiremit zeminli.
+ * Sekmeler role göre navItems.getBottomTabs'tan gelir; ekranın altına yapışık, aktif sekme açık kiremit zeminli.
  */
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Box, Typography } from '@mui/material'
 
 import { useAuth } from '@/context/AuthContext'
 import { getActiveTabHref, getBottomTabs, type BottomTab } from './navItems'
-import { C, tint } from '@/lib/palette'
+import { cn } from '@/lib/utils'
 
-/** Alt bar kartının yüksekliği (safe-area hariç) */
+/** Alt bar yüksekliği (safe-area hariç) */
 export const BOTTOM_NAV_HEIGHT = 64
-/** Kartın ekran kenarlarına uzaklığı (yüzen kart) */
-const NAV_GAP = 10
-/** İçeriğin altta bırakması gereken boşluk: kart + alt boşluk */
-export const BOTTOM_NAV_SPACE = BOTTOM_NAV_HEIGHT + NAV_GAP
+/** İçeriğin altta bırakması gereken boşluk (safe-area body padding'inden gelir) */
+export const BOTTOM_NAV_SPACE = BOTTOM_NAV_HEIGHT
 /**
  * Mobilde alttan konumlanan katmanların (çevrimdışı bandı, güncelleme uyarısı, kurulum kartı)
- * alt boşluğu (safe-area hariç): yüzen kartın üstünde 8px.
+ * alt boşluğu (safe-area hariç): alt barın 8px üstü.
  */
 export const BOTTOM_NAV_OVERLAY_OFFSET = BOTTOM_NAV_SPACE + 8
 
@@ -33,86 +30,34 @@ export function MobileBottomNav() {
   const activeHref = getActiveTabHref(pathname, tabs)
 
   return (
-    // Dış kutu ekranın altına yapışık ve saydam; görünen kısım içteki yüzen kart
-    <Box
-      component="nav"
+    // Ekranın altına yapışık, opak bar; home-indicator alanı (safe-area) barın zemininde kalır
+    <nav
       aria-label="Alt menü"
-      sx={(theme) => ({
-        position: 'fixed',
-        left: 0,
-        right: 0,
-        bottom: 0,
-        zIndex: theme.zIndex.appBar,
-        pb: `calc(${NAV_GAP}px + env(safe-area-inset-bottom))`,
-        pl: `calc(${NAV_GAP}px + env(safe-area-inset-left))`,
-        pr: `calc(${NAV_GAP}px + env(safe-area-inset-right))`,
-        pointerEvents: 'none',
-        userSelect: 'none',
-        WebkitUserSelect: 'none',
-        WebkitTouchCallout: 'none',
-      })}
+      className="fixed inset-x-0 bottom-0 z-[1100] flex items-stretch gap-1 border-t bg-card pt-1.5 pr-[calc(8px+env(safe-area-inset-right))] pb-[calc(6px+env(safe-area-inset-bottom))] pl-[calc(8px+env(safe-area-inset-left))] shadow-[0_-4px_16px_rgb(43_33_27/0.05)] select-none [-webkit-touch-callout:none]"
+      style={{ height: `calc(${BOTTOM_NAV_HEIGHT}px + env(safe-area-inset-bottom))` }}
     >
-      <Box
-        sx={{
-          height: BOTTOM_NAV_HEIGHT,
-          display: 'flex',
-          alignItems: 'stretch',
-          gap: 0.5,
-          p: 0.75,
-          pointerEvents: 'auto',
-          bgcolor: tint(C.surface, 0.94),
-          backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)',
-          border: '1px solid',
-          borderColor: 'divider',
-          borderRadius: '20px',
-          boxShadow: `0 6px 20px ${tint(C.ink, 0.08)}`,
-        }}
-      >
-        {tabs.map((tab) => (
-          <TabLink key={tab.href} tab={tab} active={tab.href === activeHref} />
-        ))}
-      </Box>
-    </Box>
+      {tabs.map((tab) => (
+        <TabLink key={tab.href} tab={tab} active={tab.href === activeHref} />
+      ))}
+    </nav>
   )
 }
 
 function TabLink({ tab, active }: { tab: BottomTab; active: boolean }) {
   return (
-    <Box
-      component={Link}
+    <Link
       href={tab.href}
       prefetch={false}
       aria-current={active ? 'page' : undefined}
-      sx={{
-        flex: 1,
-        minWidth: 0,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 0.25,
-        borderRadius: '14px',
-        textDecoration: 'none',
-        color: active ? 'primary.main' : 'text.secondary',
-        bgcolor: active ? C.brandSoft : 'transparent',
-        transition: 'background-color 0.15s',
-        touchAction: 'manipulation',
-        WebkitTapHighlightColor: 'transparent',
-        outline: 'none',
-        '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.light' },
-        '&:active': { opacity: 0.7 },
-        '& svg': { fontSize: 22 },
-      }}
+      className={cn(
+        'flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-[14px] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring active:opacity-70 [&_svg]:size-[22px]',
+        active ? 'bg-accent text-primary' : 'text-ink-secondary'
+      )}
     >
       {tab.icon}
-      <Typography
-        component="span"
-        sx={{ fontSize: '0.68rem', fontWeight: active ? 700 : 500, lineHeight: 1.2, maxWidth: '100%' }}
-        noWrap
-      >
+      <span className={cn('max-w-full truncate text-[0.68rem] leading-tight', active ? 'font-bold' : 'font-medium')}>
         {tab.label}
-      </Typography>
-    </Box>
+      </span>
+    </Link>
   )
 }

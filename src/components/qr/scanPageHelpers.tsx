@@ -13,16 +13,12 @@
  *   - Molada iken "Çıkış Yap" seçeneği gösterilmez.
  *   - QR onaylandıktan sonra sonuç gösterilir, ardından amaç seçimine geri dönülür.
  */
-import LoginIcon from '@mui/icons-material/Login'
-import LogoutIcon from '@mui/icons-material/Logout'
-import FreeBreakfastIcon from '@mui/icons-material/FreeBreakfast'
-import ArrowBackIcon from '@mui/icons-material/ArrowBack'
+import { Coffee, LogIn, LogOut, Undo2, type LucideIcon } from 'lucide-react'
 import type { QrActionType } from '@/types/qr'
 import type { AttendanceStatus } from '@/types/attendance'
 import type { GpsCoordinates } from '@/types/location'
-import { Box, Typography } from '@mui/material'
+import type { BadgeTone } from '@/components/ui/badge'
 import { detectPlatform, isStandaloneDisplay } from '@/lib/pwa/deviceInfo'
-import { C, tint } from '@/lib/palette'
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -65,20 +61,13 @@ export const ATTENDANCE_STATUS_TR: Record<string, string> = {
   clocked_out: 'Vardiya Tamamlandı',
 }
 
-export const STATUS_COLORS: Record<string, string> = {
-  working: C.success,
-  on_break: C.warning,
-  working_after_break: C.success,
-  clocked_out: C.plum,
-  shift_waiting: C.neutral,
-}
-
-export const STATUS_BG_COLORS: Record<string, string> = {
-  working: tint(C.success, 0.08),
-  on_break: tint(C.warning, 0.08),
-  working_after_break: tint(C.success, 0.08),
-  clocked_out: tint(C.plum, 0.08),
-  shift_waiting: tint(C.neutral, 0.08),
+/** Durum rozeti tonu */
+export const STATUS_TONES: Record<string, BadgeTone> = {
+  working: 'success',
+  on_break: 'warning',
+  working_after_break: 'success',
+  clocked_out: 'plum',
+  shift_waiting: 'neutral',
 }
 
 // ─── Aksiyon buton tanımları ──────────────────────────────────
@@ -87,8 +76,8 @@ export interface ActionButton {
   action: QrActionType
   label: string
   description: string
-  icon: React.ReactNode
-  color: 'primary' | 'warning' | 'error'
+  icon: LucideIcon
+  tone: 'brand' | 'warning' | 'danger'
 }
 
 export function getButtons(status: AttendanceStatus | null): ActionButton[] {
@@ -99,8 +88,8 @@ export function getButtons(status: AttendanceStatus | null): ActionButton[] {
           action: 'clock_in',
           label: 'Giriş Yap',
           description: 'Vardiyama başlamak istiyorum',
-          icon: <LoginIcon sx={{ fontSize: 28 }} />,
-          color: 'primary',
+          icon: LogIn,
+          tone: 'brand',
         },
       ]
     case 'working':
@@ -109,15 +98,15 @@ export function getButtons(status: AttendanceStatus | null): ActionButton[] {
           action: 'break_start',
           label: 'Molaya Çık',
           description: 'Mola vermek istiyorum',
-          icon: <FreeBreakfastIcon sx={{ fontSize: 28 }} />,
-          color: 'warning',
+          icon: Coffee,
+          tone: 'warning',
         },
         {
           action: 'clock_out',
           label: 'Çıkış Yap',
           description: 'Vardiyamı tamamlamak istiyorum',
-          icon: <LogoutIcon sx={{ fontSize: 28 }} />,
-          color: 'error',
+          icon: LogOut,
+          tone: 'danger',
         },
       ]
     case 'on_break':
@@ -126,8 +115,8 @@ export function getButtons(status: AttendanceStatus | null): ActionButton[] {
           action: 'break_end',
           label: 'Moladan Dön',
           description: 'Molam bitti, işe dönüyorum',
-          icon: <ArrowBackIcon sx={{ fontSize: 28 }} />,
-          color: 'primary',
+          icon: Undo2,
+          tone: 'brand',
         },
         // Molada çıkış yok — kural gereği dahil edilmedi
       ]
@@ -137,15 +126,15 @@ export function getButtons(status: AttendanceStatus | null): ActionButton[] {
           action: 'break_start',
           label: 'Molaya Çık',
           description: 'Tekrar mola vermek istiyorum',
-          icon: <FreeBreakfastIcon sx={{ fontSize: 28 }} />,
-          color: 'warning',
+          icon: Coffee,
+          tone: 'warning',
         },
         {
           action: 'clock_out',
           label: 'Çıkış Yap',
           description: 'Vardiyamı tamamlamak istiyorum',
-          icon: <LogoutIcon sx={{ fontSize: 28 }} />,
-          color: 'error',
+          icon: LogOut,
+          tone: 'danger',
         },
       ]
     default:
@@ -228,27 +217,13 @@ export function permissionHelpSteps(
 export function PermissionHelp({ kind }: { kind: PermissionKind }) {
   const steps = permissionHelpSteps(kind)
   return (
-    <Box
-      sx={{
-        bgcolor: tint(C.danger, 0.08),
-        border: `1px solid ${tint(C.danger, 0.2)}`,
-        borderRadius: 2,
-        px: 2,
-        py: 1.5,
-        width: '100%',
-        textAlign: 'left',
-      }}
-    >
-      <Typography variant="caption" color="text.secondary" display="block" fontWeight={600} mb={0.5}>
+    <div className="w-full rounded-xl bg-danger-soft px-4 py-3 text-left">
+      <p className="mb-1 text-xs font-semibold text-ink">
         {kind === 'camera' ? 'Kamera izni nasıl verilir?' : 'Konum izni nasıl verilir?'}
-      </Typography>
-      <Box component="ol" sx={{ m: 0, pl: 2.5 }}>
-        {steps.map((step) => (
-          <Typography key={step} component="li" variant="caption" color="text.disabled">
-            {step}
-          </Typography>
-        ))}
-      </Box>
-    </Box>
+      </p>
+      <ol className="list-decimal space-y-0.5 pl-5 text-xs text-ink-secondary">
+        {steps.map((step) => <li key={step}>{step}</li>)}
+      </ol>
+    </div>
   )
 }

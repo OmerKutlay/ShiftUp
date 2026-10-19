@@ -1,5 +1,1 @@
-﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
-  <rect width="192" height="192" rx="32" fill="#0f172a"/>
-  <rect x="16" y="16" width="160" height="160" rx="24" fill="#14b8a6" opacity="0.15"/>
-  <text x="96" y="120" font-family="Arial,sans-serif" font-size="80" font-weight="bold" text-anchor="middle" fill="#14b8a6">S</text>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192"><rect width="192" height="192" rx="42" fill="#C2532D"/><g fill="none" stroke="#fff" stroke-width="8.064000000000002" stroke-linecap="round"><circle cx="96" cy="96" r="18.816000000000003"/><line x1="127.36" y1="96" x2="139.008" y2="96"/><line x1="118.17486865801013" y1="118.17486865801013" x2="126.41124844527104" y2="126.41124844527104"/><line x1="96" y1="127.36" x2="96" y2="139.008"/><line x1="73.82513134198987" y1="118.17486865801013" x2="65.58875155472896" y2="126.41124844527104"/><line x1="64.64" y1="96" x2="52.992" y2="96"/><line x1="73.82513134198986" y1="73.82513134198987" x2="65.58875155472896" y2="65.58875155472896"/><line x1="96" y1="64.64" x2="95.99999999999999" y2="52.992"/><line x1="118.17486865801013" y1="73.82513134198986" x2="126.41124844527103" y2="65.58875155472896"/></g></svg>

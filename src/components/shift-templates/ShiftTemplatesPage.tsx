@@ -1,22 +1,11 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import {
-  Box,
-  Typography,
-  Button,
-  Stack,
-  Paper,
-  Chip,
-  Skeleton,
-  Alert,
-  Divider,
-  IconButton,
-  Tooltip,
-} from '@mui/material'
-import AddIcon from '@mui/icons-material/Add'
-import EditIcon from '@mui/icons-material/Edit'
-import AccessTimeIcon from '@mui/icons-material/AccessTime'
+import { AlertCircle, Info, PencilLine, Plus } from 'lucide-react'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { ShiftTemplate, CreateShiftTemplatePayload, UpdateShiftTemplatePayload } from '@/types/shiftTemplate'
 import { formatTime } from '@/types/shiftTemplate'
 import {
@@ -25,9 +14,11 @@ import {
   updateShiftTemplate,
 } from '@/lib/api/shiftTemplates'
 import { ShiftTemplateFormDialog } from './ShiftTemplateFormDialog'
-import { PageHeader, ListSkeleton } from '@/components/common'
+import { PageHeader, ListSkeleton, SectionCard, SectionRow, StatusBadge } from '@/components/common'
+import { shiftKindOf } from '@/components/schedule/scheduleHelpers'
 import { useLoadedKey } from '@/hooks/useLoadedKey'
-import { C, tint } from '@/lib/palette'
+import { SHIFT_KIND_TONES } from '@/lib/palette'
+import { cn } from '@/lib/utils'
 
 export function ShiftTemplatesPage() {
   const [templates, setTemplates] = useState<ShiftTemplate[]>([])
@@ -82,40 +73,40 @@ export function ShiftTemplatesPage() {
   const activeCount = templates.filter((t) => t.active).length
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, color: 'text.primary' }}>
+    <div className="p-4 md:p-6">
       <PageHeader
-        title="Vardiya Şablonları"
-        subtitle={isFirstLoad ? <Skeleton width={100} /> : `${activeCount} aktif şablon`}
+        title="Vardiya şablonları"
+        subtitle={isFirstLoad ? <Skeleton className="h-4 w-24" /> : `${activeCount} aktif şablon`}
         actions={
-          <Button
-            variant="contained"
-            color="primary"
-            startIcon={<AddIcon />}
-            onClick={openCreate}
-            sx={{ fontWeight: 700 }}
-          >
-            Yeni Şablon
+          <Button onClick={openCreate}>
+            <Plus /> Yeni Şablon
           </Button>
         }
       />
 
-      <Divider sx={{ mb: 3, borderColor: tint(C.ink, 0.08) }} />
-
       {/* Content */}
       {isFirstLoad && <ListSkeleton count={4} actions={2} />}
 
-      {error && <Alert severity="error">{error}</Alert>}
+      {error && (
+        <Alert tone="danger">
+          <AlertCircle />
+          <AlertDescription className="text-ink">{error}</AlertDescription>
+        </Alert>
+      )}
 
       {!isFirstLoad && !error && templates.length === 0 && (
-        <Alert severity="info">Henüz vardiya şablonu eklenmemiş.</Alert>
+        <Alert tone="info">
+          <Info />
+          <AlertDescription className="text-ink">Henüz vardiya şablonu eklenmemiş.</AlertDescription>
+        </Alert>
       )}
 
       {!isFirstLoad && !error && templates.length > 0 && (
-        <Stack spacing={1.5}>
+        <SectionCard title="Şablonlar" count={templates.length} subtitle="Haftalık planda vardiya atarken seçilir">
           {templates.map((t) => (
             <ShiftTemplateCard key={t.id} template={t} onEdit={openEdit} />
           ))}
-        </Stack>
+        </SectionCard>
       )}
 
       <ShiftTemplateFormDialog
@@ -125,7 +116,7 @@ export function ShiftTemplatesPage() {
         template={editTarget}
         loading={saving}
       />
-    </Box>
+    </div>
   )
 }
 
@@ -150,101 +141,33 @@ function ShiftTemplateCard({
   const durationLabel =
     mins % 60 === 0 ? `${Math.floor(mins / 60)} saat` : `${Math.floor(mins / 60)}s ${mins % 60}dk`
 
+  const tone = SHIFT_KIND_TONES[shiftKindOf(template.name, start, end)]
+
   return (
-    <Paper
-      elevation={0}
-      sx={{
-        p: { xs: 2, md: 2 },
-        border: '1px solid',
-        borderColor: 'divider',
-        borderRadius: 2,
-        bgcolor: 'background.paper',
-        opacity: template.active ? 1 : 0.55,
-        display: 'grid',
-        gridTemplateColumns: { xs: '1fr auto', md: '1fr auto auto' },
-        alignItems: 'center',
-        gap: 2,
-        '&:hover': { borderColor: 'primary.dark' },
-        transition: 'border-color 0.2s, opacity 0.2s',
-      }}
-    >
-      {/* Left: name + times */}
-      <Box>
-        <Typography variant="subtitle2" fontWeight={700} color="text.primary">
-          {template.name}
-        </Typography>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.5, flexWrap: 'wrap' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.4 }}>
-            <AccessTimeIcon sx={{ fontSize: 13, color: 'text.secondary' }} />
-            <Typography variant="caption" color="text.secondary">
-              {start} – {end}
-            </Typography>
-          </Box>
-          <Chip
-            label={durationLabel}
-            size="small"
-            sx={{
-              height: 18,
-              fontSize: '0.65rem',
-              fontWeight: 600,
-              bgcolor: tint(C.brand, 0.1),
-              color: 'primary.main',
-              border: `1px solid ${tint(C.brand, 0.25)}`,
-            }}
-          />
-          {template.description && (
-            <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-              {template.description}
-            </Typography>
-          )}
-        </Box>
-      </Box>
-
-      {/* Status chip (desktop) */}
-      <Box sx={{ display: { xs: 'none', md: 'flex' }, justifyContent: 'flex-end' }}>
-        <Chip
-          label={template.active ? 'Aktif' : 'Pasif'}
-          size="small"
-          variant="outlined"
-          sx={{
-            height: 22,
-            fontSize: '0.7rem',
-            fontWeight: 600,
-            bgcolor: template.active ? tint(C.success, 0.1) : tint(C.neutral, 0.1),
-            color: template.active ? C.success : C.inkMuted,
-            borderColor: template.active ? tint(C.success, 0.3) : tint(C.neutral, 0.3),
-          }}
-        />
-      </Box>
-
-      {/* Actions */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        <Box sx={{ display: { xs: 'block', md: 'none' } }}>
-          <Chip
-            label={template.active ? 'Aktif' : 'Pasif'}
-            size="small"
-            variant="outlined"
-            sx={{
-              height: 22,
-              fontSize: '0.7rem',
-              fontWeight: 600,
-              bgcolor: template.active ? tint(C.success, 0.1) : tint(C.neutral, 0.1),
-              color: template.active ? C.success : C.inkMuted,
-              borderColor: template.active ? tint(C.success, 0.3) : tint(C.neutral, 0.3),
-            }}
-          />
-        </Box>
-        <Tooltip title="Düzenle">
-          <IconButton
-            size="small"
+    <SectionRow className={cn('flex-wrap sm:flex-nowrap', !template.active && 'opacity-60')}>
+      <div className="min-w-[124px] shrink-0 rounded-[10px] px-2.5 py-1.5" style={{ backgroundColor: tone.soft, color: tone.text }}>
+        <p className="text-[0.85rem] font-bold tabular-nums">{start} – {end}</p>
+        <p className="text-[0.68rem] opacity-85">{durationLabel}</p>
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[0.9rem] font-bold">{template.name}</p>
+        {template.description && <p className="truncate text-xs text-ink-secondary">{template.description}</p>}
+      </div>
+      <StatusBadge tone={template.active ? 'success' : 'neutral'} label={template.active ? 'Aktif' : 'Pasif'} />
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-sm"
             onClick={() => onEdit(template)}
             aria-label={`${template.name} şablonunu düzenle`}
-            sx={{ color: 'text.secondary', '&:hover': { color: 'primary.main' } }}
+            className="text-ink-secondary hover:text-primary"
           >
-            <EditIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-      </Box>
-    </Paper>
+            <PencilLine />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Düzenle</TooltipContent>
+      </Tooltip>
+    </SectionRow>
   )
 }

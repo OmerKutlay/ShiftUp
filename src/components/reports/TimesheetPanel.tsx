@@ -7,42 +7,41 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
-import {
-  Alert, Box, Button, ButtonBase, Chip, InputAdornment, Paper, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, TextField, Tooltip, Typography, useMediaQuery, useTheme,
-} from '@mui/material'
-import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined'
-import WarningAmberIcon from '@mui/icons-material/WarningAmber'
-import SearchIcon from '@mui/icons-material/Search'
-import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
+import { AlertCircle, ChevronLeft, Download, Search, TriangleAlert } from 'lucide-react'
 import { apiFetch } from '@/lib/api/http'
 import { monthDays, TIMESHEET_CODE_LABELS, type TimesheetCode, type TimesheetRow } from '@/lib/timesheet'
 import { turkeyToday } from '@/lib/dateUtils'
-import { PeriodStepper, SegmentedControl, TableSkeleton } from '@/components/common'
+import { PeriodStepper, SegmentedControl, StatCard, TableSkeleton } from '@/components/common'
 import type { PublicHoliday } from '@/types/holiday'
-import { C, tint } from '@/lib/palette'
-import { PersonCard, PersonDetail, PersonRow, PEOPLE_COLUMNS, StripAxis, StripLegend } from './TimesheetPeople'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { useIsMobile } from '@/hooks/useIsMobile'
+import { cn } from '@/lib/utils'
+import { PersonCard, PersonDetail, PersonRow, PEOPLE_GRID, StripAxis, StripLegend } from './TimesheetPeople'
 import { hoursLabel, monthLabel, shiftMonth, summarizeTimesheet, type TimesheetKpis } from './timesheetSummary'
 
 // Yeni UI puantaj lejantı: çalıştı yeşil, resmi tatilde çalıştı kiremit, devamsız kırmızı …
 const CODE_COLOR: Partial<Record<TimesheetCode, string>> = {
-  'Ç': C.success,
-  'RTÇ': C.brand,
-  'HT': C.inkMuted,
-  'RT': C.warning,
-  'Yİ': C.info,
-  'Rİ': C.plum,
-  'Üİ': C.inkMuted,
-  'Mİ': C.plum,
-  'D': C.danger,
-  'P': C.neutral,
+  'Ç': 'text-success',
+  'RTÇ': 'text-brand',
+  'HT': 'text-ink-muted',
+  'RT': 'text-warning',
+  'Yİ': 'text-info',
+  'Rİ': 'text-plum',
+  'Üİ': 'text-ink-muted',
+  'Mİ': 'text-plum',
+  'D': 'text-danger',
+  'P': 'text-neutral',
 }
 
 type View = 'people' | 'table'
 
 export function TimesheetPanel() {
-  const theme = useTheme()
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'))
+  const isMobile = useIsMobile()
   const today = turkeyToday()
   const [month, setMonth] = useState(today.slice(0, 7))
   const [view, setView] = useState<View>('people')
@@ -75,24 +74,21 @@ export function TimesheetPanel() {
   // ── Mobil kişi takvimi ──
   if (isMobile && detailOpen && selected) {
     return (
-      <Box>
-        <ButtonBase
-          onClick={() => setDetailOpen(false)}
-          sx={{ gap: 0.5, mb: 1.5, py: 0.5, fontFamily: 'inherit', fontWeight: 600, fontSize: '0.95rem', borderRadius: 1 }}
-        >
-          <ChevronLeftIcon fontSize="small" /> Aylık puantaj
-        </ButtonBase>
-        <Paper variant="outlined" sx={{ p: 2, borderRadius: '16px' }}>
+      <div>
+        <Button variant="ghost" onClick={() => setDetailOpen(false)} className="mb-3 -ml-2 text-[0.95rem]">
+          <ChevronLeft className="size-5" /> Aylık puantaj
+        </Button>
+        <div className="rounded-2xl border bg-card p-4">
           <PersonDetail row={selected} days={days} today={stripToday} monthText={monthText} compact />
-        </Paper>
-      </Box>
+        </div>
+      </div>
     )
   }
 
   return (
-    <Box>
+    <div>
       {/* Araç çubuğu */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap', mb: 2 }}>
+      <div className="mb-4 flex flex-wrap items-center gap-3">
         <PeriodStepper
           label={monthText}
           onPrev={() => changeMonth(-1)}
@@ -109,30 +105,29 @@ export function TimesheetPanel() {
             options={[{ value: 'people', label: 'Kişiler' }, { value: 'table', label: 'Tablo' }]}
           />
         )}
-        <Box sx={{ flex: 1 }} />
-        <Button
-          variant="contained"
-          startIcon={<FileDownloadOutlinedIcon />}
-          href={`/api/reports/timesheet?month=${month}&format=xlsx`}
-          disabled={!data}
-          sx={{ minHeight: 40 }}
-        >
-          {isMobile ? 'Excel' : 'Excel olarak indir'}
-        </Button>
-      </Box>
+        <span className="flex-1" />
+        {data ? (
+          <Button asChild>
+            <a href={`/api/reports/timesheet?month=${month}&format=xlsx`}>
+              <Download /> {isMobile ? 'Excel' : 'Excel olarak indir'}
+            </a>
+          </Button>
+        ) : (
+          <Button disabled><Download /> {isMobile ? 'Excel' : 'Excel olarak indir'}</Button>
+        )}
+      </div>
 
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error instanceof Error ? error.message : 'Puantaj yüklenemedi.'}</Alert>}
+      {error && (
+        <Alert tone="danger" className="mb-4">
+          <AlertCircle />
+          <AlertDescription className="text-ink">{error instanceof Error ? error.message : 'Puantaj yüklenemedi.'}</AlertDescription>
+        </Alert>
+      )}
 
       {kpis.missingConsent.length > 0 && (
-        <Box
-          role="status"
-          sx={{
-            display: 'flex', alignItems: 'center', gap: 1.25, flexWrap: 'wrap',
-            bgcolor: C.warningSoft, color: C.warning, borderRadius: '12px', px: 2, py: 1.25, mb: 2,
-          }}
-        >
-          <WarningAmberIcon sx={{ fontSize: 18 }} />
-          <Typography fontSize="0.8rem" sx={{ flex: 1, minWidth: 200, color: C.ink }}>
+        <div role="status" className="mb-4 flex flex-wrap items-center gap-2.5 rounded-xl bg-warning-soft px-4 py-2.5 text-[0.8rem]">
+          <TriangleAlert className="size-4 shrink-0 text-warning" />
+          <p className="min-w-[200px] flex-1">
             {isMobile ? (
               <b>{kpis.missingConsent.length} kişinin fazla çalışma onayı eksik</b>
             ) : (
@@ -140,19 +135,11 @@ export function TimesheetPanel() {
                 <b>Fazla çalışma onayı eksik:</b> {kpis.missingConsent.join(', ')} — İş Kanunu Md. 41 gereği yazılı onay gerekir.
               </>
             )}
-          </Typography>
+          </p>
           {!isMobile && (
-            <Typography
-              component={Link}
-              href="/employees"
-              fontSize="0.8rem"
-              fontWeight={700}
-              sx={{ color: C.ink, textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
-            >
-              Çalışanlara git →
-            </Typography>
+            <Link href="/employees" className="font-bold hover:underline">Çalışanlara git →</Link>
           )}
-        </Box>
+        </div>
       )}
 
       {isLoading && !data && <TableSkeleton rows={6} />}
@@ -164,7 +151,7 @@ export function TimesheetPanel() {
           {view === 'table' && !isMobile ? (
             <CodeTable rows={filtered} days={days} holidays={data.holidays} />
           ) : isMobile ? (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+            <div className="flex flex-col gap-2.5">
               {filtered.map((r) => (
                 <PersonCard
                   key={r.employee.id}
@@ -178,30 +165,29 @@ export function TimesheetPanel() {
                   }}
                 />
               ))}
-            </Box>
+            </div>
           ) : (
-            <Box sx={{ display: 'grid', gridTemplateColumns: { md: '1fr', lg: 'minmax(0, 1fr) 380px' }, gap: 2, alignItems: 'start' }}>
-              <Paper variant="outlined" sx={{ borderRadius: '16px', overflow: 'hidden' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2, pt: 1.75, pb: 1 }}>
-                  <Typography fontWeight={700} fontSize="0.9rem">Ekip</Typography>
-                  <Typography fontSize="0.75rem" color="text.secondary" sx={{ flex: 1 }}>Ayın her günü bir kutu</Typography>
-                  <TextField
-                    size="small"
-                    placeholder="Çalışan ara…"
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    slotProps={{
-                      htmlInput: { 'aria-label': 'Çalışan ara' },
-                      input: { startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> },
-                    }}
-                    sx={{ width: 220, '& .MuiInputBase-root': { height: 36, fontSize: '0.8rem' } }}
-                  />
-                </Box>
-                <Box sx={{ display: 'grid', gridTemplateColumns: PEOPLE_COLUMNS, columnGap: 2, px: 2, pb: 0.5 }}>
+            <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
+              <section className="overflow-hidden rounded-2xl border bg-card">
+                <div className="flex items-center gap-3 px-4 pt-3.5 pb-2">
+                  <h2 className="text-[0.9rem] font-bold">Ekip</h2>
+                  <span className="flex-1 text-xs text-ink-secondary">Ayın her günü bir kutu</span>
+                  <div className="relative w-56">
+                    <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-ink-muted" />
+                    <Input
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder="Çalışan ara…"
+                      aria-label="Çalışan ara"
+                      className="h-9 pl-8 text-[0.8rem]"
+                    />
+                  </div>
+                </div>
+                <div className={cn(PEOPLE_GRID, 'px-4 pb-1')}>
                   <span />
                   <StripAxis days={days} today={stripToday} />
                   <span />
-                </Box>
+                </div>
                 {filtered.map((r) => (
                   <PersonRow
                     key={r.employee.id}
@@ -213,24 +199,22 @@ export function TimesheetPanel() {
                   />
                 ))}
                 {filtered.length === 0 && (
-                  <Typography fontSize="0.85rem" color="text.secondary" sx={{ px: 2, py: 3, borderTop: '1px solid', borderColor: 'divider' }}>
-                    Eşleşen çalışan yok.
-                  </Typography>
+                  <p className="border-t px-4 py-6 text-sm text-ink-secondary">Eşleşen çalışan yok.</p>
                 )}
-                <Box sx={{ px: 2, py: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
+                <div className="border-t px-4 py-3">
                   <StripLegend today={today} />
-                </Box>
-              </Paper>
+                </div>
+              </section>
               {selected && (
-                <Paper variant="outlined" sx={{ p: 2, borderRadius: '16px', position: { lg: 'sticky' }, top: { lg: 16 } }}>
+                <section className="rounded-2xl border bg-card p-4 lg:sticky lg:top-4">
                   <PersonDetail row={selected} days={days} today={stripToday} monthText={monthText} />
-                </Paper>
+                </section>
               )}
-            </Box>
+            </div>
           )}
         </>
       )}
-    </Box>
+    </div>
   )
 }
 
@@ -266,17 +250,9 @@ function KpiCards({ kpis, isMobile }: { kpis: TimesheetKpis; isMobile: boolean }
   ]
   const shown = isMobile ? cards.slice(0, 2) : cards
   return (
-    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' }, gap: { xs: 1.25, md: 2 }, mb: 2 }}>
-      {shown.map((c) => (
-        <Paper key={c.label} variant="outlined" sx={{ p: { xs: 1.5, md: 2 }, borderRadius: '14px', minWidth: 0 }}>
-          <Typography fontSize="0.78rem" color="text.secondary">{c.label}</Typography>
-          <Typography fontWeight={700} sx={{ fontSize: { xs: '1.35rem', md: '1.6rem' }, lineHeight: 1.3, my: 0.25 }} noWrap>
-            {c.value}
-          </Typography>
-          <Typography fontSize="0.72rem" color="text.secondary" noWrap>{c.note}</Typography>
-        </Paper>
-      ))}
-    </Box>
+    <div className="mb-4 grid grid-cols-2 gap-2.5 md:grid-cols-4 md:gap-4">
+      {shown.map((c) => <StatCard key={c.label} label={c.label} value={c.value} note={c.note} />)}
+    </div>
   )
 }
 
@@ -286,68 +262,61 @@ function CodeTable({ rows, days, holidays: holidayList }: { rows: TimesheetRow[]
   const holidays = new Map(holidayList.map((h) => [h.date, h]))
   return (
     <>
-      <Typography variant="caption" color="text.secondary" component="p" sx={{ mb: 1 }}>
+      <p className="mb-2 text-xs text-ink-secondary">
         Kodlar: {Object.entries(TIMESHEET_CODE_LABELS).map(([k, v]) => `${k} ${v}`).join(' · ')}
-      </Typography>
-      <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: '16px', maxHeight: '70dvh' }}>
-        <Table size="small" stickyHeader>
-          <TableHead>
-            <TableRow>
-              <TableCell sx={{ position: 'sticky', left: 0, zIndex: 3, bgcolor: 'background.paper', minWidth: 160 }}>Çalışan</TableCell>
+      </p>
+      <div className="max-h-[70dvh] overflow-auto rounded-2xl border bg-card">
+        <Table className="[&_td]:border-b">
+          <TableHeader className="sticky top-0 z-[2] bg-card">
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="sticky left-0 z-[3] min-w-40 bg-card">Çalışan</TableHead>
               {days.map((d) => {
                 const h = holidays.get(d)
-                return (
-                  <Tooltip key={d} title={h ? h.name : ''} enterTouchDelay={0} leaveTouchDelay={3000}>
-                    <TableCell align="center" sx={{ px: 0.5, minWidth: 34, bgcolor: h && !h.half_day ? C.warningSoft : 'background.paper' }}>
-                      {Number(d.slice(8))}
-                    </TableCell>
-                  </Tooltip>
+                const cell = (
+                  <TableHead key={d} className={cn('min-w-[34px] px-1 text-center', h && !h.half_day && 'bg-warning-soft')}>
+                    {Number(d.slice(8))}
+                  </TableHead>
                 )
+                return h ? (
+                  <Tooltip key={d}>
+                    <TooltipTrigger asChild>{cell}</TooltipTrigger>
+                    <TooltipContent>{h.name}</TooltipContent>
+                  </Tooltip>
+                ) : cell
               })}
-              <TableCell align="right">Net s</TableCell>
-              <TableCell align="right">Fazla s</TableCell>
-              <TableCell align="right">Gece s</TableCell>
-              <TableCell align="right">RT gün</TableCell>
-              <TableCell align="right">SGK</TableCell>
+              <TableHead className="text-right">Net s</TableHead>
+              <TableHead className="text-right">Fazla s</TableHead>
+              <TableHead className="text-right">Gece s</TableHead>
+              <TableHead className="text-right">RT gün</TableHead>
+              <TableHead className="text-right">SGK</TableHead>
             </TableRow>
-          </TableHead>
+          </TableHeader>
           <TableBody>
             {rows.map((r) => (
-              <TableRow key={r.employee.id} hover>
-                <TableCell sx={{ position: 'sticky', left: 0, bgcolor: 'background.paper', fontWeight: 600, minWidth: 160, whiteSpace: 'nowrap' }}>
-                  {r.employee.full_name}
-                </TableCell>
+              <TableRow key={r.employee.id}>
+                <TableCell className="sticky left-0 min-w-40 bg-card font-semibold">{r.employee.full_name}</TableCell>
                 {days.map((d) => {
                   const code = r.days[d] ?? ''
                   return (
-                    <TableCell key={d} align="center" sx={{ px: 0.25, fontSize: '0.7rem', fontWeight: 700, color: CODE_COLOR[code] }}>
+                    <TableCell key={d} className={cn('px-0.5 text-center text-[0.7rem] font-bold', CODE_COLOR[code])}>
                       {code}
                     </TableCell>
                   )
                 })}
-                <TableCell align="right">{hoursLabel(r.workedMins)}</TableCell>
-                <TableCell align="right">
+                <TableCell className="text-right">{hoursLabel(r.workedMins)}</TableCell>
+                <TableCell className="text-right">
                   {r.overtimeMins > 0 ? (
-                    <Chip
-                      size="small"
-                      label={hoursLabel(r.overtimeMins)}
-                      sx={{
-                        height: 20,
-                        fontSize: '0.7rem',
-                        bgcolor: r.overtimeWithoutConsent ? C.warningSoft : tint(C.ink, 0.06),
-                        color: r.overtimeWithoutConsent ? C.warning : 'text.primary',
-                      }}
-                    />
+                    <Badge tone={r.overtimeWithoutConsent ? 'warning' : 'neutral'} className="h-5">{hoursLabel(r.overtimeMins)}</Badge>
                   ) : '—'}
                 </TableCell>
-                <TableCell align="right">{r.nightMins > 0 ? hoursLabel(r.nightMins) : '—'}</TableCell>
-                <TableCell align="right">{r.holidayWorkedDays || '—'}</TableCell>
-                <TableCell align="right">{r.sgkDays}</TableCell>
+                <TableCell className="text-right">{r.nightMins > 0 ? hoursLabel(r.nightMins) : '—'}</TableCell>
+                <TableCell className="text-right">{r.holidayWorkedDays || '—'}</TableCell>
+                <TableCell className="text-right">{r.sgkDays}</TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
-      </TableContainer>
+      </div>
     </>
   )
 }

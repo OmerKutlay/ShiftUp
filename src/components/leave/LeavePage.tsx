@@ -5,10 +5,8 @@ import useSWR from 'swr'
 import {
   Box,
   Typography,
-  Paper,
   Button,
   Stack,
-  Chip,
   CircularProgress,
   Skeleton,
   Alert,
@@ -32,8 +30,12 @@ import AddIcon from '@mui/icons-material/Add'
 import CheckIcon from '@mui/icons-material/Check'
 import CloseIcon from '@mui/icons-material/Close'
 import DeleteIcon from '@mui/icons-material/Delete'
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import type { EmployeeWithRole } from '@/types/employee'
-import { DateField, EmployeeSelect, PageHeader, ListSkeleton, useConfirm } from '@/components/common'
+import {
+  DateField, EmployeeSelect, PageHeader, ListSkeleton, useConfirm, PersonAvatar, SectionCard, SectionRow,
+  StatCard, StatGrid, StatusBadge, type BadgeTone,
+} from '@/components/common'
 import type {
   LeaveRequestWithEmployee,
   LeaveType,
@@ -43,7 +45,6 @@ import type {
 import {
   LEAVE_TYPE_LABELS,
   LEAVE_STATUS_LABELS,
-  LEAVE_STATUS_COLORS,
 } from '@/types/leave'
 import { fetchActiveEmployees } from '@/lib/api/employees'
 import { format, differenceInCalendarDays } from 'date-fns'
@@ -274,21 +275,14 @@ function Row({ label, value }: { label: string; value: string }) {
 
 // ─── Leave Status Chip ────────────────────────────────────────
 
+const LEAVE_STATUS_TONES: Record<LeaveStatus, BadgeTone> = {
+  pending: 'warning',
+  approved: 'success',
+  rejected: 'danger',
+}
+
 function LeaveStatusChip({ status }: { status: LeaveStatus }) {
-  const color = LEAVE_STATUS_COLORS[status]
-  return (
-    <Chip
-      label={LEAVE_STATUS_LABELS[status]}
-      size="small"
-      sx={{
-        bgcolor: `${color}20`,
-        color,
-        border: `1px solid ${color}40`,
-        fontWeight: 700,
-        fontSize: '0.65rem',
-      }}
-    />
-  )
+  return <StatusBadge tone={LEAVE_STATUS_TONES[status]} label={LEAVE_STATUS_LABELS[status]} />
 }
 
 // ─── Yıllık izin bakiyesi ─────────────────────────────────────
@@ -303,27 +297,17 @@ function AnnualLeaveCard({ balance }: { balance: AnnualLeaveBalance }) {
   }
   const low = balance.remainingDays <= 2
   return (
-    <Paper elevation={0} sx={{ p: 2, mb: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2, display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-      <Box>
-        <Typography variant="caption" color="text.secondary">Yıllık izin hakkı ({balance.seniorityYears}. yıl)</Typography>
-        <Typography variant="h6" fontWeight={800}>{balance.entitlementDays} gün</Typography>
-      </Box>
-      <Box>
-        <Typography variant="caption" color="text.secondary">Kullanılan</Typography>
-        <Typography variant="h6" fontWeight={800}>{balance.usedDays} gün</Typography>
-      </Box>
-      <Box>
-        <Typography variant="caption" color="text.secondary">Onay bekleyen</Typography>
-        <Typography variant="h6" fontWeight={800}>{balance.pendingDays} gün</Typography>
-      </Box>
-      <Box>
-        <Typography variant="caption" color="text.secondary">Kalan</Typography>
-        <Typography variant="h6" fontWeight={800} color={low ? 'warning.main' : 'primary.main'}>{Math.max(0, balance.remainingDays)} gün</Typography>
-      </Box>
-      <Typography variant="caption" color="text.disabled" sx={{ alignSelf: 'flex-end', ml: 'auto' }}>
+    <Box sx={{ mb: 2 }}>
+      <StatGrid min={140} className="mb-2 md:mb-2">
+        <StatCard label={`Yıllık hak (${balance.seniorityYears}. yıl)`} value={`${balance.entitlementDays} gün`} />
+        <StatCard label="Kullanılan" value={`${balance.usedDays} gün`} />
+        <StatCard label="Onay bekleyen" value={`${balance.pendingDays} gün`} valueColor={balance.pendingDays ? C.warning : undefined} />
+        <StatCard label="Kalan" value={`${Math.max(0, balance.remainingDays)} gün`} valueColor={low ? C.warning : C.success} />
+      </StatGrid>
+      <Typography variant="caption" color="text.secondary">
         Dönem: {balance.periodStart && fmtDate(balance.periodStart)} – {balance.periodEnd && fmtDate(balance.periodEnd)} · Pazar ve resmi tatiller izinden sayılmaz
       </Typography>
-    </Paper>
+    </Box>
   )
 }
 
@@ -441,7 +425,7 @@ export function LeavePage() {
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, color: 'text.primary' }}>
       <PageHeader
-        title="İzin Talepleri"
+        title="İzin talepleri"
         subtitle={
           isFirstLoad
             ? <Skeleton width={150} />
@@ -475,11 +459,7 @@ export function LeavePage() {
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               Bekleyenler
               {pendingCount > 0 && (
-                <Chip
-                  label={pendingCount}
-                  size="small"
-                  sx={{ height: 18, fontSize: '0.6rem', bgcolor: '#f59e0b20', color: C.warning, border: '1px solid #f59e0b40' }}
-                />
+                <StatusBadge tone="warning" label={pendingCount} className="h-[18px] px-1.5" />
               )}
             </Box>
           }
@@ -497,7 +477,7 @@ export function LeavePage() {
       )}
 
       {!isFirstLoad && displayed.length > 0 && (
-        <Stack spacing={1.5}>
+        <SectionCard title={tab === 0 ? 'Onay bekleyenler' : 'Tüm talepler'} count={displayed.length}>
           {displayed.map((req) => (
             <LeaveCard
               key={req.id}
@@ -506,7 +486,7 @@ export function LeavePage() {
               onDelete={isManager || (req.employee_id === me?.id && req.status === 'pending') ? () => setDeleteTarget(req) : undefined}
             />
           ))}
-        </Stack>
+        </SectionCard>
       )}
 
       {/* Dialogs */}
@@ -633,65 +613,47 @@ function LeaveCard({
             </Box>
           </Box>
         </Box>
-
-        {/* Dates */}
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-          📅 {fmtDate(request.start_date)} – {fmtDate(request.end_date)}
-          <Typography component="span" variant="caption" color="text.disabled" sx={{ ml: 1 }}>
-            ({days} gün)
+        <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.75, mt: 0.5 }}>
+          <StatusBadge tone="info" label={LEAVE_TYPE_LABELS[request.leave_type]} />
+          <Typography fontSize="0.8rem" fontWeight={600}>
+            {fmtDate(request.start_date)} – {fmtDate(request.end_date)}
           </Typography>
-        </Typography>
-
-        {/* Reason */}
+          <Typography fontSize="0.75rem" color="text.secondary">{days} gün</Typography>
+        </Box>
         {request.reason && (
-          <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: 0.25 }}>
-            💬 {request.reason}
+          <Typography fontSize="0.75rem" color="text.secondary" sx={{ mt: 0.5 }}>
+            {request.reason}
           </Typography>
         )}
-
-        {/* Reviewer note */}
         {request.reviewer_note && (
-          <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: 0.25 }}>
-            📝 Yönetici: {request.reviewer_note}
+          <Typography fontSize="0.75rem" color="text.secondary" sx={{ mt: 0.25 }}>
+            Yönetici notu: {request.reviewer_note}
           </Typography>
         )}
       </Box>
-
-      {/* Actions */}
-      {(onReview || onDelete) && (
-        <Box sx={{ display: 'flex', gap: 1, justifyContent: { xs: 'flex-start', sm: 'flex-end' }, flexWrap: 'wrap' }}>
-          {onReview && (
-            <Tooltip title="İncele ve Karar Ver">
-              <Button
-                variant="outlined"
-                size="small"
-                onClick={onReview}
-                sx={{ fontWeight: 700, fontSize: '0.75rem' }}
-              >
-                İncele
-              </Button>
-            </Tooltip>
-          )}
-          {onDelete && (
-            <Tooltip title="İzin Talebini Sil">
-              <IconButton
-                size="small"
-                color="error"
-                onClick={onDelete}
-                aria-label="İzin talebini sil"
-                sx={{
-                  border: `1px solid ${tint(C.danger, 0.3)}`,
-                  borderRadius: 1,
-                  '&:hover': { bgcolor: tint(C.danger, 0.08) },
-                }}
-              >
-                <DeleteIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          )}
-        </Box>
-      )}
-    </Paper>
+      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        <LeaveStatusChip status={request.status} />
+        {onReview && (
+          <Tooltip title="İncele ve Karar Ver">
+            <Button variant="outlined" size="small" onClick={onReview}>
+              İncele
+            </Button>
+          </Tooltip>
+        )}
+        {onDelete && (
+          <Tooltip title="İzin Talebini Sil">
+            <IconButton
+              size="small"
+              onClick={onDelete}
+              aria-label="İzin talebini sil"
+              sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}
+            >
+              <DeleteOutlineIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
+      </Box>
+    </SectionRow>
   )
 }
 
