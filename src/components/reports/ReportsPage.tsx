@@ -16,7 +16,7 @@ export function ReportsPage() {
     <Box sx={{ p: { xs: 2, md: 3 }, color: 'text.primary' }}>
       <PageHeader
         title="Raporlar"
-        subtitle="Devam kayıtları, aylık puantaj ve fazla çalışma takibi"
+        subtitle="Ekibin devamı, aylık puantaj ve fazla çalışma takibi"
       />
       <Tabs
         value={tab}
@@ -25,9 +25,9 @@ export function ReportsPage() {
         allowScrollButtonsMobile
         sx={{ mb: 2.5, borderBottom: '1px solid', borderColor: 'divider' }}
       >
-        <Tab label="Devam Raporu" />
-        <Tab label="Aylık Puantaj" />
-        <Tab label="Fazla Çalışma" />
+        <Tab label="Devam raporu" />
+        <Tab label="Aylık puantaj" />
+        <Tab label="Fazla çalışma" />
       </Tabs>
       {tab === 0 && <AttendanceReportsPage embedded />}
       {tab === 1 && <TimesheetPanel />}

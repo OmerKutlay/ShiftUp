@@ -61,6 +61,10 @@ export interface TimesheetLeave {
 export interface TimesheetRow {
   employee: TimesheetEmployee
   days: Record<string, TimesheetCode>
+  /** Çalışılan günlerin net dakikası (yalnızca Ç / RTÇ günleri) */
+  dayMins: Record<string, number>
+  /** Planlı / devamsız günlerin ilk vardiya saati (HH:MM) */
+  dayPlan: Record<string, { start: string; end: string }>
   workedMins: number
   nightMins: number
   overtimeMins: number
@@ -141,6 +145,8 @@ export function buildTimesheet(params: {
     const row: TimesheetRow = {
       employee: emp,
       days: {},
+      dayMins: {},
+      dayPlan: {},
       workedMins: 0,
       nightMins: 0,
       overtimeMins: 0,
@@ -164,18 +170,23 @@ export function buildTimesheet(params: {
         code = holiday ? 'RTÇ' : 'Ç'
         row.workedDays++
         if (holiday && !holiday.half_day) row.holidayWorkedDays++
+        let dayTotal = 0
         for (const s of worked) {
-          row.workedMins += workedMinutes(s.attendance!) ?? 0
+          dayTotal += workedMinutes(s.attendance!) ?? 0
           if (s.attendance!.clock_in_at && s.attendance!.clock_out_at) {
             row.nightMins += nightMinutesBetween(s.attendance!.clock_in_at, s.attendance!.clock_out_at)
           }
         }
+        row.workedMins += dayTotal
+        row.dayMins[date] = dayTotal
       } else if (leaveCode) {
         code = leaveCode
         if (leaveCode in row.leaveDays) row.leaveDays[leaveCode as keyof TimesheetRow['leaveDays']]++
       } else if (holiday && !holiday.half_day) {
         code = 'RT'
       } else if (dayShifts.length > 0) {
+        const first = [...dayShifts].sort((a, b) => a.start_time.localeCompare(b.start_time))[0]
+        row.dayPlan[date] = { start: first.start_time.slice(0, 5), end: first.end_time.slice(0, 5) }
         if (date < today) {
           code = 'D'
           row.absentDays++
