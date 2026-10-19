@@ -18,6 +18,7 @@ import {
 } from '@mui/material'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import LogoutIcon from '@mui/icons-material/Logout'
+import LoginIcon from '@mui/icons-material/Login'
 
 import { useAuth } from '@/context/AuthContext'
 import { getMoreItems, groupNavItems } from '@/components/layout/navItems'
@@ -106,6 +107,17 @@ export function MorePage() {
           sx={{ mt: 1 }}
         >
           Çıkış Yap
+        </Button>
+      )}
+      {status === 'unauthenticated' && (
+        <Button
+          fullWidth
+          variant="contained"
+          startIcon={<LoginIcon />}
+          href="/login?next=%2Fmore"
+          sx={{ mt: 1 }}
+        >
+          Giriş Yap
         </Button>
       )}
     </Box>

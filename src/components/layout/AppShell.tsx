@@ -4,7 +4,7 @@ import { useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { ChevronsLeft, LogOut, PanelLeftOpen } from 'lucide-react'
+
 
 import { ErrorBoundary } from './ErrorBoundary'
 import { MobileBottomNav, BOTTOM_NAV_SPACE } from './MobileBottomNav'
@@ -35,6 +35,10 @@ export function AppShell({ children }: Props) {
   const pathname = usePathname()
   const { employee: authEmployee, signOut, status: authStatus } = useAuth()
   const authRoleName = authEmployee?.roles?.name ?? authEmployee?.role_name ?? null
+
+  // Oturum doğrulanamadıysa (ör. geçici sunucu hatası) kullanıcı içeride sıkışmasın: giriş ekranına çıkış
+  // Tam sayfa geçişi: middleware oturumu yeniden değerlendirir (geçerliyse ana sayfaya döner)
+  const loginHref = `/login?next=${encodeURIComponent(pathname)}`
 
   const drawerWidth = collapsed && !isMobile ? DRAWER_COLLAPSED : DRAWER_WIDTH
 
@@ -141,9 +145,6 @@ export function AppShell({ children }: Props) {
             <TooltipContent side={narrow ? 'right' : 'top'}>Çıkış Yap</TooltipContent>
           </Tooltip>
         )}
-      </div>
-    </div>
-  )
 
   return (
     <div className="flex min-h-dvh bg-background">
@@ -161,7 +162,7 @@ export function AppShell({ children }: Props) {
           {authStatus === 'authenticated' && authEmployee && (
             <NotificationBell employeeId={authEmployee.id} collapsed />
           )}
-        </header>
+
       )}
 
       {/* Masaüstü yan menü */}
