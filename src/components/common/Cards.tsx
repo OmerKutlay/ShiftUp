@@ -1,51 +1,29 @@
 'use client'
 
 /**
- * Cards — yeni UI'ın ortak kart parçaları:
+ * Cards — yeni UI'ın ortak kart parçaları (shadcn/Tailwind):
  *   StatCard     KPI kartı (etiket, büyük değer, alt not)
  *   StatGrid     KPI kartlarını eşit sütunlara dizer
  *   SectionCard  başlıklı (sayaç + bağlantı) liste kartı; satırlar ince çizgiyle ayrılır
+ *   SectionRow   SectionCard satırı
  *   StatusBadge  yumuşak zeminli durum rozeti
  */
 import Link from 'next/link'
-import { Box, ButtonBase, Paper, Typography, type SxProps, type Theme } from '@mui/material'
-import { C } from '@/lib/palette'
+import { Badge, type BadgeTone as UiBadgeTone } from '@/components/ui/badge'
+import { cn } from '@/lib/utils'
 
 // ─── Rozet ────────────────────────────────────────────────────
 
-export type BadgeTone = 'success' | 'warning' | 'danger' | 'info' | 'plum' | 'peach' | 'brand' | 'neutral'
+export type BadgeTone = Exclude<UiBadgeTone, 'outline' | 'solid'>
 
-export const BADGE_TONES: Record<BadgeTone, { bg: string; fg: string }> = {
-  success: { bg: C.successSoft, fg: C.success },
-  warning: { bg: C.warningSoft, fg: C.warning },
-  danger: { bg: C.dangerSoft, fg: C.danger },
-  info: { bg: C.infoSoft, fg: C.info },
-  plum: { bg: C.plumSoft, fg: C.plum },
-  peach: { bg: C.peachSoft, fg: C.peach },
-  brand: { bg: C.brandSoft, fg: C.brandDark },
-  neutral: { bg: C.surfaceMuted, fg: C.inkSecondary },
-}
-
-export function StatusBadge({ tone, label, icon, sx }: {
-  tone: BadgeTone; label: React.ReactNode; icon?: React.ReactNode; sx?: SxProps<Theme>
+export function StatusBadge({ tone, label, icon, className }: {
+  tone: BadgeTone; label: React.ReactNode; icon?: React.ReactNode; className?: string
 }) {
-  const t = BADGE_TONES[tone]
   return (
-    <Box
-      component="span"
-      sx={[
-        {
-          display: 'inline-flex', alignItems: 'center', gap: 0.5, flexShrink: 0,
-          px: 0.875, height: 22, borderRadius: '6px', bgcolor: t.bg, color: t.fg,
-          fontSize: '0.7rem', fontWeight: 600, lineHeight: 1, whiteSpace: 'nowrap',
-          '& svg': { fontSize: 13 },
-        },
-        ...(Array.isArray(sx) ? sx : [sx]),
-      ]}
-    >
+    <Badge tone={tone} className={className}>
       {icon}
       {label}
-    </Box>
+    </Badge>
   )
 }
 
@@ -55,120 +33,89 @@ export function StatCard({ label, value, note, valueColor, icon, onClick, href }
   label: React.ReactNode
   value: React.ReactNode
   note?: React.ReactNode
+  /** Değer rengi (CSS rengi; ör. C.success) */
   valueColor?: string
   icon?: React.ReactNode
   onClick?: () => void
   href?: string
 }) {
-  const interactive = !!(onClick || href)
   const content = (
     <>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, color: 'text.secondary', '& svg': { fontSize: 16 } }}>
+      <span className="flex items-center gap-1.5 text-ink-secondary [&_svg]:size-4">
         {icon}
-        <Typography fontSize="0.78rem" color="text.secondary" noWrap>{label}</Typography>
-      </Box>
-      <Typography
-        fontWeight={700}
-        sx={{ fontSize: { xs: '1.35rem', md: '1.6rem' }, lineHeight: 1.3, my: 0.25, color: valueColor ?? 'text.primary' }}
-        noWrap
-      >
+        <span className="truncate text-[0.78rem]">{label}</span>
+      </span>
+      <span className="my-0.5 block truncate text-[1.35rem] font-bold leading-snug md:text-[1.6rem]" style={valueColor ? { color: valueColor } : undefined}>
         {value}
-      </Typography>
-      {note && <Typography fontSize="0.72rem" color="text.secondary" noWrap>{note}</Typography>}
+      </span>
+      {note && <span className="block truncate text-xs text-ink-secondary">{note}</span>}
     </>
   )
-  const sx = {
-    p: { xs: 1.5, md: 2 }, borderRadius: '14px', minWidth: 0, display: 'block', textAlign: 'left',
-    fontFamily: 'inherit', width: '100%',
-    ...(interactive && { '&:hover': { borderColor: C.sand }, transition: 'border-color 0.15s' }),
-  } as const
-  if (href) {
-    return <Paper variant="outlined" component={Link} href={href} sx={{ ...sx, textDecoration: 'none', color: 'inherit' }}>{content}</Paper>
-  }
-  if (onClick) {
-    return <Paper variant="outlined" component={ButtonBase} onClick={onClick} sx={sx}>{content}</Paper>
-  }
-  return <Paper variant="outlined" sx={sx}>{content}</Paper>
+  const cls = cn(
+    'block w-full min-w-0 rounded-[14px] border bg-card p-3 text-left md:p-4',
+    (onClick || href) && 'transition-colors outline-none hover:border-sand focus-visible:ring-[3px] focus-visible:ring-ring/50'
+  )
+  if (href) return <Link href={href} className={cls}>{content}</Link>
+  if (onClick) return <button type="button" onClick={onClick} className={cls}>{content}</button>
+  return <div className={cls}>{content}</div>
 }
 
-export function StatGrid({ children, min = 150, sx }: { children: React.ReactNode; min?: number; sx?: SxProps<Theme> }) {
+export function StatGrid({ children, min = 150, className }: { children: React.ReactNode; min?: number; className?: string }) {
   return (
-    <Box
-      sx={[
-        {
-          display: 'grid',
-          gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', sm: `repeat(auto-fit, minmax(${min}px, 1fr))` },
-          gap: { xs: 1.25, md: 2 },
-          mb: { xs: 2, md: 3 },
-        },
-        ...(Array.isArray(sx) ? sx : [sx]),
-      ]}
+    <div
+      className={cn('mb-4 grid grid-cols-2 gap-2.5 sm:[grid-template-columns:repeat(auto-fit,minmax(var(--stat-min),1fr))] md:mb-6 md:gap-4', className)}
+      style={{ '--stat-min': `${min}px` } as React.CSSProperties}
     >
       {children}
-    </Box>
+    </div>
   )
 }
 
 // ─── Bölüm kartı ──────────────────────────────────────────────
 
-export function SectionCard({ title, count, subtitle, action, children, sx }: {
+export function SectionCard({ title, count, subtitle, action, children, className }: {
   title: React.ReactNode
   count?: number
   subtitle?: React.ReactNode
   /** Sağ üstteki bağlantı: { label: 'Tümü →', href } ya da özel düğüm */
   action?: { label: string; href: string } | React.ReactNode
   children: React.ReactNode
-  sx?: SxProps<Theme>
+  className?: string
 }) {
   const actionNode = action && typeof action === 'object' && 'href' in action ? (
-    <Typography
-      component={Link}
-      href={action.href}
-      fontSize="0.8rem"
-      fontWeight={600}
-      sx={{ color: 'primary.main', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
-    >
+    <Link href={action.href} className="shrink-0 text-[0.8rem] font-semibold text-primary hover:underline">
       {action.label}
-    </Typography>
+    </Link>
   ) : action
   return (
-    <Paper variant="outlined" sx={[{ borderRadius: '16px', overflow: 'hidden' }, ...(Array.isArray(sx) ? sx : [sx])]}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, pt: 1.75, pb: 1.25 }}>
-        <Typography fontWeight={700} fontSize="0.95rem">{title}</Typography>
-        {count !== undefined && <Typography fontSize="0.78rem" color="text.secondary">{count}</Typography>}
-        {subtitle && <Typography fontSize="0.75rem" color="text.secondary" noWrap sx={{ minWidth: 0 }}>{subtitle}</Typography>}
-        <Box sx={{ flex: 1 }} />
+    <section className={cn('overflow-hidden rounded-2xl border bg-card', className)}>
+      <div className="flex items-center gap-2 px-4 pt-3.5 pb-2.5">
+        <h2 className="text-[0.95rem] font-bold">{title}</h2>
+        {count !== undefined && <span className="text-[0.78rem] text-ink-secondary">{count}</span>}
+        {subtitle && <span className="min-w-0 truncate text-xs text-ink-secondary">{subtitle}</span>}
+        <span className="flex-1" />
         {actionNode}
-      </Box>
-      <Box sx={{ '& > *': { borderTop: '1px solid', borderColor: 'divider' } }}>
-        {children}
-      </Box>
-    </Paper>
+      </div>
+      <div className="[&>*]:border-t">{children}</div>
+    </section>
   )
 }
 
 /** SectionCard içindeki standart satır: sol (avatar + metin), sağ (rozet / değer) */
-export function SectionRow({ children, onClick, href, sx }: {
-  children: React.ReactNode; onClick?: () => void; href?: string; sx?: SxProps<Theme>
+export function SectionRow({ children, onClick, href, className }: {
+  children: React.ReactNode; onClick?: () => void; href?: string; className?: string
 }) {
-  const base = [
-    {
-      display: 'flex', alignItems: 'center', gap: 1.25, px: 2, py: 1.25, minHeight: 56, width: '100%',
-      textAlign: 'left', fontFamily: 'inherit', color: 'inherit', textDecoration: 'none',
-    },
-    (onClick || href) ? { '&:hover': { bgcolor: 'action.hover' } } : {},
-    ...(Array.isArray(sx) ? sx : [sx]),
-  ] as SxProps<Theme>
-  if (href) return <Box component={Link} href={href} sx={base}>{children}</Box>
-  if (onClick) return <ButtonBase onClick={onClick} sx={base}>{children}</ButtonBase>
-  return <Box sx={base}>{children}</Box>
+  const cls = cn(
+    'flex min-h-14 w-full items-center gap-2.5 px-4 py-2.5 text-left',
+    (onClick || href) && 'transition-colors outline-none hover:bg-muted/70 focus-visible:bg-muted',
+    className
+  )
+  if (href) return <Link href={href} className={cls}>{children}</Link>
+  if (onClick) return <button type="button" onClick={onClick} className={cls}>{children}</button>
+  return <div className={cls}>{children}</div>
 }
 
 /** Kart içinde boş durum metni */
 export function EmptyRow({ children }: { children: React.ReactNode }) {
-  return (
-    <Typography fontSize="0.85rem" color="text.secondary" sx={{ px: 2, py: 3, textAlign: 'center' }}>
-      {children}
-    </Typography>
-  )
+  return <p className="px-4 py-6 text-center text-sm text-ink-secondary">{children}</p>
 }

@@ -24,6 +24,7 @@ import { PageHeader, ListSkeleton, SectionCard, SectionRow, StatusBadge } from '
 import { shiftKindOf } from '@/components/schedule/scheduleHelpers'
 import { useLoadedKey } from '@/hooks/useLoadedKey'
 import { SHIFT_KIND_TONES } from '@/lib/palette'
+import { cn } from '@/lib/utils'
 
 export function ShiftTemplatesPage() {
   const [templates, setTemplates] = useState<ShiftTemplate[]>([])
@@ -146,7 +147,7 @@ function ShiftTemplateCard({
   const tone = SHIFT_KIND_TONES[shiftKindOf(template.name, start, end)]
 
   return (
-    <SectionRow sx={{ opacity: template.active ? 1 : 0.6, flexWrap: { xs: 'wrap', sm: 'nowrap' } }}>
+    <SectionRow className={cn('flex-wrap sm:flex-nowrap', !template.active && 'opacity-60')}>
       <Box sx={{ bgcolor: tone.soft, color: tone.text, borderRadius: '10px', px: 1.25, py: 0.75, minWidth: 124, flexShrink: 0 }}>
         <Typography fontSize="0.85rem" fontWeight={700} sx={{ fontVariantNumeric: 'tabular-nums' }}>
           {start} – {end}
