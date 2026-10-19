@@ -17,43 +17,27 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import {
-  Box,
-  Typography,
-  Paper,
-  CircularProgress,
-  Chip,
-  Divider,
-  Stack,
-  Alert,
-  Button,
-  IconButton,
-  Skeleton,
-} from '@mui/material'
-import CheckCircleIcon from '@mui/icons-material/CheckCircle'
-import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
-import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
-import PersonIcon from '@mui/icons-material/Person'
-import AccessTimeIcon from '@mui/icons-material/AccessTime'
-import RefreshIcon from '@mui/icons-material/Refresh'
-import LocationOnIcon from '@mui/icons-material/LocationOn'
-import MyLocationIcon from '@mui/icons-material/MyLocation'
-import LocationOffIcon from '@mui/icons-material/LocationOff'
-import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner'
-import WifiOffIcon from '@mui/icons-material/WifiOff'
+  AlertCircle, CheckCircle2, ChevronLeft, Clock, Loader2, LocateFixed, MapPin, MapPinOff, RefreshCw, ScanLine, WifiOff,
+} from 'lucide-react'
 import type { QrActionType } from '@/types/qr'
 import { QR_ACTION_LABELS } from '@/types/qr'
 import type { ProcessQrResponse } from '@/types/qr'
 import type { GpsCoordinates } from '@/types/location'
 import { useAuth } from '@/context/AuthContext'
-import { LOADING_LABEL } from '@/components/common'
+import { LOADING_LABEL } from '@/components/common/Skeletons'
+import { PersonAvatar } from '@/components/common/PersonAvatar'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
+import { cn } from '@/lib/utils'
 
 import {
-  CurrentStatusResponse, PageState, ATTENDANCE_STATUS_TR, STATUS_COLORS, STATUS_BG_COLORS, getButtons, getCurrentPosition,
+  CurrentStatusResponse, PageState, ATTENDANCE_STATUS_TR, STATUS_TONES, getButtons, getCurrentPosition,
   LocationError, PermissionHelp,
 } from './scanPageHelpers'
-import type { LocationErrorKind } from './scanPageHelpers'
-import { C, tint } from '@/lib/palette'
+import type { ActionButton, LocationErrorKind } from './scanPageHelpers'
 
 // html5-qrcode yalnızca tarayıcıda çalışır; ssr:false ile sunucu paketine (Cloudflare Worker 3 MB sınırı) girmez
 const QrScanner = dynamic(() => import('./QrScanner').then((m) => m.QrScanner), { ssr: false })
@@ -64,9 +48,24 @@ const NETWORK_ERROR_MSG = 'Sunucuya bağlanılamadı. İnternet bağlantınızı
 /** Çevrimdışı uyarısı — işlem butonlarının yerine / üstünde gösterilir */
 function OfflineActionAlert() {
   return (
-    <Alert severity="warning" icon={<WifiOffIcon />} sx={{ width: '100%', borderRadius: 1.5 }}>
-      {OFFLINE_ACTION_MSG}
+    <Alert tone="warning">
+      <WifiOff />
+      <AlertDescription className="text-ink">{OFFLINE_ACTION_MSG}</AlertDescription>
     </Alert>
+  )
+}
+
+/** Aksiyon tonuna göre ikon zemini / rengi */
+const ACTION_TONE: Record<ActionButton['tone'], string> = {
+  brand: 'bg-brand-soft text-brand',
+  warning: 'bg-warning-soft text-warning',
+  danger: 'bg-danger-soft text-danger',
+}
+
+/** Durum ekranlarındaki büyük yuvarlak ikon */
+function StateIcon({ className, children }: { className: string; children: React.ReactNode }) {
+  return (
+    <span className={cn('flex size-20 items-center justify-center rounded-full [&_svg]:size-9', className)}>{children}</span>
   )
 }
 
@@ -239,56 +238,37 @@ export function AttendanceScanPage() {
   // ─── Auth guard ──────────────────────────────────────────────
   if (authStatus === 'loading') {
     return (
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          p: { xs: 2, md: 4 },
-        }}
-      >
-        <Box
-          role="status"
-          aria-busy="true"
-          aria-label={LOADING_LABEL}
-          sx={{ width: '100%', maxWidth: 440, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}
-        >
-          <Skeleton variant="text" width={90} sx={{ fontSize: '0.75rem' }} />
-          <Skeleton variant="text" width={200} sx={{ fontSize: '1.5rem', mb: 2 }} />
-          <Skeleton variant="rounded" width="100%" height={120} sx={{ borderRadius: 3 }} />
-          <Skeleton variant="rounded" width="100%" height={52} sx={{ borderRadius: 2, mt: 1 }} />
-          <Skeleton variant="rounded" width="100%" height={52} sx={{ borderRadius: 2 }} />
-        </Box>
-      </Box>
+      <div className="flex justify-center p-4 md:p-8">
+        <div role="status" aria-busy="true" aria-label={LOADING_LABEL} className="flex w-full max-w-md flex-col gap-3">
+          <Skeleton className="h-7 w-48" />
+          <Skeleton className="h-24 w-full rounded-2xl" />
+          <Skeleton className="h-20 w-full rounded-2xl" />
+          <Skeleton className="h-20 w-full rounded-2xl" />
+        </div>
+      </div>
     )
   }
 
   if (authStatus === 'unauthenticated' || !employee) {
     return (
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          p: 3,
-        }}
-      >
+      <div className="mx-auto w-full max-w-md p-4 md:p-8">
         {/* Çevrimdışı açılışta oturum doğrulanamaz; bağlantı gelince oturum yeniden sorgulanır */}
         {!online ? <OfflineActionAlert /> : (
-          <Alert severity="warning">Devam takibi için sisteme giriş yapmanız gerekiyor.</Alert>
+          <Alert tone="warning">
+            <AlertCircle />
+            <AlertDescription className="text-ink">Devam takibi için sisteme giriş yapmanız gerekiyor.</AlertDescription>
+          </Alert>
         )}
-      </Box>
+      </div>
     )
   }
 
   // ─── Yardımcı değerler ───────────────────────────────────────
   const currentStatus = statusData?.current_status ?? null
-  const statusColor = STATUS_COLORS[currentStatus ?? ''] ?? C.inkMuted
-  const statusBg = STATUS_BG_COLORS[currentStatus ?? ''] ?? tint(C.neutral, 0.08)
+  const statusTone = STATUS_TONES[currentStatus ?? ''] ?? 'neutral'
   const statusLabel = ATTENDANCE_STATUS_TR[currentStatus ?? ''] ?? '—'
   const buttons = getButtons(currentStatus)
   const hasShift = statusData?.has_shift ?? false
-  const resultStatusColor = result ? (STATUS_COLORS[result.new_status] ?? C.inkMuted) : C.inkMuted
 
   const isLocationError =
     !!locationErrorKind ||
@@ -303,36 +283,15 @@ export function AttendanceScanPage() {
   const isLocationRetryable = locationErrorKind === 'timeout' || locationErrorKind === 'unavailable'
 
   // ─── Render ──────────────────────────────────────────────────
+  const scanning = pageState === 'scanning'
   return (
-    <Box
-      sx={{
-        color: 'text.primary',
-        p: { xs: 2, md: 4 },
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-      }}
-    >
-      {/* Header */}
-      <Box sx={{ mb: 3, textAlign: 'center' }}>
-        <Typography variant="overline" color="primary.main" fontWeight={700} letterSpacing={0.5}>
-          QR Tara
-        </Typography>
-        <Typography variant="h5" fontWeight={800}>
-          {pageState === 'scanning' ? 'QR Kodu Okutun' : 'Devam Takibi'}
-        </Typography>
-        {pageState === 'scanning' && selectedAction && (
-          <Typography variant="body2" color="text.secondary" mt={0.5}>
-            Amaç:{' '}
-            <Box component="span" fontWeight={700} color="primary.main">
-              {QR_ACTION_LABELS[selectedAction]}
-            </Box>
-          </Typography>
-        )}
-        {pageState === 'select_action' && (
-          <Typography variant="body2" color="text.secondary" mt={0.5}>
-            Ne yapmak istediğinizi seçin, ardından QR okutun
-          </Typography>
+    <div className="mx-auto flex w-full max-w-md flex-col gap-4 p-4 md:py-8">
+      {/* Başlık */}
+      <header className="flex items-center gap-2">
+        {scanning && (
+          <Button variant="ghost" size="icon-sm" onClick={handleBackToSelect} aria-label="Geri" className="-ml-2">
+            <ChevronLeft className="size-5" />
+          </Button>
         )}
       </Box>
 
@@ -416,392 +375,144 @@ export function AttendanceScanPage() {
             </Box>
           )}
 
-          {/* ── AMAÇ SEÇİMİ ── */}
-          {pageState === 'select_action' && (
-            <Box sx={{ width: '100%' }}>
-              {!online && hasShift && buttons.length > 0 && (
-                <Box sx={{ mb: 2 }}><OfflineActionAlert /></Box>
-              )}
-              {/* Vardiya yok */}
-              {!hasShift && (
-                <Alert severity="info">Bugün için tanımlı vardiya yok.</Alert>
-              )}
+          {hasShift && currentStatus === 'clocked_out' && (
+            <div className="flex flex-col items-center gap-2 rounded-2xl border bg-card px-6 py-8 text-center">
+              <StateIcon className="bg-plum-soft text-plum"><CheckCircle2 /></StateIcon>
+              <p className="mt-1 font-bold">Vardiya tamamlandı</p>
+              <p className="text-sm text-ink-secondary">Bugünkü vardiyanız başarıyla tamamlandı. İyi çalışmalar!</p>
+            </div>
+          )}
 
-              {/* Vardiya tamamlandı */}
-              {hasShift && currentStatus === 'clocked_out' && (
-                <Box
-                  sx={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: 1.5,
-                    py: 3,
-                  }}
-                >
-                  <CheckCircleIcon sx={{ fontSize: 56, color: C.plum }} />
-                  <Typography variant="subtitle1" fontWeight={700} color={C.plum}>
-                    Vardiya tamamlandı
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" textAlign="center">
-                    Bugünkü vardiyanız başarıyla tamamlandı. İyi çalışmalar!
-                  </Typography>
-                </Box>
-              )}
+          {hasShift && currentStatus === 'on_break' && (
+            <Alert tone="warning">
+              <Clock />
+              <AlertDescription className="text-ink">Molada iken çıkış yapılamaz. Önce moladan dönün.</AlertDescription>
+            </Alert>
+          )}
 
-              {/* Vardiya saati */}
-              {hasShift && currentStatus && currentStatus !== 'clocked_out' && statusData?.shift_start && (
-                <Box
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 0.75,
-                    mb: 2.5,
-                    p: 1.25,
-                    bgcolor: statusBg,
-                    borderRadius: 1.5,
-                    border: '1px solid',
-                    borderColor: `${statusColor}25`,
-                  }}
-                >
-                  <AccessTimeIcon sx={{ fontSize: 14, color: statusColor }} />
-                  <Typography variant="caption" fontWeight={600} color={statusColor}>
-                    Vardiya: {statusData.shift_start.slice(0, 5)} – {statusData.shift_end?.slice(0, 5)}
-                  </Typography>
-                </Box>
-              )}
-
-              {/* Molada uyarı */}
-              {hasShift && currentStatus === 'on_break' && (
-                <Alert severity="warning" sx={{ mb: 2, borderRadius: 1.5 }}>
-                  Molada iken çıkış yapılamaz. Önce moladan dönün.
-                </Alert>
-              )}
-
-              {/* Amaç butonları */}
-              {hasShift && buttons.length > 0 && (
-                <Stack spacing={1.5}>
-                  <Typography
-                    variant="caption"
-                    color="text.disabled"
-                    fontWeight={600}
-                    textAlign="center"
-                    sx={{ mb: 0.5, letterSpacing: 0.5 }}
+          {hasShift && buttons.length > 0 && (
+            <>
+              <p className="px-1 pt-1 text-sm font-semibold text-ink-secondary">Ne yapmak istiyorsunuz?</p>
+              {buttons.map((btn) => {
+                const Icon = btn.icon
+                return (
+                  <button
+                    key={btn.action}
+                    type="button"
+                    disabled={!online}
+                    onClick={() => handleSelectAction(btn.action)}
+                    className="group flex w-full items-center gap-4 rounded-2xl border bg-card p-4 text-left transition-[border-color,box-shadow] outline-none hover:border-sand focus-visible:ring-[3px] focus-visible:ring-ring/50 active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
                   >
-                    Ne yapmak istiyorsunuz?
-                  </Typography>
-                  {buttons.map((btn) => (
-                    <Button
-                      key={btn.action}
-                      variant="outlined"
-                      color={btn.color}
-                      size="large"
-                      fullWidth
-                      disabled={!online}
-                      onClick={() => handleSelectAction(btn.action)}
-                      sx={{
-                        justifyContent: 'flex-start',
-                        gap: 2,
-                        py: 1.75,
-                        px: 2.5,
-                        borderRadius: 2,
-                        borderWidth: '1.5px',
-                        textAlign: 'left',
-                        '&:hover': { borderWidth: '1.5px' },
-                      }}
-                    >
-                      <Box
-                        sx={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          width: 44,
-                          height: 44,
-                          borderRadius: 1.5,
-                          bgcolor:
-                            btn.color === 'primary'
-                              ? tint(C.brand, 0.1)
-                              : btn.color === 'warning'
-                              ? tint(C.warning, 0.1)
-                              : tint(C.danger, 0.1),
-                          flexShrink: 0,
-                        }}
-                      >
-                        {btn.icon}
-                      </Box>
-                      <Box>
-                        <Typography variant="subtitle2" fontWeight={700} display="block">
-                          {btn.label}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary" display="block">
-                          {btn.description}
-                        </Typography>
-                      </Box>
-                    </Button>
-                  ))}
-                </Stack>
-              )}
-            </Box>
+                    <span className={cn('flex size-12 shrink-0 items-center justify-center rounded-xl', ACTION_TONE[btn.tone])}>
+                      <Icon className="size-6" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-bold">{btn.label}</span>
+                      <span className="block text-sm text-ink-secondary">{btn.description}</span>
+                    </span>
+                    <ScanLine className="size-5 text-ink-muted transition-colors group-hover:text-primary" />
+                  </button>
+                )
+              })}
+            </>
+          )}
+        </section>
+      )}
+
+      {/* ── QR TARAYICI ── */}
+      {scanning && (
+        <section className="flex flex-col items-center gap-4 rounded-2xl border bg-card p-4">
+          {selectedAction && <Badge tone="brand" className="h-7 px-3 text-sm">{QR_ACTION_LABELS[selectedAction]}</Badge>}
+
+          {/* Çevrimdışıyken kamera hiç açılmaz; bağlantı gelince tarayıcı kendiliğinden başlar */}
+          {online ? (
+            <QrScanner onScan={(data) => void handleScan(data)} onError={(e) => setErrorMsg(e)} active={scannerActive} />
+          ) : (
+            <OfflineActionAlert />
           )}
 
-          {/* ── QR SCANNER ── */}
-          {pageState === 'scanning' && (
-            <Box
-              sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 2,
-                width: '100%',
-              }}
-            >
-              {/* Seçilen amaç özeti */}
-              {selectedAction && (
-                <Box
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 1,
-                    px: 2,
-                    py: 1,
-                    bgcolor: tint(C.brand, 0.08),
-                    borderRadius: 2,
-                    border: `1px solid ${tint(C.brand, 0.2)}`,
-                    width: '100%',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <QrCodeScannerIcon sx={{ fontSize: 16, color: 'primary.main' }} />
-                  <Typography variant="caption" fontWeight={600} color="primary.main">
-                    Kiosk QR&apos;ı okutun →{' '}
-                    <Box component="span" color="text.primary">
-                      {QR_ACTION_LABELS[selectedAction]}
-                    </Box>
-                  </Typography>
-                </Box>
-              )}
-
-              {/* Çevrimdışıyken kamera hiç açılmaz; bağlantı gelince tarayıcı kendiliğinden başlar */}
-              {online ? (
-                <QrScanner
-                  onScan={(data) => void handleScan(data)}
-                  onError={(e) => setErrorMsg(e)}
-                  active={scannerActive}
-                />
-              ) : (
-                <OfflineActionAlert />
-              )}
-
-              {online && errorMsg && (
-                <Alert severity="error" sx={{ width: '100%', borderRadius: 1.5 }}>{errorMsg}</Alert>
-              )}
-
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                <LocationOnIcon sx={{ fontSize: 13, color: 'primary.main' }} />
-                <Typography variant="caption" color="text.secondary">
-                  QR tarandıktan sonra konum doğrulaması yapılır
-                </Typography>
-              </Box>
-
-              <Button
-                variant="text"
-                color="inherit"
-                size="small"
-                startIcon={<ChevronLeftIcon />}
-                onClick={handleBackToSelect}
-                sx={{ color: 'text.disabled', mt: -1 }}
-              >
-                Amacı Değiştir
-              </Button>
-            </Box>
+          {online && errorMsg && (
+            <Alert tone="danger">
+              <AlertCircle />
+              <AlertDescription className="text-ink">{errorMsg}</AlertDescription>
+            </Alert>
           )}
 
-          {/* ── GPS ALINIYOR ── */}
-          {pageState === 'getting_location' && (
-            <Box
-              sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 2,
-                py: 4,
-                width: '100%',
-              }}
-            >
-              <Box sx={{ position: 'relative', width: 72, height: 72 }}>
-                <CircularProgress
-                  size={72}
-                  thickness={2}
-                  sx={{ color: 'primary.main', position: 'absolute', top: 0, left: 0 }}
-                />
-                <Box
-                  sx={{
-                    position: 'absolute',
-                    inset: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <MyLocationIcon sx={{ fontSize: 32, color: 'primary.main' }} />
-                </Box>
-              </Box>
-              <Typography variant="subtitle1" fontWeight={700}>
-                GPS Konumu Alınıyor
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {locationStatus ?? 'Lütfen bekleyin...'}
-              </Typography>
-              <Box
-                sx={{
-                  bgcolor: tint(C.brand, 0.08),
-                  border: `1px solid ${tint(C.brand, 0.2)}`,
-                  borderRadius: 2,
-                  px: 2,
-                  py: 1.5,
-                  width: '100%',
-                }}
-              >
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  display="block"
-                  textAlign="center"
-                >
-                  📍 Konum izni penceresi açılırsa{' '}
-                  <Box component="strong">&ldquo;İzin Ver&rdquo;</Box> seçin
-                </Typography>
-              </Box>
-            </Box>
+          <p className="flex items-center gap-1.5 text-xs text-ink-secondary">
+            <MapPin className="size-3.5 text-primary" />
+            QR tarandıktan sonra konum doğrulaması yapılır
+          </p>
+          <Button variant="ghost" size="sm" onClick={handleBackToSelect} className="text-ink-secondary">
+            <ChevronLeft /> Amacı değiştir
+          </Button>
+        </section>
+      )}
+
+      {/* ── GPS ALINIYOR ── */}
+      {pageState === 'getting_location' && (
+        <section className="flex flex-col items-center gap-2 rounded-2xl border bg-card px-6 py-8 text-center">
+          <StateIcon className="relative bg-brand-soft text-primary">
+            <LocateFixed />
+            <Loader2 aria-hidden className="absolute inset-0 !size-20 animate-spin text-primary/40" strokeWidth={1} />
+          </StateIcon>
+          <p className="mt-2 font-bold">Konum alınıyor</p>
+          <p className="text-sm text-ink-secondary">{locationStatus ?? 'Lütfen bekleyin…'}</p>
+          <p className="mt-2 rounded-xl bg-muted px-3 py-2 text-xs text-ink-secondary">
+            Konum izni penceresi açılırsa <strong className="text-ink">“İzin Ver”</strong> seçin
+          </p>
+        </section>
+      )}
+
+      {/* ── İŞLENİYOR ── */}
+      {pageState === 'processing' && (
+        <section className="flex flex-col items-center gap-3 rounded-2xl border bg-card px-6 py-10">
+          <Loader2 className="size-10 animate-spin text-primary" />
+          <p className="font-semibold">Kaydediliyor…</p>
+        </section>
+      )}
+
+      {/* ── BAŞARILI ── */}
+      {pageState === 'success' && result && (
+        <section className="flex flex-col items-center gap-2 rounded-2xl border bg-card px-6 py-8 text-center">
+          <StateIcon className="bg-success-soft text-success"><CheckCircle2 /></StateIcon>
+          <p className="mt-2 text-lg font-bold text-success">{result.message}</p>
+          <Badge tone={STATUS_TONES[result.new_status] ?? 'neutral'} className="h-7 px-3 text-sm">
+            {ATTENDANCE_STATUS_TR[result.new_status] ?? result.new_status}
+          </Badge>
+          <p className="flex items-center gap-1 text-xs text-ink-secondary">
+            <MapPin className="size-3.5 text-success" />
+            {QR_ACTION_LABELS[result.action_type]} — {result.timestamp}
+          </p>
+        </section>
+      )}
+
+      {/* ── HATA ── */}
+      {pageState === 'error' && (
+        <section className="flex flex-col items-center gap-3 rounded-2xl border bg-card px-5 py-7 text-center">
+          <StateIcon className="bg-danger-soft text-danger">{isLocationError ? <MapPinOff /> : <AlertCircle />}</StateIcon>
+          <p className="whitespace-pre-line font-bold text-danger">{errorMsg ?? 'İşlem başarısız.'}</p>
+
+          {showLocationPermissionHelp && <PermissionHelp kind="location" />}
+
+          {isLocationRetryable && (
+            <p className="text-xs text-ink-secondary">
+              Konum servislerinin açık olduğundan emin olun; açık alanda veya pencere kenarında tekrar deneyin.
+              QR kodunu yeniden okutmanız gerekir.
+            </p>
           )}
 
-          {/* ── İŞLENİYOR ── */}
-          {pageState === 'processing' && (
-            <Box
-              sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 1.5,
-                py: 4,
-              }}
-            >
-              <CircularProgress color="primary" size={56} />
-              <Typography variant="subtitle2" fontWeight={600}>
-                Kaydediliyor...
-              </Typography>
-            </Box>
-          )}
+          {!online && <OfflineActionAlert />}
 
-          {/* ── BAŞARILI ── */}
-          {pageState === 'success' && result && (
-            <Box
-              sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 1.5,
-                py: 1,
-                width: '100%',
-              }}
-            >
-              <CheckCircleIcon sx={{ fontSize: 72, color: C.success }} />
-              <Typography
-                variant="h6"
-                fontWeight={800}
-                color={C.success}
-                textAlign="center"
-              >
-                {result.message}
-              </Typography>
-              <Typography variant="subtitle2" color="text.primary">
-                {employee.full_name}
-              </Typography>
-              <Chip
-                label={ATTENDANCE_STATUS_TR[result.new_status] ?? result.new_status}
-                sx={{
-                  bgcolor: `${resultStatusColor}20`,
-                  color: resultStatusColor,
-                  border: '1px solid',
-                  borderColor: `${resultStatusColor}40`,
-                  fontWeight: 700,
-                  fontSize: '0.875rem',
-                  height: 32,
-                }}
-              />
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <LocationOnIcon sx={{ fontSize: 13, color: C.success }} />
-                <Typography variant="caption" color="text.disabled">
-                  {QR_ACTION_LABELS[result.action_type]} — {result.timestamp}
-                </Typography>
-              </Box>
-            </Box>
-          )}
-
-          {/* ── HATA ── */}
-          {pageState === 'error' && (
-            <Box
-              sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 2,
-                py: 1,
-                width: '100%',
-              }}
-            >
-              {isLocationError ? (
-                <LocationOffIcon sx={{ fontSize: 52, color: 'error.main' }} />
-              ) : (
-                <ErrorOutlineIcon sx={{ fontSize: 52, color: 'error.main' }} />
-              )}
-              <Typography
-                variant="subtitle2"
-                fontWeight={700}
-                color="error.main"
-                textAlign="center"
-                sx={{ whiteSpace: 'pre-line' }}
-              >
-                {errorMsg ?? 'İşlem başarısız.'}
-              </Typography>
-
-              {showLocationPermissionHelp && <PermissionHelp kind="location" />}
-
-              {isLocationRetryable && (
-                <Typography variant="caption" color="text.secondary" textAlign="center">
-                  Konum servislerinin açık olduğundan emin olun; açık alanda veya pencere kenarında
-                  tekrar deneyin. QR kodunu yeniden okutmanız gerekir.
-                </Typography>
-              )}
-
-              {!online && <OfflineActionAlert />}
-
-              <Stack direction="row" spacing={1.5} useFlexGap sx={{ flexWrap: 'wrap', justifyContent: 'center' }}>
-                <Button
-                  variant="outlined"
-                  color="primary"
-                  startIcon={<RefreshIcon />}
-                  onClick={handleRetry}
-                  disabled={!online}
-                >
-                  {isLocationError ? 'Tekrar Tara' : 'Tekrar Dene'}
-                </Button>
-                <Button
-                  variant="text"
-                  color="inherit"
-                  startIcon={<ChevronLeftIcon />}
-                  onClick={handleBackToSelect}
-                  sx={{ color: 'text.disabled' }}
-                >
-                  Geri
-                </Button>
-              </Stack>
-            </Box>
-          )}
-
-        </Stack>
-      </Paper>
-    </Box>
+          <div className="flex flex-wrap justify-center gap-2 pt-1">
+            <Button onClick={handleRetry} disabled={!online}>
+              <RefreshCw /> {isLocationError ? 'Tekrar Tara' : 'Tekrar Dene'}
+            </Button>
+            <Button variant="ghost" onClick={handleBackToSelect} className="text-ink-secondary">
+              <ChevronLeft /> Geri
+            </Button>
+          </div>
+        </section>
+      )}
+    </div>
   )
 }
-

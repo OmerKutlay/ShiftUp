@@ -132,6 +132,8 @@ export async function mockApi(context: BrowserContext, opts: MockApiOptions = {}
           return json(route, opts.currentStatus ?? DEFAULT_CURRENT_STATUS)
         case '/api/notifications':
           return json(route, { notifications: [] })
+        case '/api/store-location/name':
+          return json(route, { name: 'Kadıköy mağazası' })
         default:
           unmocked.push(`${route.request().method()} ${path}`)
           return json(route, { error: 'e2e: taklit edilmedi' }, 404)

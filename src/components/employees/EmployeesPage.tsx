@@ -40,6 +40,7 @@ import { EmployeeFormDialog } from './EmployeeFormDialog'
 import { EmployeeStatusChip } from './EmployeeStatusChip'
 import { PageHeader, ListSkeleton, PersonAvatar, SectionCard, SectionRow, StatusBadge } from '@/components/common'
 import { ROLE_GROUPS, roleGroupOf } from '@/components/schedule/scheduleHelpers'
+import { cn } from '@/lib/utils'
 
 type Filter = 'all' | 'active' | 'inactive'
 
@@ -322,7 +323,7 @@ function EmployeeRow({
   onDelete: (emp: EmployeeWithRole) => void
 }) {
   return (
-    <SectionRow sx={{ opacity: employee.active ? 1 : 0.6, flexWrap: { xs: 'wrap', sm: 'nowrap' } }}>
+    <SectionRow className={cn('flex-wrap sm:flex-nowrap', !employee.active && 'opacity-60')}>
       <PersonAvatar name={employee.full_name} size={38} />
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography fontSize="0.875rem" fontWeight={700} noWrap>{employee.full_name}</Typography>
@@ -337,6 +338,7 @@ function EmployeeRow({
       </Box>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
         {employee.employment_type === 'part_time' && <StatusBadge tone="plum" label="Yarı zamanlı" />}
+
         <EmployeeStatusChip active={employee.active} />
       </Box>
       <Box sx={{ display: 'flex', alignItems: 'center' }}>

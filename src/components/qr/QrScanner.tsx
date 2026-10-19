@@ -1,10 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Box, Typography, CircularProgress } from '@mui/material'
-import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner'
+import { CameraOff, Loader2 } from 'lucide-react'
 import { PermissionHelp } from './scanPageHelpers'
-import { C, tint } from '@/lib/palette'
 
 interface Props {
   onScan: (data: string) => void
@@ -117,132 +115,44 @@ export function QrScanner({ onScan, onError, active = true }: Props) {
 
   if (permissionDenied) {
     return (
-      <Box
-        sx={{
-          // Responsive: ekran genişliğine göre max 280px
-          width: '100%',
-          maxWidth: 320,
-          minHeight: 280,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          bgcolor: tint(C.danger, 0.08),
-          borderRadius: 2,
-          border: `2px solid ${tint(C.danger, 0.3)}`,
-          p: 2,
-          gap: 1,
-          textAlign: 'center',
-          boxSizing: 'border-box',
-        }}
-      >
-        <Typography variant="h4">🚫</Typography>
-        <Typography variant="subtitle2" color="error.main" fontWeight={700}>
-          Kamera izni gerekli
-        </Typography>
-        <Typography variant="caption" color="text.secondary">
-          QR taraması için kamera iznine ihtiyaç var.
-        </Typography>
+      <div className="flex w-full max-w-xs flex-col items-center gap-2 rounded-2xl bg-card p-4 text-center">
+        <span className="flex size-12 items-center justify-center rounded-full bg-danger-soft text-danger">
+          <CameraOff className="size-6" />
+        </span>
+        <p className="text-sm font-bold text-danger">Kamera izni gerekli</p>
+        <p className="text-xs text-ink-secondary">QR taraması için kamera iznine ihtiyaç var.</p>
         {/* Cihaza / kurulu uygulamaya göre adım adım yönlendirme */}
         <PermissionHelp kind="camera" />
-      </Box>
+      </div>
     )
   }
 
   return (
-    // Dış wrapper: tam genişlik, max 280px — scanner her zaman container'a sığar
-    <Box sx={{ width: '100%', maxWidth: 280, position: 'relative' }}>
-      {/* html5-qrcode mount noktası — aspectRatio ile kare korunur */}
-      <Box
+    // Tam genişlik, en fazla 280px — tarayıcı her zaman kapsayıcıya sığar
+    <div className="relative w-full max-w-[280px]">
+      {/* html5-qrcode mount noktası — kare oran korunur; video kapsayıcıyı doldurur, önizleme resmi gizli */}
+      <div
         id="qr-scanner-container"
         ref={containerRef}
-        sx={{
-          width: '100%',
-          aspectRatio: '1 / 1',
-          borderRadius: 2,
-          overflow: 'hidden',
-          border: '3px solid',
-          borderColor: 'primary.main',
-          boxShadow: `0 0 20px ${tint(C.brand, 0.25)}`,
-          bgcolor: '#000',
-          // html5-qrcode içine enjekte ettiği video/img elementleri için
-          '& video': { width: '100% !important', height: '100% !important', objectFit: 'cover' },
-          '& img': { display: 'none' }, // snapshot preview gizle
-        }}
+        className="aspect-square w-full overflow-hidden rounded-2xl bg-black [&_img]:hidden [&_video]:!h-full [&_video]:!w-full [&_video]:object-cover"
       />
 
-      {/* Overlay tarama köşe işaretçileri */}
+      {/* Tarama çerçevesi: dört köşe işaretçisi */}
       {!initializing && (
-        <Box
-          sx={{
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            // Köşe işaretçileri container'ın %65'i kadar
-            width: '65%',
-            height: '65%',
-            pointerEvents: 'none',
-            '&::before, &::after': {
-              content: '""',
-              position: 'absolute',
-              width: 28,
-              height: 28,
-              borderColor: 'primary.main',
-              borderStyle: 'solid',
-            },
-            '&::before': {
-              top: 0,
-              left: 0,
-              borderWidth: '3px 0 0 3px',
-            },
-            '&::after': {
-              bottom: 0,
-              right: 0,
-              borderWidth: '0 3px 3px 0',
-            },
-          }}
-        />
+        <div aria-hidden className="pointer-events-none absolute inset-[14%]">
+          <span className="absolute top-0 left-0 size-7 rounded-tl-lg border-t-[3px] border-l-[3px] border-white" />
+          <span className="absolute top-0 right-0 size-7 rounded-tr-lg border-t-[3px] border-r-[3px] border-white" />
+          <span className="absolute bottom-0 left-0 size-7 rounded-bl-lg border-b-[3px] border-l-[3px] border-white" />
+          <span className="absolute right-0 bottom-0 size-7 rounded-br-lg border-r-[3px] border-b-[3px] border-white" />
+        </div>
       )}
 
-      {/* Loading overlay */}
       {initializing && (
-        <Box
-          sx={{
-            position: 'absolute',
-            inset: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            bgcolor: tint(C.canvas, 0.85),
-            borderRadius: 2,
-            gap: 1.5,
-          }}
-        >
-          <CircularProgress color="primary" size={36} />
-          <Typography variant="caption" color="text.secondary">
-            Kamera açılıyor...
-          </Typography>
-        </Box>
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-2xl bg-ink/80 text-white">
+          <Loader2 className="size-7 animate-spin" />
+          <span className="text-xs">Kamera açılıyor…</span>
+        </div>
       )}
-
-      {/* Tarama ikonu */}
-      {!initializing && (
-        <Box
-          sx={{
-            position: 'absolute',
-            bottom: 8,
-            right: 8,
-            bgcolor: tint(C.canvas, 0.7),
-            borderRadius: 1,
-            p: 0.5,
-            display: 'flex',
-          }}
-        >
-          <QrCodeScannerIcon sx={{ fontSize: 18, color: 'primary.main' }} />
-        </Box>
-      )}
-    </Box>
+    </div>
   )
 }

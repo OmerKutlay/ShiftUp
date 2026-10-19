@@ -8,7 +8,7 @@ export function OpenShiftsPage() {
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 800, mx: 'auto' }}>
       <PageHeader
-        title="Açık Vardiyalar"
+        title="Açık vardiyalar"
         subtitle="Boşta kalan vardiyaları görüntüleyin ve üstlenin"
       />
       <OpenShiftsPanel />

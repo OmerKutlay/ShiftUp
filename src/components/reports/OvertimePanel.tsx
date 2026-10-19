@@ -5,15 +5,18 @@
  */
 import { useState } from 'react'
 import useSWR from 'swr'
-import {
-  Alert, Box, Chip, FormControl, InputLabel, LinearProgress, MenuItem, Paper, Select,
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography,
-} from '@mui/material'
+import { AlertCircle, CheckCircle2 } from 'lucide-react'
 import { apiFetch } from '@/lib/api/http'
 import type { OvertimeSummary } from '@/lib/overtime'
 import { ANNUAL_OVERTIME_CAP_HOURS } from '@/lib/laborLaw'
-import { turkeyToday } from '@/lib/dateUtils'
-import { TableSkeleton } from '@/components/common'
+import { formatShortDateTr, turkeyToday } from '@/lib/dateUtils'
+import { PersonAvatar, StatusBadge, TableSkeleton } from '@/components/common'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Label } from '@/components/ui/label'
+import { Progress } from '@/components/ui/progress'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { cn } from '@/lib/utils'
 
 const hours = (mins: number) => (Math.round((mins / 60) * 10) / 10).toLocaleString('tr-TR')
 
@@ -26,67 +29,91 @@ export function OvertimePanel() {
   const rows = (data?.summaries ?? []).filter((s) => s.totalOvertimeMins > 0)
 
   return (
-    <Box>
-      <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
-        <FormControl size="small" sx={{ width: 140 }}>
-          <InputLabel>Yıl</InputLabel>
-          <Select value={year} label="Yıl" onChange={(e) => setYear(Number(e.target.value))}>
-            {[currentYear - 1, currentYear, currentYear + 1].map((y) => (
-              <MenuItem key={y} value={y}>{y}</MenuItem>
-            ))}
+    <div className="grid gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex items-center gap-2">
+          <Label htmlFor="overtime-year" className="text-ink-secondary">Yıl</Label>
+          <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
+            <SelectTrigger id="overtime-year" className="w-[120px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {[currentYear - 1, currentYear, currentYear + 1].map((y) => (
+                <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+              ))}
+            </SelectContent>
           </Select>
-        </FormControl>
-        <Typography variant="caption" color="text.secondary">
+        </div>
+        <p className="text-xs text-ink-secondary">
           Haftalık 45 saati aşan net fiili çalışma fazla çalışmadır; yıllık üst sınır {ANNUAL_OVERTIME_CAP_HOURS} saat,
           ücreti %50 zamlıdır ve çalışanın yazılı onayı gerekir.
-        </Typography>
-      </Box>
+        </p>
+      </div>
 
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error instanceof Error ? error.message : 'Rapor yüklenemedi.'}</Alert>}
+      {error && (
+        <Alert tone="danger">
+          <AlertCircle />
+          <AlertDescription className="text-ink">{error instanceof Error ? error.message : 'Rapor yüklenemedi.'}</AlertDescription>
+        </Alert>
+      )}
       {isLoading && !data && <TableSkeleton rows={5} />}
-      {data && rows.length === 0 && <Alert severity="success">{year} yılında fazla çalışma kaydı yok.</Alert>}
+      {data && rows.length === 0 && (
+        <Alert tone="success">
+          <CheckCircle2 />
+          <AlertDescription className="text-ink">{year} yılında fazla çalışma kaydı yok.</AlertDescription>
+        </Alert>
+      )}
 
       {rows.length > 0 && (
-        <TableContainer component={Paper} elevation={0} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Çalışan</TableCell>
-                <TableCell align="right">Fazla çalışma (s)</TableCell>
-                <TableCell sx={{ minWidth: 180 }}>Yıllık sınır ({ANNUAL_OVERTIME_CAP_HOURS} s)</TableCell>
-                <TableCell align="right">Hafta sayısı</TableCell>
-                <TableCell>Yazılı onay</TableCell>
+        <section className="overflow-hidden rounded-2xl border bg-card">
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Çalışan</TableHead>
+                <TableHead className="text-right">Fazla çalışma (s)</TableHead>
+                <TableHead className="min-w-[180px]">Yıllık sınır ({ANNUAL_OVERTIME_CAP_HOURS} s)</TableHead>
+                <TableHead className="text-right">Hafta sayısı</TableHead>
+                <TableHead>Yazılı onay</TableHead>
               </TableRow>
-            </TableHead>
+            </TableHeader>
             <TableBody>
-              {rows.map((s) => (
-                <TableRow key={s.employee_id} hover>
-                  <TableCell sx={{ fontWeight: 600 }}>{s.full_name}</TableCell>
-                  <TableCell align="right">{hours(s.totalOvertimeMins)}</TableCell>
-                  <TableCell>
-                    <LinearProgress
-                      variant="determinate"
-                      value={Math.min(100, s.capRatio * 100)}
-                      color={s.overCap ? 'error' : s.capRatio > 0.8 ? 'warning' : 'primary'}
-                      sx={{ height: 8, borderRadius: 4 }}
-                      aria-label={`Yıllık sınırın %${Math.round(s.capRatio * 100)}'i`}
-                    />
-                    <Typography variant="caption" color={s.overCap ? 'error.main' : 'text.secondary'}>
-                      %{Math.round(s.capRatio * 100)}{s.overCap && ' — sınır aşıldı'}
-                    </Typography>
-                  </TableCell>
-                  <TableCell align="right">{s.weeks.length}</TableCell>
-                  <TableCell>
-                    {s.consent_at
-                      ? <Chip size="small" label={`Var (${s.consent_at})`} color="success" variant="outlined" />
-                      : <Chip size="small" label="Yok" color="warning" />}
-                  </TableCell>
-                </TableRow>
-              ))}
+              {rows.map((s) => {
+                const pct = Math.round(s.capRatio * 100)
+                return (
+                  <TableRow key={s.employee_id}>
+                    <TableCell>
+                      <span className="flex items-center gap-2.5 font-semibold">
+                        <PersonAvatar name={s.full_name} size={28} />
+                        {s.full_name}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right font-semibold tabular-nums">{hours(s.totalOvertimeMins)}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2.5">
+                        <Progress
+                          value={Math.min(100, s.capRatio * 100)}
+                          aria-label={`Yıllık sınırın %${pct}'i`}
+                          className="min-w-[100px] flex-1"
+                          indicatorClassName={s.overCap ? 'bg-danger' : s.capRatio > 0.8 ? 'bg-warning-fill' : undefined}
+                        />
+                        <span className={cn('shrink-0 text-xs tabular-nums', s.overCap ? 'font-semibold text-danger' : 'text-ink-secondary')}>
+                          %{pct}{s.overCap && ' — sınır aşıldı'}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{s.weeks.length}</TableCell>
+                    <TableCell>
+                      {s.consent_at
+                        ? <StatusBadge tone="success" label={`Var · ${formatShortDateTr(s.consent_at.slice(0, 10))}`} />
+                        : <StatusBadge tone="warning" label="Yok" />}
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
             </TableBody>
           </Table>
-        </TableContainer>
+        </section>
       )}
-    </Box>
+    </div>
   )
 }

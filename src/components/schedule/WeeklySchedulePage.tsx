@@ -7,6 +7,8 @@ import {
   CircularProgress,
   Alert,
   Chip,
+  Fab,
+  Menu,
   MenuItem,
   Paper,
   TextField,
@@ -20,6 +22,7 @@ import {
 } from '@mui/material'
 import EventBusyIcon from '@mui/icons-material/EventBusy'
 import DeleteIcon from '@mui/icons-material/Delete'
+import AddIcon from '@mui/icons-material/Add'
 import type { EmployeeWithRole } from '@/types/employee'
 import type { ShiftAssignmentWithDetails, WeeklyScheduleEntry } from '@/types/schedule'
 import type { EmployeeAvailability } from '@/types/workforce'
@@ -33,7 +36,8 @@ import { useWeeklySchedule } from './useWeeklySchedule'
 import { ApiError } from '@/lib/api/http'
 import { ShiftAssignDialog } from './ShiftAssignDialog'
 import type { ShiftSavePayload } from './ShiftAssignDialog'
-import { PageHeader, PeriodStepper, ScheduleGridSkeleton, SegmentedControl, useConfirm } from '@/components/common'
+import { PageHeader, PeriodStepper, PersonAvatar, ScheduleGridSkeleton, SegmentedControl, useConfirm } from '@/components/common'
+import { BOTTOM_NAV_OVERLAY_OFFSET } from '@/components/layout/MobileBottomNav'
 import { addWeeks, format, subWeeks } from 'date-fns'
 import { tr } from 'date-fns/locale'
 
@@ -298,6 +302,21 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     return { shifts, mins, warnings }
   }, [scheduleEntries, statsMap, weekDays, approvedLeaveMap, restDayMap, availabilityMap, config])
 
+  // "Vardiya ekle" menüsü: seçili gün boşta olanlar önce, vardiyası / izni olanlar altta ve açıklamalı
+  const [addMenuAnchor, setAddMenuAnchor] = useState<HTMLElement | null>(null)
+  const addCandidates = useMemo(() => {
+    const list = scheduleEntries.map((e) => {
+      const key = `${e.employee.id}:${selectedDay}`
+      const a = e.dayAssignments[selectedDay]
+      const busy = restDayMap.has(key) ? 'Hafta tatili'
+        : approvedLeaveMap.has(key) || a?.is_on_leave ? 'İzinli'
+        : a ? `Vardiyası var · ${a.start_time.slice(0, 5)}–${a.end_time.slice(0, 5)}`
+        : null
+      return { emp: e.employee, busy }
+    })
+    return [...list.filter((c) => !c.busy), ...list.filter((c) => c.busy)]
+  }, [scheduleEntries, selectedDay, restDayMap, approvedLeaveMap])
+
   const weekRange = `${format(new Date(`${weekDays[0]}T00:00:00`), 'd', { locale: tr })} – ${format(new Date(`${weekDays[6]}T00:00:00`), 'd MMMM', { locale: tr })}`
   const firstName = authEmployee?.full_name.split(/\s+/)[0]
   const hour = new Date().getHours()
@@ -384,7 +403,8 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
       )}
 
       {hasData && view === 'day' && (
-        <Box sx={{ maxWidth: isMobile ? undefined : 720 }}>
+        // Mobilde yüzen "Vardiya ekle" butonu son satırı örtmesin
+        <Box sx={{ maxWidth: isMobile ? undefined : 720, pb: isMobile && !readOnly ? 8 : 0 }}>
           <MobileDayBoard
             entries={visibleEntries}
             weekDays={weekDays}
@@ -418,6 +438,54 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
             availabilityMap={availabilityMap} config={config} onCellClick={openAssignDialog} readOnly={readOnly}
           />
         )
+      )}
+
+      {/* Mobil gün görünümü: seçili güne vardiya ekle — önce o gün boşta olanlar */}
+      {hasData && view === 'day' && isMobile && !readOnly && (
+        <>
+          <Fab
+            variant="extended"
+            color="primary"
+            onClick={(e) => setAddMenuAnchor(e.currentTarget)}
+            sx={{
+              position: 'fixed',
+              right: 'calc(16px + env(safe-area-inset-right))',
+              bottom: `calc(${BOTTOM_NAV_OVERLAY_OFFSET}px + env(safe-area-inset-bottom))`,
+              zIndex: theme.zIndex.speedDial,
+              gap: 0.75,
+            }}
+          >
+            <AddIcon fontSize="small" /> Vardiya ekle
+          </Fab>
+          <Menu
+            anchorEl={addMenuAnchor}
+            open={!!addMenuAnchor}
+            onClose={() => setAddMenuAnchor(null)}
+            anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+            transformOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+            slotProps={{ paper: { sx: { maxHeight: '60dvh', minWidth: 240 } } }}
+          >
+            <Typography fontSize="0.75rem" color="text.secondary" sx={{ px: 2, pt: 0.5, pb: 1 }}>
+              {format(new Date(`${selectedDay}T00:00:00`), 'd MMMM EEEE', { locale: tr })} için çalışan seçin
+            </Typography>
+            {addCandidates.map(({ emp, busy }) => (
+              <MenuItem
+                key={emp.id}
+                onClick={() => {
+                  setAddMenuAnchor(null)
+                  openAssignDialog(emp, selectedDay)
+                }}
+                sx={{ gap: 1.25 }}
+              >
+                <PersonAvatar name={emp.full_name} size={28} />
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <Typography fontSize="0.85rem" fontWeight={600} noWrap>{emp.full_name}</Typography>
+                  <Typography fontSize="0.7rem" color="text.secondary" noWrap>{busy ?? emp.role}</Typography>
+                </Box>
+              </MenuItem>
+            ))}
+          </Menu>
+        </>
       )}
 
       {hasData && view === 'week' && isMobile && (

@@ -1,0 +1,172 @@
+/*
+ * ShiftUp — Tailwind v4 + shadcn/ui teması.
+ * Renk değerleri src/lib/palette.ts ile birebir aynıdır (palette.test.ts doğrular);
+ * MUI tamamen kaldırıldığında bu dosya tek kaynak olur.
+ */
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --radius: 0.75rem;
+
+  /* Yüzeyler */
+  --canvas: #f5efe6;
+  --surface: #fffdfa;
+  --surface-alt: #faf5ee;
+  --surface-muted: #f2ece3;
+  --sand: #e6dccd;
+  --line: #ece4d8;
+
+  /* Metin */
+  --ink: #2b211b;
+  --ink-secondary: #605853;
+  --ink-muted: #8c827a;
+
+  /* Marka (kiremit) */
+  --brand: #c2532d;
+  --brand-dark: #a3441f;
+  --brand-light: #e0814f;
+  --brand-soft: #fbede5;
+
+  /* Durum tonları: <ton> metin, -fill dolgu, -soft zemin */
+  --success: #4e7a3b;
+  --success-fill: #b9d4a6;
+  --success-soft: #e6f0df;
+  --warning: #946a1e;
+  --warning-fill: #e6a93e;
+  --warning-soft: #fcefd2;
+  --danger: #b8412c;
+  --danger-fill: #c8452f;
+  --danger-soft: #fbe4df;
+  --info: #356ba8;
+  --info-fill: #3f7cc0;
+  --info-soft: #e4edf7;
+  --plum: #874f71;
+  --plum-fill: #a35a87;
+  --plum-soft: #f2e1eb;
+  --peach: #985032;
+  --peach-fill: #e0814f;
+  --peach-soft: #fce3d5;
+  --neutral: #7a706a;
+  --neutral-soft: #f2ece3;
+
+  /* shadcn/ui semantik token'ları */
+  --background: var(--canvas);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--brand);
+  --primary-foreground: #ffffff;
+  --secondary: var(--surface-muted);
+  --secondary-foreground: var(--ink);
+  --muted: var(--surface-alt);
+  --muted-foreground: var(--ink-secondary);
+  --accent: var(--brand-soft);
+  --accent-foreground: var(--brand-dark);
+  --destructive: var(--danger);
+  --destructive-foreground: #ffffff;
+  --border: var(--line);
+  --input: #e3d9cb;
+  --ring: var(--brand-light);
+}
+
+/* Kırılım noktaları MUI temasıyla aynı (sm 600 · md 900 · lg 1200 · xl 1536): geçiş boyunca
+   iki sistem aynı genişlikte aynı kararı versin */
+@theme {
+  --breakpoint-sm: 600px;
+  --breakpoint-md: 900px;
+  --breakpoint-lg: 1200px;
+  --breakpoint-xl: 1536px;
+}
+
+@theme inline {
+  --font-sans: var(--font-figtree), 'Helvetica', 'Arial', sans-serif;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-alt: var(--surface-alt);
+  --color-surface-muted: var(--surface-muted);
+  --color-sand: var(--sand);
+  --color-ink: var(--ink);
+  --color-ink-secondary: var(--ink-secondary);
+  --color-ink-muted: var(--ink-muted);
+  --color-brand: var(--brand);
+  --color-brand-dark: var(--brand-dark);
+  --color-brand-light: var(--brand-light);
+  --color-brand-soft: var(--brand-soft);
+  --color-success: var(--success);
+  --color-success-fill: var(--success-fill);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-fill: var(--warning-fill);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-fill: var(--danger-fill);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-fill: var(--info-fill);
+  --color-info-soft: var(--info-soft);
+  --color-plum: var(--plum);
+  --color-plum-fill: var(--plum-fill);
+  --color-plum-soft: var(--plum-soft);
+  --color-peach: var(--peach);
+  --color-peach-fill: var(--peach-fill);
+  --color-peach-soft: var(--peach-soft);
+  --color-neutral: var(--neutral);
+  --color-neutral-soft: var(--neutral-soft);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+  button,
+  a,
+  [role='button'],
+  [role='tab'] {
+    touch-action: manipulation;
+  }
+  /* Ana ekrana eklenmiş PWA'da sayfa sınırında çift bounce olmasın */
+  @media (display-mode: standalone) {
+    html,
+    body {
+      overscroll-behavior-y: contain;
+    }
+  }
+}

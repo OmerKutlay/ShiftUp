@@ -4,15 +4,22 @@
  * TimesheetPeople — aylık puantajın "Kişiler" görünümü (yeni UI):
  * her çalışan için ayın günlerinden oluşan renkli şerit + seçilen kişinin takvim detayı.
  */
-import { Box, ButtonBase, Chip, Paper, Typography } from '@mui/material'
-import ChevronRightIcon from '@mui/icons-material/ChevronRight'
+import { ChevronRight } from 'lucide-react'
 import { PersonAvatar } from '@/components/common'
+import { Badge } from '@/components/ui/badge'
 import { C } from '@/lib/palette'
+import { cn } from '@/lib/utils'
 import { TIMESHEET_CODE_LABELS, type TimesheetCode, type TimesheetRow } from '@/lib/timesheet'
 import { dayOfWeekFromDateString } from '@/lib/dateUtils'
 import {
   CALENDAR_TONE, STRIP_TONE, codeCounts, hoursLabel, leaveTotal, planLabel,
 } from './timesheetSummary'
+
+/** Kişi satırı ve eksen başlığı aynı sütunları paylaşır */
+export const PEOPLE_GRID = 'grid grid-cols-1 gap-x-4 md:grid-cols-[minmax(150px,190px)_1fr_176px]'
+
+const boxBorder = (tone: { border?: string; dashed?: boolean }) =>
+  tone.border ? `1px ${tone.dashed ? 'dashed' : 'solid'} ${tone.border}` : undefined
 
 // ─── Şerit ────────────────────────────────────────────────────
 
@@ -20,28 +27,18 @@ export function DayStrip({ row, days, today, height = 18 }: {
   row: TimesheetRow; days: string[]; today: string; height?: number
 }) {
   return (
-    <Box sx={{ display: 'flex', gap: '2px', minWidth: 0 }} aria-hidden>
+    <div aria-hidden className="flex min-w-0 gap-[2px]">
       {days.map((d) => {
         const tone = STRIP_TONE[row.days[d] ?? '']
-        const isToday = d === today
         return (
-          <Box
+          <span
             key={d}
-            sx={{
-              flex: 1,
-              minWidth: 0,
-              height,
-              borderRadius: '3px',
-              bgcolor: tone.bg,
-              border: tone.border ? `1px ${tone.dashed ? 'dashed' : 'solid'} ${tone.border}` : undefined,
-              boxSizing: 'border-box',
-              outline: isToday ? `1.5px solid ${C.brand}` : undefined,
-              outlineOffset: 1,
-            }}
+            className={cn('min-w-0 flex-1 rounded-[3px]', d === today && 'outline-[1.5px] outline-offset-1 outline-primary outline-solid')}
+            style={{ height, backgroundColor: tone.bg, border: boxBorder(tone) }}
           />
         )
       })}
-    </Box>
+    </div>
   )
 }
 
@@ -51,112 +48,79 @@ export function StripAxis({ days, today, compact }: { days: string[]; today: str
     ? [0, days.indexOf(today), days.length - 1].filter((i, k, a) => i >= 0 && a.indexOf(i) === k)
     : [0, 7, 14, 21, 28].filter((i) => i < days.length)
   return (
-    <Box sx={{ position: 'relative', height: 14 }} aria-hidden>
+    <div aria-hidden className="relative h-3.5">
       {ticks.map((i) => {
         const isToday = days[i] === today && compact
-        const pct = ((i + 0.5) / days.length) * 100
-        const edge = i === 0 ? 'start' : i === days.length - 1 ? 'end' : 'mid'
+        const isEnd = i === days.length - 1
         return (
-          <Typography
+          <span
             key={i}
-            component="span"
-            sx={{
-              position: 'absolute',
-              left: edge === 'end' ? undefined : `${pct}%`,
-              right: edge === 'end' ? 0 : undefined,
-              transform: edge === 'mid' ? 'translateX(-50%)' : edge === 'start' ? 'translateX(-50%)' : undefined,
-              fontSize: '0.65rem',
-              lineHeight: '14px',
-              color: isToday ? 'primary.main' : 'text.disabled',
-              fontWeight: isToday ? 700 : 500,
-              whiteSpace: 'nowrap',
-            }}
+            className={cn(
+              'absolute whitespace-nowrap text-[0.65rem] leading-[14px]',
+              isToday ? 'font-bold text-primary' : 'font-medium text-ink-muted',
+              !isEnd && '-translate-x-1/2'
+            )}
+            style={isEnd ? { right: 0 } : { left: `${((i + 0.5) / days.length) * 100}%` }}
           >
             {Number(days[i].slice(8))}
             {isToday && ' · bugün'}
-          </Typography>
+          </span>
         )
       })}
-    </Box>
+    </div>
   )
 }
 
 // ─── Rozetler ─────────────────────────────────────────────────
 
-const badgeSx = { height: 20, fontSize: '0.68rem', fontWeight: 600, borderRadius: '6px', '& .MuiChip-label': { px: 0.75 } }
-
-export function RowBadges({ row, justify = 'flex-end' }: { row: TimesheetRow; justify?: 'flex-end' | 'flex-start' }) {
+export function RowBadges({ row, align = 'end' }: { row: TimesheetRow; align?: 'end' | 'start' }) {
   const leave = leaveTotal(row)
   if (!row.overtimeMins && !row.absentDays && !leave) return null
   return (
-    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, justifyContent: justify }}>
+    <div className={cn('flex flex-wrap gap-1', align === 'end' ? 'justify-end' : 'justify-start')}>
       {row.overtimeMins > 0 && (
-        <Chip
-          size="small"
-          label={`+${hoursLabel(row.overtimeMins)} s fazla${row.overtimeWithoutConsent ? ' · onay yok' : ''}`}
-          sx={{
-            ...badgeSx,
-            bgcolor: row.overtimeWithoutConsent ? C.warningSoft : C.surfaceMuted,
-            color: row.overtimeWithoutConsent ? C.warning : C.inkSecondary,
-          }}
-        />
+        <Badge tone={row.overtimeWithoutConsent ? 'warning' : 'neutral'} className="h-5 px-1.5 text-[0.68rem]">
+          +{hoursLabel(row.overtimeMins)} s fazla{row.overtimeWithoutConsent ? ' · onay yok' : ''}
+        </Badge>
       )}
-      {row.absentDays > 0 && (
-        <Chip size="small" label={`${row.absentDays} devamsız`} sx={{ ...badgeSx, bgcolor: C.dangerSoft, color: C.danger }} />
-      )}
-      {leave > 0 && (
-        <Chip size="small" label={`${leave} gün izin`} sx={{ ...badgeSx, bgcolor: C.infoSoft, color: C.info }} />
-      )}
-    </Box>
+      {row.absentDays > 0 && <Badge tone="danger" className="h-5 px-1.5 text-[0.68rem]">{row.absentDays} devamsız</Badge>}
+      {leave > 0 && <Badge tone="info" className="h-5 px-1.5 text-[0.68rem]">{leave} gün izin</Badge>}
+    </div>
   )
 }
 
 // ─── Kişi satırı (masaüstü) ───────────────────────────────────
 
-export const PEOPLE_COLUMNS = { xs: '1fr', md: 'minmax(150px, 190px) 1fr 176px' }
-
 export function PersonRow({ row, days, today, selected, onSelect }: {
   row: TimesheetRow; days: string[]; today: string; selected: boolean; onSelect: () => void
 }) {
   return (
-    <ButtonBase
+    <button
+      type="button"
       onClick={onSelect}
       aria-pressed={selected}
       aria-label={`${row.employee.full_name} — ${hoursLabel(row.workedMins)} saat`}
-      sx={{
-        display: 'grid',
-        gridTemplateColumns: PEOPLE_COLUMNS,
-        alignItems: 'center',
-        columnGap: 2,
-        width: '100%',
-        textAlign: 'left',
-        px: 2,
-        py: 1.25,
-        fontFamily: 'inherit',
-        borderTop: '1px solid',
-        borderColor: 'divider',
-        position: 'relative',
-        bgcolor: selected ? C.brandSoft : 'transparent',
-        '&:hover': { bgcolor: selected ? C.brandSoft : 'action.hover' },
-        '&::before': selected
-          ? { content: '""', position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, bgcolor: 'primary.main' }
-          : undefined,
-        '&.Mui-focusVisible': { outline: '2px solid', outlineColor: 'primary.light', outlineOffset: -2 },
-      }}
+      className={cn(
+        PEOPLE_GRID,
+        'relative w-full items-center border-t px-4 py-2.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
+        selected
+          ? 'bg-accent before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-primary'
+          : 'hover:bg-muted/70'
+      )}
     >
       <PersonName row={row} />
       <DayStrip row={row} days={days} today={today} />
-      <Box sx={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: 0.5, alignItems: 'flex-end' }}>
-        <Typography fontWeight={700} fontSize="0.9rem">{hoursLabel(row.workedMins)} s</Typography>
+      <div className="flex flex-col items-end gap-1 text-right">
+        <span className="text-[0.9rem] font-bold">{hoursLabel(row.workedMins)} s</span>
         <RowBadges row={row} />
-      </Box>
-    </ButtonBase>
+      </div>
+    </button>
   )
 }
 
 function PersonName({ row }: { row: TimesheetRow }) {
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}>
+    <div className="flex min-w-0 items-center gap-2.5">
       <PersonAvatar name={row.employee.full_name} size={32} />
       <Box sx={{ minWidth: 0 }}>
         <Typography fontWeight={700} fontSize="0.85rem" noWrap>{row.employee.full_name}</Typography>
@@ -172,30 +136,24 @@ export function PersonCard({ row, days, today, onOpen }: {
   row: TimesheetRow; days: string[]; today: string; onOpen: () => void
 }) {
   return (
-    <Paper
-      component={ButtonBase}
+    <button
+      type="button"
       onClick={onOpen}
-      variant="outlined"
       aria-label={`${row.employee.full_name} — ${hoursLabel(row.workedMins)} saat, takvimi aç`}
-      sx={{
-        display: 'block',
-        width: '100%',
-        textAlign: 'left',
-        p: 1.5,
-        borderRadius: '14px',
-        fontFamily: 'inherit',
-        borderColor: row.overtimeWithoutConsent ? C.dangerFill : 'divider',
-      }}
+      className={cn(
+        'block w-full rounded-[14px] border bg-card p-3 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
+        row.overtimeWithoutConsent && 'border-danger-fill'
+      )}
     >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.25 }}>
-        <Box sx={{ flex: 1, minWidth: 0 }}><PersonName row={row} /></Box>
-        <Typography fontWeight={700} fontSize="0.9rem">{hoursLabel(row.workedMins)} s</Typography>
-        <ChevronRightIcon fontSize="small" sx={{ color: 'text.disabled' }} />
-      </Box>
+      <div className="mb-2.5 flex items-center gap-2">
+        <div className="min-w-0 flex-1"><PersonName row={row} /></div>
+        <span className="text-[0.9rem] font-bold">{hoursLabel(row.workedMins)} s</span>
+        <ChevronRight className="size-4 text-ink-muted" />
+      </div>
       <DayStrip row={row} days={days} today={today} height={14} />
-      <Box sx={{ mt: 0.5 }}><StripAxis days={days} today={today} compact /></Box>
-      <Box sx={{ mt: 0.75 }}><RowBadges row={row} justify="flex-start" /></Box>
-    </Paper>
+      <div className="mt-1"><StripAxis days={days} today={today} compact /></div>
+      <div className="mt-1.5"><RowBadges row={row} align="start" /></div>
+    </button>
   )
 }
 
@@ -205,35 +163,23 @@ const LEGEND: Array<Exclude<TimesheetCode, ''>> = ['Ç', 'HT', 'Yİ', 'Rİ', 'D'
 
 export function StripLegend({ today }: { today: string }) {
   return (
-    <Box sx={{ display: 'flex', flexWrap: 'wrap', columnGap: 2, rowGap: 0.75, alignItems: 'center' }}>
-      {LEGEND.map((c) => <LegendItem key={c} code={c} />)}
-      <Typography fontSize="0.72rem" color="text.secondary">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+      {LEGEND.map((c) => (
+        <span key={c} className="flex items-center gap-1.5 text-xs text-ink-secondary">
+          <LegendDot code={c} />
+          {TIMESHEET_CODE_LABELS[c]}
+        </span>
+      ))}
+      <span className="text-xs text-ink-secondary">
         Çerçeveli gün: bugün ({Number(today.slice(8))} {monthName(today)})
-      </Typography>
-    </Box>
-  )
-}
-
-function LegendItem({ code }: { code: Exclude<TimesheetCode, ''> }) {
-  return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-      <LegendDot code={code} />
-      <Typography fontSize="0.72rem" color="text.secondary">{TIMESHEET_CODE_LABELS[code]}</Typography>
-    </Box>
+      </span>
+    </div>
   )
 }
 
 function LegendDot({ code }: { code: TimesheetCode }) {
   const tone = STRIP_TONE[code]
-  return (
-    <Box
-      aria-hidden
-      sx={{
-        width: 10, height: 10, borderRadius: '3px', bgcolor: tone.bg, flexShrink: 0, boxSizing: 'border-box',
-        border: tone.border ? `1px ${tone.dashed ? 'dashed' : 'solid'} ${tone.border}` : undefined,
-      }}
-    />
-  )
+  return <span aria-hidden className="size-2.5 shrink-0 rounded-[3px]" style={{ backgroundColor: tone.bg, border: boxBorder(tone) }} />
 }
 
 const monthName = (date: string) =>
@@ -248,16 +194,16 @@ export function PersonDetail({ row, days, today, monthText, compact }: {
   row: TimesheetRow; days: string[]; today: string; monthText: string; compact?: boolean
 }) {
   const lead = (dayOfWeekFromDateString(days[0]) + 6) % 7
-  const stats: Array<{ label: string; value: string; color?: string }> = [
+  const stats: Array<{ label: string; value: string; warn?: boolean }> = [
     { label: 'Net', value: `${hoursLabel(row.workedMins)} s` },
-    { label: 'Fazla', value: `${hoursLabel(row.overtimeMins)} s`, color: row.overtimeMins > 0 ? C.warning : undefined },
+    { label: 'Fazla', value: `${hoursLabel(row.overtimeMins)} s`, warn: row.overtimeMins > 0 },
     { label: 'Gece', value: `${hoursLabel(row.nightMins)} s` },
     { label: 'SGK', value: `${row.sgkDays} gün` },
   ]
 
   return (
-    <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
+    <div>
+      <div className="mb-4 flex items-center gap-3">
         <PersonAvatar name={row.employee.full_name} size={compact ? 44 : 40} />
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography fontWeight={700} fontSize={compact ? '1.1rem' : '1rem'} noWrap>{row.employee.full_name}</Typography>
@@ -268,35 +214,33 @@ export function PersonDetail({ row, days, today, monthText, compact }: {
         )}
       </Box>
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, mb: 2 }}>
+      <div className="mb-4 grid grid-cols-4 gap-2">
         {stats.map((s) => (
-          <Box key={s.label} sx={{ bgcolor: C.surfaceAlt, borderRadius: '10px', px: 1.25, py: 1 }}>
-            <Typography fontSize="0.7rem" color="text.secondary">{s.label}</Typography>
-            <Typography fontWeight={700} fontSize="0.95rem" color={s.color ?? 'text.primary'} noWrap>{s.value}</Typography>
-          </Box>
+          <div key={s.label} className="rounded-[10px] bg-muted px-2.5 py-2">
+            <p className="text-[0.7rem] text-ink-secondary">{s.label}</p>
+            <p className={cn('truncate text-[0.95rem] font-bold', s.warn && 'text-warning')}>{s.value}</p>
+          </div>
         ))}
-      </Box>
+      </div>
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: '4px' }}>
+      <div className="grid grid-cols-7 gap-1">
         {(compact ? WEEKDAYS_SHORT : WEEKDAYS).map((w) => (
-          <Typography key={w} fontSize="0.68rem" color="text.secondary" textAlign="center" sx={{ pb: 0.5 }}>
-            {w}
-          </Typography>
+          <span key={w} className="pb-1 text-center text-[0.68rem] text-ink-secondary">{w}</span>
         ))}
-        {Array.from({ length: lead }).map((_, i) => <Box key={`b${i}`} />)}
+        {Array.from({ length: lead }).map((_, i) => <span key={`b${i}`} />)}
         {days.map((d) => <CalendarCell key={d} row={row} date={d} today={today} compact={compact} />)}
-      </Box>
+      </div>
 
-      <Box sx={{ mt: 2, pt: 1.5, borderTop: '1px solid', borderColor: 'divider', display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+      <div className="mt-4 flex flex-col gap-1.5 border-t pt-3">
         {codeCounts(row).map(({ code, count }) => (
-          <Box key={code} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <div key={code} className="flex items-center gap-2 text-[0.8rem]">
             <LegendDot code={code} />
-            <Typography fontSize="0.8rem" sx={{ flex: 1 }}>{TIMESHEET_CODE_LABELS[code]}</Typography>
-            <Typography fontSize="0.8rem" fontWeight={700}>{count} gün</Typography>
-          </Box>
+            <span className="flex-1">{TIMESHEET_CODE_LABELS[code]}</span>
+            <span className="font-bold">{count} gün</span>
+          </div>
         ))}
-      </Box>
-    </Box>
+      </div>
+    </div>
   )
 }
 
@@ -306,33 +250,22 @@ function CalendarCell({ row, date, today, compact }: { row: TimesheetRow; date: 
   const mins = row.dayMins?.[date]
   const plan = row.dayPlan?.[date]
   const value = mins !== undefined ? `${hoursLabel(mins)}${compact ? '' : ' s'}` : code === 'P' && plan ? planLabel(plan) : tone.label
-  const isToday = date === today
+  const border = tone.dashed
+    ? `1px dashed ${C.sand}`
+    : code === 'D' ? `1px solid ${C.dangerFill}` : code === '' ? `1px solid ${C.border}` : '1px solid transparent'
   return (
-    <Box
+    <div
       title={code ? TIMESHEET_CODE_LABELS[code] : undefined}
-      sx={{
-        minHeight: compact ? 48 : 44,
-        minWidth: 0,
-        overflow: 'hidden',
-        borderRadius: '8px',
-        px: 0.625,
-        py: 0.5,
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'space-between',
-        bgcolor: tone.bg,
+      className={cn('flex min-w-0 flex-col justify-between overflow-hidden rounded-lg px-[5px] py-1', compact ? 'min-h-12' : 'min-h-11')}
+      style={{
+        backgroundColor: tone.bg,
         color: tone.fg,
-        boxSizing: 'border-box',
-        border: tone.dashed
-          ? `1px dashed ${C.sand}`
-          : code === 'D' ? `1px solid ${C.dangerFill}` : code === '' ? `1px solid ${C.border}` : '1px solid transparent',
-        boxShadow: isToday ? `inset 3px 0 0 ${C.brand}` : undefined,
+        border,
+        boxShadow: date === today ? `inset 3px 0 0 ${C.brand}` : undefined,
       }}
     >
-      <Typography fontSize="0.65rem" fontWeight={600} lineHeight={1.2} sx={{ opacity: 0.85 }}>{Number(date.slice(8))}</Typography>
-      <Typography fontSize={value.length > 6 ? '0.62rem' : '0.72rem'} fontWeight={700} lineHeight={1.15}>
-        {value}
-      </Typography>
-    </Box>
+      <span className="text-[0.65rem] font-semibold leading-tight opacity-85">{Number(date.slice(8))}</span>
+      <span className={cn('font-bold leading-[1.15]', value.length > 6 ? 'text-[0.62rem]' : 'text-[0.72rem]')}>{value}</span>
+    </div>
   )
 }

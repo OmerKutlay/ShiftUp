@@ -30,6 +30,9 @@ function isPlatformLimitError(res: Response): boolean {
   return res.status === 503 && !res.headers.get('content-type')?.includes('application/json')
 }
 
+/** Bir API isteği 401 döndüğünde window'a yayılan olay; AuthProvider oturumu yeniden doğrular */
+export const UNAUTHORIZED_EVENT = 'shiftup:unauthorized'
+
 export async function apiFetch<T>(
   url: string,
   init: Omit<RequestInit, 'body'> & { body?: unknown } = {}
@@ -56,6 +59,11 @@ export async function apiFetch<T>(
 
   if (isPlatformLimitError(res)) {
     throw new ApiError('Sunucu şu an yoğun, lütfen tekrar deneyin.', 'PLATFORM_LIMIT', res.status)
+  }
+
+  // Oturum istek sırasında düşmüş olabilir (süresi doldu, başka sekmede çıkış yapıldı)
+  if (res.status === 401 && typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
   }
 
   const json = (await res.json().catch(() => ({}))) as Record<string, unknown>
