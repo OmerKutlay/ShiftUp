@@ -70,6 +70,17 @@ interface Props {
   authMode: string
 }
 
+/**
+ * Middleware'in eklediği ?next= hedefi — yalnızca aynı origin'deki göreli yollar
+ * (açık yönlendirme önlemi); geçersizse ana sayfa. Yetki yoksa middleware yine yönlendirir.
+ */
+export function safeNextPath(search: string): string {
+  const next = new URLSearchParams(search).get('next')
+  if (!next || !next.startsWith('/') || next.startsWith('//') || next.startsWith('/\\')) return '/'
+  if (next === '/login' || next.startsWith('/login/') || next.startsWith('/api/')) return '/'
+  return next
+}
+
 export function LoginForm({ authMode }: Props) {
   const router = useRouter()
   const { refreshEmployee, status } = useAuth()
@@ -81,7 +92,8 @@ export function LoginForm({ authMode }: Props) {
   const [readyToNavigate, setReadyToNavigate] = useState(false)
   useEffect(() => {
     if (readyToNavigate && status === 'authenticated') {
-      router.replace('/')
+      // Oturum düşmüşken açılan sayfaya (ör. bildirime tıklama) geri dön
+      router.replace(safeNextPath(window.location.search))
     }
   }, [readyToNavigate, status, router])
 
