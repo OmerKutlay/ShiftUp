@@ -36,6 +36,7 @@ import LockIcon from '@mui/icons-material/Lock'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import BugReportIcon from '@mui/icons-material/BugReport'
 import { C, tint } from '@/lib/palette'
+import { BrandMark } from '@/components/common/BrandMark'
 
 type Step = 'email' | 'otp'
 
@@ -225,8 +226,9 @@ export function LoginForm({ authMode }: Props) {
       >
         <CardContent sx={{ p: { xs: 2.5, sm: 4 } }}>
           {/* Logo + dev badge */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-            <Typography variant="h5" fontWeight={800} color="primary.main" letterSpacing={1}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, mb: 1 }}>
+            <BrandMark size={36} />
+            <Typography variant="h5" fontWeight={700} color="text.primary">
               ShiftUp
             </Typography>
             {isDevMode && (
