@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import useSWR from 'swr'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
@@ -26,6 +27,7 @@ import { PullToRefresh } from './PullToRefresh'
 import { NAV_ITEMS, SCAN_HREF, filterNavItems, isNavActive } from './navItems'
 import { NotificationBell } from '@/components/notifications/NotificationBell'
 import { useAuth } from '@/context/AuthContext'
+import { apiFetch } from '@/lib/api/http'
 import { PersonAvatar } from '@/components/common/PersonAvatar'
 import { C, tint } from '@/lib/palette'
 
@@ -51,6 +53,12 @@ export function AppShell({ children }: Props) {
   const narrow = collapsed && !isMobile
   const userName = authStatus === 'authenticated' && authEmployee ? authEmployee.full_name : null
   const userRole = authEmployee?.roles?.name ?? authEmployee?.role ?? ''
+  // Yan menü alt başlığı: aktif mağazanın adı (yoksa genel etiket)
+  const { data: store } = useSWR(
+    authStatus === 'authenticated' ? '/api/store-location/name' : null,
+    (url: string) => apiFetch<{ name: string | null }>(url),
+    { revalidateOnFocus: false },
+  )
 
   const drawerContent = (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'background.default' }}>
@@ -74,7 +82,7 @@ export function AppShell({ children }: Props) {
                 ShiftUp
               </Typography>
               <Typography fontSize="0.7rem" color="text.secondary" noWrap>
-                Vardiya yönetimi
+                {store?.name ?? 'Vardiya yönetimi'}
               </Typography>
             </Box>
           </Box>

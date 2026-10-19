@@ -289,7 +289,7 @@ export function AttendanceReportsPage({ embedded = false }: { embedded?: boolean
     <Box sx={embedded ? undefined : { p: { xs: 2, md: 3 }, color: 'text.primary' }}>
       {!embedded && (
         <PageHeader
-          title="Devam Raporları"
+          title="Devam raporları"
           subtitle="Tarih aralığı ve çalışana göre filtreleyerek rapor oluşturun"
         />
       )}

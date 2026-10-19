@@ -1,4 +1,3 @@
-import { C } from '@/lib/palette'
 // Leave Request domain types — FAZ 9
 
 export type LeaveType = 'annual' | 'sick' | 'personal' | 'unpaid' | 'other' | 'weekly_rest'
@@ -31,12 +30,6 @@ export const LEAVE_STATUS_LABELS: Record<LeaveStatus, string> = {
   pending: 'Onay Bekliyor',
   approved: 'Onaylandı',
   rejected: 'Reddedildi',
-}
-
-export const LEAVE_STATUS_COLORS: Record<LeaveStatus, string> = {
-  pending: C.warning,
-  approved: C.success,
-  rejected: C.danger,
 }
 
 export interface LeaveRequest {
