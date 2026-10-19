@@ -28,7 +28,6 @@ import {
   IconButton,
   SelectChangeEvent,
 } from '@mui/material'
-import BeachAccessIcon from '@mui/icons-material/BeachAccess'
 import AddIcon from '@mui/icons-material/Add'
 import CheckIcon from '@mui/icons-material/Check'
 import CloseIcon from '@mui/icons-material/Close'
@@ -440,10 +439,8 @@ export function LeavePage() {
     : requests
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: 'background.default', color: 'text.primary' }}>
+    <Box sx={{ p: { xs: 2, md: 3 }, color: 'text.primary' }}>
       <PageHeader
-        icon={BeachAccessIcon}
-        overline="İzin Yönetimi"
         title="İzin Talepleri"
         subtitle={
           isFirstLoad

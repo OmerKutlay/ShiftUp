@@ -24,7 +24,6 @@ import {
   DialogContentText,
   DialogActions,
 } from '@mui/material'
-import PeopleIcon from '@mui/icons-material/People'
 import AddIcon from '@mui/icons-material/Add'
 import EditIcon from '@mui/icons-material/Edit'
 import DeleteIcon from '@mui/icons-material/Delete'
@@ -158,10 +157,8 @@ export function EmployeesPage() {
   const activeCount = employees.filter((e) => e.active).length
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: 'background.default', color: 'text.primary' }}>
+    <Box sx={{ p: { xs: 2, md: 3 }, color: 'text.primary' }}>
       <PageHeader
-        icon={PeopleIcon}
-        overline="Personel"
         title="Çalışanlar"
         subtitle={isFirstLoad ? <Skeleton width={110} /> : `${activeCount} aktif çalışan`}
         actions={

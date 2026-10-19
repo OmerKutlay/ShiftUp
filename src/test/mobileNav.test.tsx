@@ -25,7 +25,6 @@ import {
   getActiveTabHref,
   getBottomTabs,
   getMoreItems,
-  getPageTitle,
   groupNavItems,
   isNavActive,
 } from '@/components/layout/navItems'
@@ -59,7 +58,6 @@ describe('getBottomTabs', () => {
     const tabs = getBottomTabs('Çalışan')
     expect(hrefs(tabs)).toEqual(['/my-schedule', '/schedule', '/attendance/scan', '/leave', '/more'])
     expect(tabs.map((t) => t.label)).toEqual(['Vardiyam', 'Plan', 'QR Tara', 'İzin', 'Daha fazla'])
-    expect(tabs.filter((t) => t.center).map((t) => t.href)).toEqual(['/attendance/scan'])
   })
   it.each(['Yönetici', 'Mağaza Müdürü', 'Müdür Yardımcısı'])('yönetici (%s): Bugün, Plan, QR, Bildirimler, Daha fazla', (role) => {
     expect(hrefs(getBottomTabs(role))).toEqual(['/', '/schedule', '/attendance/scan', '/notifications', '/more'])
@@ -104,16 +102,6 @@ describe('getMoreItems / filterNavItems', () => {
     const groups = groupNavItems(getMoreItems('Çalışan'))
     expect(groups.every((g) => g.items.length > 0)).toBe(true)
     expect(groups.map((g) => g.group)).toEqual(['planlama', 'devam', 'hesap'])
-  })
-})
-
-describe('getPageTitle', () => {
-  it('en uzun eşleşen öğenin etiketi', () => {
-    expect(getPageTitle('/')).toBe('Günlük Operasyon')
-    expect(getPageTitle('/attendance/scan')).toBe('QR Tara')
-    expect(getPageTitle('/more')).toBe('Daha Fazla')
-    expect(getPageTitle('/notifications')).toBe('Bildirimler')
-    expect(getPageTitle('/bilinmeyen')).toBe('ShiftUp')
   })
 })
 

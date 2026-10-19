@@ -25,7 +25,6 @@ import {
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
-import CalendarMonthIcon from '@mui/icons-material/CalendarMonth'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import CancelIcon from '@mui/icons-material/Cancel'
 import FreeBreakfastIcon from '@mui/icons-material/FreeBreakfast'
@@ -394,8 +393,6 @@ export function MySchedulePage() {
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 900, mx: 'auto' }}>
 
       <PageHeader
-        icon={CalendarMonthIcon}
-        overline="Kişisel"
         title="Çalışma Özetim"
         subtitle={`${profile.full_name} · ${profile.role}`}
       />

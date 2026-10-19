@@ -14,7 +14,6 @@ import {
   Divider,
   Button,
 } from '@mui/material'
-import DashboardIcon from '@mui/icons-material/Dashboard'
 import PeopleIcon from '@mui/icons-material/People'
 import LoginIcon from '@mui/icons-material/Login'
 import FreeBreakfastIcon from '@mui/icons-material/FreeBreakfast'
@@ -138,9 +137,8 @@ export function DashboardPage() {
   const pendingLeaves = data?.pending_leaves ?? []
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: 'background.default', color: 'text.primary' }}>
+    <Box sx={{ p: { xs: 2, md: 3 }, color: 'text.primary' }}>
       <PageHeader
-        icon={DashboardIcon}
         overline={formatDayNameTurkish(today)}
         title="Genel Bakış"
         subtitle={formatDateTurkish(today)}

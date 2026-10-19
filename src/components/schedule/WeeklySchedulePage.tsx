@@ -18,7 +18,6 @@ import {
   ToggleButton,
   ToggleButtonGroup,
 } from '@mui/material'
-import CalendarMonthIcon from '@mui/icons-material/CalendarMonth'
 import EventBusyIcon from '@mui/icons-material/EventBusy'
 import DeleteIcon from '@mui/icons-material/Delete'
 import type { EmployeeWithRole } from '@/types/employee'
@@ -283,10 +282,8 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
   const headerBg = C.surfaceAlt
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: 'background.default', color: 'text.primary' }}>
+    <Box sx={{ p: { xs: 2, md: 3 }, color: 'text.primary' }}>
       <PageHeader
-        icon={CalendarMonthIcon}
-        overline="Planlama"
         title="Haftalık Vardiya Planı"
         actions={<WeekNavigator currentWeek={currentWeek} onChange={handleWeekChange} />}
       />
