@@ -15,11 +15,14 @@
  */
 import { useState, useEffect, useRef, useSyncExternalStore } from 'react'
 import { useRouter } from 'next/navigation'
-import { Box, Typography, Alert, Paper, Button, Chip } from '@mui/material'
-import QrCode2Icon from '@mui/icons-material/QrCode2'
-import LogoutIcon from '@mui/icons-material/Logout'
-import FullscreenIcon from '@mui/icons-material/Fullscreen'
+import { AlertCircle, LayoutDashboard, Loader2, LogOut, Maximize, WifiOff } from 'lucide-react'
 import { QrCodeDisplay } from './QrCodeDisplay'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Progress } from '@/components/ui/progress'
+import { BrandMark } from '@/components/common/BrandMark'
+import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
 import { isKioskRole } from '@/lib/auth/roles'
 import { getSupabaseBrowserClient } from '@/lib/supabase/browser'
@@ -206,69 +209,92 @@ export function QrKioskPage() {
   }, [router])
 
   return (
-    <Box sx={{
-      minHeight: '100dvh', bgcolor: 'background.default', color: 'text.primary',
-      p: { xs: 2, md: 4 }, position: 'relative',
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-    }}>
-      <Box sx={{ position: 'absolute', top: 12, right: 12, display: 'flex', gap: 1 }}>
+    <div className="relative flex min-h-dvh flex-col items-center justify-center bg-background px-4 py-16 text-ink md:p-8">
+      <div className="absolute top-3 right-3 flex gap-1">
         {canEnterFullscreen && (
-          <Button size="small" color="inherit" startIcon={<FullscreenIcon fontSize="small" />}
-            onClick={enterFullscreen} sx={{ opacity: 0.5 }}>
+          <Button variant="ghost" size="sm" onClick={enterFullscreen} className="text-ink-secondary">
+            <Maximize />
             Tam ekran
           </Button>
         )}
         {!isKiosk && (
-          <Button size="small" color="inherit" onClick={() => router.push('/')} sx={{ opacity: 0.5 }}>
+          <Button variant="ghost" size="sm" onClick={() => router.push('/')} className="text-ink-secondary">
+            <LayoutDashboard />
             Panele dön
           </Button>
         )}
-        <Button size="small" color="inherit" startIcon={<LogoutIcon fontSize="small" />}
-          onClick={() => void signOut()} sx={{ opacity: 0.5 }}>
+        <Button variant="ghost" size="sm" onClick={() => void signOut()} className="text-ink-secondary">
+          <LogOut />
           Çıkış
         </Button>
-      </Box>
+      </div>
 
-      <Box sx={{ mb: 4, textAlign: 'center' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, mb: 0.5 }}>
-          <QrCode2Icon sx={{ fontSize: 22, color: 'primary.main' }} />
-          <Typography variant="overline" color="primary.main" fontWeight={700} letterSpacing={0.5}>
-            QR Kiosk
-          </Typography>
-        </Box>
-        <Typography variant="h5" fontWeight={800}>Devam Takibi</Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-          Telefonunuzda ShiftUp → QR Tara ile okutun
-        </Typography>
-      </Box>
+      <main className="flex w-full max-w-[420px] flex-col items-center gap-6 rounded-3xl border bg-card px-6 py-8 shadow-[0_1px_2px_rgb(43_33_27/0.04)] md:px-10 md:py-10">
+        <header className="flex flex-col items-center gap-3 text-center">
+          <div className="flex items-center gap-2">
+            <BrandMark size={28} />
+            <span className="text-sm font-bold text-ink">ShiftUp</span>
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Devam takibi</h1>
+            <p className="mt-1 text-sm text-ink-secondary">Telefonunuzda ShiftUp → QR Tara ile okutun</p>
+          </div>
+        </header>
 
-      <Paper elevation={0} sx={{
-        p: { xs: 3, md: 5 }, border: '1px solid', borderColor: 'divider',
-        borderRadius: 3, bgcolor: 'background.paper', width: '100%', maxWidth: 400,
-        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
-      }}>
-        <Chip
-          size="small"
-          label={link === 'live' ? 'Canlı' : link === 'connecting' ? 'Bağlanıyor…' : 'Bağlantı yok — yeniden deneniyor'}
-          color={link === 'live' ? 'success' : link === 'connecting' ? 'default' : 'error'}
-          variant="outlined"
-        />
+        {error && (
+          <Alert tone="danger">
+            <AlertCircle />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
 
-        {error && <Alert severity="error" sx={{ width: '100%' }}>{error}</Alert>}
-
-        <Box key={changeCount} sx={{
-          width: '100%', maxWidth: 280, mx: 'auto', opacity: link === 'offline' ? 0.35 : 1,
-          '@keyframes kioskQrSwap': { from: { opacity: 0.2, transform: 'scale(0.96)' }, to: { opacity: 1, transform: 'none' } },
-          animation: changeCount > 0 ? 'kioskQrSwap 0.35s ease-out' : 'none',
-        }}>
+        {/* key: kod her değiştiğinde kutu kısa bir belirme animasyonuyla yeniden çizilir */}
+        <div
+          key={changeCount}
+          className={cn(
+            'flex w-full max-w-[280px] justify-center transition-opacity',
+            link === 'offline' && 'opacity-35',
+            changeCount > 0 && 'animate-in fade-in zoom-in-95 duration-300'
+          )}
+        >
           <QrCodeDisplay data={qrData ?? ''} size={280} loading={!qrData} />
-        </Box>
+        </div>
 
-        <Typography variant="caption" color="text.disabled" textAlign="center" sx={{ maxWidth: 260 }}>
+        <div className="flex w-full max-w-[280px] flex-col items-center gap-3">
+          {/* İnce bağlantı çubuğu: canlıyken dolu, bağlanırken nabız, koptuğunda kırmızı */}
+          <Progress
+            aria-label="Bağlantı durumu"
+            value={link === 'connecting' ? 40 : 100}
+            className={cn('h-1', link === 'connecting' && 'animate-pulse')}
+            indicatorClassName={cn(
+              link === 'live' && 'bg-success-fill',
+              link === 'connecting' && 'bg-ink-muted/40',
+              link === 'offline' && 'bg-danger-fill'
+            )}
+          />
+          {link === 'live' ? (
+            <Badge tone="success">
+              <span className="size-1.5 rounded-full bg-success" aria-hidden />
+              Canlı
+            </Badge>
+          ) : link === 'connecting' ? (
+            <Badge tone="neutral">
+              <Loader2 className="animate-spin" aria-hidden />
+              Bağlanıyor…
+            </Badge>
+          ) : (
+            <Badge tone="danger">
+              <WifiOff aria-hidden />
+              Bağlantı yok — yeniden deneniyor
+            </Badge>
+          )}
+        </div>
+
+        <p className="max-w-[280px] text-center text-xs leading-relaxed text-ink-muted">
           Kod tek kullanımlıktır; biri okutup onaylandığında otomatik olarak yenisi gelir.
           Okutmak için ShiftUp&apos;a giriş yapmış olmanız gerekir.
-        </Typography>
-      </Paper>
-    </Box>
+        </p>
+      </main>
+    </div>
   )
 }
