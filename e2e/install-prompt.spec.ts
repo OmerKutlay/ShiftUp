@@ -1,6 +1,6 @@
 /**
  * "Ana ekrana ekle" kartı: iPhone'da Safari yönergeleri, Android'de beforeinstallprompt ile
- * "Yükle". Kart alt menüyü ve ortadaki QR butonunu örtmemelidir.
+ * "Yükle". Kart alt menüyü ve QR Tara sekmesini örtmemelidir.
  */
 import { test, expect, bottomNav } from './support/fixtures'
 import type { Page } from '@playwright/test'

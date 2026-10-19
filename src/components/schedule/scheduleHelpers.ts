@@ -5,6 +5,7 @@ import type { ShiftAssignmentWithDetails } from '@/types/schedule'
 import type { EmployeeAvailability, DayOfWeek } from '@/types/workforce'
 import { shiftDurationMins, netWorkMins, checkMinRest } from '@/lib/workingTimeService'
 import { getWorkingTimeConfig } from '@/lib/workingTimeConfig'
+import { kindFromTimes, type ShiftKind } from '@/lib/workforcePlanner'
 
 // ─── Sabitler ─────────────────────────────────────────────────
 export const DAY_LABELS = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
@@ -26,6 +27,34 @@ export function getRoleSortOrder(role: string): number {
     if (keywords.some((k) => normalized.includes(k))) return order
   }
   return 99 // bilinmeyen roller en sona
+}
+
+/** Haftalık plandaki rol grupları (ROLE_SORT_ORDER sıralarına göre) */
+export const ROLE_GROUPS = [
+  { key: 'yonetim', label: 'Yönetim', orders: [0, 1] },
+  { key: 'kasa', label: 'Kasa', orders: [2] },
+  { key: 'satis', label: 'Satış', orders: [3] },
+  { key: 'gorsel-depo', label: 'Görsel & Depo', orders: [4, 5] },
+  { key: 'diger', label: 'Diğer', orders: [99] },
+] as const
+
+export type RoleGroupKey = (typeof ROLE_GROUPS)[number]['key']
+
+export function roleGroupOf(role: string): RoleGroupKey {
+  const order = getRoleSortOrder(role)
+  return ROLE_GROUPS.find((g) => (g.orders as readonly number[]).includes(order))?.key ?? 'diger'
+}
+
+/** Vardiyanın türü (renk için): şablon adı Açılış/Ortacı/Kapanış/Full ise o, değilse saatlerden */
+export function shiftKindOf(templateName: string | undefined, start: string, end: string): ShiftKind {
+  const byName: Record<string, ShiftKind> = { 'açılış': 'opening', 'ortacı': 'mid', 'kapanış': 'closing', 'full': 'full' }
+  const named = templateName ? byName[templateName.trim().toLocaleLowerCase('tr')] : undefined
+  return named ?? kindFromTimes(start, end)
+}
+
+/** Dakikayı '7,5 s' biçiminde (Türkçe ondalık) döner */
+export function fmtHoursTr(mins: number): string {
+  return `${(Math.round((mins / 60) * 10) / 10).toLocaleString('tr-TR')} s`
 }
 
 /** Dakikayı '7s' / '8.5s' biçiminde saat olarak döner */

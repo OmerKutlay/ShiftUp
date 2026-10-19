@@ -3,17 +3,16 @@
 /**
  * PageHeader — Tüm sayfalarda ortak başlık yapısı.
  *
- *   [ikon] OVERLINE
+ *   üst satır (ör. "Günaydın, Mehmet")
  *   Başlık                                   [aksiyonlar]
  *   alt başlık
  *   meta (ör. son güncelleme)
  */
 import { Box, Typography } from '@mui/material'
-import type { SvgIconComponent } from '@mui/icons-material'
 
 interface PageHeaderProps {
-  icon: SvgIconComponent
-  overline: React.ReactNode
+  /** Başlığın üstündeki küçük, soluk satır */
+  overline?: React.ReactNode
   title: React.ReactNode
   subtitle?: React.ReactNode
   /** Alt başlığın altındaki küçük, soluk satır */
@@ -24,27 +23,30 @@ interface PageHeaderProps {
   titleAdornment?: React.ReactNode
 }
 
-export function PageHeader({ icon: Icon, overline, title, subtitle, meta, actions, titleAdornment }: PageHeaderProps) {
+export function PageHeader({ overline, title, subtitle, meta, actions, titleAdornment }: PageHeaderProps) {
   return (
     <Box
       component="header"
       sx={{ mb: 3, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}
     >
       <Box sx={{ minWidth: 0 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-          <Icon sx={{ fontSize: 18, color: 'primary.main' }} />
-          <Typography variant="overline" color="primary.main" fontWeight={700} letterSpacing={0.5} lineHeight={1.6}>
+        {overline && (
+          <Typography variant="caption" component="p" color="text.secondary" fontWeight={500} sx={{ mb: 0.25 }}>
             {overline}
           </Typography>
-        </Box>
+        )}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-          <Typography variant="h5" component="h1" fontWeight={800} color="text.primary">
+          <Typography
+            component="h1"
+            color="text.primary"
+            sx={{ fontWeight: 700, fontSize: { xs: '1.6rem', md: '1.85rem' }, lineHeight: 1.2, letterSpacing: '-0.01em' }}
+          >
             {title}
           </Typography>
           {titleAdornment}
         </Box>
         {subtitle && (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
             {subtitle}
           </Typography>
         )}

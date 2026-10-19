@@ -33,30 +33,31 @@ import type { Notification, NotificationType } from '@/types/notification'
 import { ListSkeleton } from '@/components/common'
 import { humanizeIsoDates } from '@/lib/dateUtils'
 import { notificationLink } from '@/lib/notificationLinks'
+import { C, tint } from '@/lib/palette'
 
 // ─── Type icon + renk eşlemesi ─────────────────────────────────
 const TYPE_META: Record<
   NotificationType,
   { icon: React.ReactNode; color: string; label: string }
 > = {
-  shift_reminder:     { icon: <AccessTimeIcon fontSize="small" />,       color: '#14b8a6', label: 'Vardiya' },
-  leave_submitted:    { icon: <EventAvailableIcon fontSize="small" />,   color: '#60a5fa', label: 'İzin Talebi' },
-  leave_approved:     { icon: <CheckCircleOutlineIcon fontSize="small" />, color: '#10b981', label: 'Onaylandı' },
-  leave_rejected:     { icon: <EventBusyIcon fontSize="small" />,         color: '#ef4444', label: 'Reddedildi' },
-  attendance_override:{ icon: <BuildIcon fontSize="small" />,             color: '#f59e0b', label: 'Düzeltme' },
-  open_shift_available:{ icon: <EventAvailableIcon fontSize="small" />,  color: '#a78bfa', label: 'Açık Vardiya' },
-  time_correction_submitted: { icon: <AccessTimeIcon fontSize="small" />,  color: '#60a5fa', label: 'Mesai Talebi' },
-  time_correction_approved:  { icon: <CheckCircleOutlineIcon fontSize="small" />, color: '#10b981', label: 'Mesai Onaylandı' },
-  time_correction_rejected:  { icon: <EventBusyIcon fontSize="small" />,   color: '#ef4444', label: 'Mesai Reddedildi' },
-  shift_swap_submitted:      { icon: <AccessTimeIcon fontSize="small" />,  color: '#60a5fa', label: 'Takas Talebi' },
-  shift_swap_approved:       { icon: <CheckCircleOutlineIcon fontSize="small" />, color: '#10b981', label: 'Takas Onaylandı' },
-  shift_swap_rejected:       { icon: <EventBusyIcon fontSize="small" />,   color: '#ef4444', label: 'Takas Reddedildi' },
-  open_shift_claimed:        { icon: <EventAvailableIcon fontSize="small" />, color: '#a78bfa', label: 'Açık Vardiya Alındı' },
-  attendance_late_clock_in:  { icon: <WarningAmberIcon fontSize="small" />, color: '#f59e0b', label: 'Geç Giriş' },
-  attendance_late_clock_out: { icon: <WarningAmberIcon fontSize="small" />, color: '#f59e0b', label: 'Geç Çıkış' },
-  attendance_missed_clock_in:  { icon: <WarningAmberIcon fontSize="small" />, color: '#ef4444', label: 'Giriş Yok' },
-  attendance_missed_clock_out: { icon: <WarningAmberIcon fontSize="small" />, color: '#ef4444', label: 'Çıkış Yok' },
-  push_test:                 { icon: <NotificationsActiveIcon fontSize="small" />, color: '#14b8a6', label: 'Test' },
+  shift_reminder:     { icon: <AccessTimeIcon fontSize="small" />,       color: C.brand, label: 'Vardiya' },
+  leave_submitted:    { icon: <EventAvailableIcon fontSize="small" />,   color: C.info, label: 'İzin Talebi' },
+  leave_approved:     { icon: <CheckCircleOutlineIcon fontSize="small" />, color: C.success, label: 'Onaylandı' },
+  leave_rejected:     { icon: <EventBusyIcon fontSize="small" />,         color: C.danger, label: 'Reddedildi' },
+  attendance_override:{ icon: <BuildIcon fontSize="small" />,             color: C.warning, label: 'Düzeltme' },
+  open_shift_available:{ icon: <EventAvailableIcon fontSize="small" />,  color: C.plum, label: 'Açık Vardiya' },
+  time_correction_submitted: { icon: <AccessTimeIcon fontSize="small" />,  color: C.info, label: 'Mesai Talebi' },
+  time_correction_approved:  { icon: <CheckCircleOutlineIcon fontSize="small" />, color: C.success, label: 'Mesai Onaylandı' },
+  time_correction_rejected:  { icon: <EventBusyIcon fontSize="small" />,   color: C.danger, label: 'Mesai Reddedildi' },
+  shift_swap_submitted:      { icon: <AccessTimeIcon fontSize="small" />,  color: C.info, label: 'Takas Talebi' },
+  shift_swap_approved:       { icon: <CheckCircleOutlineIcon fontSize="small" />, color: C.success, label: 'Takas Onaylandı' },
+  shift_swap_rejected:       { icon: <EventBusyIcon fontSize="small" />,   color: C.danger, label: 'Takas Reddedildi' },
+  open_shift_claimed:        { icon: <EventAvailableIcon fontSize="small" />, color: C.plum, label: 'Açık Vardiya Alındı' },
+  attendance_late_clock_in:  { icon: <WarningAmberIcon fontSize="small" />, color: C.warning, label: 'Geç Giriş' },
+  attendance_late_clock_out: { icon: <WarningAmberIcon fontSize="small" />, color: C.warning, label: 'Geç Çıkış' },
+  attendance_missed_clock_in:  { icon: <WarningAmberIcon fontSize="small" />, color: C.danger, label: 'Giriş Yok' },
+  attendance_missed_clock_out: { icon: <WarningAmberIcon fontSize="small" />, color: C.danger, label: 'Çıkış Yok' },
+  push_test:                 { icon: <NotificationsActiveIcon fontSize="small" />, color: C.brand, label: 'Test' },
 }
 
 interface Props {
@@ -108,11 +109,11 @@ export function NotificationPanel({
             maxHeight: 480,
             display: 'flex',
             flexDirection: 'column',
-            bgcolor: 'rgba(15,23,42,0.98)',
+            bgcolor: tint(C.canvas, 0.98),
             border: '1px solid',
             borderColor: 'divider',
             borderRadius: 2,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+            boxShadow: `0 8px 32px ${tint(C.ink, 0.15)}`,
           },
         },
       }}
@@ -141,7 +142,7 @@ export function NotificationPanel({
               size="small"
               sx={{
                 bgcolor: 'primary.main',
-                color: '#fff',
+                color: C.white,
                 fontWeight: 700,
                 height: 18,
                 fontSize: '0.7rem',
@@ -191,11 +192,11 @@ export function NotificationPanel({
                         py: 1.25,
                         alignItems: 'flex-start',
                         gap: 1.5,
-                        bgcolor: n.is_read ? 'transparent' : 'rgba(20,184,166,0.06)',
+                        bgcolor: n.is_read ? 'transparent' : tint(C.brand, 0.06),
                         '&:hover': {
                           bgcolor: n.is_read
-                            ? 'rgba(255,255,255,0.04)'
-                            : 'rgba(20,184,166,0.1)',
+                            ? tint(C.ink, 0.04)
+                            : tint(C.brand, 0.1),
                         },
                       }}
                     >

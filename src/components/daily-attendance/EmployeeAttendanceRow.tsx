@@ -1,18 +1,12 @@
 'use client'
 
-import {
-  Box,
-  Typography,
-  Paper,
-  Chip,
-  Divider,
-  useMediaQuery,
-  useTheme,
-} from '@mui/material'
-import AccessTimeIcon from '@mui/icons-material/AccessTime'
+import { Box, Typography } from '@mui/material'
 import type { DailyShiftEntry, AttendanceRecord } from '@/types/attendance'
 import { AttendanceStatusChip } from './AttendanceStatusChip'
 import { formatInTimeZone } from '@/lib/dateUtils'
+import { PersonAvatar, SectionRow } from '@/components/common'
+import { shiftKindOf } from '@/components/schedule/scheduleHelpers'
+import { C, SHIFT_KIND_TONES } from '@/lib/palette'
 
 interface Props {
   entry: DailyShiftEntry
@@ -21,167 +15,54 @@ interface Props {
 /** Salt okunur satır — giriş / mola / çıkış yalnızca QR okutma ile işlenir. */
 export function EmployeeAttendanceRow({ entry }: Props) {
   const { employee, shiftAssignment, attendanceRecord } = entry
-
-  const theme = useTheme()
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'))
-
   const currentStatus = attendanceRecord?.status ?? 'shift_waiting'
+  const start = shiftAssignment.start_time.slice(0, 5)
+  const end = shiftAssignment.end_time.slice(0, 5)
+  const tone = SHIFT_KIND_TONES[shiftKindOf(undefined, start, end)]
 
   return (
-    <Paper
-      elevation={0}
-      sx={{
-        p: { xs: 2, md: 2.5 },
-        bgcolor: 'background.paper',
-        border: '1px solid',
-        borderColor: 'divider',
-        borderRadius: 2,
-        '&:hover': { borderColor: 'primary.dark' },
-        transition: 'border-color 0.2s',
-      }}
-    >
-      {isMobile ? (
-        // Mobile layout: stacked
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-          <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-            <Box>
-              <Typography variant="subtitle2" fontWeight={700} color="text.primary">
-                {employee.full_name}
-              </Typography>
-              <Chip
-                label={employee.role}
-                size="small"
-                sx={{
-                  mt: 0.5,
-                  bgcolor: 'rgba(99,102,241,0.15)',
-                  color: '#818cf8',
-                  borderColor: 'rgba(99,102,241,0.3)',
-                  fontSize: '0.65rem',
-                  height: 20,
-                  border: '1px solid',
-                }}
-              />
-            </Box>
-            <AttendanceStatusChip status={currentStatus} />
-          </Box>
-          <TimeInfo shiftAssignment={shiftAssignment} attendanceRecord={attendanceRecord} />
+    <SectionRow sx={{ flexWrap: 'wrap', rowGap: 1 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, flex: '1 1 220px', minWidth: 0 }}>
+        <PersonAvatar name={employee.full_name} size={36} />
+        <Box sx={{ minWidth: 0 }}>
+          <Typography fontSize="0.875rem" fontWeight={700} noWrap>{employee.full_name}</Typography>
+          <Typography fontSize="0.72rem" color="text.secondary" noWrap>{employee.role}</Typography>
         </Box>
-      ) : (
-        // Desktop layout: 2-column
-        <Box
-          sx={{
-            display: 'grid',
-            gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
-            alignItems: 'center',
-            gap: 2,
-          }}
+      </Box>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap', flex: '2 1 320px', minWidth: 0 }}>
+        <Typography
+          fontSize="0.78rem" fontWeight={700}
+          sx={{ color: tone.text, bgcolor: tone.soft, px: 1, py: 0.5, borderRadius: '8px', fontVariantNumeric: 'tabular-nums' }}
         >
-          {/* Col 1: Employee info */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <Box
-              sx={{
-                width: 40,
-                height: 40,
-                borderRadius: '50%',
-                bgcolor: 'rgba(20,184,166,0.15)',
-                border: '2px solid rgba(20,184,166,0.3)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 700,
-                color: 'primary.main',
-                fontSize: '0.9rem',
-                flexShrink: 0,
-              }}
-            >
-              {employee.full_name.charAt(0)}
-            </Box>
-            <Box>
-              <Typography variant="subtitle2" fontWeight={700} color="text.primary">
-                {employee.full_name}
-              </Typography>
-              <Chip
-                label={employee.role}
-                size="small"
-                sx={{
-                  mt: 0.25,
-                  bgcolor: 'rgba(99,102,241,0.15)',
-                  color: '#818cf8',
-                  borderColor: 'rgba(99,102,241,0.3)',
-                  fontSize: '0.65rem',
-                  height: 20,
-                  border: '1px solid',
-                }}
-              />
-            </Box>
-          </Box>
-
-          {/* Col 2: Shift & attendance times + status */}
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0.75 }}>
-            <AttendanceStatusChip status={currentStatus} />
-            <TimeInfo shiftAssignment={shiftAssignment} attendanceRecord={attendanceRecord} />
-          </Box>
-        </Box>
-      )}
-    </Paper>
+          {start} – {end}
+        </Typography>
+        <TimeInfo attendanceRecord={attendanceRecord} />
+        <Box sx={{ flex: 1 }} />
+        <AttendanceStatusChip status={currentStatus} />
+      </Box>
+    </SectionRow>
   )
 }
 
 // ---------------------------------------------------------------
-// Sub-component: time information
+// Sub-component: giriş / mola / çıkış saatleri
 // ---------------------------------------------------------------
-function TimeInfo({
-  shiftAssignment,
-  attendanceRecord,
-}: {
-  shiftAssignment: DailyShiftEntry['shiftAssignment']
-  attendanceRecord: AttendanceRecord | null
-}) {
+function TimeInfo({ attendanceRecord }: { attendanceRecord: AttendanceRecord | null }) {
+  if (!attendanceRecord) return null
   return (
-    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, alignItems: 'center' }}>
-      {/* Planned shift times */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-        <AccessTimeIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
-        <Typography variant="caption" color="text.secondary">
-          {shiftAssignment.start_time.slice(0, 5)} – {shiftAssignment.end_time.slice(0, 5)}
-        </Typography>
-      </Box>
-
-      {attendanceRecord && (
-        <>
-          <Divider orientation="vertical" flexItem sx={{ my: 0.5 }} />
-          {attendanceRecord.clock_in_at && (
-            <TimeField label="Giriş" value={attendanceRecord.clock_in_at} color="#10b981" />
-          )}
-          {attendanceRecord.break_start_at && (
-            <TimeField label="Mola" value={attendanceRecord.break_start_at} color="#f59e0b" />
-          )}
-          {attendanceRecord.break_end_at && (
-            <TimeField label="Dönüş" value={attendanceRecord.break_end_at} color="#60a5fa" />
-          )}
-          {attendanceRecord.clock_out_at && (
-            <TimeField label="Çıkış" value={attendanceRecord.clock_out_at} color="#818cf8" />
-          )}
-        </>
-      )}
+    <Box sx={{ display: 'flex', flexWrap: 'wrap', columnGap: 1.5, rowGap: 0.25 }}>
+      {attendanceRecord.clock_in_at && <TimeField label="Giriş" value={attendanceRecord.clock_in_at} color={C.success} />}
+      {attendanceRecord.break_start_at && <TimeField label="Mola" value={attendanceRecord.break_start_at} color={C.warning} />}
+      {attendanceRecord.break_end_at && <TimeField label="Dönüş" value={attendanceRecord.break_end_at} color={C.info} />}
+      {attendanceRecord.clock_out_at && <TimeField label="Çıkış" value={attendanceRecord.clock_out_at} color={C.plum} />}
     </Box>
   )
 }
 
-function TimeField({
-  label,
-  value,
-  color,
-}: {
-  label: string
-  value: string
-  color: string
-}) {
+function TimeField({ label, value, color }: { label: string; value: string; color: string }) {
   return (
-    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-      <Box component="span" sx={{ color, fontWeight: 600 }}>
-        {label}:{' '}
-      </Box>
+    <Typography fontSize="0.75rem" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+      <Box component="span" sx={{ color, fontWeight: 600 }}>{label}: </Box>
       {formatInTimeZone(value)}
     </Typography>
   )

@@ -5,26 +5,21 @@ import { useLastUpdated } from '@/hooks/useLastUpdated'
 import {
   Box,
   Typography,
-  Paper,
-  Stack,
-  Chip,
   CircularProgress,
   Skeleton,
   Alert,
-  Divider,
   Button,
 } from '@mui/material'
-import DashboardIcon from '@mui/icons-material/Dashboard'
-import PeopleIcon from '@mui/icons-material/People'
-import LoginIcon from '@mui/icons-material/Login'
-import FreeBreakfastIcon from '@mui/icons-material/FreeBreakfast'
-import LogoutIcon from '@mui/icons-material/Logout'
-import BeachAccessIcon from '@mui/icons-material/BeachAccess'
 import RefreshIcon from '@mui/icons-material/Refresh'
-import { useRouter } from 'next/navigation'
 import { formatDateTurkish, formatDayNameTurkish, formatDateRangeTr } from '@/lib/dateUtils'
 import { LEAVE_TYPE_LABELS } from '@/types/leave'
-import { PageHeader, StatCardsSkeleton, ListSkeleton } from '@/components/common'
+import {
+  PageHeader, StatCardsSkeleton, ListSkeleton, PersonAvatar, SectionCard, SectionRow, EmptyRow,
+  StatCard, StatGrid, StatusBadge, type BadgeTone,
+} from '@/components/common'
+import { shiftKindOf } from '@/components/schedule/scheduleHelpers'
+import { useAuth } from '@/context/AuthContext'
+import { C, SHIFT_KIND_TONES } from '@/lib/palette'
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -67,64 +62,19 @@ interface DashboardData {
 
 // ─── Constants ───────────────────────────────────────────────
 
-const ATTENDANCE_STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  shift_waiting: { label: 'Bekleniyor', color: '#94a3b8', icon: null },
-  working: { label: 'Çalışıyor', color: '#10b981', icon: <LoginIcon sx={{ fontSize: 14 }} /> },
-  on_break: { label: 'Molada', color: '#f59e0b', icon: <FreeBreakfastIcon sx={{ fontSize: 14 }} /> },
-  working_after_break: { label: 'Çalışıyor', color: '#10b981', icon: <LoginIcon sx={{ fontSize: 14 }} /> },
-  clocked_out: { label: 'Çıkış Yaptı', color: '#818cf8', icon: <LogoutIcon sx={{ fontSize: 14 }} /> },
-}
-
-// ─── Stat Card ────────────────────────────────────────────────
-
-function StatCard({
-  label,
-  value,
-  color,
-  icon,
-  onClick,
-}: {
-  label: string
-  value: number
-  color: string
-  icon: React.ReactNode
-  onClick?: () => void
-}) {
-  return (
-    <Paper
-      elevation={0}
-      onClick={onClick}
-      sx={{
-        p: { xs: 2, md: 2.5 },
-        border: '1px solid',
-        borderColor: 'divider',
-        borderRadius: 2,
-        bgcolor: 'background.paper',
-        flex: '1 1 0',
-        minWidth: { xs: 'calc(50% - 6px)', sm: 140 },
-        cursor: onClick ? 'pointer' : 'default',
-        transition: 'border-color 0.2s',
-        '&:hover': onClick ? { borderColor: 'primary.dark' } : {},
-      }}
-    >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-        <Box sx={{ color, opacity: 0.8 }}>{icon}</Box>
-        <Typography variant="caption" color="text.secondary" fontSize="0.7rem">
-          {label}
-        </Typography>
-      </Box>
-      <Typography variant="h5" fontWeight={800} sx={{ color, lineHeight: 1.1 }}>
-        {value}
-      </Typography>
-    </Paper>
-  )
+const ATTENDANCE_STATUS_CONFIG: Record<string, { label: string; tone: BadgeTone }> = {
+  shift_waiting: { label: 'Bekleniyor', tone: 'neutral' },
+  working: { label: 'Çalışıyor', tone: 'success' },
+  on_break: { label: 'Molada', tone: 'warning' },
+  working_after_break: { label: 'Çalışıyor', tone: 'success' },
+  clocked_out: { label: 'Çıkış yaptı', tone: 'plum' },
 }
 
 // ─── Main Page ────────────────────────────────────────────────
 
 export function DashboardPage() {
   const today = new Date()
-  const router = useRouter()
+  const { employee } = useAuth()
 
   const { data, error: loadError, isValidating: loading, mutate } = useSWR<DashboardData>('/api/dashboard')
   const error = loadError ? (loadError instanceof Error ? loadError.message : 'Yükleme hatası.') : null
@@ -135,23 +85,25 @@ export function DashboardPage() {
   const stats = data?.stats
   const roster = data?.today_roster ?? []
   const pendingLeaves = data?.pending_leaves ?? []
+  const hour = today.getHours()
+  const firstName = employee?.full_name.split(/\s+/)[0]
+  const greeting = `${hour < 12 ? 'Günaydın' : hour < 18 ? 'İyi günler' : 'İyi akşamlar'}${firstName ? `, ${firstName}` : ''}`
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: '#0f172a', color: 'text.primary' }}>
+    <Box sx={{ p: { xs: 2, md: 3 }, color: 'text.primary' }}>
       <PageHeader
-        icon={DashboardIcon}
-        overline={formatDayNameTurkish(today)}
-        title="Genel Bakış"
-        subtitle={formatDateTurkish(today)}
+        overline={greeting}
+        title="Genel bakış"
+        subtitle={`${formatDayNameTurkish(today)}, ${formatDateTurkish(today)}`}
         meta={lastRefreshed && `Son güncelleme: ${lastRefreshed.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`}
         actions={
           <Button
-            size="small"
             variant="outlined"
+            color="inherit"
             startIcon={loading ? <CircularProgress size={14} /> : <RefreshIcon />}
             onClick={() => void load()}
             disabled={loading}
-            sx={{ fontSize: '0.75rem' }}
+            sx={{ minHeight: 40, borderColor: 'divider', bgcolor: 'background.paper' }}
           >
             Yenile
           </Button>
@@ -171,52 +123,26 @@ export function DashboardPage() {
       {/* Stats */}
       {loading && !data && <StatCardsSkeleton count={5} />}
       {stats && (
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, mb: 3 }}>
+        <StatGrid min={140}>
+          <StatCard label="Bugün vardiyalı" value={stats.today_shifts} note={`${stats.active_employees} aktif çalışan`} href="/" />
+          <StatCard label="Şu an çalışıyor" value={stats.currently_working} valueColor={C.success} />
+          <StatCard label="Molada" value={stats.on_break} valueColor={stats.on_break ? C.warning : undefined} />
+          <StatCard label="Çıkış yaptı" value={stats.clocked_out} />
           <StatCard
-            label="Aktif Çalışan"
-            value={stats.active_employees}
-            color="#94a3b8"
-            icon={<PeopleIcon sx={{ fontSize: 16 }} />}
-            onClick={() => router.push('/employees')}
+            label="Gelmedi"
+            value={stats.no_show}
+            valueColor={stats.no_show ? C.danger : undefined}
+            note={stats.no_show ? 'günlük operasyondan takip edin' : 'herkes zamanında'}
           />
           <StatCard
-            label="Bugün Vardiyalı"
-            value={stats.today_shifts}
-            color="#60a5fa"
-            icon={<LoginIcon sx={{ fontSize: 16 }} />}
-            onClick={() => router.push('/')}
+            label="İzin bekliyor"
+            value={stats.pending_leaves}
+            valueColor={stats.pending_leaves ? C.warning : undefined}
+            note={stats.pending_leaves ? 'onayınızı bekliyor' : 'bekleyen talep yok'}
+            href="/leave"
           />
-          <StatCard
-            label="Çalışıyor"
-            value={stats.currently_working}
-            color="#10b981"
-            icon={<LoginIcon sx={{ fontSize: 16 }} />}
-          />
-          <StatCard
-            label="Molada"
-            value={stats.on_break}
-            color="#f59e0b"
-            icon={<FreeBreakfastIcon sx={{ fontSize: 16 }} />}
-          />
-          <StatCard
-            label="Çıkış Yaptı"
-            value={stats.clocked_out}
-            color="#818cf8"
-            icon={<LogoutIcon sx={{ fontSize: 16 }} />}
-          />
-          {stats.pending_leaves > 0 && (
-            <StatCard
-              label="İzin Bekliyor"
-              value={stats.pending_leaves}
-              color="#f59e0b"
-              icon={<BeachAccessIcon sx={{ fontSize: 16 }} />}
-              onClick={() => router.push('/leave')}
-            />
-          )}
-        </Box>
+        </StatGrid>
       )}
-
-      <Divider sx={{ mb: 3, borderColor: 'rgba(255,255,255,0.08)' }} />
 
       {loading && !data && (
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'minmax(0, 1fr) 380px' }, gap: 3 }}>
@@ -231,157 +157,60 @@ export function DashboardPage() {
         </Box>
       )}
 
-      {/* Two column layout: Bugünkü kadro + Onay bekleyenler */}
+      {/* İki sütun: bugünkü kadro + onay bekleyenler */}
       {data && (
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'minmax(0, 1fr) 380px' }, gap: 3 }}>
-
-          {/* Bugünkü Kadro */}
-          <Box>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="subtitle1" fontWeight={700}>Bugünkü Kadro</Typography>
-              <Button
-                size="small"
-                variant="text"
-                onClick={() => router.push('/')}
-                sx={{ fontSize: '0.75rem', color: 'primary.main' }}
-              >
-                Detay →
-              </Button>
-            </Box>
-
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'minmax(0, 1fr) 380px' }, gap: 2, alignItems: 'start' }}>
+          <SectionCard title="Bugünkü kadro" count={roster.length} action={{ label: 'Günlük operasyon →', href: '/' }}>
             {roster.length === 0 ? (
-              <Alert severity="info">Bugün için planlanmış vardiya yok.</Alert>
+              <EmptyRow>Bugün için planlanmış vardiya yok.</EmptyRow>
             ) : (
-              <Stack spacing={1}>
-                {roster.map((entry) => {
-                  const cfg = ATTENDANCE_STATUS_CONFIG[entry.attendance_status] ??
-                    ATTENDANCE_STATUS_CONFIG.shift_waiting
-                  return (
-                    <Paper
-                      key={entry.employee_id + entry.start_time}
-                      elevation={0}
-                      sx={{
-                        p: 1.5,
-                        border: '1px solid',
-                        borderColor: 'divider',
-                        borderRadius: 2,
-                        bgcolor: 'background.paper',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 1.5,
-                      }}
+              roster.map((entry) => {
+                const cfg = ATTENDANCE_STATUS_CONFIG[entry.attendance_status] ?? ATTENDANCE_STATUS_CONFIG.shift_waiting
+                const tone = SHIFT_KIND_TONES[shiftKindOf(undefined, entry.start_time, entry.end_time)]
+                return (
+                  <SectionRow key={entry.employee_id + entry.start_time}>
+                    <PersonAvatar name={entry.full_name} size={34} />
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography fontSize="0.85rem" fontWeight={700} noWrap>{entry.full_name}</Typography>
+                      <Typography fontSize="0.72rem" color="text.secondary" noWrap>{entry.role}</Typography>
+                    </Box>
+                    <Typography
+                      fontSize="0.78rem" fontWeight={700}
+                      sx={{ color: tone.text, bgcolor: tone.soft, px: 1, py: 0.5, borderRadius: '8px', fontVariantNumeric: 'tabular-nums', display: { xs: 'none', sm: 'block' } }}
                     >
-                      {/* Avatar */}
-                      <Box
-                        sx={{
-                          width: 36,
-                          height: 36,
-                          borderRadius: '50%',
-                          bgcolor: `${cfg.color}15`,
-                          border: `2px solid ${cfg.color}30`,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontWeight: 700,
-                          color: cfg.color,
-                          fontSize: '0.85rem',
-                          flexShrink: 0,
-                        }}
-                      >
-                        {entry.full_name.charAt(0)}
-                      </Box>
-
-                      {/* Name + role */}
-                      <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography variant="caption" fontWeight={700} noWrap display="block">{entry.full_name}</Typography>
-                        <Typography variant="caption" color="text.secondary" display="block" noWrap fontSize="0.65rem">
-                          {entry.role} · {entry.start_time.slice(0, 5)}–{entry.end_time.slice(0, 5)}
-                        </Typography>
-                      </Box>
-
-                      {/* Status */}
-                      <Chip
-                        label={cfg.label}
-                        size="small"
-                        sx={{
-                          bgcolor: `${cfg.color}20`,
-                          color: cfg.color,
-                          border: `1px solid ${cfg.color}40`,
-                          fontWeight: 700,
-                          fontSize: '0.6rem',
-                          height: 20,
-                        }}
-                      />
-                    </Paper>
-                  )
-                })}
-              </Stack>
+                      {entry.start_time.slice(0, 5)} – {entry.end_time.slice(0, 5)}
+                    </Typography>
+                    <StatusBadge tone={cfg.tone} label={cfg.label} sx={{ minWidth: 82, justifyContent: 'center' }} />
+                  </SectionRow>
+                )
+              })
             )}
-          </Box>
+          </SectionCard>
 
-          {/* Onay Bekleyen İzinler */}
-          <Box>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Typography variant="subtitle1" fontWeight={700}>Onay Bekleyenler</Typography>
-                {pendingLeaves.length > 0 && (
-                  <Chip
-                    label={pendingLeaves.length}
-                    size="small"
-                    sx={{ height: 18, fontSize: '0.6rem', bgcolor: '#f59e0b20', color: '#f59e0b', border: '1px solid #f59e0b40' }}
-                  />
-                )}
-              </Box>
-              <Button
-                size="small"
-                variant="text"
-                onClick={() => router.push('/leave')}
-                sx={{ fontSize: '0.75rem', color: 'primary.main' }}
-              >
-                Tümü →
-              </Button>
-            </Box>
-
+          <SectionCard title="Onay bekleyenler" count={pendingLeaves.length} action={{ label: 'Tümü →', href: '/leave' }}>
             {pendingLeaves.length === 0 ? (
-              <Alert severity="success" sx={{ fontSize: '0.8rem' }}>
-                Onay bekleyen talep yok ✓
-              </Alert>
+              <EmptyRow>Onay bekleyen talep yok.</EmptyRow>
             ) : (
-              <Stack spacing={1}>
-                {pendingLeaves.map((leave) => {
-                  const emp = leave.employees as { full_name: string; role: string } | null
-                  return (
-                    <Paper
-                      key={leave.id}
-                      elevation={0}
-                      sx={{
-                        p: 1.5,
-                        border: '1px solid rgba(245,158,11,0.25)',
-                        borderRadius: 2,
-                        bgcolor: 'rgba(245,158,11,0.04)',
-                        cursor: 'pointer',
-                        '&:hover': { borderColor: 'rgba(245,158,11,0.5)' },
-                        transition: 'border-color 0.15s',
-                      }}
-                      onClick={() => router.push('/leave')}
-                    >
-                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                        <Typography variant="caption" fontWeight={700}>{emp?.full_name ?? '—'}</Typography>
-                        <Chip
-                          label={LEAVE_TYPE_LABELS[leave.leave_type as keyof typeof LEAVE_TYPE_LABELS] ?? leave.leave_type}
-                          size="small"
-                          sx={{ height: 18, fontSize: '0.6rem', bgcolor: 'rgba(99,102,241,0.12)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.3)' }}
-                        />
-                      </Box>
-                      <Typography variant="caption" color="text.secondary">
+              pendingLeaves.map((leave) => {
+                const emp = leave.employees as { full_name: string; role: string } | null
+                return (
+                  <SectionRow key={leave.id} href="/leave">
+                    <PersonAvatar name={emp?.full_name ?? '?'} size={34} />
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography fontSize="0.85rem" fontWeight={700} noWrap>{emp?.full_name ?? '—'}</Typography>
+                      <Typography fontSize="0.72rem" color="text.secondary" noWrap>
                         {formatDateRangeTr(leave.start_date, leave.end_date)}
                       </Typography>
-                    </Paper>
-                  )
-                })}
-              </Stack>
+                    </Box>
+                    <StatusBadge
+                      tone="warning"
+                      label={LEAVE_TYPE_LABELS[leave.leave_type as keyof typeof LEAVE_TYPE_LABELS] ?? leave.leave_type}
+                    />
+                  </SectionRow>
+                )
+              })
             )}
-          </Box>
+          </SectionCard>
         </Box>
       )}
     </Box>

@@ -16,6 +16,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSWRConfig } from 'swr'
 import { Box, CircularProgress } from '@mui/material'
+import { C, tint } from '@/lib/palette'
 
 /** Yenilemeyi tetikleyen (sönümlenmiş) çekme mesafesi */
 export const PULL_THRESHOLD = 70
@@ -175,10 +176,10 @@ export function PullToRefresh({ children, disabled = false }: Props) {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            bgcolor: '#1e293b',
+            bgcolor: C.surface,
             border: '1px solid',
             borderColor: 'divider',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.35)',
+            boxShadow: `0 4px 12px ${tint(C.ink, 0.1)}`,
             transform: `translateY(${pull - 28}px)`,
             transition: pull === 0 || refreshing ? 'transform 0.2s' : 'none',
             pointerEvents: 'none',
