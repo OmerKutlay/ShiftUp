@@ -20,7 +20,7 @@ export type NotificationType =
   | 'attendance_late_clock_out'
   | 'attendance_missed_clock_in'
   | 'attendance_missed_clock_out'
-  /** Anlık bildirim kurulum testi (POST /api/push/test) */
+  /** Eski kurulum testi bildirimleri (endpoint kaldırıldı; mevcut kayıtlar için) */
   | 'push_test'
 
 export interface Notification {
