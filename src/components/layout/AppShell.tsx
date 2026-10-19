@@ -18,7 +18,6 @@ import {
 } from '@mui/material'
 import MenuIcon from '@mui/icons-material/Menu'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
-import WbSunnyOutlinedIcon from '@mui/icons-material/WbSunnyOutlined'
 import LogoutIcon from '@mui/icons-material/Logout'
 
 import { ErrorBoundary } from './ErrorBoundary'
@@ -29,6 +28,7 @@ import { NotificationBell } from '@/components/notifications/NotificationBell'
 import { useAuth } from '@/context/AuthContext'
 import { apiFetch } from '@/lib/api/http'
 import { PersonAvatar } from '@/components/common/PersonAvatar'
+import { BrandMark } from '@/components/common/BrandMark'
 import { C, tint } from '@/lib/palette'
 
 const DRAWER_WIDTH = 232
@@ -315,25 +315,3 @@ export function AppShell({ children }: Props) {
   )
 }
 
-/** Kiremit kare logo */
-function BrandMark({ size = 32 }: { size?: number }) {
-  return (
-    <Box
-      aria-hidden
-      sx={{
-        width: size,
-        height: size,
-        borderRadius: `${Math.round(size * 0.28)}px`,
-        bgcolor: 'primary.main',
-        color: C.white,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexShrink: 0,
-        '& svg': { fontSize: size * 0.62 },
-      }}
-    >
-      <WbSunnyOutlinedIcon />
-    </Box>
-  )
-}
