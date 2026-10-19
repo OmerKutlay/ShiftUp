@@ -67,7 +67,7 @@ const SNAPSHOT_NAME = 'my-schedule'
 const SNAPSHOT_MONTHS = 3
 
 interface MyScheduleSnapshot {
-  profile: { full_name: string; role: string }
+  profile: { full_name: string; role_name?: string | null }
   /** Her ay kendi kayıt zamanıyla tutulur (son güncelleme o aya aittir) */
   months: { month: string; savedAt: string; rows: DayEntry[] }[]
 }
@@ -310,7 +310,7 @@ export function MySchedulePage() {
         if (!employee) return
         const month = new URL(data.url, 'http://x').searchParams.get('date_from')
         if (month) {
-          saveScheduleSnapshot(employee.id, { full_name: employee.full_name, role: employee.role }, month, data.rows)
+          saveScheduleSnapshot(employee.id, { full_name: employee.full_name, role_name: employee.roles?.name ?? null }, month, data.rows)
         }
       },
     },
@@ -377,6 +377,7 @@ export function MySchedulePage() {
     return <PageSkeleton stats={4} rows={6} maxWidth={900} />
   }
   const profile = employee ?? (offlineMode ? snapshot?.data.profile : null)
+  const profileRoleName = employee ? employee.roles?.name : snapshot?.data.profile.role_name
   if (!profile) {
     return (
       <Box sx={{ p: 3 }}>
@@ -394,7 +395,7 @@ export function MySchedulePage() {
 
       <PageHeader
         title="Çalışma Özetim"
-        subtitle={`${profile.full_name} · ${profile.role}`}
+        subtitle={[profile.full_name, profileRoleName].filter(Boolean).join(' · ')}
       />
 
       {snapshotMonth && (

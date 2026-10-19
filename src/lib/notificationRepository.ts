@@ -5,7 +5,7 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { CreateNotificationPayload, Notification, NotificationType } from '@/types/notification'
-import { MANAGER_ROLES } from '@/lib/auth/roles'
+import { MANAGER_ROLES, accessLevelOf } from '@/lib/auth/roles'
 
 /**
  * Yeni bildirim oluştur.
@@ -69,16 +69,15 @@ export async function createNotifications(
 export async function getActiveManagerIds(admin: SupabaseClient): Promise<string[]> {
   const { data: employees, error } = await admin
     .from('employees')
-    .select('id, roles(name)')
+    .select('id, roles(access_level)')
     .eq('active', true)
 
   if (error) throw error
 
   return (employees ?? [])
     .filter((e) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const roleName = (e as any).roles?.name ?? null
-      return MANAGER_ROLES.includes(roleName)
+      const level = accessLevelOf(e.roles)
+      return level !== null && MANAGER_ROLES.includes(level)
     })
     .map((e) => e.id as string)
 }

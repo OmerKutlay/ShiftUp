@@ -10,7 +10,7 @@ import { MySchedulePage } from '@/components/my-schedule/MySchedulePage'
 import { setSnapshot, claimSnapshotOwner } from '@/lib/pwa/offlineSnapshot'
 
 const mockedUseAuth = vi.mocked(useAuth)
-const EMP = { id: 'emp-1', full_name: 'Ayşe Yılmaz', role: 'Kasiyer' }
+const EMP = { id: 'emp-1', full_name: 'Ayşe Yılmaz', roles: { name: 'Kasiyer' } }
 const monthStart = format(startOfMonth(new Date()), 'yyyy-MM-dd')
 
 function row(overrides: Record<string, unknown> = {}) {
@@ -43,7 +43,7 @@ function setOnline(value: boolean) {
 
 function seedSnapshot(ownerId: string, savedAt = new Date().toISOString()) {
   setSnapshot(`my-schedule`, ownerId, {
-    profile: { full_name: 'Kayıtlı Kişi', role: 'Kasiyer' },
+    profile: { full_name: 'Kayıtlı Kişi', role_name: 'Kasiyer' },
     months: [{ month: monthStart, savedAt, rows: [row()] }],
   })
 }

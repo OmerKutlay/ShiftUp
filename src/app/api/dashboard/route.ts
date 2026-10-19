@@ -5,10 +5,11 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
-import { requireMinRole, ROLES } from '@/lib/auth'
+import { requireMinRole, ACCESS } from '@/lib/auth'
 import { serverError } from '@/lib/apiErrors'
 import { turkeyToday } from '@/lib/dateUtils'
 import { NOT_KIOSK_FILTER } from '@/lib/auth/roles'
+import { roleNameOf } from '@/lib/roleJoin'
 
 interface TodayShift {
   id: string
@@ -29,7 +30,7 @@ interface TodayAttendance {
 }
 
 export async function GET(req: NextRequest) {
-  const auth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
+  const auth = await requireMinRole(req, ACCESS.MANAGER)
   if ('response' in auth) return auth.response
 
   try {
@@ -46,13 +47,13 @@ export async function GET(req: NextRequest) {
         .from('shift_assignments')
         .select(`
           id, employee_id, start_time, end_time,
-          employees ( id, full_name, role )
+          employees ( id, full_name, roles ( name ) )
         `)
         .eq('work_date', today)
         .order('start_time'),
       admin
         .from('leave_requests')
-        .select('id, employee_id, leave_type, start_date, end_date, employees!employee_id(full_name, role)', { count: 'exact' })
+        .select('id, employee_id, leave_type, start_date, end_date, employees!employee_id(full_name, roles(name))', { count: 'exact' })
         .eq('status', 'pending')
         .order('created_at', { ascending: true })
         .limit(5),
@@ -81,7 +82,7 @@ export async function GET(req: NextRequest) {
       return {
         employee_id: shift.employee_id,
         full_name: shift.employees?.full_name ?? '—',
-        role: shift.employees?.role ?? '—',
+        role_name: roleNameOf(shift.employees) ?? '—',
         start_time: shift.start_time,
         end_time: shift.end_time,
         attendance_status: att?.status ?? 'shift_waiting',

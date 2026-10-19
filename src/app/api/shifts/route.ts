@@ -4,7 +4,7 @@
  * POST /api/shifts                             — vardiya atar (Müdür Yardımcısı+)
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth, requireMinRole, ROLES } from '@/lib/auth'
+import { requireAuth, requireMinRole, ACCESS } from '@/lib/auth'
 import { fetchWeeklyAssignments, fetchAssignmentsInRange, createShiftAssignment } from '@/lib/scheduleRepository'
 import { ShiftConflictError } from '@/types/schedule'
 import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/apiErrors'
@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
+  const auth = await requireMinRole(req, ACCESS.MANAGER)
   if ('response' in auth) return auth.response
 
   const body = await readJson(req)

@@ -377,7 +377,7 @@ export function AttendanceScanPage() {
               {employee.full_name}
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              {employee.role}
+              {employee.roles?.name}
             </Typography>
           </Box>
           {/* Mevcut durum chip — scanning dışı ekranlarda */}

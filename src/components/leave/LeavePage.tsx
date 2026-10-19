@@ -219,7 +219,7 @@ function ReviewDialog({ open, request, onClose, onReview, saving }: ReviewDialog
           }}
         >
           <Typography variant="subtitle2" fontWeight={700}>{emp?.full_name ?? '—'}</Typography>
-          <Typography variant="caption" color="text.secondary" display="block">{emp?.role}</Typography>
+          <Typography variant="caption" color="text.secondary" display="block">{emp?.roles?.name}</Typography>
           <Divider sx={{ my: 1, borderColor: 'divider' }} />
           <Stack spacing={0.5}>
             <Row label="İzin Tipi" value={LEAVE_TYPE_LABELS[request.leave_type]} />
@@ -331,7 +331,7 @@ function AnnualLeaveCard({ balance }: { balance: AnnualLeaveBalance }) {
 
 export function LeavePage() {
   const { employee: me } = useAuth()
-  const isManager = hasRole(me?.roles?.name ?? me?.role_name ?? null, MANAGER_ROLES)
+  const isManager = hasRole(me?.roles?.access_level ?? null, MANAGER_ROLES)
   const confirm = useConfirm()
 
   const requestsQ = useSWR('/api/leave', (url: string) => apiFetch<{ requests: LeaveRequestWithEmployee[] }>(url))
@@ -615,7 +615,7 @@ function LeaveCard({
           </Box>
           <Box sx={{ minWidth: 0, flex: 1 }}>
             <Typography variant="subtitle2" fontWeight={700}>{emp?.full_name ?? '—'}</Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>{emp?.role ?? '—'}</Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>{emp?.roles?.name ?? '—'}</Typography>
             {/* Her kartta aynı yerde: rol satırının altında iki chip yan yana */}
             <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.75, mt: 0.5 }}>
               <LeaveStatusChip status={request.status} />

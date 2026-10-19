@@ -20,7 +20,8 @@ import type {
 export async function fetchRoles(): Promise<Role[]> {
   const { data, error } = await db
     .from('roles')
-    .select('id, name, description, created_at')
+    .select('id, name, description, access_level, planning_group, sort_order, created_at')
+    .order('sort_order', { ascending: true })
     .order('name', { ascending: true })
 
   if (error) throw new Error(`Roller yüklenemedi: ${error.message}`)
@@ -39,7 +40,6 @@ export async function fetchEmployees(): Promise<EmployeeWithRole[]> {
       id,
       full_name,
       email,
-      role,
       role_id,
       active,
       employment_type,
@@ -53,6 +53,9 @@ export async function fetchEmployees(): Promise<EmployeeWithRole[]> {
         id,
         name,
         description,
+        access_level,
+        planning_group,
+        sort_order,
         created_at
       )
     `)
@@ -69,7 +72,6 @@ export async function fetchActiveEmployees(): Promise<EmployeeWithRole[]> {
     .select(`
       id,
       full_name,
-      role,
       role_id,
       active,
       employment_type,
@@ -82,6 +84,9 @@ export async function fetchActiveEmployees(): Promise<EmployeeWithRole[]> {
         id,
         name,
         description,
+        access_level,
+        planning_group,
+        sort_order,
         created_at
       )
     `)
@@ -100,7 +105,6 @@ export async function fetchEmployeeById(id: string): Promise<EmployeeWithRole | 
     .select(`
       id,
       full_name,
-      role,
       role_id,
       active,
       employment_type,
@@ -113,6 +117,9 @@ export async function fetchEmployeeById(id: string): Promise<EmployeeWithRole | 
         id,
         name,
         description,
+        access_level,
+        planning_group,
+        sort_order,
         created_at
       )
     `)

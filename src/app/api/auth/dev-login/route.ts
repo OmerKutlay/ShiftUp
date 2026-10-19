@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
   if (step === 'check-email') {
     const { data: employee } = await admin
       .from('employees')
-      .select('id, full_name, active, email, role, role_id')
+      .select('id, full_name, active, email, role_id')
       .eq('email', email)
       .maybeSingle()
 
@@ -114,7 +114,6 @@ export async function POST(req: NextRequest) {
         id,
         full_name,
         email,
-        role,
         role_id,
         active,
         auth_user_id,
@@ -124,6 +123,9 @@ export async function POST(req: NextRequest) {
           id,
           name,
           description,
+        access_level,
+        planning_group,
+        sort_order,
           created_at
         )
       `)

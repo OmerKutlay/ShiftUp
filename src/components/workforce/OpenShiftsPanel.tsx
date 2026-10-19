@@ -25,6 +25,8 @@ import { DateField, ListSkeleton } from '@/components/common'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { apiFetch } from '@/lib/api/http'
+import { fetchRoles } from '@/lib/api/employees'
+import { ACCESS } from '@/lib/auth/roles'
 import { C } from '@/lib/palette'
 
 const STATUS_LABELS: Record<string, string> = {
@@ -41,7 +43,7 @@ const STATUS_COLORS: Record<string, string> = {
 export function OpenShiftsPanel() {
   const { employee: authEmployee } = useAuth()
   const isManager = hasRole(
-    authEmployee?.roles?.name ?? authEmployee?.role_name ?? null,
+    authEmployee?.roles?.access_level ?? null,
     MANAGER_ROLES
   )
 
@@ -52,6 +54,9 @@ export function OpenShiftsPanel() {
     apiFetch<{ open_shifts: OpenShift[] }>(url)
   )
   const shifts = shiftsQ.data?.open_shifts ?? []
+  // Gerekli rol: sistem rolü adlarından seçilir (üstlenme kontrolü rol adıyla eşleşir)
+  const rolesQ = useSWR(isManager ? 'roles' : null, fetchRoles)
+  const roleOptions = (rolesQ.data ?? []).filter((r) => r.access_level !== ACCESS.KIOSK)
   const isFirstLoad = !shiftsQ.data && !shiftsQ.error
   const error = actionError ?? (shiftsQ.error ? (shiftsQ.error instanceof Error ? shiftsQ.error.message : 'Yüklenemedi.') : null)
   const [form, setForm] = useState({
@@ -365,11 +370,17 @@ export function OpenShiftsPanel() {
             </Box>
             <TextField
               size="small"
-              label="Gerekli Pozisyon (opsiyonel)"
+              select
+              label="Gerekli Rol (opsiyonel)"
               value={form.role_needed}
               onChange={(e) => setForm((f) => ({ ...f, role_needed: e.target.value }))}
               fullWidth
-            />
+            >
+              <MenuItem value=""><em>Herkes</em></MenuItem>
+              {roleOptions.map((r) => (
+                <MenuItem key={r.id} value={r.name}>{r.name}</MenuItem>
+              ))}
+            </TextField>
             <TextField
               size="small"
               label="Açıklama (opsiyonel)"

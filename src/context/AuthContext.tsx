@@ -28,9 +28,8 @@ import { runBeforeSignOut } from '@/lib/pwa/sessionEvents'
 // ─── Types ───────────────────────────────────────────────────
 
 export interface AuthEmployee extends Employee {
+  /** Sistem rolü; yetki kararları için roles.access_level kullanılır (ad yalnızca gösterim) */
   roles: Role | null
-  /** roles tablosundan gelen yapılandırılmış rol adı — authorization için kullan */
-  role_name?: string | null
 }
 
 export type AuthStatus =

@@ -4,7 +4,7 @@
  * DELETE /api/holidays?date=YYYY-MM-DD           — sil (Mağaza Müdürü+)
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth, requireMinRole, ROLES } from '@/lib/auth'
+import { requireAuth, requireMinRole, ACCESS } from '@/lib/auth'
 import { fetchHolidaysInRange, upsertHoliday, deleteHoliday } from '@/lib/holidayRepository'
 import { badRequest, readJson, serverError } from '@/lib/apiErrors'
 import { isValidDate } from '@/lib/validation'
@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireMinRole(req, ROLES.MAGAZA_MUDURU)
+  const auth = await requireMinRole(req, ACCESS.STORE_MANAGER)
   if ('response' in auth) return auth.response
 
   const body = await readJson<{ date?: string; name?: string; half_day?: boolean }>(req)
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const auth = await requireMinRole(req, ROLES.MAGAZA_MUDURU)
+  const auth = await requireMinRole(req, ACCESS.STORE_MANAGER)
   if ('response' in auth) return auth.response
 
   const date = req.nextUrl.searchParams.get('date')

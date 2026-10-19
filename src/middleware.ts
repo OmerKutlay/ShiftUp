@@ -18,7 +18,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { DEV_SESSION_COOKIE, IS_DEV_AUTH } from '@/lib/authConfig'
 import { verifyDevSessionEdge } from '@/lib/auth/devSessionEdge'
-import { isKioskRole, roleAtLeast, ROLES, type RoleName } from '@/lib/auth/roles'
+import { isKioskRole, roleAtLeast, accessLevelOf, ACCESS, type AccessLevel } from '@/lib/auth/roles'
 import { startTrace } from '@/lib/requestTrace'
 
 const PUBLIC_PATHS = ['/login', '/offline']
@@ -27,13 +27,13 @@ const PUBLIC_API_PREFIX = '/api/auth/'
 const CRON_API_PATHS = ['/api/attendance/alerts/scan']
 
 /** Sayfa → en düşük gerekli rol. Listede olmayan sayfalar tüm aktif çalışanlara açıktır. */
-const PAGE_MIN_ROLE: Array<[prefix: string, minRole: RoleName]> = [
-  ['/settings', ROLES.MAGAZA_MUDURU],
-  ['/dashboard', ROLES.MUDUR_YARDIMCISI],
-  ['/employees', ROLES.MUDUR_YARDIMCISI],
-  ['/shift-templates', ROLES.MUDUR_YARDIMCISI],
-  ['/workforce', ROLES.MUDUR_YARDIMCISI],
-  ['/reports', ROLES.MUDUR_YARDIMCISI],
+const PAGE_MIN_ROLE: Array<[prefix: string, minRole: AccessLevel]> = [
+  ['/settings', ACCESS.STORE_MANAGER],
+  ['/dashboard', ACCESS.MANAGER],
+  ['/employees', ACCESS.MANAGER],
+  ['/shift-templates', ACCESS.MANAGER],
+  ['/workforce', ACCESS.MANAGER],
+  ['/reports', ACCESS.MANAGER],
 ]
 /** Çalışanların varsayılan sayfası (yönetici sayfasına girmeye çalışırlarsa) */
 const EMPLOYEE_HOME = '/my-schedule'
@@ -58,8 +58,8 @@ function isPublicPath(pathname: string): boolean {
 }
 
 /** Sayfa için gereken en düşük rol (yoksa null). '/' Günlük Operasyon yönetici sayfasıdır. */
-function requiredRole(pathname: string): RoleName | null {
-  if (pathname === '/') return ROLES.MUDUR_YARDIMCISI
+function requiredRole(pathname: string): AccessLevel | null {
+  if (pathname === '/') return ACCESS.MANAGER
   for (const [prefix, role] of PAGE_MIN_ROLE) {
     if (pathname === prefix || pathname.startsWith(`${prefix}/`)) return role
   }
@@ -79,7 +79,7 @@ function isCrossOriginWrite(request: NextRequest): boolean {
 }
 
 type EmployeeLookup =
-  | { status: 'ok'; active: boolean; role: string | null }
+  | { status: 'ok'; active: boolean; role: AccessLevel | null }
   | { status: 'missing' }
   | { status: 'error' }
 
@@ -88,13 +88,12 @@ async function loadEmployee(by: { id?: string; authUserId?: string }): Promise<E
   try {
     const { createAdminClient } = await import('@/lib/supabaseAdmin')
     const admin = createAdminClient()
-    let query = admin.from('employees').select('active, roles ( name )')
+    let query = admin.from('employees').select('active, roles ( access_level )')
     query = by.id ? query.eq('id', by.id) : query.eq('auth_user_id', by.authUserId!)
     const { data, error } = await query.maybeSingle()
     if (error) return { status: 'error' }
     if (!data) return { status: 'missing' }
-    const roles = data.roles as unknown as { name: string } | { name: string }[] | null
-    const role = Array.isArray(roles) ? roles[0]?.name ?? null : roles?.name ?? null
+    const role = accessLevelOf(data.roles)
     return { status: 'ok', active: Boolean(data.active), role }
   } catch {
     return { status: 'error' }
@@ -111,7 +110,7 @@ function clearSessionCookies(request: NextRequest, response: NextResponse) {
   return response
 }
 
-function homeFor(role: string | null): string {
+function homeFor(role: AccessLevel | null): string {
   return isKioskRole(role) ? KIOSK_PAGE : '/'
 }
 
@@ -193,7 +192,7 @@ export async function middleware(request: NextRequest) {
   if (isKioskRole(employee.role)) {
     return pathname === KIOSK_PAGE ? response : redirectWithSession(new URL(KIOSK_PAGE, request.url), response)
   }
-  if (pathname === KIOSK_PAGE && !(employee.role && roleAtLeast(employee.role, ROLES.MUDUR_YARDIMCISI))) {
+  if (pathname === KIOSK_PAGE && !(employee.role && roleAtLeast(employee.role, ACCESS.MANAGER))) {
     return redirectWithSession(new URL(EMPLOYEE_HOME, request.url), response)
   }
 

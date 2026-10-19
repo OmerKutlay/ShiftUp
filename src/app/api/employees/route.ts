@@ -4,7 +4,7 @@
  * POST /api/employees — yeni çalışan (Müdür Yardımcısı+; kendinden düşük rol atanabilir).
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth, requireMinRole, ROLES, MANAGER_ROLES, hasRole } from '@/lib/auth'
+import { requireAuth, requireMinRole, ACCESS, MANAGER_ROLES, hasRole } from '@/lib/auth'
 import { fetchEmployees, fetchActiveEmployees, createEmployee } from '@/lib/employeeRepository'
 import { badRequest, conflict, readJson, serverError } from '@/lib/apiErrors'
 import { validateEmployeeInput } from '@/lib/employeeValidation'
@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Standart çalışan diğerlerinin iletişim/kimlik bilgilerini görmez
-    if (!hasRole(auth.employee.role_name, MANAGER_ROLES)) {
+    if (!hasRole(auth.employee.access_level, MANAGER_ROLES)) {
       employees = employees.map((e) => ({ ...e, email: null, auth_user_id: null }))
     }
 
@@ -38,14 +38,14 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
+  const auth = await requireMinRole(req, ACCESS.MANAGER)
   if ('response' in auth) return auth.response
 
   const body = await readJson(req)
   if (!body) return badRequest('Geçersiz istek gövdesi.')
 
   try {
-    const result = await validateEmployeeInput(body, auth.employee.role_name, false)
+    const result = await validateEmployeeInput(body, auth.employee.access_level, false)
     if ('error' in result) return badRequest(result.error)
 
     const employee = await createEmployee({
