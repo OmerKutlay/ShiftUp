@@ -1,9 +1,9 @@
 /**
  * palette — ShiftUp renk token'larının tek kaynağı (yeni açık, sıcak tonlu UI).
  *
- * MUI teması (theme.ts) ve bileşenlerdeki sx değerleri bu token'ları kullanır;
- * bileşenlerde ham hex / rgba yazılmaz. Koyu tema geldiğinde yalnızca bu dosya
- * ve theme.ts değişir.
+ * Tailwind tarafındaki karşılıkları src/app/globals.css'te; bu dosya yalnızca dinamik
+ * renk gereken satır içi style değerleri (vardiya türü, avatar, QR) için kullanılır.
+ * Bileşenlerde ham hex / rgba yazılmaz.
  *
  * Adlandırma: <ton> = metin/ikon için okunaklı koyu ton, <ton>Fill = çubuk/nokta
  * gibi dolgu, <ton>Soft = rozet/hücre zemini.

@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
- * MUI → shadcn geçişi boyunca renkler iki yerde: src/lib/palette.ts (MUI / sx) ve
- * src/app/globals.css (Tailwind). İkisi birbirinden kaymasın.
+ * Renkler iki yerde: src/lib/palette.ts (satır içi style) ve src/app/globals.css (Tailwind).
+ * İkisi birbirinden kaymasın.
  */
 import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
