@@ -4,22 +4,10 @@
  * Masaüstü yan menü (AppShell), mobil alt bar (MobileBottomNav) ve /more sayfası
  * aynı listeyi ve aynı rol filtresini kullanır. Saf fonksiyonlar test edilebilir.
  */
-import TodayIcon from '@mui/icons-material/TodayOutlined'
-import PeopleIcon from '@mui/icons-material/PeopleOutlined'
-import ScheduleIcon from '@mui/icons-material/ScheduleOutlined'
-import CalendarMonthIcon from '@mui/icons-material/CalendarMonthOutlined'
-import QrCode2Icon from '@mui/icons-material/QrCode2Outlined'
-import QrCodeScannerIcon from '@mui/icons-material/QrCodeScannerOutlined'
-import BarChartIcon from '@mui/icons-material/BarChartOutlined'
-import BeachAccessIcon from '@mui/icons-material/BeachAccessOutlined'
-import DashboardIcon from '@mui/icons-material/DashboardOutlined'
-import SettingsIcon from '@mui/icons-material/SettingsOutlined'
-import GroupsIcon from '@mui/icons-material/GroupsOutlined'
-import WorkIcon from '@mui/icons-material/WorkOutlined'
-import EventNoteIcon from '@mui/icons-material/EventNoteOutlined'
-import EditNoteIcon from '@mui/icons-material/EditNoteOutlined'
-import NotificationsIcon from '@mui/icons-material/NotificationsOutlined'
-import MoreHorizIcon from '@mui/icons-material/MoreHorizOutlined'
+import {
+  BriefcaseBusiness, CalendarClock, CalendarDays, ChartColumnBig, ClipboardCheck, FilePenLine, House, Layers,
+  LayoutDashboard, Menu, Bell, Plane, QrCode, ScanLine, Settings, Users, UsersRound,
+} from 'lucide-react'
 
 import { hasRole, MANAGER_ROLES, ADMIN_ROLES, type RoleName } from '@/lib/auth/roles'
 
@@ -47,25 +35,25 @@ export interface NavItem {
 
 /** Masaüstü yan menüdeki öğeler (sıra = menü sırası) */
 export const NAV_ITEMS: NavItem[] = [
-  { label: 'Genel bakış',        href: '/dashboard',       icon: <DashboardIcon />,     group: 'operasyon', requiredRoles: MANAGER_ROLES },
-  { label: 'Günlük operasyon',   href: '/',                icon: <TodayIcon />,         group: 'operasyon', requiredRoles: MANAGER_ROLES },
-  { label: 'Çalışanlar',         href: '/employees',       icon: <PeopleIcon />,        group: 'yonetim',   requiredRoles: MANAGER_ROLES },
-  { label: 'Vardiya şablonları', href: '/shift-templates', icon: <ScheduleIcon />,      group: 'planlama',  requiredRoles: MANAGER_ROLES },
-  { label: 'Haftalık plan',      href: '/schedule',        icon: <CalendarMonthIcon />, group: 'planlama' },
-  { label: 'QR Kiosk',           href: '/qr-kiosk',        icon: <QrCode2Icon />,       group: 'operasyon', requiredRoles: MANAGER_ROLES },
-  { label: 'QR Tara',            href: '/attendance/scan', icon: <QrCodeScannerIcon />, group: 'devam' },
-  { label: 'Çalışma özetim',     href: '/my-schedule',     icon: <EventNoteIcon />,     group: 'planlama' },
-  { label: 'Açık vardiyalar',    href: '/open-shifts',     icon: <WorkIcon />,          group: 'planlama' },
-  { label: 'İzinler',            href: '/leave',           icon: <BeachAccessIcon />,   group: 'devam' },
-  { label: 'Mesai düzeltme',     href: '/time-correction', icon: <EditNoteIcon />,      group: 'devam' },
-  { label: 'İş gücü',            href: '/workforce',       icon: <GroupsIcon />,        group: 'yonetim',   requiredRoles: MANAGER_ROLES },
-  { label: 'Raporlar',           href: '/reports',         icon: <BarChartIcon />,      group: 'yonetim',   requiredRoles: MANAGER_ROLES },
-  { label: 'Ayarlar',            href: '/settings',        icon: <SettingsIcon />,      group: 'yonetim',   requiredRoles: ADMIN_ROLES },
+  { label: 'Genel bakış',        href: '/dashboard',       icon: <LayoutDashboard />,     group: 'operasyon', requiredRoles: MANAGER_ROLES },
+  { label: 'Günlük operasyon',   href: '/',                icon: <ClipboardCheck />,         group: 'operasyon', requiredRoles: MANAGER_ROLES },
+  { label: 'Çalışanlar',         href: '/employees',       icon: <Users />,        group: 'yonetim',   requiredRoles: MANAGER_ROLES },
+  { label: 'Vardiya şablonları', href: '/shift-templates', icon: <Layers />,      group: 'planlama',  requiredRoles: MANAGER_ROLES },
+  { label: 'Haftalık plan',      href: '/schedule',        icon: <CalendarDays />, group: 'planlama' },
+  { label: 'QR Kiosk',           href: '/qr-kiosk',        icon: <QrCode />,       group: 'operasyon', requiredRoles: MANAGER_ROLES },
+  { label: 'QR Tara',            href: '/attendance/scan', icon: <ScanLine />, group: 'devam' },
+  { label: 'Çalışma özetim',     href: '/my-schedule',     icon: <CalendarClock />,     group: 'planlama' },
+  { label: 'Açık vardiyalar',    href: '/open-shifts',     icon: <BriefcaseBusiness />,          group: 'planlama' },
+  { label: 'İzinler',            href: '/leave',           icon: <Plane />,   group: 'devam' },
+  { label: 'Mesai düzeltme',     href: '/time-correction', icon: <FilePenLine />,      group: 'devam' },
+  { label: 'İş gücü',            href: '/workforce',       icon: <UsersRound />,        group: 'yonetim',   requiredRoles: MANAGER_ROLES },
+  { label: 'Raporlar',           href: '/reports',         icon: <ChartColumnBig />,      group: 'yonetim',   requiredRoles: MANAGER_ROLES },
+  { label: 'Ayarlar',            href: '/settings',        icon: <Settings />,      group: 'yonetim',   requiredRoles: ADMIN_ROLES },
 ]
 
 /** Yalnızca mobilde (alt bar / /more) erişilen ek sayfalar — masaüstü menüsü değişmez */
 export const NOTIFICATIONS_ITEM: NavItem = {
-  label: 'Bildirimler', href: '/notifications', icon: <NotificationsIcon />, group: 'hesap',
+  label: 'Bildirimler', href: '/notifications', icon: <Bell />, group: 'hesap',
 }
 export const MORE_HREF = '/more'
 
@@ -95,24 +83,24 @@ export function isNavActive(pathname: string, href: string): boolean {
 
 /** Role göre mobil alt bar sekmeleri (5 adet, ortadaki QR Tara) */
 export function getBottomTabs(roleName: string | null | undefined): BottomTab[] {
-  const scan: BottomTab = { label: 'QR Tara', href: SCAN_HREF, icon: <QrCodeScannerIcon /> }
-  const more: BottomTab = { label: 'Daha fazla', href: MORE_HREF, icon: <MoreHorizIcon /> }
-  const plan: BottomTab = { label: 'Plan', href: '/schedule', icon: <CalendarMonthIcon /> }
+  const scan: BottomTab = { label: 'QR Tara', href: SCAN_HREF, icon: <ScanLine /> }
+  const more: BottomTab = { label: 'Daha fazla', href: MORE_HREF, icon: <Menu /> }
+  const plan: BottomTab = { label: 'Plan', href: '/schedule', icon: <CalendarDays /> }
 
   if (isManagerRole(roleName)) {
     return [
-      { label: 'Bugün', href: '/', icon: <TodayIcon /> },
+      { label: 'Bugün', href: '/', icon: <House /> },
       plan,
       scan,
-      { label: 'Bildirimler', href: '/notifications', icon: <NotificationsIcon /> },
+      { label: 'Bildirimler', href: '/notifications', icon: <Bell /> },
       more,
     ]
   }
   return [
-    { label: 'Vardiyam', href: '/my-schedule', icon: <EventNoteIcon /> },
+    { label: 'Vardiyam', href: '/my-schedule', icon: <CalendarClock /> },
     plan,
     scan,
-    { label: 'İzin', href: '/leave', icon: <BeachAccessIcon /> },
+    { label: 'İzin', href: '/leave', icon: <Plane /> },
     more,
   ]
 }
