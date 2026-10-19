@@ -15,6 +15,7 @@ import NotificationsOffIcon from '@mui/icons-material/NotificationsOff'
 import IosShareIcon from '@mui/icons-material/IosShare'
 import { usePushSubscription, type PushStatus } from '@/hooks/usePushSubscription'
 import { isIos } from '@/lib/pwa/push'
+import { C, tint } from '@/lib/palette'
 
 
 interface Props {
