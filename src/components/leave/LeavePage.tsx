@@ -2,19 +2,6 @@
 
 import { useState } from 'react'
 import useSWR from 'swr'
-import {
-  Box,
-  Typography,
-  Button,
-  Skeleton,
-  Alert,
-  Tab,
-  Tabs,
-  Tooltip,
-  IconButton,
-} from '@mui/material'
-import AddIcon from '@mui/icons-material/Add'
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import type { EmployeeWithRole } from '@/types/employee'
 import {
   DateField, EmployeeSelect, PageHeader, ListSkeleton, useConfirm, PersonAvatar, SectionCard, SectionRow,
@@ -37,12 +24,15 @@ import { hasRole, MANAGER_ROLES } from '@/lib/auth/roles'
 import { apiFetch } from '@/lib/api/http'
 import type { AnnualLeaveBalance } from '@/lib/annualLeave'
 import { C } from '@/lib/palette'
-import { AlertCircle, Check, Loader2, Trash2, TriangleAlert, X } from 'lucide-react'
-import { Alert as UiAlert, AlertDescription } from '@/components/ui/alert'
+import { AlertCircle, Check, CircleCheck, Info, Loader2, Plus, Trash2, TriangleAlert, X } from 'lucide-react'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Button as UiButton } from '@/components/ui/button'
+import { Button } from '@/components/ui/button'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
@@ -109,10 +99,10 @@ function NewRequestDialog({ open, onClose, onSave, employees, saving }: NewReque
 
         <div className="grid gap-4 sm:grid-cols-2">
           {error && (
-            <UiAlert tone="danger" className="sm:col-span-2">
+            <Alert tone="danger" className="sm:col-span-2">
               <AlertCircle />
               <AlertDescription className="text-ink">{error}</AlertDescription>
-            </UiAlert>
+            </Alert>
           )}
 
           <EmployeeSelect
@@ -172,11 +162,11 @@ function NewRequestDialog({ open, onClose, onSave, employees, saving }: NewReque
         </div>
 
         <DialogFooter>
-          <UiButton type="button" variant="ghost" onClick={onClose} disabled={saving}>İptal</UiButton>
-          <UiButton type="button" onClick={handleSave} disabled={saving}>
+          <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>İptal</Button>
+          <Button type="button" onClick={handleSave} disabled={saving}>
             {saving && <Loader2 className="animate-spin" />}
             Talebi Gönder
-          </UiButton>
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -220,10 +210,10 @@ function ReviewDialog({ open, request, onClose, onReview, saving }: ReviewDialog
 
         <div className="flex flex-col gap-4">
           {error && (
-            <UiAlert tone="danger">
+            <Alert tone="danger">
               <AlertCircle />
               <AlertDescription className="text-ink">{error}</AlertDescription>
-            </UiAlert>
+            </Alert>
           )}
 
           <div className="rounded-xl bg-surface-muted px-4 py-3">
@@ -249,8 +239,8 @@ function ReviewDialog({ open, request, onClose, onReview, saving }: ReviewDialog
         </div>
 
         <DialogFooter>
-          <UiButton type="button" variant="ghost" onClick={onClose} disabled={saving}>İptal</UiButton>
-          <UiButton
+          <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>İptal</Button>
+          <Button
             type="button"
             variant="outline"
             onClick={() => handle('rejected')}
@@ -259,11 +249,11 @@ function ReviewDialog({ open, request, onClose, onReview, saving }: ReviewDialog
           >
             <X />
             Reddet
-          </UiButton>
-          <UiButton type="button" onClick={() => handle('approved')} disabled={saving}>
+          </Button>
+          <Button type="button" onClick={() => handle('approved')} disabled={saving}>
             {saving ? <Loader2 className="animate-spin" /> : <Check />}
             Onayla
-          </UiButton>
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -296,24 +286,27 @@ function LeaveStatusChip({ status }: { status: LeaveStatus }) {
 function AnnualLeaveCard({ balance }: { balance: AnnualLeaveBalance }) {
   if (!balance.known) {
     return (
-      <Alert severity="info" sx={{ mb: 2 }}>
-        Yıllık izin bakiyeniz hesaplanamadı: işe giriş tarihiniz kayıtlı değil. Yöneticinizden eklemesini isteyin.
+      <Alert tone="info" className="mb-4">
+        <Info />
+        <AlertDescription className="text-ink">
+          Yıllık izin bakiyeniz hesaplanamadı: işe giriş tarihiniz kayıtlı değil. Yöneticinizden eklemesini isteyin.
+        </AlertDescription>
       </Alert>
     )
   }
   const low = balance.remainingDays <= 2
   return (
-    <Box sx={{ mb: 2 }}>
+    <div className="mb-4">
       <StatGrid min={140} className="mb-2 md:mb-2">
         <StatCard label={`Yıllık hak (${balance.seniorityYears}. yıl)`} value={`${balance.entitlementDays} gün`} />
         <StatCard label="Kullanılan" value={`${balance.usedDays} gün`} />
         <StatCard label="Onay bekleyen" value={`${balance.pendingDays} gün`} valueColor={balance.pendingDays ? C.warning : undefined} />
         <StatCard label="Kalan" value={`${Math.max(0, balance.remainingDays)} gün`} valueColor={low ? C.warning : C.success} />
       </StatGrid>
-      <Typography variant="caption" color="text.secondary">
+      <p className="text-xs text-ink-secondary">
         Dönem: {balance.periodStart && fmtDate(balance.periodStart)} – {balance.periodEnd && fmtDate(balance.periodEnd)} · Pazar ve resmi tatiller izinden sayılmaz
-      </Typography>
-    </Box>
+      </p>
+    </div>
   )
 }
 
@@ -429,56 +422,64 @@ export function LeavePage() {
     : requests
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, color: 'text.primary' }}>
+    <div className="p-4 text-ink md:p-6">
       <PageHeader
         title="İzin talepleri"
         subtitle={
           isFirstLoad
-            ? <Skeleton width={150} />
+            ? <Skeleton className="h-4 w-36" />
             : pendingCount > 0 ? `${pendingCount} talep onay bekliyor` : 'Onay bekleyen talep yok'
         }
         actions={
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => setNewOpen(true)}
-            sx={{ fontWeight: 700 }}
-          >
-            Yeni Talep
+          <Button onClick={() => setNewOpen(true)}>
+            <Plus /> Yeni Talep
           </Button>
         }
       />
 
       {balance && <AnnualLeaveCard balance={balance} />}
 
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-      {success && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess(null)}>{success}</Alert>}
+      {error && (
+        <Alert tone="danger" className="mb-4">
+          <AlertCircle />
+          <AlertDescription className="text-ink">{error}</AlertDescription>
+        </Alert>
+      )}
+      {success && (
+        <Alert tone="success" className="mb-4 pr-12">
+          <CircleCheck />
+          <AlertDescription className="text-ink">{success}</AlertDescription>
+          <Button
+            variant="ghost" size="icon-sm" aria-label="Kapat" onClick={() => setSuccess(null)}
+            className="absolute top-1.5 right-1.5 text-ink-secondary"
+          >
+            <X />
+          </Button>
+        </Alert>
+      )}
 
       {/* Tabs */}
-      <Tabs
-        value={tab}
-        onChange={(_, v) => setTab(v as number)}
-        sx={{ mb: 2.5, borderBottom: '1px solid', borderColor: 'divider' }}
-      >
-        <Tab
-          label={
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              Bekleyenler
-              {pendingCount > 0 && (
-                <StatusBadge tone="warning" label={pendingCount} className="h-[18px] px-1.5" />
-              )}
-            </Box>
-          }
-        />
-        <Tab label={`Tümü (${requests.length})`} />
+      <Tabs value={String(tab)} onValueChange={(v) => setTab(Number(v))} className="mb-5">
+        <TabsList>
+          <TabsTrigger value="0">
+            Bekleyenler
+            {pendingCount > 0 && (
+              <StatusBadge tone="warning" label={pendingCount} className="h-[18px] px-1.5" />
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="1">Tümü ({requests.length})</TabsTrigger>
+        </TabsList>
       </Tabs>
 
       {/* Content */}
       {isFirstLoad && <ListSkeleton count={4} lines={3} actions={2} />}
 
       {!isFirstLoad && displayed.length === 0 && (
-        <Alert severity="info">
-          {tab === 0 ? 'Onay bekleyen talep bulunmuyor.' : 'Henüz izin talebi oluşturulmamış.'}
+        <Alert tone="info">
+          <Info />
+          <AlertDescription className="text-ink">
+            {tab === 0 ? 'Onay bekleyen talep bulunmuyor.' : 'Henüz izin talebi oluşturulmamış.'}
+          </AlertDescription>
         </Alert>
       )}
 
@@ -529,23 +530,23 @@ export function LeavePage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           {deleteTarget?.status === 'approved' && (
-            <UiAlert tone="warning">
+            <Alert tone="warning">
               <TriangleAlert />
               <AlertDescription className="text-ink">
                 Bu izin onaylıydı. Silme işlemi bu tarihlerdeki &ldquo;İzinli&rdquo; işaretlemelerini de kaldıracaktır.
               </AlertDescription>
-            </UiAlert>
+            </Alert>
           )}
           <AlertDialogFooter>
-            <UiButton type="button" variant="ghost" onClick={() => setDeleteTarget(null)} disabled={deleting}>İptal</UiButton>
-            <UiButton type="button" variant="destructive" onClick={handleDelete} disabled={deleting}>
+            <Button type="button" variant="ghost" onClick={() => setDeleteTarget(null)} disabled={deleting}>İptal</Button>
+            <Button type="button" variant="destructive" onClick={handleDelete} disabled={deleting}>
               {deleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
               Sil
-            </UiButton>
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </Box>
+    </div>
   )
 }
 
@@ -566,53 +567,48 @@ function LeaveCard({
   return (
     <SectionRow className="flex-wrap items-start py-3 sm:flex-nowrap">
       <PersonAvatar name={emp?.full_name ?? '?'} size={38} />
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
-          <Typography fontSize="0.875rem" fontWeight={700}>{emp?.full_name ?? '—'}</Typography>
-          <Typography fontSize="0.72rem" color="text.secondary">{emp?.role ?? '—'}</Typography>
-        </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.75, mt: 0.5 }}>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <p className="text-sm font-bold">{emp?.full_name ?? '—'}</p>
+          <p className="text-[0.72rem] text-ink-secondary">{emp?.role ?? '—'}</p>
+        </div>
+        <div className="mt-1 flex flex-wrap items-center gap-1.5">
           <StatusBadge tone="info" label={LEAVE_TYPE_LABELS[request.leave_type]} />
-          <Typography fontSize="0.8rem" fontWeight={600}>
+          <p className="text-[0.8rem] font-semibold tabular-nums">
             {fmtDate(request.start_date)} – {fmtDate(request.end_date)}
-          </Typography>
-          <Typography fontSize="0.75rem" color="text.secondary">{days} gün</Typography>
-        </Box>
-        {request.reason && (
-          <Typography fontSize="0.75rem" color="text.secondary" sx={{ mt: 0.5 }}>
-            {request.reason}
-          </Typography>
-        )}
+          </p>
+          <p className="text-xs text-ink-secondary">{days} gün</p>
+        </div>
+        {request.reason && <p className="mt-1 text-xs text-ink-secondary">{request.reason}</p>}
         {request.reviewer_note && (
-          <Typography fontSize="0.75rem" color="text.secondary" sx={{ mt: 0.25 }}>
-            Yönetici notu: {request.reviewer_note}
-          </Typography>
+          <p className="mt-0.5 text-xs text-ink-secondary">Yönetici notu: {request.reviewer_note}</p>
         )}
-      </Box>
-      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+      </div>
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <LeaveStatusChip status={request.status} />
         {onReview && (
-          <Tooltip title="İncele ve Karar Ver">
-            <Button variant="outlined" size="small" onClick={onReview}>
-              İncele
-            </Button>
-          </Tooltip>
+          <Button variant="outline" size="sm" onClick={onReview} title="İncele ve karar ver">
+            İncele
+          </Button>
         )}
         {onDelete && (
-          <Tooltip title="İzin Talebini Sil">
-            <IconButton
-              size="small"
-              onClick={onDelete}
-              aria-label="İzin talebini sil"
-              sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}
-            >
-              <DeleteOutlineIcon fontSize="small" />
-            </IconButton>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={onDelete}
+                aria-label="İzin talebini sil"
+                className="text-ink-secondary hover:text-danger"
+              >
+                <Trash2 />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>İzin talebini sil</TooltipContent>
           </Tooltip>
         )}
-      </Box>
+      </div>
     </SectionRow>
   )
 }
 
-// İçe aktarılan tüm bileşenler kullanımda
