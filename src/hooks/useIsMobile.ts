@@ -5,7 +5,11 @@ import { useSyncExternalStore } from 'react'
 /** md kırılımının (900px) altı — globals.css'teki --breakpoint-md ile aynı */
 const QUERY = '(max-width: 899.98px)'
 
+// matchMedia olmayan ortamlar (jsdom testleri) masaüstü sayılır
+const hasMatchMedia = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+
 function subscribe(onChange: () => void) {
+  if (!hasMatchMedia()) return () => {}
   const mql = window.matchMedia(QUERY)
   mql.addEventListener('change', onChange)
   return () => mql.removeEventListener('change', onChange)
@@ -18,7 +22,7 @@ function subscribe(onChange: () => void) {
 export function useIsMobile(): boolean {
   return useSyncExternalStore(
     subscribe,
-    () => window.matchMedia(QUERY).matches,
+    () => hasMatchMedia() && window.matchMedia(QUERY).matches,
     () => false,
   )
 }

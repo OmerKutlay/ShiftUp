@@ -2,24 +2,6 @@
 
 import { useState } from 'react'
 import useSWR from 'swr'
-import {
-  Box,
-  Typography,
-  Button,
-  Stack,
-  Alert,
-  Skeleton,
-  IconButton,
-  Tooltip,
-  TextField,
-  InputAdornment,
-  ToggleButton,
-  ToggleButtonGroup,
-} from '@mui/material'
-import AddIcon from '@mui/icons-material/Add'
-import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
-import SearchIcon from '@mui/icons-material/Search'
 import type { EmployeeWithRole, CreateEmployeePayload, UpdateEmployeePayload } from '@/types/employee'
 import {
   fetchEmployees,
@@ -31,15 +13,18 @@ import {
 } from '@/lib/api/employees'
 import { EmployeeFormDialog } from './EmployeeFormDialog'
 import { EmployeeStatusChip } from './EmployeeStatusChip'
-import { PageHeader, ListSkeleton, PersonAvatar, SectionCard, SectionRow, StatusBadge } from '@/components/common'
+import { PageHeader, ListSkeleton, PersonAvatar, SectionCard, SectionRow, SegmentedControl, StatusBadge } from '@/components/common'
 import { ROLE_GROUPS, roleGroupOf } from '@/components/schedule/scheduleHelpers'
 import { cn } from '@/lib/utils'
-import { AlertCircle, Loader2, Trash2, TriangleAlert, UserX } from 'lucide-react'
-import { Alert as UiAlert, AlertDescription } from '@/components/ui/alert'
+import { AlertCircle, Info, Loader2, PencilLine, Plus, Search, Trash2, TriangleAlert, UserX } from 'lucide-react'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Input } from '@/components/ui/input'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Button as UiButton } from '@/components/ui/button'
+import { Button } from '@/components/ui/button'
 
 type Filter = 'all' | 'active' | 'inactive'
 
@@ -155,71 +140,66 @@ export function EmployeesPage() {
   const activeCount = employees.filter((e) => e.active).length
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, color: 'text.primary' }}>
+    <div className="p-4 text-ink md:p-6">
       <PageHeader
         title="Çalışanlar"
-        subtitle={isFirstLoad ? <Skeleton width={110} /> : `${activeCount} aktif çalışan`}
+        subtitle={isFirstLoad ? <Skeleton className="h-4 w-28" /> : `${activeCount} aktif çalışan`}
         actions={
-          <Button
-            variant="contained"
-            color="primary"
-            startIcon={<AddIcon />}
-            onClick={openCreate}
-          >
-            Yeni Çalışan
+          <Button onClick={openCreate}>
+            <Plus /> Yeni Çalışan
           </Button>
         }
       />
 
-      {/* Filters */}
-      <Box sx={{ mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center', flexDirection: { xs: 'column', sm: 'row' } }}>
-        <TextField
-          size="small"
-          placeholder="İsim veya pozisyon ara…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
-              </InputAdornment>
-            ),
-          }}
-          sx={{ minWidth: { xs: 'auto', sm: 240 }, width: { xs: '100%', sm: 'auto' } }}
-        />
-
-        <ToggleButtonGroup
+      {/* Filtreler */}
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="relative w-full sm:w-[260px]">
+          <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-muted" />
+          <Input
+            type="search"
+            aria-label="Çalışan ara"
+            placeholder="İsim veya pozisyon ara…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <SegmentedControl<Filter>
+          aria-label="Durum filtresi"
           value={filter}
-          exclusive
-          onChange={(_, v) => { if (v) setFilter(v as Filter) }}
-          size="small"
-          sx={{ width: { xs: '100%', sm: 'auto' } }}
-        >
-          <ToggleButton value="all" sx={{ flex: { xs: 1, sm: 'none' } }}>Tümü ({employees.length})</ToggleButton>
-          <ToggleButton value="active" sx={{ flex: { xs: 1, sm: 'none' } }}>Aktif ({activeCount})</ToggleButton>
-          <ToggleButton value="inactive" sx={{ flex: { xs: 1, sm: 'none' } }}>Pasif ({employees.length - activeCount})</ToggleButton>
-        </ToggleButtonGroup>
-      </Box>
+          onChange={setFilter}
+          fullWidth
+          options={[
+            { value: 'all', label: `Tümü (${employees.length})` },
+            { value: 'active', label: `Aktif (${activeCount})` },
+            { value: 'inactive', label: `Pasif (${employees.length - activeCount})` },
+          ]}
+        />
+      </div>
 
       {/* Content */}
       {isFirstLoad && <ListSkeleton count={6} actions={3} />}
 
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
+        <Alert tone="danger" className="mb-4">
+          <AlertCircle />
+          <AlertDescription className="text-ink">{error}</AlertDescription>
         </Alert>
       )}
 
       {!isFirstLoad && !error && filtered.length === 0 && (
-        <Alert severity="info">
-          {search || filter !== 'all'
-            ? 'Arama kriterlerine uyan çalışan bulunamadı.'
-            : 'Henüz çalışan eklenmemiş.'}
+        <Alert tone="info">
+          <Info />
+          <AlertDescription className="text-ink">
+            {search || filter !== 'all'
+              ? 'Arama kriterlerine uyan çalışan bulunamadı.'
+              : 'Henüz çalışan eklenmemiş.'}
+          </AlertDescription>
         </Alert>
       )}
 
       {!isFirstLoad && !error && filtered.length > 0 && (
-        <Stack spacing={2}>
+        <div className="flex flex-col gap-4">
           {ROLE_GROUPS.map((g) => {
             const list = filtered.filter((e) => roleGroupOf(e.role ?? '') === g.key)
             if (list.length === 0) return null
@@ -231,7 +211,7 @@ export function EmployeesPage() {
               </SectionCard>
             )
           })}
-        </Stack>
+        </div>
       )}
 
       {/* Edit/Create Form Dialog */}
@@ -262,10 +242,10 @@ export function EmployeesPage() {
           </AlertDialogHeader>
 
           {deleteError && (
-            <UiAlert tone={deleteError.isFkViolation ? 'warning' : 'danger'}>
+            <Alert tone={deleteError.isFkViolation ? 'warning' : 'danger'}>
               {deleteError.isFkViolation ? <TriangleAlert /> : <AlertCircle />}
               <AlertDescription className="text-ink">{deleteError.message}</AlertDescription>
-            </UiAlert>
+            </Alert>
           )}
 
           {deleteError?.isFkViolation && (
@@ -275,25 +255,25 @@ export function EmployeesPage() {
           )}
 
           <AlertDialogFooter>
-            <UiButton type="button" variant="ghost" onClick={closeDelete} disabled={deleting}>
+            <Button type="button" variant="ghost" onClick={closeDelete} disabled={deleting}>
               İptal
-            </UiButton>
+            </Button>
 
             {deleteError?.isFkViolation ? (
-              <UiButton type="button" onClick={handleDeactivateInstead} disabled={deleting}>
+              <Button type="button" onClick={handleDeactivateInstead} disabled={deleting}>
                 {deleting ? <Loader2 className="animate-spin" /> : <UserX />}
                 {deleting ? 'İşleniyor…' : 'Pasifleştir'}
-              </UiButton>
+              </Button>
             ) : (
-              <UiButton type="button" variant="destructive" onClick={handleDeleteConfirm} disabled={deleting}>
+              <Button type="button" variant="destructive" onClick={handleDeleteConfirm} disabled={deleting}>
                 {deleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
                 {deleting ? 'Siliniyor…' : 'Evet, Sil'}
-              </UiButton>
+              </Button>
             )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </Box>
+    </div>
   )
 }
 
@@ -312,44 +292,48 @@ function EmployeeRow({
   return (
     <SectionRow className={cn('flex-wrap sm:flex-nowrap', !employee.active && 'opacity-60')}>
       <PersonAvatar name={employee.full_name} size={38} />
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Typography fontSize="0.875rem" fontWeight={700} noWrap>{employee.full_name}</Typography>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
-          <Typography fontSize="0.72rem" color="text.secondary" noWrap sx={{ flexShrink: 0 }}>{employee.role}</Typography>
-          {employee.email && (
-            <Typography fontSize="0.72rem" color="text.disabled" noWrap sx={{ display: { xs: 'none', sm: 'block' } }}>
-              · {employee.email}
-            </Typography>
-          )}
-        </Box>
-      </Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-bold">{employee.full_name}</p>
+        <div className="flex min-w-0 items-center gap-1.5 text-[0.72rem]">
+          <span className="shrink-0 truncate text-ink-secondary">{employee.role}</span>
+          {employee.email && <span className="hidden truncate text-ink-muted sm:block">· {employee.email}</span>}
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center justify-end gap-1.5">
         {employee.employment_type === 'part_time' && <StatusBadge tone="plum" label="Yarı zamanlı" />}
         {employee.roles && <StatusBadge tone="neutral" label={employee.roles.name} className="hidden md:inline-flex" />}
         <EmployeeStatusChip active={employee.active} />
-      </Box>
-      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-        <Tooltip title="Düzenle">
-          <IconButton
-            size="small"
-            onClick={() => onEdit(employee)}
-            sx={{ color: 'text.secondary', '&:hover': { color: 'primary.main' } }}
-            aria-label={`${employee.full_name} düzenle`}
-          >
-            <EditOutlinedIcon fontSize="small" />
-          </IconButton>
+      </div>
+      <div className="flex items-center">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => onEdit(employee)}
+              aria-label={`${employee.full_name} düzenle`}
+              className="text-ink-secondary hover:text-primary"
+            >
+              <PencilLine />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Düzenle</TooltipContent>
         </Tooltip>
-        <Tooltip title="Sil">
-          <IconButton
-            size="small"
-            onClick={() => onDelete(employee)}
-            sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}
-            aria-label={`${employee.full_name} sil`}
-          >
-            <DeleteOutlineIcon fontSize="small" />
-          </IconButton>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => onDelete(employee)}
+              aria-label={`${employee.full_name} sil`}
+              className="text-ink-secondary hover:text-danger"
+            >
+              <Trash2 />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Sil</TooltipContent>
         </Tooltip>
-      </Box>
+      </div>
     </SectionRow>
   )
 }
