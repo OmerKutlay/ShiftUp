@@ -19,21 +19,17 @@
 import { useState, useMemo } from 'react'
 import useSWR from 'swr'
 import {
-  Box, Typography, Paper, Alert, Button,
-  Chip, Divider, Stack, IconButton, Tooltip, LinearProgress,
+  Box, Typography, Paper, Alert, Button, Chip, Divider, Stack, LinearProgress,
 } from '@mui/material'
-import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
-import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import CancelIcon from '@mui/icons-material/Cancel'
 import FreeBreakfastIcon from '@mui/icons-material/FreeBreakfast'
-import TodayIcon from '@mui/icons-material/Today'
 import EventBusyIcon from '@mui/icons-material/EventBusy'
 import { format, startOfMonth, endOfMonth, addMonths, subMonths, getDaysInMonth, parseISO } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { useAuth } from '@/context/AuthContext'
-import { PageHeader, PageSkeleton, StatCardsSkeleton, DayBlocksSkeleton } from '@/components/common'
+import { PageHeader, PageSkeleton, StatCardsSkeleton, DayBlocksSkeleton, StatCard, StatGrid, PeriodStepper } from '@/components/common'
 import { shiftDurationMins } from '@/lib/workingTimeService'
 import { apiFetch, ApiError } from '@/lib/api/http'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
@@ -107,6 +103,12 @@ function fmtMins(mins: number | null): string {
   return `${h}s ${m}dk`
 }
 
+/** Toplam süre KPI'da tek satır: 10710 dk → "178,5 s" */
+function fmtHoursTotal(mins: number | null): string {
+  if (!mins) return '0 s'
+  return `${(Math.round((mins / 60) * 10) / 10).toLocaleString('tr-TR')} s`
+}
+
 function fmtTime(iso: string | null): string {
   if (!iso) return '—'
   try {
@@ -151,27 +153,6 @@ function displayStatus(entry: DayEntry, now: Date): string {
     if (end <= entry.start_time.slice(0, 5) || nowHm < end) return 'upcoming'
   }
   return 'absent'
-}
-
-// ─── Stat kartı ───────────────────────────────────────────────
-
-function StatCard({ label, value, sub, color }: {
-  label: string
-  value: string
-  sub?: string
-  color?: string
-}) {
-  return (
-    <Paper elevation={0} sx={{
-      p: 2, flex: 1, minWidth: 110,
-      border: '1px solid', borderColor: 'divider',
-      borderRadius: 2, bgcolor: C.surface,
-    }}>
-      <Typography variant="caption" color="text.disabled" display="block" mb={0.5}>{label}</Typography>
-      <Typography variant="h6" fontWeight={800} color={color ?? 'text.primary'}>{value}</Typography>
-      {sub && <Typography variant="caption" color="text.secondary">{sub}</Typography>}
-    </Paper>
-  )
 }
 
 // ─── Gün kartı ────────────────────────────────────────────────
@@ -393,7 +374,7 @@ export function MySchedulePage() {
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 900, mx: 'auto' }}>
 
       <PageHeader
-        title="Çalışma Özetim"
+        title="Çalışma özetim"
         subtitle={`${profile.full_name} · ${profile.role}`}
       />
 
@@ -404,70 +385,42 @@ export function MySchedulePage() {
       )}
 
       {/* Ay navigasyonu */}
-      <Paper elevation={0} sx={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        px: 2, py: 1.25, mb: 3,
-        border: '1px solid', borderColor: 'divider', borderRadius: 2,
-        bgcolor: C.surface,
-      }}>
-        <Tooltip title="Önceki ay">
-          <IconButton size="small" onClick={() => setCurrentMonth((m) => subMonths(m, 1))} aria-label="Önceki ay">
-            <ChevronLeftIcon />
-          </IconButton>
-        </Tooltip>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <TodayIcon sx={{ fontSize: 16, color: 'primary.main' }} />
-          <Typography variant="subtitle2" fontWeight={700} sx={{ textTransform: 'capitalize' }}>
-            {monthLabel}
-          </Typography>
-        </Box>
-        <Tooltip title="Sonraki ay">
-          <IconButton
-            size="small"
-            onClick={() => setCurrentMonth((m) => addMonths(m, 1))}
-            disabled={addMonths(currentMonth, 1) > new Date()}
-            aria-label="Sonraki ay"
-          >
-            <ChevronRightIcon />
-          </IconButton>
-        </Tooltip>
-      </Paper>
+      <Box sx={{ mb: 2.5 }}>
+        <PeriodStepper
+          label={<Box component="span" sx={{ textTransform: 'capitalize' }}>{monthLabel}</Box>}
+          onPrev={() => setCurrentMonth((m) => subMonths(m, 1))}
+          onNext={() => setCurrentMonth((m) => addMonths(m, 1))}
+          nextDisabled={addMonths(currentMonth, 1) > new Date()}
+          prevLabel="Önceki ay"
+          nextLabel="Sonraki ay"
+          minLabelWidth={120}
+        />
+      </Box>
 
       {/* Özet stat kartları */}
       {isFirstLoad ? <StatCardsSkeleton count={4} /> : (
-      <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap sx={{ mb: 3 }}>
+      <StatGrid min={130}>
         <StatCard
-          label="Planlanan Saat"
-          value={fmtMins(summary.plannedMins)}
-          sub={`${entries.filter(e => !e.is_on_leave).length} vardiya`}
-          color="primary.main"
+          label="Planlanan"
+          value={fmtHoursTotal(summary.plannedMins)}
+          note={`${entries.filter(e => !e.is_on_leave).length} vardiya`}
         />
         <StatCard
-          label="Çalışılan Saat"
-          value={fmtMins(summary.workedMins)}
-          sub={`${summary.workedDays} gün tamamlandı`}
-          color={C.success}
+          label="Çalışılan"
+          value={fmtHoursTotal(summary.workedMins)}
+          note={`${summary.workedDays} gün tamamlandı`}
+          valueColor={C.success}
         />
-        <StatCard
-          label="Mola Süresi"
-          value={fmtMins(summary.breakMins)}
-          color={C.warning}
-        />
+        <StatCard label="Mola" value={fmtHoursTotal(summary.breakMins)} />
         <StatCard
           label="Devamsızlık"
-          value={String(summary.noShowDays)}
-          sub="gün"
-          color={summary.noShowDays > 0 ? C.danger : 'text.secondary'}
+          value={`${summary.noShowDays} gün`}
+          valueColor={summary.noShowDays > 0 ? C.danger : undefined}
         />
         {summary.leaveDays > 0 && (
-          <StatCard
-            label="İzin Günü"
-            value={String(summary.leaveDays)}
-            sub="gün"
-            color={C.warning}
-          />
+          <StatCard label="İzin" value={`${summary.leaveDays} gün`} valueColor={C.info} />
         )}
-      </Stack>
+      </StatGrid>
       )}
 
       {/* Planlanan vs gerçekleşen progress */}
