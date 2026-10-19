@@ -6,13 +6,7 @@
  * mobilde varsayılan görünüm budur; haftalık tablo ayrıca seçilebilir.
  */
 import { useMemo } from 'react'
-import { Box, ButtonBase, Typography } from '@mui/material'
-import WarningAmberIcon from '@mui/icons-material/WarningAmber'
-import type EventBusyIcon from '@mui/icons-material/EventBusy'
-import WeekendOutlinedIcon from '@mui/icons-material/WeekendOutlined'
-import FlightTakeoffOutlinedIcon from '@mui/icons-material/FlightTakeoffOutlined'
-import BlockIcon from '@mui/icons-material/Block'
-import AddIcon from '@mui/icons-material/Add'
+import { Armchair, Ban, Plane, Plus, TriangleAlert, type LucideIcon } from 'lucide-react'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import type { EmployeeWithRole } from '@/types/employee'
@@ -23,6 +17,7 @@ import { netWorkMins } from '@/lib/workingTimeService'
 import { DAY_LABELS, fmtHoursTr, shiftKindOf, getAvailStatus, type AvailabilityMap, type AvailStatus } from './scheduleHelpers'
 import { PersonAvatar } from '@/components/common'
 import { C, SHIFT_KIND_TONES, tint } from '@/lib/palette'
+import { cn } from '@/lib/utils'
 
 export interface MobileDayBoardProps {
   entries: WeeklyScheduleEntry[]
@@ -40,11 +35,11 @@ export interface MobileDayBoardProps {
 
 type OffKind = 'leave' | 'rest' | 'unavailable' | 'unassigned'
 
-const OFF_META: Record<OffKind, { label: string; color: string; bg: string; icon: typeof EventBusyIcon }> = {
-  leave: { label: 'İzinli', color: C.success, bg: C.successSoft, icon: FlightTakeoffOutlinedIcon },
-  rest: { label: 'Tatil', color: C.inkSecondary, bg: C.surfaceMuted, icon: WeekendOutlinedIcon },
-  unavailable: { label: 'Müsait değil', color: C.danger, bg: C.dangerSoft, icon: BlockIcon },
-  unassigned: { label: 'Vardiya yok', color: C.neutral, bg: C.surfaceAlt, icon: AddIcon },
+const OFF_META: Record<OffKind, { label: string; className: string; icon: LucideIcon }> = {
+  leave: { label: 'İzinli', className: 'bg-success-soft text-success', icon: Plane },
+  rest: { label: 'Tatil', className: 'bg-surface-muted text-ink-secondary', icon: Armchair },
+  unavailable: { label: 'Müsait değil', className: 'bg-danger-soft text-danger', icon: Ban },
+  unassigned: { label: 'Vardiya yok', className: 'bg-muted text-neutral', icon: Plus },
 }
 
 const toMins = (t: string) => {
@@ -58,6 +53,18 @@ function spanOf(a: ShiftAssignmentWithDetails): [number, number] {
   let e = toMins(a.end_time)
   if (e <= s) e += 24 * 60
   return [s, e]
+}
+
+/** Tıklanabilir satır; salt okunurda düz kutu */
+function Row({ readOnly, onClick, className, children }: {
+  readOnly: boolean; onClick: () => void; className: string; children: React.ReactNode
+}) {
+  if (readOnly) return <div className={className}>{children}</div>
+  return (
+    <button type="button" onClick={onClick} className={cn(className, 'transition-colors outline-none hover:bg-muted/60 focus-visible:bg-muted')}>
+      {children}
+    </button>
+  )
 }
 
 interface WorkingRow {
@@ -141,7 +148,6 @@ export function MobileDayBoard({
   const dayTitle = format(new Date(`${selectedDay}T00:00:00`), 'd MMMM EEEE', { locale: tr })
   const fmtHour = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}`
 
-  const TRACK_COL = '56%'
   const dayLabel = format(new Date(`${selectedDay}T00:00:00`), 'd MMMM', { locale: tr })
   const cardTitle = selectedDay === todayStr ? `Bugün, ${dayLabel}` : dayTitle
   const shortName = (n: string) => {
@@ -150,172 +156,159 @@ export function MobileDayBoard({
   }
 
   return (
-    <Box>
+    <div>
       {/* ── Gün şeridi ── */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 0.5, mb: 2 }}>
+      <div className="mb-4 grid grid-cols-7 gap-1">
         {weekDays.map((d, i) => {
           const sel = d === selectedDay
           const isToday = d === todayStr
           const h = holidayMap.get(d)
-          const accent = sel ? C.white : isToday ? C.brand : h ? C.warning : undefined
+          const accent = sel ? 'text-white' : isToday ? 'text-primary' : h ? 'text-warning' : undefined
           return (
-            <ButtonBase
+            <button
               key={d}
+              type="button"
               onClick={() => onSelectDay(d)}
               aria-pressed={sel}
               aria-label={`${format(new Date(`${d}T00:00:00`), 'd MMMM EEEE', { locale: tr })}, ${countByDay[d]} kişi`}
-              sx={{
-                flexDirection: 'column', py: 0.75, borderRadius: '12px', fontFamily: 'inherit',
-                bgcolor: sel ? 'primary.main' : 'transparent',
-                color: accent ?? 'text.primary',
-                boxShadow: sel ? `0 4px 10px ${tint(C.brand, 0.25)}` : undefined,
-              }}
+              className={cn(
+                'flex flex-col items-center rounded-xl py-1.5 outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                sel && 'bg-primary shadow-[0_4px_10px_rgb(194_83_45/0.25)]',
+                accent
+              )}
             >
-              <Typography fontSize="0.68rem" fontWeight={600} color={accent ?? 'text.secondary'}>
-                {DAY_LABELS[i]}
-              </Typography>
-              <Typography fontSize="1.05rem" fontWeight={700} lineHeight={1.25}>
-                {Number(d.slice(8))}
-              </Typography>
-              <Typography fontSize="0.6rem" color={accent ?? (countByDay[d] ? 'text.secondary' : 'text.disabled')} fontWeight={h ? 700 : 400}>
+              <span className={cn('text-[0.68rem] font-semibold', accent ?? 'text-ink-secondary')}>{DAY_LABELS[i]}</span>
+              <span className="text-[1.05rem] font-bold leading-tight">{Number(d.slice(8))}</span>
+              <span className={cn('text-[0.6rem]', h && 'font-bold', accent ?? (countByDay[d] ? 'text-ink-secondary' : 'text-ink-muted'))}>
                 {countByDay[d]} kişi
-              </Typography>
-            </ButtonBase>
+              </span>
+            </button>
           )
         })}
-      </Box>
+      </div>
 
       {/* ── Gün kartı ── */}
-      <Box sx={{ bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: '16px', overflow: 'hidden', mb: 2 }}>
-        <Box sx={{ px: 2, pt: 1.75, pb: 1.25 }}>
-          <Typography fontWeight={700} fontSize="1rem" sx={{ '&::first-letter': { textTransform: 'uppercase' } }}>
-            {cardTitle}
-          </Typography>
-          <Typography fontSize="0.78rem" color="text.secondary">
+      <section className="mb-4 overflow-hidden rounded-2xl border bg-card">
+        <div className="px-4 pt-3.5 pb-2.5">
+          <p className="font-bold first-letter:uppercase">{cardTitle}</p>
+          <p className="text-[0.78rem] text-ink-secondary">
             {working.length} kişi çalışıyor · {fmtHoursTr(totalNet).replace(' s', ' saat')}
             {working.length > 0 && ` · ${formatTime(working[0].asgn.start_time)}–${fmtHour(axisEnd)}:00`}
-          </Typography>
+          </p>
           {holiday && (
-            <Typography fontSize="0.78rem" sx={{ color: C.warning, fontWeight: 600 }}>
+            <p className="text-[0.78rem] font-semibold text-warning">
               {holiday.half_day ? `Arife (13:00 sonrası tatil) — ${holiday.name}` : `Resmi tatil — ${holiday.name}`}
-            </Typography>
+            </p>
           )}
-        </Box>
+        </div>
 
         {working.length > 0 ? (
           <>
             {/* Eksen + saatlik yoğunluk */}
-            <Box sx={{ display: 'grid', gridTemplateColumns: `1fr ${TRACK_COL}`, columnGap: 1, px: 2, pb: 0.75 }}>
+            <div className="grid grid-cols-[1fr_56%] gap-x-2 px-4 pb-1.5">
               <span />
-              <Box>
-                <Box sx={{ position: 'relative', height: 14 }}>
+              <div>
+                <div className="relative h-3.5">
                   {ticks.map((t) => (
-                    <Typography key={t} fontSize="0.62rem" color="text.secondary"
-                      sx={{ position: 'absolute', left: pct(t), transform: t === axisStart ? 'none' : t === axisEnd ? 'translateX(-100%)' : 'translateX(-50%)', lineHeight: '14px' }}>
+                    <span
+                      key={t}
+                      className={cn('absolute text-[0.62rem] leading-[14px] text-ink-secondary', t !== axisStart && (t === axisEnd ? '-translate-x-full' : '-translate-x-1/2'))}
+                      style={{ left: pct(t) }}
+                    >
                       {fmtHour(t)}
-                    </Typography>
+                    </span>
                   ))}
-                </Box>
-                <Box sx={{ display: 'flex', gap: '2px', height: 4, mt: 0.5 }} aria-label="Saatlik çalışan sayısı">
+                </div>
+                <div className="mt-1 flex h-1 gap-[2px]" aria-label="Saatlik çalışan sayısı">
                   {coverage.map((c, i) => (
-                    <Box key={i} title={`${fmtHour(axisStart + i * 60)}:00 — ${c} kişi`}
-                      sx={{ flex: 1, borderRadius: '2px', bgcolor: c === 0 ? C.dangerFill : tint(C.brand, 0.2 + 0.6 * (c / maxCov)) }} />
+                    <span
+                      key={i}
+                      title={`${fmtHour(axisStart + i * 60)}:00 — ${c} kişi`}
+                      className="flex-1 rounded-[2px]"
+                      style={{ backgroundColor: c === 0 ? C.dangerFill : tint(C.brand, 0.2 + 0.6 * (c / maxCov)) }}
+                    />
                   ))}
-                </Box>
-              </Box>
-            </Box>
+                </div>
+              </div>
+            </div>
 
             {working.map((r) => {
               const kindTone = SHIFT_KIND_TONES[shiftKindOf(r.asgn.shift_templates?.name, r.asgn.start_time, r.asgn.end_time)]
               const warnColor = r.warn === 'over' || r.warn === 'off' ? C.danger : r.warn === 'partial' ? C.warning : null
               return (
-                <ButtonBase
+                <Row
                   key={r.emp.id}
+                  readOnly={readOnly}
                   onClick={() => onCellClick(r.emp, selectedDay)}
-                  disabled={readOnly}
-                  sx={{
-                    display: 'grid', gridTemplateColumns: `1fr ${TRACK_COL}`, alignItems: 'center', columnGap: 1,
-                    width: '100%', textAlign: 'left', px: 2, py: 1.1, fontFamily: 'inherit',
-                    borderTop: '1px solid', borderColor: 'divider',
-                    '&.Mui-disabled': { opacity: 1 },
-                  }}
+                  className="grid w-full grid-cols-[1fr_56%] items-center gap-x-2 border-t px-4 py-2.5 text-left"
                 >
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+                  <div className="flex min-w-0 items-center gap-2">
                     <PersonAvatar name={r.emp.full_name} size={30} />
-                    <Box sx={{ minWidth: 0 }}>
-                      <Typography fontSize="0.82rem" fontWeight={700} noWrap>
+                    <div className="min-w-0">
+                      <p className="truncate text-[0.82rem] font-bold">
                         {shortName(r.emp.full_name)}
-                        {r.emp.employment_type === 'part_time' && (
-                          <Box component="span" sx={{ ml: 0.5, fontSize: '0.6rem', color: C.plum, fontWeight: 700 }}>PT</Box>
-                        )}
-                      </Typography>
-                      <Typography fontSize="0.68rem" color="text.secondary" noWrap>{r.emp.role}</Typography>
-                    </Box>
-                  </Box>
-                  <Box sx={{ minWidth: 0 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
-                      <Typography fontSize="0.8rem" fontWeight={700} color={warnColor ?? kindTone.text} sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                        {r.emp.employment_type === 'part_time' && <span className="ml-1 text-[0.6rem] font-bold text-plum">PT</span>}
+                      </p>
+                      <p className="truncate text-[0.68rem] text-ink-secondary">{r.emp.role}</p>
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="mb-1 flex items-center gap-1">
+                      <span className="text-[0.8rem] font-bold tabular-nums" style={{ color: warnColor ?? kindTone.text }}>
                         {formatTime(r.asgn.start_time)} – {formatTime(r.asgn.end_time)}
-                      </Typography>
-                      {warnColor && <WarningAmberIcon sx={{ fontSize: 14, color: warnColor }} />}
-                    </Box>
-                    <Box sx={{ position: 'relative', height: 8, borderRadius: 4, bgcolor: C.surfaceMuted }}>
+                      </span>
+                      {warnColor && <TriangleAlert className="size-3.5" style={{ color: warnColor }} />}
+                    </div>
+                    <div className="relative h-2 rounded-full bg-surface-muted">
                       {nowMins !== null && (
-                        <Box sx={{ position: 'absolute', top: -3, bottom: -3, left: pct(nowMins), width: '2px', borderRadius: 1, bgcolor: C.ink, zIndex: 1 }} />
+                        <span className="absolute -top-[3px] -bottom-[3px] z-[1] w-0.5 rounded-sm bg-ink" style={{ left: pct(nowMins) }} />
                       )}
-                      <Box sx={{
-                        position: 'absolute', top: 0, bottom: 0, borderRadius: 4, bgcolor: warnColor ?? kindTone.fill,
-                        left: pct(r.span[0]), width: `${((r.span[1] - r.span[0]) / axisLen) * 100}%`,
-                      }} />
-                    </Box>
-                  </Box>
-                </ButtonBase>
+                      <span
+                        className="absolute inset-y-0 rounded-full"
+                        style={{
+                          backgroundColor: warnColor ?? kindTone.fill,
+                          left: pct(r.span[0]),
+                          width: `${((r.span[1] - r.span[0]) / axisLen) * 100}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                </Row>
               )
             })}
           </>
         ) : (
-          <Typography variant="body2" color="text.secondary" sx={{ px: 2, pb: 2.5, pt: 1 }}>
-            Bu gün için planlanmış vardiya yok.
-          </Typography>
+          <p className="px-4 pt-2 pb-5 text-sm text-ink-secondary">Bu gün için planlanmış vardiya yok.</p>
         )}
-      </Box>
+      </section>
 
       {/* ── Çalışmayanlar ── */}
       {off.length > 0 && (
-        <Box sx={{ bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: '16px', overflow: 'hidden' }}>
-          <Typography fontSize="0.85rem" fontWeight={700} sx={{ px: 2, pt: 1.5, pb: 0.75 }}>
-            Çalışmayanlar ({off.length})
-          </Typography>
+        <section className="overflow-hidden rounded-2xl border bg-card">
+          <h3 className="px-4 pt-3 pb-1.5 text-[0.85rem] font-bold">Çalışmayanlar ({off.length})</h3>
           {off.map(({ emp, kind }) => {
             const meta = OFF_META[kind]
             const Icon = meta.icon
             return (
-              <ButtonBase
+              <Row
                 key={emp.id}
+                readOnly={readOnly}
                 onClick={() => onCellClick(emp, selectedDay)}
-                disabled={readOnly}
-                sx={{
-                  display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center', gap: 1,
-                  px: 2, py: 1, minHeight: 48, textAlign: 'left', fontFamily: 'inherit',
-                  borderTop: '1px solid', borderColor: 'divider',
-                  '&.Mui-disabled': { opacity: 1 },
-                }}
+                className="flex min-h-12 w-full items-center justify-between gap-2 border-t px-4 py-2 text-left"
               >
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+                <div className="flex min-w-0 items-center gap-2">
                   <PersonAvatar name={emp.full_name} size={28} />
-                  <Typography fontSize="0.82rem" fontWeight={600} noWrap>{emp.full_name}</Typography>
-                </Box>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: meta.color, bgcolor: meta.bg, px: 1, py: 0.25, borderRadius: '6px', flexShrink: 0 }}>
-                  <Icon sx={{ fontSize: 13 }} />
-                  <Typography fontSize="0.7rem" fontWeight={600}>
-                    {kind === 'unassigned' && !readOnly ? 'Vardiya ekle' : meta.label}
-                  </Typography>
-                </Box>
-              </ButtonBase>
+                  <span className="truncate text-[0.82rem] font-semibold">{emp.full_name}</span>
+                </div>
+                <span className={cn('flex shrink-0 items-center gap-1 rounded-md px-2 py-0.5 text-[0.7rem] font-semibold', meta.className)}>
+                  <Icon className="size-3.5" />
+                  {kind === 'unassigned' && !readOnly ? 'Vardiya ekle' : meta.label}
+                </span>
+              </Row>
             )
           })}
-        </Box>
+        </section>
       )}
-    </Box>
+    </div>
   )
 }
