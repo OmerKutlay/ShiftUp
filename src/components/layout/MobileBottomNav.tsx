@@ -6,11 +6,10 @@
  */
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Box, Typography } from '@mui/material'
 
 import { useAuth } from '@/context/AuthContext'
 import { getActiveTabHref, getBottomTabs, type BottomTab } from './navItems'
-import { C, tint } from '@/lib/palette'
+import { cn } from '@/lib/utils'
 
 /** Alt bar yüksekliği (safe-area hariç) */
 export const BOTTOM_NAV_HEIGHT = 64
@@ -32,74 +31,33 @@ export function MobileBottomNav() {
 
   return (
     // Ekranın altına yapışık, opak bar; home-indicator alanı (safe-area) barın zemininde kalır
-    <Box
-      component="nav"
+    <nav
       aria-label="Alt menü"
-      sx={(theme) => ({
-        position: 'fixed',
-        left: 0,
-        right: 0,
-        bottom: 0,
-        zIndex: theme.zIndex.appBar,
-        height: `calc(${BOTTOM_NAV_HEIGHT}px + env(safe-area-inset-bottom))`,
-        pt: 0.75,
-        px: 'calc(8px + env(safe-area-inset-left))',
-        pb: 'calc(6px + env(safe-area-inset-bottom))',
-        display: 'flex',
-        alignItems: 'stretch',
-        gap: 0.5,
-        bgcolor: 'background.paper',
-        borderTop: '1px solid',
-        borderColor: 'divider',
-        boxShadow: `0 -4px 16px ${tint(C.ink, 0.05)}`,
-        userSelect: 'none',
-        WebkitUserSelect: 'none',
-        WebkitTouchCallout: 'none',
-      })}
+      className="fixed inset-x-0 bottom-0 z-[1100] flex items-stretch gap-1 border-t bg-card pt-1.5 pr-[calc(8px+env(safe-area-inset-right))] pb-[calc(6px+env(safe-area-inset-bottom))] pl-[calc(8px+env(safe-area-inset-left))] shadow-[0_-4px_16px_rgb(43_33_27/0.05)] select-none [-webkit-touch-callout:none]"
+      style={{ height: `calc(${BOTTOM_NAV_HEIGHT}px + env(safe-area-inset-bottom))` }}
     >
       {tabs.map((tab) => (
         <TabLink key={tab.href} tab={tab} active={tab.href === activeHref} />
       ))}
-    </Box>
+    </nav>
   )
 }
 
 function TabLink({ tab, active }: { tab: BottomTab; active: boolean }) {
   return (
-    <Box
-      component={Link}
+    <Link
       href={tab.href}
       prefetch={false}
       aria-current={active ? 'page' : undefined}
-      sx={{
-        flex: 1,
-        minWidth: 0,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 0.25,
-        borderRadius: '14px',
-        textDecoration: 'none',
-        color: active ? 'primary.main' : 'text.secondary',
-        bgcolor: active ? C.brandSoft : 'transparent',
-        transition: 'background-color 0.15s',
-        touchAction: 'manipulation',
-        WebkitTapHighlightColor: 'transparent',
-        outline: 'none',
-        '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.light' },
-        '&:active': { opacity: 0.7 },
-        '& svg': { fontSize: 22 },
-      }}
+      className={cn(
+        'flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-[14px] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring active:opacity-70 [&_svg]:size-[22px]',
+        active ? 'bg-accent text-primary' : 'text-ink-secondary'
+      )}
     >
       {tab.icon}
-      <Typography
-        component="span"
-        sx={{ fontSize: '0.68rem', fontWeight: active ? 700 : 500, lineHeight: 1.2, maxWidth: '100%' }}
-        noWrap
-      >
+      <span className={cn('max-w-full truncate text-[0.68rem] leading-tight', active ? 'font-bold' : 'font-medium')}>
         {tab.label}
-      </Typography>
-    </Box>
+      </span>
+    </Link>
   )
 }
