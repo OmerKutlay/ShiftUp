@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Box, Typography, CircularProgress } from '@mui/material'
 import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner'
 import { PermissionHelp } from './scanPageHelpers'
+import { C, tint } from '@/lib/palette'
 
 interface Props {
   onScan: (data: string) => void
@@ -126,9 +127,9 @@ export function QrScanner({ onScan, onError, active = true }: Props) {
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          bgcolor: 'rgba(239,68,68,0.08)',
+          bgcolor: tint(C.danger, 0.08),
           borderRadius: 2,
-          border: '2px solid rgba(239,68,68,0.3)',
+          border: `2px solid ${tint(C.danger, 0.3)}`,
           p: 2,
           gap: 1,
           textAlign: 'center',
@@ -162,7 +163,7 @@ export function QrScanner({ onScan, onError, active = true }: Props) {
           overflow: 'hidden',
           border: '3px solid',
           borderColor: 'primary.main',
-          boxShadow: '0 0 20px rgba(20,184,166,0.25)',
+          boxShadow: `0 0 20px ${tint(C.brand, 0.25)}`,
           bgcolor: '#000',
           // html5-qrcode içine enjekte ettiği video/img elementleri için
           '& video': { width: '100% !important', height: '100% !important', objectFit: 'cover' },
@@ -214,7 +215,7 @@ export function QrScanner({ onScan, onError, active = true }: Props) {
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            bgcolor: 'rgba(15,23,42,0.85)',
+            bgcolor: tint(C.canvas, 0.85),
             borderRadius: 2,
             gap: 1.5,
           }}
@@ -233,7 +234,7 @@ export function QrScanner({ onScan, onError, active = true }: Props) {
             position: 'absolute',
             bottom: 8,
             right: 8,
-            bgcolor: 'rgba(15,23,42,0.7)',
+            bgcolor: tint(C.canvas, 0.7),
             borderRadius: 1,
             p: 0.5,
             display: 'flex',

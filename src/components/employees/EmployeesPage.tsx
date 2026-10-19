@@ -7,11 +7,8 @@ import {
   Typography,
   Button,
   Stack,
-  Paper,
-  Chip,
   Alert,
   Skeleton,
-  Divider,
   IconButton,
   Tooltip,
   TextField,
@@ -24,9 +21,9 @@ import {
   DialogContentText,
   DialogActions,
 } from '@mui/material'
-import PeopleIcon from '@mui/icons-material/People'
 import AddIcon from '@mui/icons-material/Add'
-import EditIcon from '@mui/icons-material/Edit'
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import DeleteIcon from '@mui/icons-material/Delete'
 import SearchIcon from '@mui/icons-material/Search'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
@@ -41,7 +38,8 @@ import {
 } from '@/lib/api/employees'
 import { EmployeeFormDialog } from './EmployeeFormDialog'
 import { EmployeeStatusChip } from './EmployeeStatusChip'
-import { PageHeader, ListSkeleton } from '@/components/common'
+import { PageHeader, ListSkeleton, PersonAvatar, SectionCard, SectionRow, StatusBadge } from '@/components/common'
+import { ROLE_GROUPS, roleGroupOf } from '@/components/schedule/scheduleHelpers'
 
 type Filter = 'all' | 'active' | 'inactive'
 
@@ -157,10 +155,8 @@ export function EmployeesPage() {
   const activeCount = employees.filter((e) => e.active).length
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: '#0f172a', color: 'text.primary' }}>
+    <Box sx={{ p: { xs: 2, md: 3 }, color: 'text.primary' }}>
       <PageHeader
-        icon={PeopleIcon}
-        overline="Personel"
         title="Çalışanlar"
         subtitle={isFirstLoad ? <Skeleton width={110} /> : `${activeCount} aktif çalışan`}
         actions={
@@ -169,7 +165,6 @@ export function EmployeesPage() {
             color="primary"
             startIcon={<AddIcon />}
             onClick={openCreate}
-            sx={{ fontWeight: 700 }}
           >
             Yeni Çalışan
           </Button>
@@ -206,8 +201,6 @@ export function EmployeesPage() {
         </ToggleButtonGroup>
       </Box>
 
-      <Divider sx={{ mb: 3, borderColor: 'rgba(255,255,255,0.08)' }} />
-
       {/* Content */}
       {isFirstLoad && <ListSkeleton count={6} actions={3} />}
 
@@ -226,10 +219,18 @@ export function EmployeesPage() {
       )}
 
       {!isFirstLoad && !error && filtered.length > 0 && (
-        <Stack spacing={1}>
-          {filtered.map((emp) => (
-            <EmployeeCard key={emp.id} employee={emp} onEdit={openEdit} onDelete={openDelete} />
-          ))}
+        <Stack spacing={2}>
+          {ROLE_GROUPS.map((g) => {
+            const list = filtered.filter((e) => roleGroupOf(e.role ?? '') === g.key)
+            if (list.length === 0) return null
+            return (
+              <SectionCard key={g.key} title={g.label} count={list.length}>
+                {list.map((emp) => (
+                  <EmployeeRow key={emp.id} employee={emp} onEdit={openEdit} onDelete={openDelete} />
+                ))}
+              </SectionCard>
+            )
+          })}
         </Stack>
       )}
 
@@ -309,9 +310,9 @@ export function EmployeesPage() {
 }
 
 // ----------------------------------------------------------------
-// Employee Card
+// Çalışan satırı
 // ----------------------------------------------------------------
-function EmployeeCard({
+function EmployeeRow({
   employee,
   onEdit,
   onDelete,
@@ -321,95 +322,25 @@ function EmployeeCard({
   onDelete: (emp: EmployeeWithRole) => void
 }) {
   return (
-    <Paper
-      elevation={0}
-      sx={{
-        p: { xs: 2, md: 2 },
-        border: '1px solid',
-        borderColor: 'divider',
-        borderRadius: 2,
-        bgcolor: 'background.paper',
-        opacity: employee.active ? 1 : 0.55,
-        display: 'grid',
-        gridTemplateColumns: { xs: 'minmax(0, 1fr) auto', md: 'minmax(0, 1fr) auto auto' },
-        alignItems: 'center',
-        gap: { xs: 1, md: 2 },
-        '&:hover': { borderColor: 'primary.dark' },
-        transition: 'border-color 0.2s, opacity 0.2s',
-      }}
-    >
-      {/* Left: name + position + system role */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
-        <Box
-          sx={{
-            width: 40,
-            height: 40,
-            borderRadius: '50%',
-            bgcolor: 'rgba(20,184,166,0.12)',
-            border: '2px solid rgba(20,184,166,0.25)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontWeight: 700,
-            color: 'primary.main',
-            fontSize: '0.95rem',
-            flexShrink: 0,
-          }}
-        >
-          {employee.full_name.charAt(0)}
-        </Box>
-
-        <Box sx={{ minWidth: 0 }}>
-          <Typography variant="subtitle2" fontWeight={700} color="text.primary" noWrap>
-            {employee.full_name}
-          </Typography>
+    <SectionRow sx={{ opacity: employee.active ? 1 : 0.6, flexWrap: { xs: 'wrap', sm: 'nowrap' } }}>
+      <PersonAvatar name={employee.full_name} size={38} />
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Typography fontSize="0.875rem" fontWeight={700} noWrap>{employee.full_name}</Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
+          <Typography fontSize="0.72rem" color="text.secondary" noWrap sx={{ flexShrink: 0 }}>{employee.role}</Typography>
           {employee.email && (
-            <Typography variant="caption" color="text.disabled" fontSize="0.75rem" noWrap display="block">
-              {employee.email}
+            <Typography fontSize="0.72rem" color="text.disabled" noWrap sx={{ display: { xs: 'none', sm: 'block' } }}>
+              · {employee.email}
             </Typography>
           )}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.5, flexWrap: 'wrap' }}>
-            <Chip
-              label={employee.role}
-              size="small"
-              sx={{
-                height: 20,
-                fontSize: '0.65rem',
-                fontWeight: 600,
-                bgcolor: 'rgba(99,102,241,0.12)',
-                color: '#818cf8',
-                border: '1px solid rgba(99,102,241,0.3)',
-              }}
-            />
-            {employee.roles && (
-              <Chip
-                label={employee.roles.name}
-                size="small"
-                variant="outlined"
-                sx={{
-                  height: 20,
-                  fontSize: '0.65rem',
-                  fontWeight: 500,
-                  color: 'text.secondary',
-                  borderColor: 'rgba(255,255,255,0.12)',
-                }}
-              />
-            )}
-            {/* Mobile status */}
-            <Box sx={{ display: { xs: 'flex', md: 'none' }, alignItems: 'center' }}>
-              <EmployeeStatusChip active={employee.active} />
-            </Box>
-          </Box>
         </Box>
       </Box>
-
-      {/* Center: status (desktop only) */}
-      <Box sx={{ display: { xs: 'none', md: 'flex' }, justifyContent: 'flex-end' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        {employee.employment_type === 'part_time' && <StatusBadge tone="plum" label="Yarı zamanlı" />}
+        {employee.roles && <StatusBadge tone="neutral" label={employee.roles.name} sx={{ display: { xs: 'none', md: 'inline-flex' } }} />}
         <EmployeeStatusChip active={employee.active} />
       </Box>
-
-      {/* Right: actions */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center' }}>
         <Tooltip title="Düzenle">
           <IconButton
             size="small"
@@ -417,7 +348,7 @@ function EmployeeCard({
             sx={{ color: 'text.secondary', '&:hover': { color: 'primary.main' } }}
             aria-label={`${employee.full_name} düzenle`}
           >
-            <EditIcon fontSize="small" />
+            <EditOutlinedIcon fontSize="small" />
           </IconButton>
         </Tooltip>
         <Tooltip title="Sil">
@@ -427,10 +358,10 @@ function EmployeeCard({
             sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}
             aria-label={`${employee.full_name} sil`}
           >
-            <DeleteIcon fontSize="small" />
+            <DeleteOutlineIcon fontSize="small" />
           </IconButton>
         </Tooltip>
       </Box>
-    </Paper>
+    </SectionRow>
   )
 }

@@ -66,6 +66,7 @@ describe('timesheet — gün kodları', () => {
     expect(row.days['2026-10-12']).toBe('Rİ')
     expect(row.leaveDays['Yİ']).toBe(2)
     expect(row.workedMins).toBe(480)
+    expect(row.dayMins).toEqual({ '2026-10-05': 480 })
   })
 
   it('geçmişte gelinmeyen vardiya D (devamsız), gelecekteki P (planlı)', () => {
@@ -73,6 +74,8 @@ describe('timesheet — gün kodları', () => {
     expect(row.days['2026-10-14']).toBe('D')
     expect(row.days['2026-10-25']).toBe('P')
     expect(row.absentDays).toBe(1)
+    expect(row.dayPlan['2026-10-25']).toEqual({ start: '09:00', end: '18:00' })
+    expect(row.dayPlan['2026-10-14']).toEqual({ start: '09:00', end: '18:00' })
   })
 
   it('resmi tatilde çalışma RTÇ ve sayılır; çalışılmayan tatil RT', () => {

@@ -207,7 +207,7 @@ export function QrKioskPage() {
 
   return (
     <Box sx={{
-      minHeight: '100dvh', bgcolor: '#0f172a', color: 'text.primary',
+      minHeight: '100dvh', bgcolor: 'background.default', color: 'text.primary',
       p: { xs: 2, md: 4 }, position: 'relative',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
     }}>

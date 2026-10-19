@@ -38,6 +38,7 @@ import {
   useInstallPromptEvent,
   useIsStandalone,
 } from '@/lib/pwa/install'
+import { C } from '@/lib/palette'
 
 const noopSubscribe = () => () => {}
 
@@ -89,11 +90,11 @@ export function InstallPrompt() {
           position: 'fixed',
           left: 'calc(12px + env(safe-area-inset-left))',
           right: 'calc(12px + env(safe-area-inset-right))',
-          // Mobil alt navigasyonun ve taşan QR butonunun üstünde kalsın
+          // Mobil yüzen alt navigasyon kartının üstünde kalsın
           bottom: `calc(${BOTTOM_NAV_OVERLAY_OFFSET}px + env(safe-area-inset-bottom))`,
           zIndex: theme.zIndex.snackbar - 1,
           p: 2,
-          bgcolor: '#1e293b',
+          bgcolor: C.surface,
           border: '1px solid',
           borderColor: 'divider',
         }}

@@ -5,7 +5,6 @@
  */
 import { useState } from 'react'
 import { Box, Tab, Tabs } from '@mui/material'
-import BarChartIcon from '@mui/icons-material/BarChart'
 import { PageHeader } from '@/components/common'
 import { AttendanceReportsPage } from './AttendanceReportsPage'
 import { TimesheetPanel } from './TimesheetPanel'
@@ -14,12 +13,10 @@ import { OvertimePanel } from './OvertimePanel'
 export function ReportsPage() {
   const [tab, setTab] = useState(0)
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: '#0f172a', color: 'text.primary' }}>
+    <Box sx={{ p: { xs: 2, md: 3 }, color: 'text.primary' }}>
       <PageHeader
-        icon={BarChartIcon}
-        overline="Raporlama"
         title="Raporlar"
-        subtitle="Devam kayıtları, aylık puantaj ve fazla çalışma takibi"
+        subtitle="Ekibin devamı, aylık puantaj ve fazla çalışma takibi"
       />
       <Tabs
         value={tab}
@@ -28,9 +25,9 @@ export function ReportsPage() {
         allowScrollButtonsMobile
         sx={{ mb: 2.5, borderBottom: '1px solid', borderColor: 'divider' }}
       >
-        <Tab label="Devam Raporu" />
-        <Tab label="Aylık Puantaj" />
-        <Tab label="Fazla Çalışma" />
+        <Tab label="Devam raporu" />
+        <Tab label="Aylık puantaj" />
+        <Tab label="Fazla çalışma" />
       </Tabs>
       {tab === 0 && <AttendanceReportsPage embedded />}
       {tab === 1 && <TimesheetPanel />}

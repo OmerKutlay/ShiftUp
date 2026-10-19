@@ -14,6 +14,7 @@ import type { EmployeeWithRole, Role, CreateEmployeePayload, UpdateEmployeePaylo
 import { EMPLOYMENT_TYPE_LABELS } from '@/types/employee'
 import { DateField } from '@/components/common'
 import { format } from 'date-fns'
+import { C, tint } from '@/lib/palette'
 
 interface Props {
   open: boolean
@@ -273,10 +274,10 @@ export function EmployeeFormDialog({ open, onClose, onSave, employee, roles, loa
                   sx={{
                     fontSize: '0.8rem',
                     '&.Mui-selected': {
-                      bgcolor: key === 'full_time' ? 'rgba(20,184,166,0.18)' : 'rgba(99,102,241,0.18)',
+                      bgcolor: key === 'full_time' ? tint(C.brand, 0.18) : tint(C.plum, 0.18),
                       color: key === 'full_time' ? 'primary.main' : 'secondary.main',
                       '&:hover': {
-                        bgcolor: key === 'full_time' ? 'rgba(20,184,166,0.28)' : 'rgba(99,102,241,0.28)',
+                        bgcolor: key === 'full_time' ? tint(C.brand, 0.28) : tint(C.plum, 0.28),
                       },
                     },
                   }}
