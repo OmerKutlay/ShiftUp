@@ -3,8 +3,7 @@
 /**
  * SegmentedControl — bej zemin üstünde beyaz seçili seçenekli hap grup (Kişiler / Tablo, Hafta / Gün).
  */
-import { Box, ButtonBase } from '@mui/material'
-import { tint, C } from '@/lib/palette'
+import { cn } from '@/lib/utils'
 
 interface Option<T extends string> {
   value: T
@@ -23,45 +22,31 @@ interface Props<T extends string> {
 
 export function SegmentedControl<T extends string>({ value, onChange, options, dark, fullWidth, ...rest }: Props<T>) {
   return (
-    <Box
+    <div
       role="group"
       aria-label={rest['aria-label']}
-      sx={{
-        display: fullWidth ? 'flex' : 'inline-flex',
-        p: '3px',
-        gap: '2px',
-        height: 40,
-        bgcolor: C.surfaceMuted,
-        borderRadius: '10px',
-        flexShrink: 0,
-      }}
+      className={cn('h-10 shrink-0 gap-0.5 rounded-[10px] bg-surface-muted p-[3px]', fullWidth ? 'flex' : 'inline-flex')}
     >
       {options.map((o) => {
         const selected = o.value === value
         return (
-          <ButtonBase
+          <button
             key={o.value}
+            type="button"
             aria-pressed={selected}
             onClick={() => onChange(o.value)}
-            sx={{
-              flex: fullWidth ? 1 : 'none',
-              px: 1.75,
-              borderRadius: '8px',
-              fontSize: '0.8125rem',
-              fontWeight: 600,
-              fontFamily: 'inherit',
-              whiteSpace: 'nowrap',
-              color: selected ? (dark ? C.white : 'text.primary') : 'text.secondary',
-              bgcolor: selected ? (dark ? C.ink : 'background.paper') : 'transparent',
-              boxShadow: selected && !dark ? `0 1px 2px ${tint(C.ink, 0.08)}` : 'none',
-              transition: 'background-color 0.15s, color 0.15s',
-              '&.Mui-focusVisible': { outline: '2px solid', outlineColor: 'primary.light' },
-            }}
+            className={cn(
+              'whitespace-nowrap rounded-lg px-3.5 text-[0.8125rem] font-semibold transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
+              fullWidth && 'flex-1',
+              selected
+                ? dark ? 'bg-ink text-white' : 'bg-card text-ink shadow-[0_1px_2px_rgb(43_33_27/0.08)]'
+                : 'text-ink-secondary hover:text-ink'
+            )}
           >
             {o.label}
-          </ButtonBase>
+          </button>
         )
       })}
-    </Box>
+    </div>
   )
 }

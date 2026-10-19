@@ -2,38 +2,8 @@
 
 import { useState, useCallback } from 'react'
 import {
-  Box,
-  Typography,
-  Paper,
-  Button,
-  Stack,
-  CircularProgress,
-  Alert,
-  TextField,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Chip,
-  Tooltip,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  IconButton,
-  useMediaQuery,
-  useTheme,
-} from '@mui/material'
-import BarChartIcon from '@mui/icons-material/BarChart'
-import DownloadIcon from '@mui/icons-material/Download'
-import SearchIcon from '@mui/icons-material/Search'
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
-import EditNoteIcon from '@mui/icons-material/EditNote'
+  AlertCircle, BarChart3, CheckCircle2, ChevronDown, Download, Info, Loader2, Search, SquarePen, TriangleAlert, X,
+} from 'lucide-react'
 import type { EmployeeWithRole } from '@/types/employee'
 import type { AttendanceReportRow, AttendanceReportSummary, ManualAttendanceOverride } from '@/types/report'
 import {
@@ -44,28 +14,43 @@ import {
 import { fetchEmployees } from '@/lib/api/employees'
 import { format, subDays } from 'date-fns'
 import { tr } from 'date-fns/locale'
-import { DateField, EmployeeSelect, PageHeader, TableSkeleton } from '@/components/common'
+import {
+  DateField, EmployeeSelect, PageHeader, PersonAvatar, StatCard, StatGrid, TableSkeleton,
+} from '@/components/common'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge, type BadgeTone } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Textarea } from '@/components/ui/textarea'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { shiftKindOf } from '@/components/schedule/scheduleHelpers'
 import { isKioskRole } from '@/lib/auth/roles'
-import { C } from '@/lib/palette'
+import { useIsMobile } from '@/hooks/useIsMobile'
+import { C, SHIFT_KIND_TONES } from '@/lib/palette'
+import { cn } from '@/lib/utils'
 
 const STATUS_LABELS: Record<string, string> = {
   shift_waiting: 'Gelmedi',
   working: 'Çalışıyor',
   on_break: 'Molada',
   working_after_break: 'Çalışıyor',
-  clocked_out: 'Çıkış Yaptı',
+  clocked_out: 'Çıkış yaptı',
   on_leave: 'İzinli',
   upcoming: 'Başlamadı',
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  shift_waiting: C.danger,
-  working: C.success,
-  on_break: C.warning,
-  working_after_break: C.success,
-  clocked_out: C.plum,
-  on_leave: C.info,
-  upcoming: C.inkMuted,
+const STATUS_TONES: Record<string, BadgeTone> = {
+  shift_waiting: 'danger',
+  working: 'success',
+  on_break: 'warning',
+  working_after_break: 'success',
+  clocked_out: 'plum',
+  on_leave: 'info',
+  upcoming: 'neutral',
 }
 
 function formatMinutes(mins: number | null): string {
@@ -96,6 +81,76 @@ function formatDateTr(workDate: string): string {
   } catch {
     return workDate
   }
+}
+
+const rowKey = (row: AttendanceReportRow, i: number) => `${row.employee_id}-${row.work_date}-${i}`
+
+// ─── Küçük parçalar ──────────────────────────────────────────
+
+function StatusChip({ status }: { status: string }) {
+  return <Badge tone={STATUS_TONES[status] ?? 'neutral'}>{STATUS_LABELS[status] ?? status}</Badge>
+}
+
+/** Vardiya adı + saatleri — vardiya türü rengiyle (Açılış sarı, Ortacı şeftali, Kapanış mor) */
+function ShiftChip({ row }: { row: AttendanceReportRow }) {
+  const start = row.start_time.slice(0, 5)
+  const end = row.end_time.slice(0, 5)
+  const tone = SHIFT_KIND_TONES[shiftKindOf(row.shift_name ?? undefined, start, end)]
+  return (
+    <span
+      className="inline-flex h-[22px] items-center gap-1 whitespace-nowrap rounded-md px-2 text-xs font-semibold tabular-nums"
+      style={{ backgroundColor: tone.soft, color: tone.text }}
+    >
+      {row.shift_name && <span>{row.shift_name}</span>}
+      <span>{start}–{end}</span>
+    </span>
+  )
+}
+
+function ExceptionNote({ note }: { note: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button type="button" aria-label={`Not: ${note}`} className="inline-flex size-6 items-center justify-center rounded-md text-warning hover:bg-warning-soft">
+          <TriangleAlert className="size-3.5" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>{note}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+function OverrideButton({ onClick }: { onClick: () => void }) {
+  return (
+    <Button variant="ghost" size="icon-sm" aria-label="Manuel düzelt" title="Manuel düzelt"
+      className="text-ink-muted hover:text-primary" onClick={onClick}>
+      <SquarePen />
+    </Button>
+  )
+}
+
+/** Çalışan başına özet satırı (ad + satır içi istatistikler + net çalışma) */
+function SummaryLine({ s }: { s: AttendanceReportSummary }) {
+  const stat = (label: string, value: React.ReactNode, cls?: string) => (
+    <span>{label} <b className={cn('font-semibold text-ink', cls)}>{value}</b></span>
+  )
+  return (
+    <li className="flex items-center gap-3 px-4 py-2.5">
+      <PersonAvatar name={s.full_name} size={32} />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold">{s.full_name}</p>
+        <p className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-ink-secondary">
+          {stat('Vardiya', s.total_shifts)}
+          {stat('Katılım', `${s.attended_shifts}/${s.expected_shifts}`)}
+          {stat('Tamamlanan', s.clocked_out_count, 'text-plum')}
+          {stat('Gelmedi', s.no_show_count, s.no_show_count > 0 ? 'text-danger' : undefined)}
+          {s.on_leave_count > 0 && stat('İzinli', s.on_leave_count, 'text-info')}
+          {s.upcoming_count > 0 && stat('Başlamadı', s.upcoming_count, 'text-ink-muted')}
+        </p>
+      </div>
+      <span className="shrink-0 text-sm font-bold tabular-nums text-success">{formatMinutes(s.total_worked_minutes)}</span>
+    </li>
+  )
 }
 
 // ─── Override Dialog ─────────────────────────────────────────
@@ -133,43 +188,49 @@ function OverrideDialog({ open, row, onClose, onSave, saving }: OverrideDialogPr
   }
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Manuel Düzeltme</DialogTitle>
+    <Dialog open={open} onOpenChange={(o) => { if (!o && !saving) onClose() }}>
       <DialogContent>
-        {row && (
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="body2" color="text.secondary">
-              <strong>{row.full_name}</strong> — {row.work_date}
-            </Typography>
-          </Box>
-        )}
-        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-        {!recordId && !error && (
-          <Alert severity="info" sx={{ mb: 2 }}>
-            Bu çalışanın bu tarihe ait attendance kaydı bulunamadı.
-          </Alert>
-        )}
-        <TextField
-          fullWidth
-          multiline
-          rows={3}
-          label="Override Sebebi *"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="Örn: Sistem hatası nedeniyle manuel düzeltme yapıldı."
-          disabled={!recordId}
-        />
+        <DialogHeader>
+          <DialogTitle>Manuel düzeltme</DialogTitle>
+          {row && (
+            <DialogDescription>
+              <strong className="font-semibold text-ink">{row.full_name}</strong> — {formatDateTr(row.work_date)}
+            </DialogDescription>
+          )}
+        </DialogHeader>
+        <div className="grid gap-3">
+          {error && (
+            <Alert tone="danger">
+              <AlertCircle />
+              <AlertDescription className="text-ink">{error}</AlertDescription>
+            </Alert>
+          )}
+          {!recordId && !error && (
+            <Alert tone="info">
+              <Info />
+              <AlertDescription className="text-ink">Bu çalışanın bu tarihe ait attendance kaydı bulunamadı.</AlertDescription>
+            </Alert>
+          )}
+          <div className="grid gap-1.5">
+            <Label htmlFor="override-note">Override sebebi *</Label>
+            <Textarea
+              id="override-note"
+              rows={3}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Örn: Sistem hatası nedeniyle manuel düzeltme yapıldı."
+              disabled={!recordId}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={saving}>İptal</Button>
+          <Button onClick={() => void handleSave()} disabled={saving || !recordId || !note.trim()}>
+            {saving && <Loader2 className="animate-spin" />}
+            Kaydet
+          </Button>
+        </DialogFooter>
       </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} disabled={saving}>İptal</Button>
-        <Button
-          variant="contained"
-          onClick={handleSave}
-          disabled={saving || !recordId || !note.trim()}
-        >
-          {saving ? <CircularProgress size={18} /> : 'Kaydet'}
-        </Button>
-      </DialogActions>
     </Dialog>
   )
 }
@@ -178,8 +239,7 @@ function OverrideDialog({ open, row, onClose, onSave, saving }: OverrideDialogPr
 
 /** embedded: sekmeli Raporlar sayfasının içinde (başlık ve sayfa dolgusu olmadan) */
 export function AttendanceReportsPage({ embedded = false }: { embedded?: boolean } = {}) {
-  const theme = useTheme()
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
+  const isMobile = useIsMobile()
   const today = format(new Date(), 'yyyy-MM-dd')
   const weekAgo = format(subDays(new Date(), 6), 'yyyy-MM-dd')
 
@@ -195,6 +255,9 @@ export function AttendanceReportsPage({ embedded = false }: { embedded?: boolean
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [hasSearched, setHasSearched] = useState(false)
+  // Özet bölümü: kullanıcı seçmediyse masaüstünde açık, mobilde kapalı
+  const [summaryOpenPref, setSummaryOpenPref] = useState<boolean | null>(null)
+  const summaryOpen = summaryOpenPref ?? !isMobile
 
   // Override dialog
   const [overrideOpen, setOverrideOpen] = useState(false)
@@ -285,341 +348,225 @@ export function AttendanceReportsPage({ embedded = false }: { embedded?: boolean
     }
   }
 
+  // Genel toplamlar (KPI kartları)
+  const totals = summaries.reduce(
+    (t, s) => ({
+      shifts: t.shifts + s.total_shifts,
+      attended: t.attended + s.attended_shifts,
+      expected: t.expected + s.expected_shifts,
+      done: t.done + s.clocked_out_count,
+      noShow: t.noShow + s.no_show_count,
+      worked: t.worked + s.total_worked_minutes,
+    }),
+    { shifts: 0, attended: 0, expected: 0, done: 0, noShow: 0, worked: 0 }
+  )
+
   return (
-    <Box sx={embedded ? undefined : { p: { xs: 2, md: 3 }, color: 'text.primary' }}>
+    <div className={cn('grid gap-4', !embedded && 'p-4 md:p-6')}>
       {!embedded && (
         <PageHeader
-          title="Devam Raporları"
+          title="Devam raporları"
           subtitle="Tarih aralığı ve çalışana göre filtreleyerek rapor oluşturun"
         />
       )}
 
-      {/* Filters */}
-      <Paper
-        elevation={0}
-        sx={{ p: 2.5, border: '1px solid', borderColor: 'divider', borderRadius: 2, mb: 3 }}
-      >
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'stretch', md: 'flex-end' }}>
-          <DateField
-            label="Başlangıç Tarihi"
-            value={dateFrom}
-            onChange={setDateFrom}
-            max={dateTo || undefined}
-            size="small"
-            sx={{ minWidth: 210 }}
-          />
-          <DateField
-            label="Bitiş Tarihi"
-            value={dateTo}
-            onChange={setDateTo}
-            min={dateFrom || undefined}
-            size="small"
-            sx={{ minWidth: 210 }}
-          />
-          <EmployeeSelect
-            employees={employees}
-            value={selectedEmployee}
-            label="Çalışan (Opsiyonel)"
-            emptyLabel="Tüm Çalışanlar"
-            onChange={setSelectedEmployee}
-            onOpen={ensureEmployees}
-            sx={{ minWidth: 240 }}
-          />
-          <Button
-            variant="contained"
-            startIcon={<SearchIcon />}
-            onClick={handleSearch}
-            disabled={loading}
-            sx={{ height: 40, fontWeight: 700 }}
-          >
-            {loading ? <CircularProgress size={18} /> : 'Rapor Getir'}
-          </Button>
-          {rows.length > 0 && (
-            <Button
-              variant="outlined"
-              startIcon={<DownloadIcon />}
-              onClick={handleExport}
-              sx={{ height: 40 }}
-            >
-              CSV İndir
+      {/* Filtreler */}
+      <section className="rounded-2xl border bg-card p-3 md:p-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:flex lg:flex-wrap lg:items-center">
+          <div className="lg:w-[200px]">
+            <DateField
+              label="Başlangıç tarihi"
+              value={dateFrom}
+              onChange={setDateFrom}
+              max={dateTo || undefined}
+              size="small"
+              fullWidth
+            />
+          </div>
+          <div className="lg:w-[200px]">
+            <DateField
+              label="Bitiş tarihi"
+              value={dateTo}
+              onChange={setDateTo}
+              min={dateFrom || undefined}
+              size="small"
+              fullWidth
+            />
+          </div>
+          <div className="sm:col-span-2 lg:w-[240px]">
+            <EmployeeSelect
+              employees={employees}
+              value={selectedEmployee}
+              label="Çalışan (opsiyonel)"
+              emptyLabel="Tüm çalışanlar"
+              onChange={setSelectedEmployee}
+              onOpen={ensureEmployees}
+              fullWidth
+            />
+          </div>
+          <div className="flex gap-2 sm:col-span-2 lg:ml-auto">
+            <Button onClick={() => void handleSearch()} disabled={loading} className="flex-1 lg:flex-none">
+              {loading ? <Loader2 className="animate-spin" /> : <Search />}
+              Rapor getir
             </Button>
-          )}
-        </Stack>
-      </Paper>
+            {rows.length > 0 && (
+              <Button variant="outline" onClick={handleExport} className="flex-1 lg:flex-none">
+                <Download />
+                CSV indir
+              </Button>
+            )}
+          </div>
+        </div>
+      </section>
 
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      {error && (
+        <Alert tone="danger">
+          <AlertCircle />
+          <AlertDescription className="text-ink">{error}</AlertDescription>
+        </Alert>
+      )}
       {overrideSuccess && (
-        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setOverrideSuccess(null)}>
-          {overrideSuccess}
+        <Alert tone="success" className="pr-12">
+          <CheckCircle2 />
+          <AlertDescription className="text-ink">{overrideSuccess}</AlertDescription>
+          <button type="button" aria-label="Kapat" onClick={() => setOverrideSuccess(null)}
+            className="absolute top-2 right-2 inline-flex size-8 items-center justify-center rounded-lg text-ink-secondary hover:bg-card/60">
+            <X className="size-4" />
+          </button>
         </Alert>
       )}
 
-      {/* Summary Cards */}
+      {/* Özet */}
       {summaries.length > 0 && (
-        <Accordion
-          elevation={0}
-          defaultExpanded={!isMobile}
-          sx={{ mb: 3, border: '1px solid', borderColor: 'divider', borderRadius: '8px !important' }}
-        >
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Typography fontWeight={700}>Özet İstatistikler ({summaries.length} çalışan)</Typography>
-          </AccordionSummary>
-          <AccordionDetails>
-            {isMobile ? (
-              // Mobil: çalışan başına yoğun tek blok (ad + satır içi istatistikler)
-              <Stack spacing={1}>
-                {summaries.map((s) => (
-                  <Paper
-                    key={s.employee_id}
-                    elevation={0}
-                    sx={{ px: 1.5, py: 1, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}
-                  >
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 1 }}>
-                      <Typography variant="body2" fontWeight={700} noWrap>{s.full_name}</Typography>
-                      <Typography variant="caption" fontWeight={700} color={C.success} sx={{ flexShrink: 0 }}>
-                        {formatMinutes(s.total_worked_minutes)}
-                      </Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', columnGap: 1.5, rowGap: 0.25, mt: 0.25 }}>
-                      <Typography variant="caption" color="text.secondary">
-                        Katılım <b>{s.attended_shifts}/{s.expected_shifts}</b>
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        Tamamlanan <b style={{ color: C.plum }}>{s.clocked_out_count}</b>
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        Gelmedi <b style={{ color: C.danger }}>{s.no_show_count}</b>
-                      </Typography>
-                      {s.on_leave_count > 0 && (
-                        <Typography variant="caption" color="text.secondary">
-                          İzinli <b style={{ color: STATUS_COLORS.on_leave }}>{s.on_leave_count}</b>
-                        </Typography>
-                      )}
-                      {s.upcoming_count > 0 && (
-                        <Typography variant="caption" color="text.secondary">
-                          Başlamadı <b style={{ color: STATUS_COLORS.upcoming }}>{s.upcoming_count}</b>
-                        </Typography>
-                      )}
-                    </Box>
-                  </Paper>
-                ))}
-              </Stack>
-            ) : (
-            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-              {summaries.map((s) => (
-                <Paper
-                  key={s.employee_id}
-                  elevation={0}
-                  sx={{
-                    p: 2,
-                    border: '1px solid',
-                    borderColor: 'divider',
-                    borderRadius: 2,
-                    minWidth: 200,
-                    flex: '1 1 200px',
-                  }}
-                >
-                  <Typography variant="subtitle2" fontWeight={700} mb={1}>{s.full_name}</Typography>
-                  <Stack spacing={0.5}>
-                    <SummaryRow label="Toplam Vardiya" value={String(s.total_shifts)} />
-                    <SummaryRow label="Katılım" value={`${s.attended_shifts}/${s.expected_shifts}`} />
-                    <SummaryRow label="Tamamlanan" value={String(s.clocked_out_count)} color={C.plum} />
-                    <SummaryRow label="Gelmedi" value={String(s.no_show_count)} color={C.danger} />
-                    {s.on_leave_count > 0 && (
-                      <SummaryRow label="İzinli" value={String(s.on_leave_count)} color={STATUS_COLORS.on_leave} />
-                    )}
-                    {s.upcoming_count > 0 && (
-                      <SummaryRow label="Başlamadı" value={String(s.upcoming_count)} color={STATUS_COLORS.upcoming} />
-                    )}
-                    <SummaryRow label="Net Çalışma" value={formatMinutes(s.total_worked_minutes)} color={C.success} />
-                  </Stack>
-                </Paper>
-              ))}
-            </Box>
-            )}
-          </AccordionDetails>
-        </Accordion>
+        <section className="overflow-hidden rounded-2xl border bg-card">
+          <button
+            type="button"
+            aria-expanded={summaryOpen}
+            aria-controls="report-summary"
+            onClick={() => setSummaryOpenPref(!summaryOpen)}
+            className="flex min-h-12 w-full items-center gap-2 px-4 py-3 text-left outline-none hover:bg-muted/60 focus-visible:bg-muted"
+          >
+            <h2 className="text-[0.95rem] font-bold">Özet istatistikler</h2>
+            <span className="text-[0.78rem] text-ink-secondary">{summaries.length} çalışan</span>
+            <span className="flex-1" />
+            <ChevronDown className={cn('size-4 text-ink-secondary transition-transform', summaryOpen && 'rotate-180')} />
+          </button>
+          {summaryOpen && (
+            <div id="report-summary" className="border-t">
+              <div className="p-3 md:p-4">
+                <StatGrid min={140} className="mb-0 md:mb-0">
+                  <StatCard label="Toplam vardiya" value={totals.shifts} />
+                  <StatCard label="Katılım" value={`${totals.attended}/${totals.expected}`} />
+                  <StatCard label="Tamamlanan" value={totals.done} valueColor={C.plum} />
+                  <StatCard label="Gelmedi" value={totals.noShow} valueColor={totals.noShow > 0 ? C.danger : undefined} />
+                  <StatCard label="Net çalışma" value={formatMinutes(totals.worked)} valueColor={C.success} />
+                </StatGrid>
+              </div>
+              <ul className="border-t [&>li+li]:border-t">
+                {summaries.map((s) => <SummaryLine key={s.employee_id} s={s} />)}
+              </ul>
+            </div>
+          )}
+        </section>
       )}
 
-      {/* Detail Table */}
+      {/* Detay listesi */}
       {loading && <TableSkeleton rows={8} columns={8} />}
       {hasSearched && !loading && (
-        <>
-          {rows.length === 0 ? (
-            <Alert severity="info">Seçili tarih aralığında veri bulunamadı.</Alert>
-          ) : (
-            <Paper elevation={0} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, overflow: 'hidden' }}>
-              <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="subtitle2" fontWeight={700}>
-                  Detay Listesi — {rows.length} kayıt
-                </Typography>
-              </Box>
-              {isMobile ? (
-                <Stack divider={<Box sx={{ height: 1, bgcolor: 'divider' }} />}>
-                  {rows.map((row, i) => {
-                    const color = STATUS_COLORS[row.status] ?? C.inkMuted
-                    return (
-                      <Box key={`${row.employee_id}-${row.work_date}-${i}`} sx={{ p: 1.5 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
-                          <Box sx={{ minWidth: 0 }}>
-                            <Typography variant="body2" fontWeight={700}>{row.full_name}</Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {formatDateTr(row.work_date)} · {row.shift_name ? `${row.shift_name} ` : ''}
-                              {row.start_time.slice(0, 5)}–{row.end_time.slice(0, 5)}
-                            </Typography>
-                          </Box>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
-                            <Chip
-                              label={STATUS_LABELS[row.status] ?? row.status}
-                              size="small"
-                              sx={{
-                                height: 22,
-                                fontSize: '0.7rem',
-                                bgcolor: `${color}20`,
-                                color,
-                                border: `1px solid ${color}40`,
-                              }}
-                            />
-                            {row.record_id && (
-                              <IconButton
-                                aria-label="Manuel düzelt"
-                                onClick={() => openOverride(row)}
-                                sx={{ width: 36, height: 36, color: 'text.secondary', '&:hover': { color: 'primary.main' } }}
-                              >
-                                <EditNoteIcon fontSize="small" />
-                              </IconButton>
-                            )}
-                          </Box>
-                        </Box>
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', columnGap: 2, rowGap: 0.25, mt: 0.75 }}>
-                          <Typography variant="caption">Giriş: {formatTime(row.clock_in_at)}</Typography>
-                          <Typography variant="caption">Çıkış: {formatTime(row.clock_out_at)}</Typography>
-                          <Typography variant="caption" color={row.worked_minutes ? C.success : 'text.disabled'} fontWeight={600}>
-                            Net: {formatMinutes(row.worked_minutes)}
-                          </Typography>
-                          <Typography variant="caption" color="text.disabled">
-                            Doğrulama: {row.verification_method ?? '—'}
-                          </Typography>
-                        </Box>
-                        {row.exception_note && (
-                          <Typography variant="caption" color="warning.main" sx={{ display: 'block', mt: 0.5 }}>
-                            ⚠ {row.exception_note}
-                          </Typography>
-                        )}
-                      </Box>
-                    )
-                  })}
-                </Stack>
-              ) : (
-              <TableContainer>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.75rem' }}>Çalışan</TableCell>
-                      <TableCell sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.75rem' }}>Tarih</TableCell>
-                      <TableCell sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.75rem' }}>Vardiya</TableCell>
-                      <TableCell sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.75rem' }}>Durum</TableCell>
-                      <TableCell sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.75rem' }}>Giriş</TableCell>
-                      <TableCell sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.75rem' }}>Çıkış</TableCell>
-                      <TableCell sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.75rem' }}>Net Çalışma</TableCell>
-                      <TableCell sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.75rem' }}>Doğrulama</TableCell>
-                      <TableCell sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.7rem' }}></TableCell>
+        rows.length === 0 ? (
+          <Alert tone="info">
+            <Info />
+            <AlertDescription className="text-ink">Seçili tarih aralığında veri bulunamadı.</AlertDescription>
+          </Alert>
+        ) : (
+          <section className="overflow-hidden rounded-2xl border bg-card">
+            <div className="flex items-center gap-2 px-4 pt-3.5 pb-2.5">
+              <h2 className="text-[0.95rem] font-bold">Detay listesi</h2>
+              <span className="text-[0.78rem] text-ink-secondary">{rows.length} kayıt</span>
+            </div>
+
+            {/* Mobil: yığılmış satırlar */}
+            <ul className="border-t md:hidden [&>li+li]:border-t">
+              {rows.map((row, i) => (
+                <li key={rowKey(row, i)} className="px-4 py-3">
+                  <div className="flex items-start gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold">{row.full_name}</p>
+                      <p className="text-xs text-ink-secondary">{formatDateTr(row.work_date)}</p>
+                    </div>
+                    <StatusChip status={row.status} />
+                    {row.record_id && <OverrideButton onClick={() => openOverride(row)} />}
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                    <ShiftChip row={row} />
+                    <span className="tabular-nums">Giriş {formatTime(row.clock_in_at)}</span>
+                    <span className="tabular-nums">Çıkış {formatTime(row.clock_out_at)}</span>
+                    <span className={cn('font-semibold tabular-nums', row.worked_minutes ? 'text-success' : 'text-ink-muted')}>
+                      Net {formatMinutes(row.worked_minutes)}
+                    </span>
+                    <span className="text-ink-muted">Doğrulama: {row.verification_method ?? '—'}</span>
+                  </div>
+                  {row.exception_note && (
+                    <p className="mt-1.5 flex items-start gap-1 text-xs text-warning">
+                      <TriangleAlert className="mt-px size-3.5 shrink-0" />
+                      <span className="[overflow-wrap:anywhere]">{row.exception_note}</span>
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+
+            {/* Masaüstü: tablo */}
+            <div className="hidden border-t md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>Çalışan</TableHead>
+                    <TableHead>Tarih</TableHead>
+                    <TableHead>Vardiya</TableHead>
+                    <TableHead>Durum</TableHead>
+                    <TableHead>Giriş</TableHead>
+                    <TableHead>Çıkış</TableHead>
+                    <TableHead>Net çalışma</TableHead>
+                    <TableHead>Doğrulama</TableHead>
+                    <TableHead className="w-12"><span className="sr-only">İşlem</span></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((row, i) => (
+                    <TableRow key={rowKey(row, i)}>
+                      <TableCell className="font-semibold">{row.full_name}</TableCell>
+                      <TableCell className="text-ink-secondary">{formatDateTr(row.work_date)}</TableCell>
+                      <TableCell><ShiftChip row={row} /></TableCell>
+                      <TableCell><StatusChip status={row.status} /></TableCell>
+                      <TableCell className="tabular-nums">{formatTime(row.clock_in_at)}</TableCell>
+                      <TableCell className="tabular-nums">{formatTime(row.clock_out_at)}</TableCell>
+                      <TableCell className={cn('font-semibold tabular-nums', row.worked_minutes ? 'text-success' : 'text-ink-muted')}>
+                        {formatMinutes(row.worked_minutes)}
+                      </TableCell>
+                      <TableCell className="text-ink-muted">
+                        <span className="inline-flex items-center gap-1">
+                          {row.verification_method ?? '—'}
+                          {row.exception_note && <ExceptionNote note={row.exception_note} />}
+                        </span>
+                      </TableCell>
+                      <TableCell className="py-1 text-right">
+                        {row.record_id && <OverrideButton onClick={() => openOverride(row)} />}
+                      </TableCell>
                     </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {rows.map((row, i) => (
-                      <TableRow
-                        key={`${row.employee_id}-${row.work_date}-${i}`}
-                        hover
-                        sx={{ '&:last-child td': { border: 0 } }}
-                      >
-                        <TableCell>
-                          <Typography variant="caption" fontWeight={600}>{row.full_name}</Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>{formatDateTr(row.work_date)}</Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="caption" color="text.secondary">
-                            {row.shift_name ?? '—'} {row.start_time.slice(0, 5)}–{row.end_time.slice(0, 5)}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Chip
-                            label={STATUS_LABELS[row.status] ?? row.status}
-                            size="small"
-                            sx={{
-                              height: 20,
-                              fontSize: '0.65rem',
-                              bgcolor: `${STATUS_COLORS[row.status] ?? C.inkMuted}20`,
-                              color: STATUS_COLORS[row.status] ?? C.inkMuted,
-                              border: `1px solid ${STATUS_COLORS[row.status] ?? C.inkMuted}40`,
-                            }}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="caption">{formatTime(row.clock_in_at)}</Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="caption">{formatTime(row.clock_out_at)}</Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="caption" color={row.worked_minutes ? C.success : 'text.disabled'} fontWeight={600}>
-                            {formatMinutes(row.worked_minutes)}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="caption" color="text.disabled">
-                            {row.verification_method ?? '—'}
-                          </Typography>
-                          {row.exception_note && (
-                            <Tooltip title={row.exception_note} enterTouchDelay={0} leaveTouchDelay={4000}>
-                              <Typography variant="caption" color="warning.main" sx={{ ml: 0.5, cursor: 'help' }}>
-                                ⚠
-                              </Typography>
-                            </Tooltip>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {row.record_id && (
-                            <Tooltip title="Manuel Düzelt">
-                              <IconButton
-                                size="small"
-                                aria-label="Manuel düzelt"
-                                onClick={() => openOverride(row)}
-                                sx={{ color: 'text.disabled', '&:hover': { color: 'primary.main' } }}
-                              >
-                                <EditNoteIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-              )}
-            </Paper>
-          )}
-        </>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </section>
+        )
       )}
 
       {!hasSearched && !loading && (
-        <Box
-          sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            py: 10,
-            color: 'text.disabled',
-            gap: 1,
-          }}
-        >
-          <BarChartIcon sx={{ fontSize: 48, opacity: 0.3 }} />
-          <Typography variant="body2">Rapor getirmek için filtre doldurun ve arayın.</Typography>
-        </Box>
+        <div className="flex flex-col items-center justify-center gap-2 py-16 text-center text-ink-muted">
+          <BarChart3 className="size-10 opacity-50" aria-hidden />
+          <p className="text-sm text-ink-secondary">Rapor getirmek için filtre doldurun ve arayın.</p>
+        </div>
       )}
 
       {/* Override Dialog */}
@@ -631,21 +578,6 @@ export function AttendanceReportsPage({ embedded = false }: { embedded?: boolean
         onSave={handleOverrideSave}
         saving={overrideSaving}
       />
-    </Box>
+    </div>
   )
 }
-
-function SummaryRow({ label, value, color }: { label: string; value: string; color?: string }) {
-  return (
-    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-      <Typography variant="caption" color="text.secondary">{label}</Typography>
-      <Typography variant="caption" fontWeight={700} color={color ?? 'text.primary'}>{value}</Typography>
-    </Box>
-  )
-}
-
-function Divider2() {
-  return <Box sx={{ height: 1, bgcolor: 'divider', my: 0.5 }} />
-}
-
-void Divider2 // suppress unused warning — kept for potential use

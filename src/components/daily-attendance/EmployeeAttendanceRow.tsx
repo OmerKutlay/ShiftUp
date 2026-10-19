@@ -1,13 +1,11 @@
 'use client'
 
-import { Box, Typography } from '@mui/material'
 import type { DailyShiftEntry, AttendanceRecord } from '@/types/attendance'
 import { AttendanceStatusChip } from './AttendanceStatusChip'
 import { formatInTimeZone } from '@/lib/dateUtils'
 import { PersonAvatar, SectionRow } from '@/components/common'
 import { shiftKindOf } from '@/components/schedule/scheduleHelpers'
-import { C, SHIFT_KIND_TONES } from '@/lib/palette'
-import { roleNameOf } from '@/lib/roleJoin'
+
 
 interface Props {
   entry: DailyShiftEntry
@@ -22,49 +20,38 @@ export function EmployeeAttendanceRow({ entry }: Props) {
   const tone = SHIFT_KIND_TONES[shiftKindOf(undefined, start, end)]
 
   return (
-    <SectionRow sx={{ flexWrap: 'wrap', rowGap: 1 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, flex: '1 1 220px', minWidth: 0 }}>
+    <SectionRow className="flex-wrap gap-y-2">
+      <div className="flex min-w-0 flex-[1_1_220px] items-center gap-2.5">
         <PersonAvatar name={employee.full_name} size={36} />
-        <Box sx={{ minWidth: 0 }}>
-          <Typography fontSize="0.875rem" fontWeight={700} noWrap>{employee.full_name}</Typography>
-          <Typography fontSize="0.72rem" color="text.secondary" noWrap>{roleNameOf(employee)}</Typography>
-        </Box>
-      </Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap', flex: '2 1 320px', minWidth: 0 }}>
-        <Typography
-          fontSize="0.78rem" fontWeight={700}
-          sx={{ color: tone.text, bgcolor: tone.soft, px: 1, py: 0.5, borderRadius: '8px', fontVariantNumeric: 'tabular-nums' }}
-        >
+
           {start} – {end}
-        </Typography>
+        </span>
         <TimeInfo attendanceRecord={attendanceRecord} />
-        <Box sx={{ flex: 1 }} />
+        <span className="flex-1" />
         <AttendanceStatusChip status={currentStatus} />
-      </Box>
+      </div>
     </SectionRow>
   )
 }
 
-// ---------------------------------------------------------------
-// Sub-component: giriş / mola / çıkış saatleri
-// ---------------------------------------------------------------
+/** Giriş / mola / çıkış saatleri */
 function TimeInfo({ attendanceRecord }: { attendanceRecord: AttendanceRecord | null }) {
   if (!attendanceRecord) return null
   return (
-    <Box sx={{ display: 'flex', flexWrap: 'wrap', columnGap: 1.5, rowGap: 0.25 }}>
-      {attendanceRecord.clock_in_at && <TimeField label="Giriş" value={attendanceRecord.clock_in_at} color={C.success} />}
-      {attendanceRecord.break_start_at && <TimeField label="Mola" value={attendanceRecord.break_start_at} color={C.warning} />}
-      {attendanceRecord.break_end_at && <TimeField label="Dönüş" value={attendanceRecord.break_end_at} color={C.info} />}
-      {attendanceRecord.clock_out_at && <TimeField label="Çıkış" value={attendanceRecord.clock_out_at} color={C.plum} />}
-    </Box>
+    <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+      {attendanceRecord.clock_in_at && <TimeField label="Giriş" value={attendanceRecord.clock_in_at} className="text-success" />}
+      {attendanceRecord.break_start_at && <TimeField label="Mola" value={attendanceRecord.break_start_at} className="text-warning" />}
+      {attendanceRecord.break_end_at && <TimeField label="Dönüş" value={attendanceRecord.break_end_at} className="text-info" />}
+      {attendanceRecord.clock_out_at && <TimeField label="Çıkış" value={attendanceRecord.clock_out_at} className="text-plum" />}
+    </div>
   )
 }
 
-function TimeField({ label, value, color }: { label: string; value: string; color: string }) {
+function TimeField({ label, value, className }: { label: string; value: string; className: string }) {
   return (
-    <Typography fontSize="0.75rem" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums' }}>
-      <Box component="span" sx={{ color, fontWeight: 600 }}>{label}: </Box>
+    <span className="text-xs text-ink-secondary tabular-nums">
+      <span className={`font-semibold ${className}`}>{label}: </span>
       {formatInTimeZone(value)}
-    </Typography>
+    </span>
   )
 }
