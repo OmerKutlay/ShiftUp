@@ -94,7 +94,7 @@ export function TimeCorrectionPage() {
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 720, mx: 'auto' }}>
       <PageHeader
-        title="Mesai Düzeltme Talebi"
+        title="Mesai düzeltme"
         subtitle="Eksik veya hatalı giriş/çıkış kayıtları için düzeltme talep edin"
         actions={
           <Button variant="contained" startIcon={<AddIcon />} onClick={openDialog} sx={{ fontWeight: 700 }}>

@@ -29,7 +29,7 @@ export type NavGroup = 'operasyon' | 'planlama' | 'devam' | 'yonetim' | 'hesap'
 export const NAV_GROUP_LABELS: Record<NavGroup, string> = {
   operasyon: 'Operasyon',
   planlama: 'Planlama',
-  devam: 'Devam & İzin',
+  devam: 'Devam ve izin',
   yonetim: 'Yönetim',
   hesap: 'Hesap',
 }
@@ -47,18 +47,18 @@ export interface NavItem {
 
 /** Masaüstü yan menüdeki öğeler (sıra = menü sırası) */
 export const NAV_ITEMS: NavItem[] = [
-  { label: 'Genel Bakış',        href: '/dashboard',       icon: <DashboardIcon />,     group: 'operasyon', requiredRoles: MANAGER_ROLES },
-  { label: 'Günlük Operasyon',   href: '/',                icon: <TodayIcon />,         group: 'operasyon', requiredRoles: MANAGER_ROLES },
+  { label: 'Genel bakış',        href: '/dashboard',       icon: <DashboardIcon />,     group: 'operasyon', requiredRoles: MANAGER_ROLES },
+  { label: 'Günlük operasyon',   href: '/',                icon: <TodayIcon />,         group: 'operasyon', requiredRoles: MANAGER_ROLES },
   { label: 'Çalışanlar',         href: '/employees',       icon: <PeopleIcon />,        group: 'yonetim',   requiredRoles: MANAGER_ROLES },
-  { label: 'Vardiya Şablonları', href: '/shift-templates', icon: <ScheduleIcon />,      group: 'planlama',  requiredRoles: MANAGER_ROLES },
-  { label: 'Haftalık Plan',      href: '/schedule',        icon: <CalendarMonthIcon />, group: 'planlama' },
+  { label: 'Vardiya şablonları', href: '/shift-templates', icon: <ScheduleIcon />,      group: 'planlama',  requiredRoles: MANAGER_ROLES },
+  { label: 'Haftalık plan',      href: '/schedule',        icon: <CalendarMonthIcon />, group: 'planlama' },
   { label: 'QR Kiosk',           href: '/qr-kiosk',        icon: <QrCode2Icon />,       group: 'operasyon', requiredRoles: MANAGER_ROLES },
   { label: 'QR Tara',            href: '/attendance/scan', icon: <QrCodeScannerIcon />, group: 'devam' },
-  { label: 'Çalışma Özetim',     href: '/my-schedule',     icon: <EventNoteIcon />,     group: 'planlama' },
-  { label: 'Açık Vardiyalar',    href: '/open-shifts',     icon: <WorkIcon />,          group: 'planlama' },
-  { label: 'İzin Talepleri',     href: '/leave',           icon: <BeachAccessIcon />,   group: 'devam' },
-  { label: 'Mesai Düzeltme',     href: '/time-correction', icon: <EditNoteIcon />,      group: 'devam' },
-  { label: 'İş Gücü',            href: '/workforce',       icon: <GroupsIcon />,        group: 'yonetim',   requiredRoles: MANAGER_ROLES },
+  { label: 'Çalışma özetim',     href: '/my-schedule',     icon: <EventNoteIcon />,     group: 'planlama' },
+  { label: 'Açık vardiyalar',    href: '/open-shifts',     icon: <WorkIcon />,          group: 'planlama' },
+  { label: 'İzinler',            href: '/leave',           icon: <BeachAccessIcon />,   group: 'devam' },
+  { label: 'Mesai düzeltme',     href: '/time-correction', icon: <EditNoteIcon />,      group: 'devam' },
+  { label: 'İş gücü',            href: '/workforce',       icon: <GroupsIcon />,        group: 'yonetim',   requiredRoles: MANAGER_ROLES },
   { label: 'Raporlar',           href: '/reports',         icon: <BarChartIcon />,      group: 'yonetim',   requiredRoles: MANAGER_ROLES },
   { label: 'Ayarlar',            href: '/settings',        icon: <SettingsIcon />,      group: 'yonetim',   requiredRoles: ADMIN_ROLES },
 ]
