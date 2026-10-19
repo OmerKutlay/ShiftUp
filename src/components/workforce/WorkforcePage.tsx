@@ -58,7 +58,7 @@ export function WorkforcePage() {
   return (
     <Box sx={{ p: { xs: 2, md: 3 } }}>
       <PageHeader
-        title="İş Gücü Planlama"
+        title="İş gücü planlama"
         subtitle="Müsaitlik, açık vardiyalar ve vardiya takaslarını yönetin"
       />
 

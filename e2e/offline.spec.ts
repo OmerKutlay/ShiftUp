@@ -9,7 +9,7 @@ const BANNER_OFFLINE = 'Bağlantı yok — bazı işlemler kullanılamaz'
 
 test('çevrimdışı bandı görünür, bağlantı gelince "geri geldi" gösterip kaybolur', async ({ page, context }) => {
   await page.goto('/my-schedule')
-  await expect(page.getByRole('main').getByRole('heading', { name: 'Çalışma Özetim' })).toBeVisible()
+  await expect(page.getByRole('main').getByRole('heading', { name: 'Çalışma özetim' })).toBeVisible()
   await expect(page.getByText(BANNER_OFFLINE)).toHaveCount(0)
 
   await context.setOffline(true)
