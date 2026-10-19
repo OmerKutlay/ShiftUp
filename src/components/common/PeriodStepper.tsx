@@ -15,6 +15,8 @@ interface Props {
   nextLabel: string
   /** Etiketin en az genişliği — dönem değişince kutu zıplamasın */
   minLabelWidth?: number
+  /** İleri gitme kapalı (ör. gelecek ay) */
+  nextDisabled?: boolean
 }
 
 const arrowSx = {
@@ -25,7 +27,7 @@ const arrowSx = {
   '&.Mui-focusVisible': { bgcolor: 'action.selected' },
 } as const
 
-export function PeriodStepper({ label, onPrev, onNext, prevLabel, nextLabel, minLabelWidth = 96 }: Props) {
+export function PeriodStepper({ label, onPrev, onNext, prevLabel, nextLabel, minLabelWidth = 96, nextDisabled }: Props) {
   return (
     <Box
       sx={{
@@ -64,7 +66,7 @@ export function PeriodStepper({ label, onPrev, onNext, prevLabel, nextLabel, min
       >
         {label}
       </Typography>
-      <ButtonBase onClick={onNext} aria-label={nextLabel} sx={arrowSx}>
+      <ButtonBase onClick={onNext} aria-label={nextLabel} disabled={nextDisabled} sx={{ ...arrowSx, '&.Mui-disabled': { color: 'text.disabled' } }}>
         <ChevronRightIcon fontSize="small" />
       </ButtonBase>
     </Box>

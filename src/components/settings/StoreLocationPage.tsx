@@ -158,7 +158,7 @@ export function StoreLocationPage({ embedded = false }: { embedded?: boolean } =
     <Box sx={embedded ? undefined : { p: { xs: 2, md: 3 }, color: 'text.primary' }}>
       {!embedded && (
         <PageHeader
-          title="Mağaza Konumu"
+          title="Mağaza konumu"
           subtitle="QR devam takibinde kullanılan geofence konumunu yönetin"
         />
       )}
