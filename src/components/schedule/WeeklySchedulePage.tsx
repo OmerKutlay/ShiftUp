@@ -4,7 +4,6 @@ import { useState, useMemo } from 'react'
 import {
   Box,
   Typography,
-  CircularProgress,
   Alert,
   Chip,
   Fab,
@@ -14,14 +13,8 @@ import {
   TextField,
   useMediaQuery,
   useTheme,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   Button,
 } from '@mui/material'
-import EventBusyIcon from '@mui/icons-material/EventBusy'
-import DeleteIcon from '@mui/icons-material/Delete'
 import AddIcon from '@mui/icons-material/Add'
 import type { EmployeeWithRole } from '@/types/employee'
 import type { ShiftAssignmentWithDetails, WeeklyScheduleEntry } from '@/types/schedule'
@@ -50,6 +43,12 @@ import { MobileDayBoard } from './MobileDayBoard'
 import { WeekGrid } from './WeekGrid'
 import { useAuth } from '@/context/AuthContext'
 import { C, SHIFT_KIND_TONES } from '@/lib/palette'
+import { CalendarX2, Info, Loader2, Trash2 } from 'lucide-react'
+import { Alert as UiAlert, AlertDescription } from '@/components/ui/alert'
+import {
+  AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Button as UiButton } from '@/components/ui/button'
 
 // ─── Ana bileşen ──────────────────────────────────────────────
 interface WeeklySchedulePageProps {
@@ -517,66 +516,57 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
       )}
 
       {/* İzin silme onay dialog'u */}
-      {!readOnly && (
-        <Dialog
-          open={!!leaveDeleteDialog}
-          onClose={() => setLeaveDeleteDialog(null)}
-          maxWidth="xs"
-          fullWidth
-        >
-          <DialogTitle sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
-            <EventBusyIcon sx={{ color: 'warning.main', fontSize: 20 }} />
-            {leaveDeleteDialog && restDayMap.has(`${leaveDeleteDialog.employee.id}:${leaveDeleteDialog.date}`)
-              ? 'Tatili Kaldır'
-              : 'İzni İptal Et'
-            }
-          </DialogTitle>
-          <DialogContent>
-            {leaveDeleteDialog && (
-              <Typography variant="body2" color="text.secondary">
-                {restDayMap.has(`${leaveDeleteDialog.employee.id}:${leaveDeleteDialog.date}`) ? (
-                  <>
-                    <strong>{leaveDeleteDialog.employee.full_name}</strong> adlı çalışanın{' '}
-                    <strong>
-                      {new Date(leaveDeleteDialog.date + 'T00:00:00').toLocaleDateString('tr-TR', {
-                        day: 'numeric', month: 'long', year: 'numeric',
-                      })}
-                    </strong>{' '}
-                    tarihindeki haftalık tatili kaldırılacak. Bu gün vardiya atanabilir hale gelecektir.
-                  </>
-                ) : (
-                  <>
-                    <strong>{leaveDeleteDialog.employee.full_name}</strong> adlı çalışanın{' '}
-                    <strong>
-                      {new Date(leaveDeleteDialog.date + 'T00:00:00').toLocaleDateString('tr-TR', {
-                        day: 'numeric', month: 'long', year: 'numeric',
-                      })}
-                    </strong>{' '}
-                    tarihini kapsayan onaylı izni silinecek.
-                    <Typography component="span" variant="body2" color="info.main" display="block" sx={{ mt: 1 }}>
-                      ℹ️ İzin tüm kapsamıyla (başlangıç–bitiş aralığı) silinir, yalnızca bu gün değil.
-                    </Typography>
-                  </>
-                )}
-              </Typography>
-            )}
-          </DialogContent>
-          <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
-            <Button onClick={() => setLeaveDeleteDialog(null)} disabled={leaveDeleting}>
-              Vazgeç
-            </Button>
-            <Button
-              variant="contained"
-              color="error"
-              startIcon={leaveDeleting ? <CircularProgress size={16} color="inherit" /> : <DeleteIcon />}
-              onClick={handleLeaveDelete}
-              disabled={leaveDeleting}
-            >
-              İzni Sil
-            </Button>
-          </DialogActions>
-        </Dialog>
-      )}
+      {!readOnly && (() => {
+        const isRestDay = !!leaveDeleteDialog && restDayMap.has(`${leaveDeleteDialog.employee.id}:${leaveDeleteDialog.date}`)
+        const dateText = leaveDeleteDialog
+          ? new Date(leaveDeleteDialog.date + 'T00:00:00').toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })
+          : ''
+        return (
+          <AlertDialog
+            open={!!leaveDeleteDialog}
+            onOpenChange={(next) => { if (!next && !leaveDeleting) setLeaveDeleteDialog(null) }}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader className="flex-row items-start gap-3">
+                <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-full bg-warning-soft text-warning">
+                  <CalendarX2 className="size-5" />
+                </span>
+                <div className="flex min-w-0 flex-col gap-1.5 pt-1">
+                  <AlertDialogTitle>{isRestDay ? 'Tatili Kaldır' : 'İzni İptal Et'}</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {leaveDeleteDialog && (
+                      <>
+                        <strong className="text-ink">{leaveDeleteDialog.employee.full_name}</strong> adlı çalışanın{' '}
+                        <strong className="text-ink">{dateText}</strong>{' '}
+                        {isRestDay
+                          ? 'tarihindeki haftalık tatili kaldırılacak. Bu gün vardiya atanabilir hale gelecektir.'
+                          : 'tarihini kapsayan onaylı izni silinecek.'}
+                      </>
+                    )}
+                  </AlertDialogDescription>
+                </div>
+              </AlertDialogHeader>
+              {leaveDeleteDialog && !isRestDay && (
+                <UiAlert tone="info">
+                  <Info />
+                  <AlertDescription className="text-ink">
+                    İzin tüm kapsamıyla (başlangıç–bitiş aralığı) silinir, yalnızca bu gün değil.
+                  </AlertDescription>
+                </UiAlert>
+              )}
+              <AlertDialogFooter>
+                <UiButton type="button" variant="ghost" onClick={() => setLeaveDeleteDialog(null)} disabled={leaveDeleting}>
+                  Vazgeç
+                </UiButton>
+                <UiButton type="button" variant="destructive" onClick={handleLeaveDelete} disabled={leaveDeleting}>
+                  {leaveDeleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
+                  İzni Sil
+                </UiButton>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )
+      })()}
     </Box>
   )
 }
