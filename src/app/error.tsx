@@ -6,8 +6,8 @@
  */
 import { useEffect } from 'react'
 import Link from 'next/link'
-import { Box, Button, Paper, Typography } from '@mui/material'
-import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
+import { CircleAlert } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 
 export default function Error({
   error,
@@ -21,33 +21,25 @@ export default function Error({
   }, [error])
 
   return (
-    <Box sx={{ minHeight: '60dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', p: 2 }}>
-      <Paper
-        elevation={0}
-        role="alert"
-        sx={{ p: { xs: 3, md: 4 }, maxWidth: 440, width: '100%', textAlign: 'center', border: '1px solid', borderColor: 'divider', borderRadius: 3 }}
-      >
-        <ErrorOutlineIcon sx={{ fontSize: 48, color: 'error.main', mb: 1 }} aria-hidden />
-        <Typography variant="h6" fontWeight={700} gutterBottom>
-          Bir şeyler ters gitti
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+    <div className="flex min-h-[60dvh] items-center justify-center p-4">
+      <div role="alert" className="w-full max-w-[440px] rounded-2xl border bg-card p-6 text-center md:p-8">
+        <span className="mx-auto mb-3 flex size-14 items-center justify-center rounded-full bg-danger-soft text-danger">
+          <CircleAlert className="size-7" aria-hidden />
+        </span>
+        <h1 className="mb-2 text-xl font-bold text-ink">Bir şeyler ters gitti</h1>
+        <p className="mb-6 text-sm text-ink-secondary">
           Sayfa yüklenirken beklenmeyen bir hata oluştu. Tekrar deneyebilir veya ana sayfaya dönebilirsiniz.
           {error.digest && (
-            <Box component="span" sx={{ display: 'block', mt: 1, fontFamily: 'monospace', fontSize: '0.75rem' }}>
-              Hata kodu: {error.digest}
-            </Box>
+            <span className="mt-2 block font-mono text-xs">Hata kodu: {error.digest}</span>
           )}
-        </Typography>
-        <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
-          <Button variant="contained" onClick={() => retry()}>
-            Tekrar Dene
+        </p>
+        <div className="flex flex-wrap justify-center gap-2">
+          <Button onClick={() => retry()}>Tekrar Dene</Button>
+          <Button variant="outline" asChild>
+            <Link href="/my-schedule">Ana Sayfa</Link>
           </Button>
-          <Button variant="outlined" component={Link} href="/my-schedule">
-            Ana Sayfa
-          </Button>
-        </Box>
-      </Paper>
-    </Box>
+        </div>
+      </div>
+    </div>
   )
 }
