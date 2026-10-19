@@ -329,6 +329,8 @@ function PickerField({
             <input
               ref={inputRef}
               id={inputId}
+              role="combobox"
+              aria-controls={`${id}-calendar`}
               readOnly
               value={display}
               placeholder={placeholder ?? (mode === 'date' ? 'Tarih seçin' : 'Ay seçin')}
@@ -351,6 +353,7 @@ function PickerField({
         </PopoverAnchor>
         <PopoverContent
           align="start"
+          id={`${id}-calendar`}
           aria-label={label}
           className="w-auto"
           // Odak takvimdeki seçili güne gider (Calendar içindeki efekt)
