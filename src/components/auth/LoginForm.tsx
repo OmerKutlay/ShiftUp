@@ -19,7 +19,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
-import { AlertCircle, ArrowLeft, Bug, Info, Loader2, LockKeyhole, Mail } from 'lucide-react'
+import { AlertCircle, ArrowLeft, Bug, Info, Loader2, Mail } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -282,28 +282,23 @@ export function LoginForm({ authMode }: Props) {
             <form onSubmit={handleOtpSubmit} noValidate className="flex flex-col gap-4">
               <div className="flex flex-col gap-2">
                 <Label htmlFor="login-otp">{isDevMode ? 'Development Kodu' : 'Giriş Kodu'}</Label>
-                <div className="relative">
-                  <LockKeyhole
-                    aria-hidden
-                    className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-muted"
-                  />
-                  <Input
-                    id="login-otp"
-                    type="text"
-                    inputMode="numeric"
-                    value={state.otp}
-                    onChange={(e) => {
-                      const v = e.target.value.replace(/\D/g, '').slice(0, 6)
-                      setPartial({ otp: v, error: null })
-                    }}
-                    autoFocus
-                    autoComplete="one-time-code"
-                    maxLength={6}
-                    disabled={state.loading}
-                    aria-invalid={state.error ? true : undefined}
-                    className="h-14 pl-10 text-center font-mono text-2xl tracking-[0.5em] md:text-2xl"
-                  />
-                </div>
+                <Input
+                  id="login-otp"
+                  type="text"
+                  inputMode="numeric"
+                  value={state.otp}
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/\D/g, '').slice(0, 6)
+                    setPartial({ otp: v, error: null })
+                  }}
+                  autoFocus
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  disabled={state.loading}
+                  aria-invalid={state.error ? true : undefined}
+                  // pl: tracking son hanenin sağına da boşluk ekler — rakamlar ortada dursun
+                  className="h-14 pl-[calc(0.75rem+0.5em)] text-center font-mono text-2xl font-semibold tracking-[0.5em] md:text-2xl"
+                />
               </div>
               <Button type="submit" size="lg" className="w-full" disabled={state.loading}>
                 {state.loading ? <Loader2 className="size-5 animate-spin" aria-label="Yükleniyor" /> : 'Giriş Yap'}
