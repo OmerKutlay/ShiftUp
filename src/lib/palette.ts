@@ -14,7 +14,8 @@ export const C = {
   canvas: '#F5EFE6',       // uygulama zemini (sidebar, mobil arka plan)
   surface: '#FFFDFA',      // kart / içerik paneli
   surfaceAlt: '#FAF5EE',   // ikincil yüzey (KPI kutusu, input)
-  surfaceMuted: '#F2ECE3', // segment kontrol zemini, hafta tatili hücresi
+  surfaceMuted: '#F2ECE3', // segment kontrol zemini
+  sand: '#E6DCCD',         // hafta tatili (puantaj şeridi)
   border: '#ECE4D8',       // kart kenarlığı, ayraç
 
   // Metin
