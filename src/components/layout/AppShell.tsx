@@ -19,6 +19,7 @@ import {
 import MenuIcon from '@mui/icons-material/Menu'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import LogoutIcon from '@mui/icons-material/Logout'
+import LoginIcon from '@mui/icons-material/Login'
 
 import { ErrorBoundary } from './ErrorBoundary'
 import { MobileBottomNav, BOTTOM_NAV_SPACE } from './MobileBottomNav'
@@ -47,6 +48,10 @@ export function AppShell({ children }: Props) {
   const pathname = usePathname()
   const { employee: authEmployee, signOut, status: authStatus } = useAuth()
   const authRoleName = authEmployee?.roles?.name ?? authEmployee?.role_name ?? null
+
+  // Oturum doğrulanamadıysa (ör. geçici sunucu hatası) kullanıcı içeride sıkışmasın: giriş ekranına çıkış
+  // Tam sayfa geçişi: middleware oturumu yeniden değerlendirir (geçerliyse ana sayfaya döner)
+  const loginHref = `/login?next=${encodeURIComponent(pathname)}`
 
   const drawerWidth = collapsed && !isMobile ? DRAWER_COLLAPSED : DRAWER_WIDTH
 
@@ -201,6 +206,19 @@ export function AppShell({ children }: Props) {
             </IconButton>
           </Tooltip>
         )}
+        {authStatus === 'unauthenticated' && (
+          <Tooltip title="Giriş Yap" placement={narrow ? 'right' : 'top'}>
+            <IconButton
+              size="small"
+              component="a"
+              href={loginHref}
+              sx={{ color: 'text.secondary', '&:hover': { color: 'primary.main' } }}
+              aria-label="Giriş Yap"
+            >
+              <LoginIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
       </Box>
     </Box>
   )
@@ -243,6 +261,17 @@ export function AppShell({ children }: Props) {
             <Box sx={{ ml: 'auto' }}>
               <NotificationBell employeeId={authEmployee.id} collapsed />
             </Box>
+          )}
+          {authStatus === 'unauthenticated' && (
+            <IconButton
+              size="small"
+              component="a"
+              href={loginHref}
+              sx={{ ml: 'auto', color: 'text.secondary' }}
+              aria-label="Giriş Yap"
+            >
+              <LoginIcon fontSize="small" />
+            </IconButton>
           )}
         </Box>
       )}
