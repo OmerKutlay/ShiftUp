@@ -90,7 +90,7 @@ export function AvailabilityEditor({ employees, currentEmployeeId, isManager }: 
           value={selectedId}
           label="Çalışan"
           onChange={setSelectedId}
-          sx={{ mb: 2, minWidth: 260, maxWidth: 360 }}
+          className="mb-4 max-w-[360px] sm:min-w-[260px]"
         />
       ) : (
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
