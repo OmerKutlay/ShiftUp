@@ -6,8 +6,7 @@
  * compact=true → mobil hafta görünümü (başlangıç saatli mini kutular).
  */
 import { Fragment } from 'react'
-import { Box, Typography } from '@mui/material'
-import StorefrontOutlinedIcon from '@mui/icons-material/StorefrontOutlined'
+import { Store } from 'lucide-react'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import type { EmployeeWithRole } from '@/types/employee'
@@ -15,7 +14,7 @@ import type { WeeklyScheduleEntry } from '@/types/schedule'
 import type { PublicHoliday } from '@/types/holiday'
 import { getWorkingTimeConfig } from '@/lib/workingTimeConfig'
 import { PersonAvatar } from '@/components/common'
-import { C } from '@/lib/palette'
+import { cn } from '@/lib/utils'
 import {
   ROLE_GROUPS, fmtHoursTr, getAvailStatus, roleGroupOf,
   type AvailabilityMap, type EmployeeWeekStats,
@@ -73,75 +72,66 @@ export function WeekGrid(props: WeekGridProps) {
 
   const todayIdx = weekDays.indexOf(todayStr)
   // Bugünün sütunu boydan boya açık kiremit zeminli
-  const colBg = (i: number) => (i === todayIdx ? C.brandSoft : undefined)
-  const cellPad = compact ? 0.375 : 0.5
-
-  const row = { display: 'grid', gridTemplateColumns: cols, alignItems: 'stretch' } as const
-  const nameCell = {
-    position: 'sticky', left: 0, zIndex: 1, bgcolor: 'background.paper',
-    display: 'flex', alignItems: 'center', gap: compact ? 0.75 : 1.25, minWidth: 0,
-    py: compact ? 0.75 : 1, pr: 1,
-  } as const
+  const colBg = (i: number) => (i === todayIdx ? 'bg-accent' : undefined)
+  const rowStyle = { gridTemplateColumns: cols }
+  const nameCell = cn('sticky left-0 z-[1] flex min-w-0 items-center bg-card pr-2', compact ? 'gap-1.5 py-1.5' : 'gap-2.5 py-2')
 
   return (
-    <Box sx={{ overflowX: 'auto', overscrollBehaviorX: 'contain' }}>
-      <Box sx={{ minWidth: compact ? undefined : nameW + 7 * 108 + 150 }}>
+    <div className="overflow-x-auto overscroll-x-contain">
+      <div style={{ minWidth: compact ? undefined : nameW + 7 * 108 + 150 }}>
         {/* Başlık */}
-        <Box sx={{ ...row, borderBottom: '1px solid', borderColor: 'divider' }}>
-          <Box sx={{ ...nameCell, alignItems: 'flex-end', pb: 1 }}>
-            {!compact && <Typography fontSize="0.75rem" color="text.secondary">Ekip</Typography>}
-          </Box>
+        <div className="grid items-stretch border-b" style={rowStyle}>
+          <div className={cn(nameCell, 'items-end pb-2')}>
+            {!compact && <span className="text-xs text-ink-secondary">Ekip</span>}
+          </div>
           {weekDays.map((d, i) => {
             const isToday = i === todayIdx
             const holiday = holidayMap.get(d)
             const top = isToday ? 'Bugün' : DAY_NAMES[i]
             const tag = holiday ? (holiday.half_day ? 'arife' : 'tatil') : null
-            const accent = isToday ? 'primary.main' : holiday ? C.warning : undefined
+            const accent = isToday ? 'text-primary' : holiday ? 'text-warning' : undefined
             return (
-              <Box
+              <div
                 key={d}
                 data-today={isToday || undefined}
                 title={holiday ? `Resmi tatil: ${holiday.name}${holiday.half_day ? ' (13:00 sonrası)' : ''}` : undefined}
-                sx={{
-                  bgcolor: colBg(i), px: compact ? 0 : 1, pt: compact ? 0.75 : 1.25, pb: 1,
-                  textAlign: compact ? 'center' : 'left', borderRadius: '10px 10px 0 0',
-                }}
+                className={cn('rounded-t-[10px] pb-2', colBg(i), compact ? 'pt-1.5 text-center' : 'px-2 pt-2.5')}
               >
                 {compact ? (
                   <>
-                    <Typography fontSize="0.62rem" color={accent ?? 'text.secondary'}>{DAY_SHORT[i]}</Typography>
-                    <Typography fontSize="0.85rem" fontWeight={700} color={accent ?? 'text.primary'}>{Number(d.slice(8))}</Typography>
+                    <p className={cn('text-[0.62rem]', accent ?? 'text-ink-secondary')}>{DAY_SHORT[i]}</p>
+                    <p className={cn('text-[0.85rem] font-bold', accent)}>{Number(d.slice(8))}</p>
                   </>
                 ) : (
                   <>
-                    <Typography fontSize="0.72rem" color={accent ?? 'text.secondary'} fontWeight={isToday || tag ? 600 : 400} noWrap>
+                    <p className={cn('truncate text-[0.72rem]', accent ?? 'text-ink-secondary', (isToday || tag) && 'font-semibold')}>
                       {top}{tag && ` · ${tag}`}
-                    </Typography>
-                    <Typography fontSize="0.95rem" fontWeight={700} color={isToday ? 'primary.main' : 'text.primary'} noWrap>
+                    </p>
+                    <p className={cn('truncate text-[0.95rem] font-bold', isToday && 'text-primary')}>
                       {format(new Date(`${d}T00:00:00`), 'd MMMM', { locale: tr })}
-                    </Typography>
+                    </p>
                   </>
                 )}
-              </Box>
+              </div>
             )
           })}
-          <Box sx={{ display: 'flex', alignItems: 'flex-end', justifyContent: compact ? 'center' : 'flex-start', px: compact ? 0 : 1.5, pb: 1 }}>
-            <Typography fontSize={compact ? '0.62rem' : '0.75rem'} color="text.secondary">{compact ? 'saat' : 'Bu hafta'}</Typography>
-          </Box>
-        </Box>
+          <div className={cn('flex items-end pb-2', compact ? 'justify-center' : 'px-3')}>
+            <span className={cn('text-ink-secondary', compact ? 'text-[0.62rem]' : 'text-xs')}>{compact ? 'saat' : 'Bu hafta'}</span>
+          </div>
+        </div>
 
         {/* Gruplar */}
         {groups.map((g) => (
           <Fragment key={g.key}>
             {!compact && (
-              <Box sx={{ ...row, borderBottom: '1px solid', borderColor: 'divider' }}>
-                <Box sx={{ ...nameCell, py: 1.25 }}>
-                  <Typography fontSize="0.8rem" fontWeight={700}>{g.label}</Typography>
-                  <Typography fontSize="0.72rem" color="text.secondary">{g.entries.length} kişi</Typography>
-                </Box>
-                {weekDays.map((d, i) => <Box key={d} sx={{ bgcolor: colBg(i) }} />)}
-                <Box />
-              </Box>
+              <div className="grid items-stretch border-b" style={rowStyle}>
+                <div className={cn(nameCell, 'py-2.5')}>
+                  <span className="text-[0.8rem] font-bold">{g.label}</span>
+                  <span className="text-xs text-ink-secondary">{g.entries.length} kişi</span>
+                </div>
+                {weekDays.map((d, i) => <div key={d} className={colBg(i)} />)}
+                <div />
+              </div>
             )}
             {g.entries.map((entry) => {
               const stats = statsMap.get(entry.employee.id)
@@ -150,16 +140,16 @@ export function WeekGrid(props: WeekGridProps) {
               const rest = stats?.restViolations.length ?? 0
               const over = stats ? stats.totalMins > weeklyLimitMins(stats, config) : false
               return (
-                <Box key={emp.id} sx={{ ...row, borderBottom: '1px solid', borderColor: 'divider' }}>
-                  <Box sx={nameCell}>
+                <div key={emp.id} className="grid items-stretch border-b" style={rowStyle}>
+                  <div className={nameCell}>
                     <PersonAvatar name={emp.full_name} size={compact ? 24 : 32} />
-                    <Box sx={{ minWidth: 0 }}>
-                      <Typography fontSize={compact ? '0.75rem' : '0.85rem'} fontWeight={700} noWrap>
+                    <div className="min-w-0">
+                      <p className={cn('truncate font-bold', compact ? 'text-xs' : 'text-[0.85rem]')}>
                         {compact ? emp.full_name.split(/\s+/)[0] : emp.full_name}
-                      </Typography>
-                      <Typography fontSize={compact ? '0.62rem' : '0.7rem'} color="text.secondary" noWrap>{roleText}</Typography>
-                    </Box>
-                  </Box>
+                      </p>
+                      <p className={cn('truncate text-ink-secondary', compact ? 'text-[0.62rem]' : 'text-[0.7rem]')}>{roleText}</p>
+                    </div>
+                  </div>
                   {weekDays.map((d, i) => {
                     const asgn = entry.dayAssignments[d]
                     const key = `${emp.id}:${d}`
@@ -173,22 +163,22 @@ export function WeekGrid(props: WeekGridProps) {
                       readOnly,
                     }
                     return (
-                      <Box key={d} sx={{ bgcolor: colBg(i), p: cellPad, display: 'flex', alignItems: 'center', minWidth: 0 }}>
+                      <div key={d} className={cn('flex min-w-0 items-center', compact ? 'p-[3px]' : 'p-1', colBg(i))}>
                         {compact ? <MiniShiftCell {...cellProps} /> : <ShiftCell {...cellProps} />}
-                      </Box>
+                      </div>
                     )
                   })}
                   {compact ? (
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5, pr: 0.25 }}>
-                      {(rest > 0 || over) && <Box aria-label="Uyarı" sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: C.dangerFill }} />}
-                      <Typography fontSize="0.75rem" fontWeight={700} color={over ? C.danger : 'text.primary'}>
+                    <div className="flex items-center justify-end gap-1 pr-0.5">
+                      {(rest > 0 || over) && <span aria-label="Uyarı" className="size-1.5 rounded-full bg-danger-fill" />}
+                      <span className={cn('text-xs font-bold', over && 'text-danger')}>
                         {stats ? (Math.round(stats.totalMins / 6) / 10).toLocaleString('tr-TR') : '—'}
-                      </Typography>
-                    </Box>
+                      </span>
+                    </div>
                   ) : (
                     <SummaryCell stats={stats} config={config} />
                   )}
-                </Box>
+                </div>
               )
             })}
           </Fragment>
@@ -196,28 +186,26 @@ export function WeekGrid(props: WeekGridProps) {
 
         {/* Günlük kişi sayısı */}
         {!compact && (
-          <Box sx={row}>
-            <Box sx={{ ...nameCell, py: 1.5, color: 'text.secondary', '& svg': { fontSize: 16 } }}>
-              <StorefrontOutlinedIcon />
-              <Typography fontSize="0.78rem" color="text.secondary">Mağazada</Typography>
-            </Box>
+          <div className="grid items-stretch" style={rowStyle}>
+            <div className={cn(nameCell, 'py-3 text-ink-secondary')}>
+              <Store className="size-4" />
+              <span className="text-[0.78rem]">Mağazada</span>
+            </div>
             {counts.map((c, i) => (
-              <Box key={weekDays[i]} sx={{ bgcolor: colBg(i), px: 1, display: 'flex', alignItems: 'center', borderRadius: '0 0 10px 10px' }}>
+              <div key={weekDays[i]} className={cn('flex items-center rounded-b-[10px] px-2', colBg(i))}>
                 {isLow(c) ? (
-                  <Typography fontSize="0.75rem" fontWeight={700} sx={{ bgcolor: C.warningSoft, color: C.warning, px: 0.75, py: 0.25, borderRadius: '6px' }}>
-                    {c} kişi · az
-                  </Typography>
+                  <span className="rounded-md bg-warning-soft px-1.5 py-0.5 text-xs font-bold text-warning">{c} kişi · az</span>
                 ) : (
-                  <Typography fontSize="0.8rem" fontWeight={600}>{c} kişi</Typography>
+                  <span className="text-[0.8rem] font-semibold">{c} kişi</span>
                 )}
-              </Box>
+              </div>
             ))}
-            <Box sx={{ px: 1.5, display: 'flex', alignItems: 'center' }}>
-              <Typography fontSize="0.85rem" fontWeight={700}>{fmtHoursTr(totalMins).replace(' s', ' saat')}</Typography>
-            </Box>
-          </Box>
+            <div className="flex items-center px-3">
+              <span className="text-[0.85rem] font-bold">{fmtHoursTr(totalMins).replace(' s', ' saat')}</span>
+            </div>
+          </div>
         )}
-      </Box>
-    </Box>
+      </div>
+    </div>
   )
 }

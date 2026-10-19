@@ -5,17 +5,15 @@
  * vardiya türü renkli kutular (Açılış / Ortacı / Kapanış), Tatil, İzinli, boş hücre,
  * haftalık özet halkası ve mobil hafta görünümünün mini hücreleri.
  */
-import { Box, ButtonBase, Tooltip, Typography } from '@mui/material'
-import AddIcon from '@mui/icons-material/Add'
-import WarningAmberIcon from '@mui/icons-material/WarningAmber'
-import WeekendOutlinedIcon from '@mui/icons-material/WeekendOutlined'
-import FlightTakeoffOutlinedIcon from '@mui/icons-material/FlightTakeoffOutlined'
+import { Armchair, Plane, Plus, TriangleAlert } from 'lucide-react'
 import type { ShiftAssignmentWithDetails } from '@/types/schedule'
 import { formatTime } from '@/types/shiftTemplate'
 import { shiftDurationMins, netWorkMins } from '@/lib/workingTimeService'
 import { PART_TIME_RULES } from '@/types/employee'
 import { getWorkingTimeConfig } from '@/lib/workingTimeConfig'
 import { C, SHIFT_KIND_TONES } from '@/lib/palette'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { cn } from '@/lib/utils'
 
 import { fmtHours, fmtHoursTr, shiftDisplayName, shiftKindOf, EmployeeWeekStats, AvailStatus } from './scheduleHelpers'
 
@@ -31,15 +29,24 @@ export function WeekRing({ value, max, over, size = 26 }: { value: number; max: 
   const r = (size - stroke) / 2
   const len = 2 * Math.PI * r
   const ratio = max > 0 ? Math.min(1, value / max) : 0
-  const color = over ? C.dangerFill : C.success
   return (
-    <Box component="svg" width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden sx={{ flexShrink: 0, transform: 'rotate(-90deg)' }}>
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden className="shrink-0 -rotate-90">
       <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={C.border} strokeWidth={stroke} />
       <circle
-        cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke}
+        cx={size / 2} cy={size / 2} r={r} fill="none" stroke={over ? C.dangerFill : C.success} strokeWidth={stroke}
         strokeDasharray={`${len * ratio} ${len}`} strokeLinecap="round"
       />
-    </Box>
+    </svg>
+  )
+}
+
+/** Çok satırlı ipucu sarmalayıcısı */
+function Tip({ text, children, side = 'top' }: { text: React.ReactNode; children: React.ReactElement; side?: 'top' | 'left' }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side={side}>{text}</TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -48,7 +55,7 @@ export function SummaryCell({ stats, config }: {
   config: ReturnType<typeof getWorkingTimeConfig>
 }) {
   if (!stats) {
-    return <Box sx={{ px: 1.5, display: 'flex', alignItems: 'center' }}><Typography variant="caption" color="text.disabled">—</Typography></Box>
+    return <div className="flex items-center px-3 text-xs text-ink-muted">—</div>
   }
   const maxMins = weeklyLimitMins(stats, config)
   const over = stats.totalMins > maxMins
@@ -65,17 +72,17 @@ export function SummaryCell({ stats, config }: {
   ].filter(Boolean).join('\n')
 
   return (
-    <Tooltip title={<Box sx={{ whiteSpace: 'pre-line' }}>{tooltip}</Box>} placement="left">
-      <Box sx={{ px: 1.5, py: 1, display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}>
+    <Tip text={tooltip} side="left">
+      <div className="flex min-w-0 items-center gap-2.5 px-3 py-2">
         <WeekRing value={stats.totalMins} max={maxMins} over={over} />
-        <Box sx={{ minWidth: 0 }}>
-          <Typography fontWeight={700} fontSize="0.82rem" color={over ? C.danger : 'text.primary'} noWrap>
+        <div className="min-w-0">
+          <p className={cn('truncate text-[0.82rem] font-bold', over && 'text-danger')}>
             {(Math.round(stats.totalMins / 6) / 10).toLocaleString('tr-TR')} / {maxMins / 60} s
-          </Typography>
-          <Typography fontSize="0.68rem" color={over || rest ? C.danger : 'text.secondary'} noWrap>{note}</Typography>
-        </Box>
-      </Box>
-    </Tooltip>
+          </p>
+          <p className={cn('truncate text-[0.68rem]', over || rest ? 'text-danger' : 'text-ink-secondary')}>{note}</p>
+        </div>
+      </div>
+    </Tip>
   )
 }
 
@@ -91,38 +98,36 @@ export interface ShiftCellProps {
   readOnly?: boolean
 }
 
-const boxBase = {
-  width: '100%',
-  height: '100%',
-  minHeight: 46,
-  borderRadius: '10px',
-  px: 1,
-  py: 0.75,
-  display: 'flex',
-  flexDirection: 'column',
-  justifyContent: 'center',
-  alignItems: 'flex-start',
-  textAlign: 'left',
-  fontFamily: 'inherit',
-  minWidth: 0,
-  '&.Mui-focusVisible': { outline: '2px solid', outlineColor: 'primary.light' },
-  '&.Mui-disabled': { opacity: 1 },
-} as const
+const cellBase =
+  'flex h-full min-h-[46px] w-full min-w-0 flex-col items-start justify-center rounded-[10px] px-2 py-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring'
 
-function OffBox({ icon, label, bg, fg, onClick, readOnly, title }: {
-  icon: React.ReactNode; label: string; bg: string; fg: string; onClick: () => void; readOnly?: boolean; title: string
+/** Tıklanabilir hücre; salt okunurda düz kutu (ipucu yine çalışır) */
+function CellButton({ readOnly, onClick, className, style, children, ...rest }: {
+  readOnly?: boolean
+  onClick: () => void
+  className?: string
+  style?: React.CSSProperties
+  children: React.ReactNode
+  'aria-label'?: string
+}) {
+  if (readOnly) return <div className={className} style={style} aria-label={rest['aria-label']}>{children}</div>
+  return <button type="button" onClick={onClick} className={className} style={style} aria-label={rest['aria-label']}>{children}</button>
+}
+
+function OffBox({ icon, label, className, onClick, readOnly, title }: {
+  icon: React.ReactNode; label: string; className: string; onClick: () => void; readOnly?: boolean; title: string
 }) {
   return (
-    <Tooltip title={title} placement="top">
-      <ButtonBase
+    <Tip text={title}>
+      <CellButton
+        readOnly={readOnly}
         onClick={onClick}
-        disabled={readOnly}
-        sx={{ ...boxBase, bgcolor: bg, color: fg, flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center', gap: 0.75, '& svg': { fontSize: 15 } }}
+        className={cn(cellBase, 'flex-row items-center justify-start gap-1.5 [&_svg]:size-[15px]', className)}
       >
         {icon}
-        <Typography fontSize="0.75rem" fontWeight={600}>{label}</Typography>
-      </ButtonBase>
-    </Tooltip>
+        <span className="text-xs font-semibold">{label}</span>
+      </CellButton>
+    </Tip>
   )
 }
 
@@ -132,7 +137,7 @@ export function ShiftCell({ assignment, isOnLeave, isRestDay, availStatus, daily
   if (isRestDay) {
     return (
       <OffBox
-        icon={<WeekendOutlinedIcon />} label="Tatil" bg={C.surfaceMuted} fg={C.inkSecondary}
+        icon={<Armchair />} label="Tatil" className="bg-surface-muted text-ink-secondary"
         onClick={onClick} readOnly={readOnly}
         title={readOnly ? 'Haftalık tatil' : 'Haftalık tatil — tıklayarak kaldırabilirsiniz'}
       />
@@ -142,7 +147,7 @@ export function ShiftCell({ assignment, isOnLeave, isRestDay, availStatus, daily
     const t = assignment ? ` (${formatTime(assignment.start_time)}–${formatTime(assignment.end_time)})` : ''
     return (
       <OffBox
-        icon={<FlightTakeoffOutlinedIcon />} label="İzinli" bg={C.successSoft} fg={C.success}
+        icon={<Plane />} label="İzinli" className="bg-success-soft text-success"
         onClick={onClick} readOnly={readOnly} title={`İzin onaylandı${t}`}
       />
     )
@@ -150,32 +155,31 @@ export function ShiftCell({ assignment, isOnLeave, isRestDay, availStatus, daily
   if (!assignment) {
     if (availStatus === 'off') {
       return (
-        <Tooltip title="Çalışan bu gün müsait değil" placement="top">
-          <ButtonBase
+        <Tip text="Çalışan bu gün müsait değil">
+          <CellButton
+            readOnly={readOnly}
             onClick={onClick}
-            disabled={readOnly}
-            sx={{ ...boxBase, border: `1px dashed ${C.dangerFill}`, color: C.danger, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }}
+            className={cn(cellBase, 'items-center border border-dashed border-danger-fill text-danger')}
           >
-            <Typography fontSize="0.72rem" fontWeight={600}>Müsait değil</Typography>
-          </ButtonBase>
-        </Tooltip>
+            <span className="text-xs font-semibold">Müsait değil</span>
+          </CellButton>
+        </Tip>
       )
     }
-    if (readOnly) return <Box sx={{ minHeight: 46 }} />
+    if (readOnly) return <div className="min-h-[46px]" />
     return (
-      <ButtonBase
+      <button
+        type="button"
         onClick={onClick}
         aria-label="Vardiya ekle"
-        sx={{
-          ...boxBase, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 0.5,
-          border: `1px dashed ${C.sand}`, color: 'text.disabled',
-          opacity: 0.55, transition: 'opacity 0.15s',
-          '&:hover, &.Mui-focusVisible': { opacity: 1, color: 'text.secondary', bgcolor: C.surfaceAlt },
-        }}
+        className={cn(
+          cellBase,
+          'flex-row items-center justify-center gap-1 border border-dashed border-sand text-ink-muted opacity-55 transition-opacity hover:bg-muted hover:text-ink-secondary hover:opacity-100 focus-visible:opacity-100'
+        )}
       >
-        <AddIcon sx={{ fontSize: 15 }} />
-        <Typography fontSize="0.75rem" fontWeight={600}>Ekle</Typography>
-      </ButtonBase>
+        <Plus className="size-[15px]" />
+        <span className="text-xs font-semibold">Ekle</span>
+      </button>
     )
   }
 
@@ -196,65 +200,59 @@ export function ShiftCell({ assignment, isOnLeave, isRestDay, availStatus, daily
   ].filter(Boolean).join('\n')
 
   return (
-    <Tooltip title={<Box sx={{ whiteSpace: 'pre-line' }}>{tooltipText}</Box>} placement="top">
-      <ButtonBase
+    <Tip text={tooltipText}>
+      <CellButton
+        readOnly={readOnly}
         onClick={onClick}
-        disabled={readOnly}
-        sx={{
-          ...boxBase,
-          bgcolor: dailyOver ? C.dangerSoft : tone.soft,
+        className={cn(cellBase, !readOnly && 'hover:brightness-[0.97]')}
+        style={{
+          backgroundColor: dailyOver ? C.dangerSoft : tone.soft,
           color: dailyOver ? C.danger : tone.text,
           boxShadow: availWarn ? `inset 0 0 0 1.5px ${availStatus === 'off' ? C.dangerFill : C.warningFill}` : undefined,
-          '&:hover': { filter: readOnly ? undefined : 'brightness(0.97)' },
         }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, width: '100%' }}>
-          <Typography fontSize="0.8rem" fontWeight={700} noWrap sx={{ fontVariantNumeric: 'tabular-nums' }}>
-            {start} – {end}
-          </Typography>
-          {availWarn && <WarningAmberIcon sx={{ fontSize: 13, ml: 'auto', color: availStatus === 'off' ? C.danger : C.warning }} />}
-        </Box>
-        <Typography fontSize="0.68rem" fontWeight={500} noWrap sx={{ opacity: 0.85, width: '100%' }}>
+        <span className="flex w-full items-center gap-1">
+          <span className="truncate text-[0.8rem] font-bold tabular-nums">{start} – {end}</span>
+          {availWarn && <TriangleAlert className={cn('ml-auto size-[13px] shrink-0', availStatus === 'off' ? 'text-danger' : 'text-warning')} />}
+        </span>
+        <span className="w-full truncate text-[0.68rem] font-medium opacity-85">
           {dailyOver ? `${fmtHoursTr(netMins)} · limit üstü` : `${name} · ${fmtHoursTr(netMins)}`}
-        </Typography>
-      </ButtonBase>
-    </Tooltip>
+        </span>
+      </CellButton>
+    </Tip>
   )
 }
 
 // ─── Mini hücre (mobil hafta görünümü) ────────────────────────
 
+const miniBase = 'flex h-[34px] w-full items-center justify-center rounded-lg text-[0.78rem] font-bold outline-none focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-3.5'
+
 export function MiniShiftCell({ assignment, isOnLeave, isRestDay, availStatus, dailyOver, onClick, readOnly }: ShiftCellProps) {
-  const sx = {
-    width: '100%', height: 34, borderRadius: '8px', fontFamily: 'inherit',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.78rem',
-    '& svg': { fontSize: 14 }, '&.Mui-disabled': { opacity: 1 },
-  } as const
   if (isRestDay) {
     return (
-      <ButtonBase onClick={onClick} disabled={readOnly} aria-label="Tatil" sx={{ ...sx, bgcolor: C.surfaceMuted, color: C.inkSecondary }}>
-        <WeekendOutlinedIcon />
-      </ButtonBase>
+      <CellButton readOnly={readOnly} onClick={onClick} aria-label="Tatil" className={cn(miniBase, 'bg-surface-muted text-ink-secondary')}>
+        <Armchair />
+      </CellButton>
     )
   }
   if (isOnLeave) {
     return (
-      <ButtonBase onClick={onClick} disabled={readOnly} aria-label="İzinli" sx={{ ...sx, bgcolor: C.successSoft, color: C.success }}>
-        <FlightTakeoffOutlinedIcon />
-      </ButtonBase>
+      <CellButton readOnly={readOnly} onClick={onClick} aria-label="İzinli" className={cn(miniBase, 'bg-success-soft text-success')}>
+        <Plane />
+      </CellButton>
     )
   }
   if (!assignment) {
-    if (readOnly && availStatus !== 'off') return <Box sx={sx} />
+    if (readOnly && availStatus !== 'off') return <div className="h-[34px]" />
     return (
-      <ButtonBase
+      <CellButton
+        readOnly={readOnly}
         onClick={onClick}
-        disabled={readOnly}
         aria-label={availStatus === 'off' ? 'Müsait değil' : 'Vardiya ekle'}
-        sx={{ ...sx, border: `1px dashed ${availStatus === 'off' ? C.dangerFill : C.sand}`, color: availStatus === 'off' ? C.danger : 'text.disabled' }}
+        className={cn(miniBase, 'border border-dashed', availStatus === 'off' ? 'border-danger-fill text-danger' : 'border-sand text-ink-muted')}
       >
-        {availStatus === 'off' ? '—' : <AddIcon />}
-      </ButtonBase>
+        {availStatus === 'off' ? '—' : <Plus />}
+      </CellButton>
     )
   }
   const start = formatTime(assignment.start_time)
@@ -262,18 +260,18 @@ export function MiniShiftCell({ assignment, isOnLeave, isRestDay, availStatus, d
   const tone = SHIFT_KIND_TONES[shiftKindOf(assignment.shift_templates?.name, start, end)]
   const warn = dailyOver || availStatus === 'off' || availStatus === 'partial'
   return (
-    <ButtonBase
+    <CellButton
+      readOnly={readOnly}
       onClick={onClick}
-      disabled={readOnly}
       aria-label={`${shiftDisplayName(assignment.shift_templates?.name, start, end)} ${start}–${end}`}
-      sx={{
-        ...sx,
-        bgcolor: dailyOver ? C.dangerSoft : tone.soft,
+      className={miniBase}
+      style={{
+        backgroundColor: dailyOver ? C.dangerSoft : tone.soft,
         color: dailyOver ? C.danger : tone.text,
         boxShadow: warn ? `inset 0 0 0 1.5px ${dailyOver || availStatus === 'off' ? C.dangerFill : C.warningFill}` : undefined,
       }}
     >
       {start.slice(0, 2)}
-    </ButtonBase>
+    </CellButton>
   )
 }
