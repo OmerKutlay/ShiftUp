@@ -7,24 +7,27 @@
  */
 import { useState } from 'react'
 import useSWR from 'swr'
-import {
-  Box, Typography, Paper, Button, Stack, Chip, CircularProgress, Alert,
-  TextField, Dialog, DialogTitle, DialogContent, DialogActions, Tooltip,
-  Divider, Tab, Tabs,
-} from '@mui/material'
-import CheckIcon from '@mui/icons-material/Check'
-import CloseIcon from '@mui/icons-material/Close'
-import AddIcon from '@mui/icons-material/Add'
-import AccessTimeIcon from '@mui/icons-material/AccessTime'
+import { AlertCircle, Check, CheckCircle2, Clock, Loader2, Plus, RefreshCw, X } from 'lucide-react'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import type { TimeCorrectionRequest } from '@/types/timeCorrection'
-import { TIME_CORRECTION_STATUS_LABELS, TIME_CORRECTION_STATUS_COLORS } from '@/types/timeCorrection'
-import { DateField, EmployeeSelect, ListSkeleton } from '@/components/common'
+import { TIME_CORRECTION_STATUS_LABELS, TIME_CORRECTION_STATUS_TONES } from '@/types/timeCorrection'
+import { DateField, EmployeeSelect, ListSkeleton, PersonAvatar } from '@/components/common'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { apiFetch } from '@/lib/api/http'
 import { fetchActiveEmployees } from '@/lib/api/employees'
 import { useAuth } from '@/context/AuthContext'
-import { C, tint } from '@/lib/palette'
+import { cn } from '@/lib/utils'
+import { fmtTime, TimePill, ViolationList } from './timeCorrectionUi'
 
 /** 422 WORKING_TIME_VIOLATION yanıtındaki ihlal listesi */
 interface ApiResult { error?: string; code?: string; violations?: string[] }
@@ -32,13 +35,24 @@ interface ApiResult { error?: string; code?: string; violations?: string[] }
 function fmtDate(d: string) {
   try { return format(new Date(d + 'T00:00:00'), 'd MMMM yyyy EEEE', { locale: tr }) } catch { return d }
 }
-function fmtTime(t: string) { return t.slice(0, 5) }
 function fmtDateTime(iso: string) {
   try { return format(new Date(iso), 'd MMM HH:mm', { locale: tr }) } catch { return iso }
 }
 
+function ErrorAlert({ children }: { children: React.ReactNode }) {
+  return (
+    <Alert tone="danger">
+      <AlertCircle />
+      <AlertDescription className="text-ink">{children}</AlertDescription>
+    </Alert>
+  )
+}
+
+const APPROVE_CLS = 'bg-success text-white hover:bg-success/90'
+const REJECT_CLS = 'text-danger hover:bg-danger-soft'
+
 export function TimeCorrectionReviewPanel() {
-  const [tab, setTab] = useState(0)
+  const [tab, setTab] = useState<'requests' | 'direct'>('requests')
   const { employee: me } = useAuth()
 
   // ── Talepler sekmesi ─────────────────────────────────────────
@@ -78,6 +92,7 @@ export function TimeCorrectionReviewPanel() {
     setReviewError(null)
     setReviewViolations([])
   }
+  const closeReview = () => setReviewDialog((d) => ({ ...d, open: false }))
 
   const handleReview = async (acknowledge = false) => {
     if (!reviewDialog.req) return
@@ -143,103 +158,114 @@ export function TimeCorrectionReviewPanel() {
     finally { setDirectSaving(false) }
   }
 
+  const reviewReq = reviewDialog.req
+  const isApprove = reviewDialog.action === 'approve'
+  const hasReviewViolations = reviewViolations.length > 0
+
   return (
-    <Box>
-      <Tabs value={tab} onChange={(_, v) => setTab(v as number)}
-        sx={{ mb: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
-        <Tab label="Çalışan Talepleri" sx={{ fontSize: '0.82rem', minHeight: 40 }} />
-        <Tab label="Doğrudan Düzeltme" sx={{ fontSize: '0.82rem', minHeight: 40 }} />
-      </Tabs>
+    <div className="grid gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <ToggleGroup type="single" value={tab} aria-label="Görünüm"
+          onValueChange={(v) => { if (v) setTab(v as 'requests' | 'direct') }}>
+          <ToggleGroupItem value="requests">Çalışan talepleri</ToggleGroupItem>
+          <ToggleGroupItem value="direct">Doğrudan düzeltme</ToggleGroupItem>
+        </ToggleGroup>
+        {tab === 'requests' && (
+          <ToggleGroup type="single" value={statusFilter} aria-label="Durum filtresi"
+            onValueChange={(v) => { if (v) setStatusFilter(v as 'pending' | 'all') }}>
+            <ToggleGroupItem value="pending">Bekleyenler</ToggleGroupItem>
+            <ToggleGroupItem value="all">Tümü</ToggleGroupItem>
+          </ToggleGroup>
+        )}
+      </div>
 
-      {/* ── Tab 0: Çalışan talepleri ── */}
-      {tab === 0 && (
-        <Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-            {(['pending', 'all'] as const).map((f) => (
-              <Chip key={f} label={f === 'pending' ? 'Bekleyenler' : 'Tümü'} size="small"
-                onClick={() => setStatusFilter(f)}
-                sx={{
-                  cursor: 'pointer',
-                  bgcolor: statusFilter === f ? 'primary.main' : tint(C.ink, 0.06),
-                  color: statusFilter === f ? C.white : 'text.secondary',
-                }} />
-            ))}
-          </Box>
-
-          {error && <Alert severity="error" sx={{ mb: 2 }} action={<Button color="inherit" size="small" onClick={() => void loadRequests()}>Tekrar Dene</Button>}>{error}</Alert>}
+      {/* ── Çalışan talepleri ── */}
+      {tab === 'requests' && (
+        <>
+          {error && (
+            <Alert tone="danger">
+              <AlertCircle />
+              <AlertDescription className="flex flex-wrap items-center justify-between gap-2 text-ink">
+                <span>{error}</span>
+                <Button size="sm" variant="outline" onClick={() => void loadRequests()}>
+                  <RefreshCw />
+                  Tekrar dene
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
 
           {isFirstLoad ? (
             <ListSkeleton count={3} lines={3} actions={2} dense />
           ) : requests.length === 0 ? (
-            <Typography variant="body2" color="text.secondary">
+            <p className="rounded-2xl border bg-card px-4 py-8 text-center text-sm text-ink-secondary">
               {statusFilter === 'pending' ? 'Bekleyen talep yok.' : 'Talep bulunamadı.'}
-            </Typography>
+            </p>
           ) : (
-            <Stack spacing={1.5}>
+            <ul className="overflow-hidden rounded-2xl border bg-card [&>li+li]:border-t">
               {requests.map((r) => {
-                const color = TIME_CORRECTION_STATUS_COLORS[r.status]
+                const name = r.employee?.full_name ?? '—'
                 return (
-                  <Paper key={r.id} elevation={0} sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2, bgcolor: C.surface }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1.5, alignItems: 'flex-start' }}>
-                      <Box sx={{ flex: 1, minWidth: 200 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                          <Typography variant="subtitle2" fontWeight={700}>{r.employee?.full_name ?? '—'}</Typography>
-                          <Chip label={TIME_CORRECTION_STATUS_LABELS[r.status]} size="small"
-                            sx={{ bgcolor: `${color}20`, color, border: '1px solid', borderColor: `${color}40`, fontWeight: 700, fontSize: '0.62rem', height: 18 }} />
-                        </Box>
-                        <Typography variant="caption" color="text.secondary" display="block" fontWeight={600}>{fmtDate(r.date)}</Typography>
-                        <Divider sx={{ my: 0.75, borderColor: tint(C.ink, 0.06) }} />
-                        <Typography variant="caption" color="text.disabled" display="block">Talep edilen</Typography>
-                        <Typography variant="caption" fontWeight={700} color="primary.main">
-                          {fmtTime(r.requested_start_time)} – {fmtTime(r.requested_end_time)}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>{r.reason}</Typography>
+                  <li key={r.id} className="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-start">
+                    <div className="flex min-w-0 flex-1 gap-3">
+                      <PersonAvatar name={name} size={36} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-sm font-bold">{name}</span>
+                          <Badge tone={TIME_CORRECTION_STATUS_TONES[r.status]}>{TIME_CORRECTION_STATUS_LABELS[r.status]}</Badge>
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          <span className="text-xs font-medium text-ink-secondary">{fmtDate(r.date)}</span>
+                          <TimePill start={r.requested_start_time} end={r.requested_end_time} />
+                        </div>
+                        <p className="mt-1.5 text-sm text-ink-secondary [overflow-wrap:anywhere]">{r.reason}</p>
                         {r.reviewer_note && (
-                          <Typography variant="caption" color="text.disabled" display="block" sx={{ mt: 0.5 }}>Not: {r.reviewer_note}</Typography>
+                          <p className="mt-1 text-xs text-ink-muted [overflow-wrap:anywhere]">Not: {r.reviewer_note}</p>
                         )}
-                        <Typography variant="caption" color="text.disabled" display="block" sx={{ mt: 0.5 }}>
+                        <p className="mt-1 text-xs text-ink-muted">
                           Oluşturuldu: {fmtDateTime(r.created_at)}
                           {r.reviewed_at && ` · İncelendi: ${fmtDateTime(r.reviewed_at)}`}
-                        </Typography>
-                      </Box>
+                        </p>
+                      </div>
+                    </div>
 
-                      {r.status === 'pending' && (
-                        <Box sx={{ display: 'flex', gap: 1, flexShrink: 0, alignSelf: 'flex-start' }}>
-                          <Tooltip title="Onayla">
-                            <Button size="small" variant="contained" color="success" startIcon={<CheckIcon />}
-                              onClick={() => openReview(r, 'approve')} sx={{ fontSize: '0.72rem', py: 0.4 }}>
-                              Onayla
-                            </Button>
-                          </Tooltip>
-                          <Tooltip title="Reddet">
-                            <Button size="small" variant="outlined" color="error" startIcon={<CloseIcon />}
-                              onClick={() => openReview(r, 'reject')} sx={{ fontSize: '0.72rem', py: 0.4 }}>
-                              Reddet
-                            </Button>
-                          </Tooltip>
-                        </Box>
-                      )}
-                    </Box>
-                  </Paper>
+                    {r.status === 'pending' && (
+                      <div className="flex shrink-0 gap-2 pl-12 sm:pl-0">
+                        <Button size="sm" className={APPROVE_CLS} onClick={() => openReview(r, 'approve')}>
+                          <Check />
+                          Onayla
+                        </Button>
+                        <Button size="sm" variant="outline" className={REJECT_CLS} onClick={() => openReview(r, 'reject')}>
+                          <X />
+                          Reddet
+                        </Button>
+                      </div>
+                    )}
+                  </li>
                 )
               })}
-            </Stack>
+            </ul>
           )}
-        </Box>
+        </>
       )}
 
-      {/* ── Tab 1: Doğrudan düzeltme ── */}
-      {tab === 1 && (
-        <Box sx={{ maxWidth: 480 }}>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+      {/* ── Doğrudan düzeltme ── */}
+      {tab === 'direct' && (
+        <section className="grid max-w-[480px] gap-4 rounded-2xl border bg-card p-4">
+          <p className="text-sm text-ink-secondary">
             Çalışan talebi olmadan doğrudan mesai düzeltmesi girin. Anında uygulanır.
-          </Typography>
+          </p>
 
-          {directError && <Alert severity="error" sx={{ mb: 1.5 }} onClose={() => { setDirectError(null); setDirectViolations([]) }}>{directError}</Alert>}
+          {directError && <ErrorAlert>{directError}</ErrorAlert>}
           <ViolationList items={directViolations} />
-          {directSuccess && <Alert severity="success" sx={{ mb: 1.5 }} onClose={() => setDirectSuccess(null)}>{directSuccess}</Alert>}
+          {directSuccess && (
+            <Alert tone="success">
+              <CheckCircle2 />
+              <AlertDescription className="text-ink">{directSuccess}</AlertDescription>
+            </Alert>
+          )}
 
-          <Stack spacing={2}>
+          <div className="grid gap-1.5">
             <EmployeeSelect
               employees={employees.filter((emp) => emp.id !== me?.id)}
               value={directForm.employee_id}
@@ -250,97 +276,104 @@ export function TimeCorrectionReviewPanel() {
               }}
               fullWidth
             />
-            <Typography variant="caption" color="text.disabled" sx={{ mt: -1 }}>
-              Kendi mesai düzeltmeniz için “Mesai Düzeltme” sayfasından talep oluşturun; başka bir yönetici onaylar.
-            </Typography>
+            <p className="text-xs text-ink-muted">
+              Kendi mesai düzeltmeniz için “Mesai düzeltme” sayfasından talep oluşturun; başka bir yönetici onaylar.
+            </p>
+          </div>
 
-            <DateField size="small" label="Tarih" value={directForm.date}
-              onChange={(v) => setDirectForm((f) => ({ ...f, date: v }))} fullWidth />
+          <DateField size="small" label="Tarih" value={directForm.date}
+            onChange={(v) => setDirectForm((f) => ({ ...f, date: v }))} fullWidth />
 
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <TextField size="small" label="Giriş Saati" type="time" value={directForm.start}
-                onChange={(e) => setDirectForm((f) => ({ ...f, start: e.target.value }))}
-                inputProps={{ step: 300 }} fullWidth />
-              <TextField size="small" label="Çıkış Saati" type="time" value={directForm.end}
-                onChange={(e) => setDirectForm((f) => ({ ...f, end: e.target.value }))}
-                inputProps={{ step: 300 }} fullWidth />
-            </Box>
-            {directForm.end < directForm.start && (
-              <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
-                Çıkış saati girişten önce — ertesi gün çıkış olarak işlenecek (gece vardiyası).
-              </Typography>
-            )}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="tc-direct-start">Giriş saati</Label>
+              <Input id="tc-direct-start" type="time" step={300} value={directForm.start}
+                onChange={(e) => setDirectForm((f) => ({ ...f, start: e.target.value }))} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="tc-direct-end">Çıkış saati</Label>
+              <Input id="tc-direct-end" type="time" step={300} value={directForm.end}
+                onChange={(e) => setDirectForm((f) => ({ ...f, end: e.target.value }))} />
+            </div>
+          </div>
+          {directForm.end < directForm.start && (
+            <p className="-mt-2 text-xs text-ink-secondary">
+              Çıkış saati girişten önce — ertesi gün çıkış olarak işlenecek (gece vardiyası).
+            </p>
+          )}
 
-            <TextField size="small" label="Sebep" value={directForm.reason} multiline rows={2}
-              onChange={(e) => setDirectForm((f) => ({ ...f, reason: e.target.value }))} fullWidth />
+          <div className="grid gap-1.5">
+            <Label htmlFor="tc-direct-reason">Sebep</Label>
+            <Textarea id="tc-direct-reason" rows={2} value={directForm.reason}
+              onChange={(e) => setDirectForm((f) => ({ ...f, reason: e.target.value }))} />
+          </div>
 
-            {directViolations.length > 0 ? (
-              <Button variant="contained" color="warning" disabled={directSaving}
-                startIcon={directSaving ? <CircularProgress size={16} color="inherit" /> : <AddIcon />}
-                onClick={() => void handleDirect(true)}>
-                İhlalleri Onaylayarak Uygula
-              </Button>
-            ) : (
-              <Button variant="contained" startIcon={directSaving ? <CircularProgress size={16} color="inherit" /> : <AddIcon />}
-                onClick={() => void handleDirect()} disabled={directSaving}>
-                Düzeltmeyi Uygula
-              </Button>
-            )}
-          </Stack>
-        </Box>
+          {directViolations.length > 0 ? (
+            <Button className="bg-warning text-white hover:bg-warning/90" disabled={directSaving}
+              onClick={() => void handleDirect(true)}>
+              {directSaving ? <Loader2 className="animate-spin" /> : <Plus />}
+              İhlalleri onaylayarak uygula
+            </Button>
+          ) : (
+            <Button onClick={() => void handleDirect()} disabled={directSaving}>
+              {directSaving ? <Loader2 className="animate-spin" /> : <Plus />}
+              Düzeltmeyi uygula
+            </Button>
+          )}
+        </section>
       )}
 
-      {/* Onay/Red Dialog */}
-      <Dialog open={reviewDialog.open} onClose={() => setReviewDialog((d) => ({ ...d, open: false }))} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontWeight: 700 }}>
-          {reviewDialog.action === 'approve' ? 'Talebi Onayla' : 'Talebi Reddet'}
-        </DialogTitle>
-        <DialogContent>
-          {reviewDialog.req && (
-            <Box sx={{ mb: 2, p: 1.5, bgcolor: tint(C.ink, 0.04), borderRadius: 1.5 }}>
-              <Typography variant="body2" fontWeight={600}>{reviewDialog.req.employee?.full_name}</Typography>
-              <Typography variant="caption" color="text.secondary">
-                {fmtDate(reviewDialog.req.date)} · {fmtTime(reviewDialog.req.requested_start_time)} – {fmtTime(reviewDialog.req.requested_end_time)}
-              </Typography>
-            </Box>
-          )}
-          {reviewError && <Alert severity="error" sx={{ mb: 1.5 }} onClose={() => setReviewError(null)}>{reviewError}</Alert>}
-          <ViolationList items={reviewViolations} />
-          <TextField fullWidth multiline rows={2} label="Yönetici Notu (opsiyonel)" value={reviewNote}
-            onChange={(e) => setReviewNote(e.target.value)} size="small"
-            placeholder={reviewDialog.action === 'reject' ? 'Red sebebini belirtebilirsiniz...' : undefined} />
-          {reviewDialog.action === 'approve' && (
-            <Alert severity="info" sx={{ mt: 1.5 }} icon={<AccessTimeIcon fontSize="small" />}>
-              Onaylandığında çalışanın devam kaydı ve çalışma özeti güncellenir; planlanan vardiya korunur.
-            </Alert>
-          )}
+      {/* Onay / red penceresi */}
+      <Dialog open={reviewDialog.open} onOpenChange={(o) => { if (!o && !reviewing) closeReview() }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{isApprove ? 'Talebi onayla' : 'Talebi reddet'}</DialogTitle>
+            {reviewReq && (
+              <DialogDescription asChild>
+                <div className="mt-1 flex items-center gap-3 rounded-xl bg-surface-muted p-3">
+                  <PersonAvatar name={reviewReq.employee?.full_name ?? '—'} size={32} />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-ink">{reviewReq.employee?.full_name}</p>
+                    <p className="text-xs text-ink-secondary">
+                      {fmtDate(reviewReq.date)} · {fmtTime(reviewReq.requested_start_time)} – {fmtTime(reviewReq.requested_end_time)}
+                    </p>
+                  </div>
+                </div>
+              </DialogDescription>
+            )}
+          </DialogHeader>
+          <div className="grid gap-3">
+            {reviewError && <ErrorAlert>{reviewError}</ErrorAlert>}
+            <ViolationList items={reviewViolations} />
+            <div className="grid gap-1.5">
+              <Label htmlFor="tc-review-note">Yönetici notu (opsiyonel)</Label>
+              <Textarea id="tc-review-note" rows={2} value={reviewNote}
+                onChange={(e) => setReviewNote(e.target.value)}
+                placeholder={isApprove ? undefined : 'Red sebebini belirtebilirsiniz...'} />
+            </div>
+            {isApprove && (
+              <Alert tone="info">
+                <Clock />
+                <AlertDescription className="text-ink">
+                  Onaylandığında çalışanın devam kaydı ve çalışma özeti güncellenir; planlanan vardiya korunur.
+                </AlertDescription>
+              </Alert>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeReview} disabled={reviewing}>İptal</Button>
+            <Button
+              onClick={() => void handleReview(hasReviewViolations)}
+              disabled={reviewing}
+              variant={!hasReviewViolations && !isApprove ? 'destructive' : 'default'}
+              className={cn(hasReviewViolations ? 'bg-warning text-white hover:bg-warning/90' : isApprove && APPROVE_CLS)}
+            >
+              {reviewing ? <Loader2 className="animate-spin" /> : isApprove ? <Check /> : <X />}
+              {hasReviewViolations ? 'İhlallere rağmen onayla' : isApprove ? 'Onayla' : 'Reddet'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2.5 }}>
-          <Button onClick={() => setReviewDialog((d) => ({ ...d, open: false }))} color="inherit" disabled={reviewing}>İptal</Button>
-          <Button onClick={() => void handleReview(reviewViolations.length > 0)} variant="contained"
-            color={reviewViolations.length > 0 ? 'warning' : reviewDialog.action === 'approve' ? 'success' : 'error'}
-            disabled={reviewing}
-            startIcon={reviewing ? <CircularProgress size={16} color="inherit" /> : reviewDialog.action === 'approve' ? <CheckIcon /> : <CloseIcon />}>
-            {reviewViolations.length > 0 ? 'İhlallere Rağmen Onayla' : reviewDialog.action === 'approve' ? 'Onayla' : 'Reddet'}
-          </Button>
-        </DialogActions>
       </Dialog>
-    </Box>
-  )
-}
-
-function ViolationList({ items }: { items: string[] }) {
-  if (items.length === 0) return null
-  return (
-    <Alert severity="warning" sx={{ mb: 1.5 }}>
-      <Typography variant="caption" fontWeight={700} display="block" sx={{ mb: 0.5 }}>
-        Çalışma süresi ihlalleri (İş Kanunu):
-      </Typography>
-      <Box component="ul" sx={{ m: 0, pl: 2 }}>
-        {items.map((v) => (
-          <li key={v}><Typography variant="caption">{v}</Typography></li>
-        ))}
-      </Box>
-    </Alert>
+    </div>
   )
 }
