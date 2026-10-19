@@ -14,7 +14,7 @@ import { AlertCircle, Ban, CheckCircle2, Info, Loader2, Plus, X } from 'lucide-r
 import type { OpenShift } from '@/types/workforce'
 import { useAuth } from '@/context/AuthContext'
 import { hasRole, MANAGER_ROLES } from '@/lib/auth/roles'
-import { DateField, EmptyRow, ListSkeleton, StatusBadge } from '@/components/common'
+import { EmptyRow, ListSkeleton, StatusBadge } from '@/components/common'
 import type { BadgeTone } from '@/components/common'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -29,7 +29,6 @@ import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { apiFetch } from '@/lib/api/http'
 import { SHIFT_KIND_TONES } from '@/lib/palette'
-import { keepMuiPopupsInside } from './dialogGuards'
 
 const STATUS_LABELS: Record<string, string> = {
   open: 'Açık',
@@ -296,7 +295,7 @@ export function OpenShiftsPanel() {
       {/* Açık vardiya oluşturma dialog'u — yalnızca yönetici */}
       {isManager && (
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogContent className="max-w-sm" {...keepMuiPopupsInside}>
+          <DialogContent className="max-w-sm">
             <DialogHeader>
               <DialogTitle>Açık Vardiya Oluştur</DialogTitle>
               <DialogDescription>
@@ -306,13 +305,12 @@ export function OpenShiftsPanel() {
             </DialogHeader>
 
             <div className="flex flex-col gap-4">
-              <DateField
-                size="small"
-                label="Tarih"
-                value={form.work_date}
-                onChange={(v) => setForm((f) => ({ ...f, work_date: v }))}
-                fullWidth
-              />
+              {/* MUI DateField'ın açılır takvimi Radix Dialog içinde tıklanamıyor — yerel tarih alanı */}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="os-date">Tarih</Label>
+                <Input id="os-date" type="date" required value={form.work_date}
+                  onChange={(e) => setForm((f) => ({ ...f, work_date: e.target.value }))} />
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="os-start">Başlangıç</Label>
