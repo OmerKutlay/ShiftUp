@@ -261,7 +261,7 @@ export function QrKioskPage() {
         </div>
 
         <div className="flex w-full max-w-[280px] flex-col items-center gap-3">
-          {/* İnce bağlantı çubuğu: canlıyken dolu, bağlanırken nabız, koptuğunda kırmızı */}
+          {/* İnce bağlantı çubuğu: canlıyken dolu, bağlanırken nabız, koptuğunda soluk kırmızı */}
           <Progress
             aria-label="Bağlantı durumu"
             value={link === 'connecting' ? 40 : 100}
@@ -269,7 +269,7 @@ export function QrKioskPage() {
             indicatorClassName={cn(
               link === 'live' && 'bg-success-fill',
               link === 'connecting' && 'bg-ink-muted/40',
-              link === 'offline' && 'bg-danger-fill'
+              link === 'offline' && 'bg-danger/25'
             )}
           />
           {link === 'live' ? (
