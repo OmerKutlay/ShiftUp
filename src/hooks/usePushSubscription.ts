@@ -2,7 +2,7 @@
 
 /**
  * usePushSubscription — bu cihazın push bildirim durumu + aç/kapat eylemleri.
- * PushPermissionCard (kart ve ayar satırı) tarafından kullanılır.
+ * PushPermissionCard ve PushPrompt tarafından kullanılır.
  */
 import { useCallback, useEffect, useState } from 'react'
 import {

@@ -22,7 +22,6 @@ import LogoutIcon from '@mui/icons-material/Logout'
 
 import { useAuth } from '@/context/AuthContext'
 import { getMoreItems, groupNavItems } from '@/components/layout/navItems'
-import { PushPermissionCard } from '@/components/pwa/PushPermissionCard'
 import { PushDiagnosticsPanel } from '@/components/pwa/PushDiagnosticsPanel'
 import { ROLES, roleAtLeast } from '@/lib/auth/roles'
 
@@ -111,14 +110,9 @@ export function MorePage() {
         </Box>
       ))}
 
-      {status === 'authenticated' && (
+      {status === 'authenticated' && canDiagnose && (
         <Box sx={{ mb: 2 }}>
-          <PushPermissionCard variant="row" />
-          {canDiagnose && (
-            <Box sx={{ mt: 1 }}>
-              <PushDiagnosticsPanel collapsible />
-            </Box>
-          )}
+          <PushDiagnosticsPanel collapsible />
         </Box>
       )}
 
