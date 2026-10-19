@@ -112,7 +112,7 @@ describe('computePushDiagnosticSteps', () => {
   it('kayıtlı cihaz yok', () => {
     const s = step(computePushDiagnosticSteps(input({ mySubscriptions: 0, thisDevice: null })), 'subscription')
     expect(s.ok).toBe(false)
-    expect(s.hint).toContain('Anlık bildirimler')
+    expect(s.hint).toContain('Bildirimleri aç')
   })
 
   it('başka cihazlar kayıtlı ama bu cihaz değil', () => {
