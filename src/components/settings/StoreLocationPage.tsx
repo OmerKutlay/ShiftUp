@@ -2,26 +2,19 @@
 
 import { useState } from 'react'
 import useSWR from 'swr'
-import {
-  Box,
-  Typography,
-  Paper,
-  Button,
-  Stack,
-  TextField,
-  Switch,
-  FormControlLabel,
-  Alert,
-  CircularProgress,
-  Divider,
-  Chip,
-} from '@mui/material'
-import SaveIcon from '@mui/icons-material/Save'
-import MyLocationIcon from '@mui/icons-material/MyLocation'
+import { Loader2, LocateFixed, MapPin, Save } from 'lucide-react'
 import type { StoreLocation } from '@/types/location'
-import { PageHeader, ListSkeleton } from '@/components/common'
+import { PageHeader, ListSkeleton, SectionCard, SectionRow, EmptyRow } from '@/components/common'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Separator } from '@/components/ui/separator'
+import { Switch } from '@/components/ui/switch'
 import { apiFetch } from '@/lib/api/http'
-import { C, tint } from '@/lib/palette'
+import { cn } from '@/lib/utils'
+import { SettingsAlert } from './SettingsAlert'
 
 interface StoreLocationForm {
   id?: string
@@ -155,7 +148,7 @@ export function StoreLocationPage({ embedded = false }: { embedded?: boolean } =
   }
 
   return (
-    <Box sx={embedded ? undefined : { p: { xs: 2, md: 3 }, color: 'text.primary' }}>
+    <div className={embedded ? undefined : 'p-4 text-ink md:p-6'}>
       {!embedded && (
         <PageHeader
           title="Mağaza konumu"
@@ -163,168 +156,167 @@ export function StoreLocationPage({ embedded = false }: { embedded?: boolean } =
         />
       )}
 
-      {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert>}
-      {success && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess(null)}>{success}</Alert>}
+      {(error || success) && (
+        <div className="mb-4 flex flex-col gap-2">
+          {error && <SettingsAlert tone="danger" onClose={() => setError(null)}>{error}</SettingsAlert>}
+          {success && <SettingsAlert tone="success" onClose={() => setSuccess(null)}>{success}</SettingsAlert>}
+        </div>
+      )}
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 3 }}>
+      <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 md:gap-6">
         {/* Form */}
-        <Paper elevation={0} sx={{ p: 2.5, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
-          <Typography variant="subtitle1" fontWeight={700} mb={2}>
-            {isEditing ? 'Konumu Düzenle' : 'Yeni Konum Ekle'}
-          </Typography>
-          <Stack spacing={2}>
-            <TextField
-              fullWidth
-              size="small"
-              label="Mağaza Adı *"
-              value={form.name}
-              onChange={(e) => updateField('name', e.target.value)}
-            />
+        <Card className="gap-5 py-5">
+          <CardHeader className="px-5">
+            <CardTitle>{isEditing ? 'Konumu düzenle' : 'Yeni konum ekle'}</CardTitle>
+            <CardDescription className="text-ink-secondary">
+              Çalışanlar QR okuturken bu noktaya olan uzaklıkları kontrol edilir.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4 px-5">
+            <Field id="store-name" label="Mağaza adı *">
+              <Input
+                id="store-name"
+                value={form.name}
+                onChange={(e) => updateField('name', e.target.value)}
+              />
+            </Field>
 
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-              <TextField
-                fullWidth
-                size="small"
-                label="Enlem (Latitude)"
-                value={form.latitude}
-                onChange={(e) => updateField('latitude', e.target.value)}
-                placeholder="41.008650"
-              />
-              <TextField
-                fullWidth
-                size="small"
-                label="Boylam (Longitude)"
-                value={form.longitude}
-                onChange={(e) => updateField('longitude', e.target.value)}
-                placeholder="28.978430"
-              />
-            </Stack>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field id="store-lat" label="Enlem (latitude)">
+                <Input
+                  id="store-lat"
+                  inputMode="decimal"
+                  value={form.latitude}
+                  onChange={(e) => updateField('latitude', e.target.value)}
+                  placeholder="41.008650"
+                />
+              </Field>
+              <Field id="store-lon" label="Boylam (longitude)">
+                <Input
+                  id="store-lon"
+                  inputMode="decimal"
+                  value={form.longitude}
+                  onChange={(e) => updateField('longitude', e.target.value)}
+                  placeholder="28.978430"
+                />
+              </Field>
+            </div>
 
             <Button
-              variant="outlined"
-              size="small"
-              startIcon={gettingLocation ? <CircularProgress size={14} /> : <MyLocationIcon />}
+              variant="outline"
+              size="sm"
               onClick={handleGetCurrentLocation}
               disabled={gettingLocation}
-              sx={{ alignSelf: 'flex-start' }}
+              className="self-start"
             >
+              {gettingLocation ? <Loader2 className="animate-spin" /> : <LocateFixed />}
               Mevcut Konumumu Kullan
             </Button>
 
-            <Divider sx={{ borderColor: 'divider' }} />
+            <Separator />
 
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-              <TextField
-                fullWidth
-                size="small"
-                label="İzin Verilen Yarıçap (m)"
-                type="number"
-                value={form.allowed_radius_meters}
-                onChange={(e) => updateField('allowed_radius_meters', e.target.value)}
-                inputProps={{ min: 10, max: 5000 }}
-                helperText="Önerilen: 100–200m"
-              />
-              <TextField
-                fullWidth
-                size="small"
-                label="Maks. GPS Doğruluğu (m)"
-                type="number"
-                value={form.max_accuracy_meters}
-                onChange={(e) => updateField('max_accuracy_meters', e.target.value)}
-                inputProps={{ min: 5, max: 500 }}
-                helperText="Önerilen: 50m"
-              />
-            </Stack>
-
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={form.active}
-                  onChange={(e) => updateField('active', e.target.checked)}
-                  color="primary"
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field id="store-radius" label="İzin verilen yarıçap (m)" hint="Önerilen: 100–200m">
+                <Input
+                  id="store-radius"
+                  type="number"
+                  min={10}
+                  max={5000}
+                  value={form.allowed_radius_meters}
+                  onChange={(e) => updateField('allowed_radius_meters', e.target.value)}
+                  aria-describedby="store-radius-hint"
                 />
-              }
-              label="Aktif"
-            />
+              </Field>
+              <Field id="store-accuracy" label="Maks. GPS doğruluğu (m)" hint="Önerilen: 50m">
+                <Input
+                  id="store-accuracy"
+                  type="number"
+                  min={5}
+                  max={500}
+                  value={form.max_accuracy_meters}
+                  onChange={(e) => updateField('max_accuracy_meters', e.target.value)}
+                  aria-describedby="store-accuracy-hint"
+                />
+              </Field>
+            </div>
 
-            <Stack direction="row" spacing={1} justifyContent="flex-end">
+            <div className="flex items-center gap-3">
+              <Switch
+                id="store-active"
+                checked={form.active}
+                onCheckedChange={(v) => updateField('active', v)}
+              />
+              <Label htmlFor="store-active">Aktif</Label>
+            </div>
+
+            <div className="flex justify-end gap-2">
               {isEditing && (
-                <Button variant="text" onClick={handleNew} disabled={saving}>
+                <Button variant="ghost" onClick={handleNew} disabled={saving}>
                   İptal
                 </Button>
               )}
-              <Button
-                variant="contained"
-                startIcon={saving ? <CircularProgress size={16} /> : <SaveIcon />}
-                onClick={handleSave}
-                disabled={saving}
-                sx={{ fontWeight: 700 }}
-              >
+              <Button onClick={handleSave} disabled={saving}>
+                {saving ? <Loader2 className="animate-spin" /> : <Save />}
                 {isEditing ? 'Güncelle' : 'Kaydet'}
               </Button>
-            </Stack>
-          </Stack>
-        </Paper>
+            </div>
+          </CardContent>
+        </Card>
 
-        {/* List */}
-        <Box>
-          <Typography variant="subtitle1" fontWeight={700} mb={2}>
-            Kayıtlı Konumlar
-          </Typography>
-          {isFirstLoad && <ListSkeleton count={2} lines={3} actions={2} />}
-          {!isFirstLoad && locations.length === 0 && (
-            <Alert severity="info">Henüz mağaza konumu eklenmemiş.</Alert>
+        {/* Liste */}
+        <SectionCard title="Kayıtlı konumlar" count={isFirstLoad ? undefined : locations.length}>
+          {isFirstLoad && (
+            <div className="p-4">
+              <ListSkeleton count={2} lines={3} actions={2} />
+            </div>
           )}
-          <Stack spacing={1.5}>
-            {locations.map((loc) => (
-              <Paper
-                key={loc.id}
-                elevation={0}
-                sx={{
-                  p: 2,
-                  border: '1px solid',
-                  borderColor: loc.active ? 'primary.dark' : 'divider',
-                  borderRadius: 2,
-                  opacity: loc.active ? 1 : 0.6,
-                }}
+          {!isFirstLoad && locations.length === 0 && (
+            <EmptyRow>Henüz mağaza konumu eklenmemiş.</EmptyRow>
+          )}
+          {locations.map((loc) => (
+            <SectionRow
+              key={loc.id}
+              className={cn('items-start py-3', form.id === loc.id && 'bg-muted/60')}
+            >
+              <span
+                className={cn(
+                  'mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-[10px] [&_svg]:size-4',
+                  loc.active ? 'bg-brand-soft text-brand' : 'bg-surface-muted text-ink-muted'
+                )}
               >
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
-                  <Box sx={{ minWidth: 0 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5, minWidth: 0 }}>
-                      <Typography variant="subtitle2" fontWeight={700} noWrap sx={{ minWidth: 0 }}>{loc.name}</Typography>
-                      <Chip
-                        label={loc.active ? 'Aktif' : 'Pasif'}
-                        size="small"
-                        sx={{
-                          height: 18,
-                          fontSize: '0.68rem',
-                          flexShrink: 0,
-                          bgcolor: loc.active ? tint(C.brand, 0.15) : tint(C.ink, 0.06),
-                          color: loc.active ? 'primary.main' : 'text.disabled',
-                        }}
-                      />
-                    </Box>
-                    <Typography variant="caption" color="text.secondary" display="block">
-                      📍 {loc.latitude.toFixed(5)}, {loc.longitude.toFixed(5)}
-                    </Typography>
-                    <Typography variant="caption" color="text.disabled" display="block">
-                      Yarıçap: {loc.allowed_radius_meters}m · GPS: max {loc.max_accuracy_meters}m
-                    </Typography>
-                  </Box>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    onClick={() => handleEdit(loc)}
-                    sx={{ fontSize: '0.7rem', flexShrink: 0 }}
-                  >
-                    Düzenle
-                  </Button>
-                </Box>
-              </Paper>
-            ))}
-          </Stack>
-        </Box>
-      </Box>
-    </Box>
+                <MapPin />
+              </span>
+              <div className={cn('min-w-0 flex-1', !loc.active && 'opacity-70')}>
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="truncate text-sm font-bold">{loc.name}</span>
+                  <Badge tone={loc.active ? 'success' : 'neutral'}>{loc.active ? 'Aktif' : 'Pasif'}</Badge>
+                </div>
+                <p className="mt-0.5 text-xs text-ink-secondary tabular-nums">
+                  {loc.latitude.toFixed(5)}, {loc.longitude.toFixed(5)}
+                </p>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  <Badge tone="neutral" className="font-medium">Yarıçap {loc.allowed_radius_meters}m</Badge>
+                  <Badge tone="neutral" className="font-medium">GPS ≤ {loc.max_accuracy_meters}m</Badge>
+                </div>
+              </div>
+              <Button size="sm" variant="outline" onClick={() => handleEdit(loc)}>
+                Düzenle
+              </Button>
+            </SectionRow>
+          ))}
+        </SectionCard>
+      </div>
+    </div>
+  )
+}
+
+/** Etiket + alan + soluk yardım metni */
+function Field({ id, label, hint, children }: { id: string; label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      {children}
+      {hint && <p id={`${id}-hint`} className="text-xs text-ink-muted">{hint}</p>}
+    </div>
   )
 }
