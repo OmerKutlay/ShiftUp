@@ -63,7 +63,10 @@ function NotificationItem({
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className={cn('text-sm text-ink', unread ? 'font-bold' : 'font-medium')}>{notification.title}</span>
-            <Badge tone={meta.tone} className="h-5 px-1.5 text-[0.68rem]">{meta.label}</Badge>
+            {/* Başlıkla aynıysa rozet tekrar etmesin */}
+            {meta.label.toLocaleLowerCase('tr-TR') !== notification.title.toLocaleLowerCase('tr-TR') && (
+              <Badge tone={meta.tone} className="h-5 px-1.5 text-[0.68rem]">{meta.label}</Badge>
+            )}
           </span>
           <span className="mt-1 block text-sm text-ink-secondary">{humanizeIsoDates(notification.message)}</span>
           <span className="mt-1 block text-xs text-ink-muted" title={fullDate}>
