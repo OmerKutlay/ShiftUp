@@ -328,21 +328,19 @@ export function TimeCorrectionReviewPanel() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>{isApprove ? 'Talebi onayla' : 'Talebi reddet'}</DialogTitle>
-            {reviewReq && (
-              <DialogDescription asChild>
-                <div className="mt-1 flex items-center gap-3 rounded-xl bg-surface-muted p-3">
-                  <PersonAvatar name={reviewReq.employee?.full_name ?? '—'} size={32} />
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-ink">{reviewReq.employee?.full_name}</p>
-                    <p className="text-xs text-ink-secondary">
-                      {fmtDate(reviewReq.date)} · {fmtTime(reviewReq.requested_start_time)} – {fmtTime(reviewReq.requested_end_time)}
-                    </p>
-                  </div>
-                </div>
-              </DialogDescription>
-            )}
           </DialogHeader>
           <div className="grid gap-3">
+            {reviewReq && (
+              <div className="flex items-center gap-3 rounded-xl bg-surface-muted p-3">
+                <PersonAvatar name={reviewReq.employee?.full_name ?? '—'} size={32} />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-ink">{reviewReq.employee?.full_name}</p>
+                  <DialogDescription className="text-xs text-ink-secondary">
+                    {fmtDate(reviewReq.date)} · {fmtTime(reviewReq.requested_start_time)} – {fmtTime(reviewReq.requested_end_time)}
+                  </DialogDescription>
+                </div>
+              </div>
+            )}
             {reviewError && <ErrorAlert>{reviewError}</ErrorAlert>}
             <ViolationList items={reviewViolations} />
             <div className="grid gap-1.5">
