@@ -4,21 +4,7 @@ import { useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import {
-  Box,
-  List,
-  ListItemButton,
-  ListItemIcon,
-  ListItemText,
-  Typography,
-  IconButton,
-  useMediaQuery,
-  useTheme,
-  Tooltip,
-} from '@mui/material'
-import MenuIcon from '@mui/icons-material/Menu'
-import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
-import LogoutIcon from '@mui/icons-material/Logout'
+import { ChevronsLeft, LogOut, PanelLeftOpen } from 'lucide-react'
 
 import { ErrorBoundary } from './ErrorBoundary'
 import { MobileBottomNav, BOTTOM_NAV_SPACE } from './MobileBottomNav'
@@ -29,7 +15,10 @@ import { useAuth } from '@/context/AuthContext'
 import { apiFetch } from '@/lib/api/http'
 import { PersonAvatar } from '@/components/common/PersonAvatar'
 import { BrandMark } from '@/components/common/BrandMark'
-import { C, tint } from '@/lib/palette'
+import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { useIsMobile } from '@/hooks/useIsMobile'
+import { cn } from '@/lib/utils'
 
 const DRAWER_WIDTH = 232
 const DRAWER_COLLAPSED = 64
@@ -40,9 +29,8 @@ interface Props {
 }
 
 export function AppShell({ children }: Props) {
-  const theme = useTheme()
-  // noSsr kullanılmaz: ilk client render sunucuyla aynı (false) olmalı, aksi halde hydration mismatch oluşur
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'))
+  // İlk client render sunucuyla aynı (false) olmalı, aksi halde hydration mismatch oluşur
+  const isMobile = useIsMobile()
   const [collapsed, setCollapsed] = useState(false)
   const pathname = usePathname()
   const { employee: authEmployee, signOut, status: authStatus } = useAuth()
@@ -60,259 +48,148 @@ export function AppShell({ children }: Props) {
     { revalidateOnFocus: false },
   )
 
-  const drawerContent = (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'background.default' }}>
-      {/* Logo / Marka */}
-      <Box
-        sx={{
-          px: narrow ? 1 : 2,
-          pt: 2.5,
-          pb: 2,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: narrow ? 'center' : 'space-between',
-          gap: 1,
-        }}
-      >
-        {!narrow && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}>
-            <BrandMark />
-            <Box sx={{ minWidth: 0 }}>
-              <Typography fontWeight={700} fontSize="0.95rem" lineHeight={1.2} color="text.primary">
-                ShiftUp
-              </Typography>
-              <Typography fontSize="0.7rem" color="text.secondary" noWrap>
-                {store?.name ?? 'Vardiya yönetimi'}
-              </Typography>
-            </Box>
-          </Box>
-        )}
-        {!isMobile && (
-          <IconButton
-            size="small"
-            onClick={() => setCollapsed((c) => !c)}
-            aria-label={collapsed ? 'Menüyü genişlet' : 'Menüyü daralt'}
-            aria-expanded={!collapsed}
-            sx={{ color: 'text.secondary' }}
-          >
-            {collapsed ? <MenuIcon fontSize="small" /> : <ChevronLeftIcon fontSize="small" />}
-          </IconButton>
-        )}
-      </Box>
+  /** Daraltılmış menüde etiketin yerine ipucu */
+  const withTip = (label: string, node: React.ReactElement) =>
+    narrow ? (
+      <Tooltip>
+        <TooltipTrigger asChild>{node}</TooltipTrigger>
+        <TooltipContent side="right">{label}</TooltipContent>
+      </Tooltip>
+    ) : node
 
-      {/* Nav items */}
-      {/* Kısa ekranlarda liste kendi içinde kayar; alttaki kullanıcı/çıkış alanı görünür kalır */}
-      <List sx={{ flex: 1, minHeight: 0, overflowY: 'auto', px: 1, pt: 0.5 }}>
+  const drawerContent = (
+    <div className="flex h-full flex-col bg-background">
+      {/* Logo / Marka */}
+      <div className={cn('flex items-center gap-2 pt-5 pb-4', narrow ? 'justify-center px-2' : 'justify-between px-4')}>
+        {!narrow && (
+          <div className="flex min-w-0 items-center gap-2.5">
+            <BrandMark />
+            <div className="min-w-0">
+              <p className="text-[0.95rem] font-bold leading-tight">ShiftUp</p>
+              <p className="truncate text-[0.7rem] text-ink-secondary">{store?.name ?? 'Vardiya yönetimi'}</p>
+            </div>
+          </div>
+        )}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => setCollapsed((c) => !c)}
+          aria-label={collapsed ? 'Menüyü genişlet' : 'Menüyü daralt'}
+          aria-expanded={!collapsed}
+          className="text-ink-secondary"
+        >
+          {collapsed ? <PanelLeftOpen /> : <ChevronsLeft />}
+        </Button>
+      </div>
+
+      {/* Menü — kısa ekranlarda liste kendi içinde kayar; alttaki kullanıcı alanı görünür kalır */}
+      <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pt-1">
         {filterNavItems(NAV_ITEMS, authRoleName).map((item) => {
           const active = isNavActive(pathname, item.href)
           return (
-            <Tooltip key={item.href} title={narrow ? item.label : ''} placement="right">
-              <ListItemButton
-                component={Link}
-                href={item.href}
-                prefetch={false}
-                selected={active}
-                aria-current={active ? 'page' : undefined}
-                aria-label={narrow ? item.label : undefined}
-                sx={{
-                  borderRadius: '10px',
-                  mb: 0.25,
-                  minHeight: 40,
-                  justifyContent: narrow ? 'center' : 'flex-start',
-                  px: narrow ? 1.5 : 1.5,
-                  '&:hover': { bgcolor: tint(C.ink, 0.04) },
-                  '&.Mui-selected': {
-                    bgcolor: 'background.paper',
-                    boxShadow: `0 1px 2px ${tint(C.ink, 0.06)}`,
-                    '&:hover': { bgcolor: 'background.paper' },
-                  },
-                  '& svg': { fontSize: 20 },
-                }}
-              >
-                <ListItemIcon
-                  sx={{
-                    color: active ? 'primary.main' : 'text.secondary',
-                    minWidth: narrow ? 0 : 32,
-                    justifyContent: 'center',
-                  }}
+            <li key={item.href}>
+              {withTip(
+                item.label,
+                <Link
+                  href={item.href}
+                  prefetch={false}
+                  aria-current={active ? 'page' : undefined}
+                  aria-label={narrow ? item.label : undefined}
+                  className={cn(
+                    'flex h-10 items-center gap-2.5 rounded-[10px] text-sm transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 [&_svg]:size-[18px] [&_svg]:shrink-0',
+                    narrow ? 'justify-center px-0' : 'px-3',
+                    active
+                      ? 'bg-card font-bold text-ink shadow-[0_1px_2px_rgb(43_33_27/0.06)] [&_svg]:text-primary'
+                      : 'font-medium text-ink-secondary hover:bg-ink/[0.04] hover:text-ink'
+                  )}
                 >
                   {item.icon}
-                </ListItemIcon>
-                {!narrow && (
-                  <ListItemText
-                    primary={item.label}
-                    primaryTypographyProps={{
-                      fontSize: '0.85rem',
-                      fontWeight: active ? 700 : 500,
-                      color: active ? 'text.primary' : 'text.secondary',
-                    }}
-                  />
-                )}
-              </ListItemButton>
-            </Tooltip>
+                  {!narrow && <span className="truncate">{item.label}</span>}
+                </Link>
+              )}
+            </li>
           )
         })}
-      </List>
+      </ul>
 
       {/* Aktif çalışan + bildirim + çıkış */}
-      <Box
-        sx={{
-          px: narrow ? 0.5 : 1.5,
-          py: 1.5,
-          display: 'flex',
-          flexDirection: narrow ? 'column' : 'row',
-          alignItems: 'center',
-          gap: narrow ? 0.5 : 1,
-        }}
-      >
+      <div className={cn('flex items-center gap-1.5 py-3', narrow ? 'flex-col px-1' : 'px-3')}>
         {userName ? (
-          <Tooltip title={narrow ? `${userName} · ${userRole}` : ''} placement="right">
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, flex: narrow ? 'none' : 1 }}>
+          withTip(
+            `${userName} · ${userRole}`,
+            <div className={cn('flex min-w-0 items-center gap-2', !narrow && 'flex-1')}>
               <PersonAvatar name={userName} size={32} />
               {!narrow && (
-                <Box sx={{ minWidth: 0 }}>
-                  <Typography fontSize="0.8rem" fontWeight={700} noWrap color="text.primary">
-                    {userName}
-                  </Typography>
-                  <Typography fontSize="0.7rem" color="text.secondary" noWrap>
-                    {userRole}
-                  </Typography>
-                </Box>
+                <div className="min-w-0">
+                  <p className="truncate text-[0.8rem] font-bold">{userName}</p>
+                  <p className="truncate text-[0.7rem] text-ink-secondary">{userRole}</p>
+                </div>
               )}
-            </Box>
-          </Tooltip>
-        ) : (
-          !narrow && (
-            <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
-              Giriş yapılmadı
-            </Typography>
+            </div>
           )
+        ) : (
+          !narrow && <p className="flex-1 text-xs text-ink-secondary">Giriş yapılmadı</p>
         )}
         <NotificationBell employeeId={authEmployee?.id ?? null} collapsed />
         {authStatus === 'authenticated' && (
-          <Tooltip title="Çıkış Yap" placement={narrow ? 'right' : 'top'}>
-            <IconButton
-              size="small"
-              onClick={signOut}
-              sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}
-              aria-label="Çıkış Yap"
-            >
-              <LogoutIcon fontSize="small" />
-            </IconButton>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon-sm" onClick={signOut} aria-label="Çıkış Yap" className="text-ink-secondary hover:text-danger">
+                <LogOut />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side={narrow ? 'right' : 'top'}>Çıkış Yap</TooltipContent>
           </Tooltip>
         )}
-      </Box>
-    </Box>
+      </div>
+    </div>
   )
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100dvh', bgcolor: 'background.default' }}>
-      {/* Mobile top bar — içerik üzerinde yüzen buton yerine sabit, markalı bar */}
+    <div className="flex min-h-dvh bg-background">
+      {/* Mobil üst bar — opak: kayan içerik arkada bulanık görünmesin */}
       {isMobile && (
-        <Box
-          component="header"
-          sx={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            zIndex: theme.zIndex.appBar,
-            height: `calc(${MOBILE_BAR_HEIGHT}px + env(safe-area-inset-top))`,
-            pt: 'env(safe-area-inset-top)',
-            pl: 'calc(16px + env(safe-area-inset-left))',
-            pr: 'calc(16px + env(safe-area-inset-right))',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 1,
-            // Opak zemin: kayan içerik üst barın arkasında bulanık görünmesin
-            bgcolor: 'background.default',
-            borderBottom: '1px solid',
-            borderColor: 'divider',
-            userSelect: 'none',
-            WebkitUserSelect: 'none',
-          }}
+        <header
+          className="fixed inset-x-0 top-0 z-[1100] flex h-[calc(56px+env(safe-area-inset-top))] items-center gap-2 border-b bg-background pt-[env(safe-area-inset-top)] pr-[calc(16px+env(safe-area-inset-right))] pl-[calc(16px+env(safe-area-inset-left))] select-none"
         >
           {/* Navigasyon alt bar + /more'a taşındı; sayfa başlığı sayfanın kendisinde (PageHeader) */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1, minWidth: 0 }}>
+          <div className="flex min-w-0 flex-1 items-center gap-2">
             <BrandMark size={28} />
-            <Typography component="div" fontWeight={700} fontSize="1rem" color="text.primary" noWrap>
-              ShiftUp
-            </Typography>
-          </Box>
+            <span className="truncate font-bold">ShiftUp</span>
+          </div>
           {/* Bildirimler her sayfadan tek dokunuşla erişilebilir olsun */}
           {authStatus === 'authenticated' && authEmployee && (
-            <Box sx={{ ml: 'auto' }}>
-              <NotificationBell employeeId={authEmployee.id} collapsed />
-            </Box>
+            <NotificationBell employeeId={authEmployee.id} collapsed />
           )}
-        </Box>
+        </header>
       )}
 
-      {/* Desktop drawer */}
+      {/* Masaüstü yan menü */}
       {!isMobile && (
-        <Box
-          component="nav"
-          aria-label="Ana menü"
-          sx={{
-            width: drawerWidth,
-            flexShrink: 0,
-            transition: 'width 0.2s',
-          }}
-        >
-          <Box
-            sx={{
-              width: drawerWidth,
-              position: 'fixed',
-              top: 0,
-              left: 0,
-              height: '100dvh',
-              transition: 'width 0.2s',
-              overflow: 'hidden',
-            }}
-          >
+        <nav aria-label="Ana menü" className="shrink-0 transition-[width] duration-200" style={{ width: drawerWidth }}>
+          <div className="fixed top-0 left-0 h-dvh overflow-hidden transition-[width] duration-200" style={{ width: drawerWidth }}>
             {drawerContent}
-          </Box>
-        </Box>
+          </div>
+        </nav>
       )}
 
       {/* Mobil alt sekme çubuğu */}
       {isMobile && <MobileBottomNav />}
 
-      {/* Main content */}
-      <Box
-        component="main"
-        sx={{
-          // Sol boşluk masaüstünde nav yer tutucusundan gelir; ek margin çift boşluk yaratır
-          flex: 1,
-          minWidth: 0,
-          minHeight: '100dvh',
-          // body zaten safe-area-inset-top kadar padding alıyor; burada yalnızca bar yüksekliği eklenir
-          pt: isMobile ? `${MOBILE_BAR_HEIGHT}px` : 0,
-          // Alt bar içeriği örtmesin: bar yüksekliği + body'nin safe-area-inset-bottom padding'i
-          // birlikte barın (64px + safe-area) kapladığı alanı karşılar
-          pb: isMobile ? `${BOTTOM_NAV_SPACE}px` : 0,
-          // Masaüstü: içerik krem zemin üstünde beyaz, yuvarlak köşeli panelde
-          ...(!isMobile && { py: 1.5, pr: 1.5 }),
-        }}
+      {/* İçerik — mobilde üst / alt bar kadar boşluk (body safe-area padding'i alır);
+          masaüstünde krem zemin üstünde beyaz, yuvarlak köşeli panel */}
+      <main
+        className={cn('min-h-dvh min-w-0 flex-1', !isMobile && 'py-3 pr-3')}
+        style={isMobile ? { paddingTop: MOBILE_BAR_HEIGHT, paddingBottom: BOTTOM_NAV_SPACE } : undefined}
       >
-        <Box
-          sx={isMobile ? undefined : {
-            minHeight: 'calc(100dvh - 24px)',
-            bgcolor: 'background.paper',
-            border: '1px solid',
-            borderColor: 'divider',
-            borderRadius: '20px',
-            overflow: 'clip',
-          }}
-        >
-        {/* Ağaç her boyutta aynı kalsın (breakpoint değişince sayfa state'i sıfırlanmasın);
-            yalnızca mobilde etkin, QR tarayıcıda kamera akışıyla çakışmasın diye kapalı */}
-        <PullToRefresh disabled={!isMobile || isNavActive(pathname, SCAN_HREF)}>
-          <ErrorBoundary>{children}</ErrorBoundary>
-        </PullToRefresh>
-        </Box>
-      </Box>
-    </Box>
+        <div className={cn(!isMobile && 'min-h-[calc(100dvh-24px)] overflow-clip rounded-[20px] border bg-card')}>
+          {/* Ağaç her boyutta aynı kalsın (breakpoint değişince sayfa state'i sıfırlanmasın);
+              yalnızca mobilde etkin, QR tarayıcıda kamera akışıyla çakışmasın diye kapalı */}
+          <PullToRefresh disabled={!isMobile || isNavActive(pathname, SCAN_HREF)}>
+            <ErrorBoundary>{children}</ErrorBoundary>
+          </PullToRefresh>
+        </div>
+      </main>
+    </div>
   )
 }
-
