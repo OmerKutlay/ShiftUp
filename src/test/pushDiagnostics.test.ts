@@ -1,6 +1,6 @@
 /**
  * pushDiagnostics.test.ts — push teşhis adımları (saf fonksiyon) ve
- * /api/push/diagnostics + /api/push/test route'ları.
+ * /api/push/diagnostics route'u.
  * Oturum (getCurrentEmployee) mock'lanır; requireAuth/requireMinRole gerçek haliyle çalışır.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
@@ -21,7 +21,6 @@ vi.mock('@/lib/auth/session', () => ({ getCurrentEmployee: vi.fn(async () => sta
 vi.mock('@/lib/supabaseAdmin', () => ({ createAdminClient: vi.fn(() => state.db) }))
 
 import { GET as getDiagnostics } from '@/app/api/push/diagnostics/route'
-import { POST as postTest } from '@/app/api/push/test/route'
 
 // ── Sabitler ─────────────────────────────────────────────────
 const base = { email: null, role: 'Kasiyer', role_id: null, active: true }
@@ -132,10 +131,10 @@ describe('functionStep (son send-push yanıtı)', () => {
     status_code, error_msg: null, content: null, created: '2026-10-16T10:00:00Z', ...extra,
   })
 
-  it('çağrı yoksa ok=null ve test bildirimi önerisi', () => {
+  it('çağrı yoksa ok=null ve bildirim oluşturma önerisi', () => {
     const s = functionStep(undefined)
     expect(s.ok).toBeNull()
-    expect(s.hint).toContain('Test bildirimi')
+    expect(s.hint).toContain('izin talebi')
   })
 
   it('401 → secret uyuşmazlığı / verify-jwt', () => {
@@ -297,60 +296,5 @@ describe('GET /api/push/diagnostics', () => {
     expect(res.status).toBe(500)
     expect(JSON.stringify(await res.json())).not.toContain('vault')
     spy.mockRestore()
-  })
-})
-
-describe('POST /api/push/test', () => {
-  it('oturum yoksa 401', async () => {
-    state.employee = null
-    expect((await postTest(req('POST', '/api/push/test', {}))).status).toBe(401)
-    expect(db.tables.notifications).toHaveLength(0)
-  })
-
-  it('kiosk hesabı 403', async () => {
-    state.employee = kiosk
-    expect((await postTest(req('POST', '/api/push/test', {}))).status).toBe(403)
-    expect(db.tables.notifications).toHaveLength(0)
-  })
-
-  it('oturumdaki çalışana push_test bildirimi ekler (gövdedeki employee_id yok sayılır)', async () => {
-    state.employee = ahmet
-    const res = await postTest(req('POST', '/api/push/test', { employee_id: 'emp-mudur' }))
-    expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ success: true })
-    expect(db.tables.notifications).toHaveLength(1)
-    expect(db.tables.notifications[0]).toMatchObject({
-      employee_id: 'emp-ahmet',
-      type: 'push_test',
-      title: 'Test bildirimi',
-      message: 'Bu bir deneme bildirimidir. Telefonunuzun bildirim panelinde görüyorsanız kurulum tamam.',
-      is_read: false,
-    })
-  })
-
-  it('enum değeri yoksa (22P02) 409 ve migration adı', async () => {
-    db.options.failOn = {
-      'notifications:insert': { message: 'invalid input value for enum notification_type: "push_test"', code: '22P02' },
-    }
-    const res = await postTest(req('POST', '/api/push/test', {}))
-    expect(res.status).toBe(409)
-    const body = await res.json()
-    expect(body.code).toBe('MIGRATION_MISSING')
-    expect(body.error).toContain('20261017100000')
-  })
-
-  it('diğer DB hatası 500', async () => {
-    db.options.failOn = { 'notifications:insert': { message: 'boom' } }
-    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    expect((await postTest(req('POST', '/api/push/test', {}))).status).toBe(500)
-    spy.mockRestore()
-  })
-
-  it('10 dakikada 5\'ten fazla istek 429', async () => {
-    state.employee = { ...ahmet, id: 'emp-push-test-rl' }
-    const statuses: number[] = []
-    for (let i = 0; i < 6; i++) statuses.push((await postTest(req('POST', '/api/push/test', {}))).status)
-    expect(statuses.slice(0, 5).every((s) => s === 200)).toBe(true)
-    expect(statuses[5]).toBe(429)
   })
 })
