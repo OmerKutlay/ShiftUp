@@ -3,13 +3,12 @@
 /**
  * PushPermissionCard — bu cihazda push bildirimlerini açma/kapatma.
  *
- * variant="card": açıklamalı kart (Bildirimler sayfasının üstünde).
- * variant="row" : ayarlar listeleri için kompakt anahtar (switch) satırı.
+ * Açıklamalı kart (Bildirimler sayfasının üstü, Ayarlar › Bildirimler).
  *
  * Durumlar: desteklenmiyor / iOS'ta ana ekrana ekleme gerekli / izin sorulmadı /
  * açık (abone) / izin verilmiş ama abone değil / reddedilmiş (ayarlardan açma yönergesi).
  */
-import { Alert, Box, Button, CircularProgress, Paper, Switch, Typography } from '@mui/material'
+import { Alert, Box, Button, CircularProgress, Paper, Typography } from '@mui/material'
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive'
 import NotificationsOffIcon from '@mui/icons-material/NotificationsOff'
 import IosShareIcon from '@mui/icons-material/IosShare'
@@ -17,8 +16,7 @@ import { usePushSubscription, type PushStatus } from '@/hooks/usePushSubscriptio
 import { isIos } from '@/lib/pwa/push'
 
 interface Props {
-  variant?: 'card' | 'row'
-  /** card: abonelik açıkken kartı tamamen gizle */
+  /** Abonelik açıkken kartı tamamen gizle */
   hideWhenSubscribed?: boolean
 }
 
@@ -49,7 +47,7 @@ function statusText(status: PushStatus): string {
   }
 }
 
-export function PushPermissionCard({ variant = 'card', hideWhenSubscribed = false }: Props) {
+export function PushPermissionCard({ hideWhenSubscribed = false }: Props) {
   const { status, busy, error, enable, disable } = usePushSubscription()
 
   if (status === 'loading') return null
@@ -58,31 +56,6 @@ export function PushPermissionCard({ variant = 'card', hideWhenSubscribed = fals
 
   const canEnable = status === 'default' || status === 'granted'
   const isOn = status === 'subscribed'
-
-  if (variant === 'row') {
-    return (
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 1 }}>
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography variant="body2" fontWeight={600}>
-            Anlık bildirimler
-          </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-            {error ?? statusText(status)}
-          </Typography>
-        </Box>
-        {busy ? (
-          <CircularProgress size={20} />
-        ) : (
-          <Switch
-            checked={isOn}
-            disabled={!canEnable && !isOn}
-            onChange={(_, checked) => void (checked ? enable() : disable())}
-            slotProps={{ input: { 'aria-label': 'Anlık bildirimler' } }}
-          />
-        )}
-      </Box>
-    )
-  }
 
   if (isOn && hideWhenSubscribed) return null
 

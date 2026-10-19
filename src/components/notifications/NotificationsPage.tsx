@@ -209,7 +209,7 @@ export function NotificationsPage() {
         }
       />
 
-      {authEmployee && <PushPermissionCard />}
+      {authEmployee && <PushPermissionCard hideWhenSubscribed />}
 
       {authStatus === 'unauthenticated' && (
         <Alert severity="info" sx={{ mb: 2 }}>

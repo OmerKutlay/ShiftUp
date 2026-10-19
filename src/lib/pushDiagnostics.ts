@@ -212,13 +212,13 @@ function subscriptionStep(input: PushDiagnosticsInput): PushDiagnosticStep {
   if (n === 0) {
     return {
       key: 'subscription', ok: false, label,
-      hint: 'Bu hesapla kayıtlı cihaz yok. Telefonda Daha fazla › Anlık bildirimler\'i açın (iPhone\'da önce Ana Ekrana Ekle).',
+      hint: 'Bu hesapla kayıtlı cihaz yok. Telefonda uygulamayı açıp "Bildirimleri aç" kartına dokunun (iPhone\'da önce Ana Ekrana Ekle).',
     }
   }
   if (input.thisDevice === false) {
     return {
       key: 'subscription', ok: false, label: `${label} — bu cihaz kayıtlı değil`,
-      hint: 'Bu cihazın aboneliği sunucuda yok. Anlık bildirimleri kapatıp yeniden açın.',
+      hint: 'Bu cihazın aboneliği sunucuda yok. Uygulamadan çıkış yapıp tekrar giriş yapın; abonelik yeniden kaydedilir.',
     }
   }
   return { key: 'subscription', ok: true, label, hint: null }
