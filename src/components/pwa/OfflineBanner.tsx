@@ -3,7 +3,7 @@
 /**
  * OfflineBanner — Bağlantı koptuğunda ekranın altında ince bir uyarı bandı.
  *
- * Mobilde yüzen alt gezinme kartının (BOTTOM_NAV_OVERLAY_OFFSET + safe-area) üstünde, masaüstünde alttan 16px yukarıda
+ * Mobilde alt gezinme çubuğunun (BOTTOM_NAV_OVERLAY_OFFSET + safe-area) üstünde, masaüstünde alttan 16px yukarıda
  * durur; üstteki mobil bar'ı kapatmaz. Bağlantı geri gelince kısa bir "geri geldi" mesajı
  * gösterip kaybolur.
  */
