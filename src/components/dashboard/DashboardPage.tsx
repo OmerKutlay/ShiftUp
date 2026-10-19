@@ -2,15 +2,7 @@
 
 import useSWR from 'swr'
 import { useLastUpdated } from '@/hooks/useLastUpdated'
-import {
-  Box,
-  Typography,
-  CircularProgress,
-  Skeleton,
-  Alert,
-  Button,
-} from '@mui/material'
-import RefreshIcon from '@mui/icons-material/Refresh'
+import { AlertCircle, Loader2, RefreshCw } from 'lucide-react'
 import { formatDateTurkish, formatDayNameTurkish, formatDateRangeTr } from '@/lib/dateUtils'
 import { LEAVE_TYPE_LABELS } from '@/types/leave'
 import {
@@ -20,6 +12,9 @@ import {
 import { shiftKindOf } from '@/components/schedule/scheduleHelpers'
 import { useAuth } from '@/context/AuthContext'
 import { C, SHIFT_KIND_TONES } from '@/lib/palette'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -90,37 +85,31 @@ export function DashboardPage() {
   const greeting = `${hour < 12 ? 'Günaydın' : hour < 18 ? 'İyi günler' : 'İyi akşamlar'}${firstName ? `, ${firstName}` : ''}`
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, color: 'text.primary' }}>
+    <div className="p-4 md:p-6">
       <PageHeader
         overline={greeting}
         title="Genel bakış"
         subtitle={`${formatDayNameTurkish(today)}, ${formatDateTurkish(today)}`}
         meta={lastRefreshed && `Son güncelleme: ${lastRefreshed.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`}
         actions={
-          <Button
-            variant="outlined"
-            color="inherit"
-            startIcon={loading ? <CircularProgress size={14} /> : <RefreshIcon />}
-            onClick={() => void load()}
-            disabled={loading}
-            sx={{ minHeight: 40, borderColor: 'divider', bgcolor: 'background.paper' }}
-          >
+          <Button variant="outline" onClick={() => void load()} disabled={loading}>
+            {loading ? <Loader2 className="animate-spin" /> : <RefreshCw />}
             Yenile
           </Button>
         }
       />
 
       {error && (
-        <Alert
-          severity="error"
-          action={<Button color="inherit" size="small" onClick={() => void load()}>Tekrar Dene</Button>}
-          sx={{ mb: 2 }}
-        >
-          {error}
+        <Alert tone="danger" className="mb-4">
+          <AlertCircle />
+          <AlertDescription className="flex flex-wrap items-center justify-between gap-2 text-ink">
+            {error}
+            <Button variant="ghost" size="sm" onClick={() => void load()}>Tekrar Dene</Button>
+          </AlertDescription>
         </Alert>
       )}
 
-      {/* Stats */}
+      {/* Özet */}
       {loading && !data && <StatCardsSkeleton count={5} />}
       {stats && (
         <StatGrid min={140}>
@@ -145,21 +134,21 @@ export function DashboardPage() {
       )}
 
       {loading && !data && (
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'minmax(0, 1fr) 380px' }, gap: 3 }}>
-          <Box>
-            <Skeleton variant="text" width={130} sx={{ fontSize: '1rem', mb: 2 }} />
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+          <div>
+            <Skeleton className="mb-4 h-5 w-32" />
             <ListSkeleton count={5} actions={1} dense />
-          </Box>
-          <Box>
-            <Skeleton variant="text" width={150} sx={{ fontSize: '1rem', mb: 2 }} />
+          </div>
+          <div>
+            <Skeleton className="mb-4 h-5 w-36" />
             <ListSkeleton count={3} avatar={false} actions={1} dense />
-          </Box>
-        </Box>
+          </div>
+        </div>
       )}
 
       {/* İki sütun: bugünkü kadro + onay bekleyenler */}
       {data && (
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'minmax(0, 1fr) 380px' }, gap: 2, alignItems: 'start' }}>
+        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
           <SectionCard title="Bugünkü kadro" count={roster.length} action={{ label: 'Günlük operasyon →', href: '/' }}>
             {roster.length === 0 ? (
               <EmptyRow>Bugün için planlanmış vardiya yok.</EmptyRow>
@@ -170,16 +159,16 @@ export function DashboardPage() {
                 return (
                   <SectionRow key={entry.employee_id + entry.start_time}>
                     <PersonAvatar name={entry.full_name} size={34} />
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Typography fontSize="0.85rem" fontWeight={700} noWrap>{entry.full_name}</Typography>
-                      <Typography fontSize="0.72rem" color="text.secondary" noWrap>{entry.role}</Typography>
-                    </Box>
-                    <Typography
-                      fontSize="0.78rem" fontWeight={700}
-                      sx={{ color: tone.text, bgcolor: tone.soft, px: 1, py: 0.5, borderRadius: '8px', fontVariantNumeric: 'tabular-nums', display: { xs: 'none', sm: 'block' } }}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold">{entry.full_name}</p>
+                      <p className="truncate text-xs text-ink-secondary">{entry.role}</p>
+                    </div>
+                    <span
+                      className="hidden rounded-lg px-2 py-1 text-[0.78rem] font-bold tabular-nums sm:block"
+                      style={{ color: tone.text, backgroundColor: tone.soft }}
                     >
                       {entry.start_time.slice(0, 5)} – {entry.end_time.slice(0, 5)}
-                    </Typography>
+                    </span>
                     <StatusBadge tone={cfg.tone} label={cfg.label} className="min-w-[82px]" />
                   </SectionRow>
                 )
@@ -196,12 +185,10 @@ export function DashboardPage() {
                 return (
                   <SectionRow key={leave.id} href="/leave">
                     <PersonAvatar name={emp?.full_name ?? '?'} size={34} />
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Typography fontSize="0.85rem" fontWeight={700} noWrap>{emp?.full_name ?? '—'}</Typography>
-                      <Typography fontSize="0.72rem" color="text.secondary" noWrap>
-                        {formatDateRangeTr(leave.start_date, leave.end_date)}
-                      </Typography>
-                    </Box>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold">{emp?.full_name ?? '—'}</p>
+                      <p className="truncate text-xs text-ink-secondary">{formatDateRangeTr(leave.start_date, leave.end_date)}</p>
+                    </div>
                     <StatusBadge
                       tone="warning"
                       label={LEAVE_TYPE_LABELS[leave.leave_type as keyof typeof LEAVE_TYPE_LABELS] ?? leave.leave_type}
@@ -211,8 +198,8 @@ export function DashboardPage() {
               })
             )}
           </SectionCard>
-        </Box>
+        </div>
       )}
-    </Box>
+    </div>
   )
 }
