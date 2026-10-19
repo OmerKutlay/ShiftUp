@@ -298,7 +298,7 @@ function AnnualLeaveCard({ balance }: { balance: AnnualLeaveBalance }) {
   const low = balance.remainingDays <= 2
   return (
     <Box sx={{ mb: 2 }}>
-      <StatGrid min={140} sx={{ mb: 1 }}>
+      <StatGrid min={140} className="mb-2 md:mb-2">
         <StatCard label={`Yıllık hak (${balance.seniorityYears}. yıl)`} value={`${balance.entitlementDays} gün`} />
         <StatCard label="Kullanılan" value={`${balance.usedDays} gün`} />
         <StatCard label="Onay bekleyen" value={`${balance.pendingDays} gün`} valueColor={balance.pendingDays ? C.warning : undefined} />
@@ -459,7 +459,7 @@ export function LeavePage() {
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               Bekleyenler
               {pendingCount > 0 && (
-                <StatusBadge tone="warning" label={pendingCount} sx={{ height: 18, px: 0.625 }} />
+                <StatusBadge tone="warning" label={pendingCount} className="h-[18px] px-1.5" />
               )}
             </Box>
           }
@@ -556,7 +556,7 @@ function LeaveCard({
   const days = dayCount(request.start_date, request.end_date)
 
   return (
-    <SectionRow sx={{ alignItems: 'flex-start', flexWrap: { xs: 'wrap', sm: 'nowrap' }, py: 1.5 }}>
+    <SectionRow className="flex-wrap items-start py-3 sm:flex-nowrap">
       <PersonAvatar name={emp?.full_name ?? '?'} size={38} />
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>

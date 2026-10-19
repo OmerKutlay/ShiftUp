@@ -18,14 +18,7 @@
  */
 import { useState, useMemo } from 'react'
 import useSWR from 'swr'
-import {
-  Box, Typography, Paper, Alert, Button, Chip, Divider, Stack, LinearProgress,
-} from '@mui/material'
-import AccessTimeIcon from '@mui/icons-material/AccessTime'
-import CheckCircleIcon from '@mui/icons-material/CheckCircle'
-import CancelIcon from '@mui/icons-material/Cancel'
-import FreeBreakfastIcon from '@mui/icons-material/FreeBreakfast'
-import EventBusyIcon from '@mui/icons-material/EventBusy'
+import { AlertCircle, CalendarX2, CheckCircle2, CircleX, Clock, TriangleAlert } from 'lucide-react'
 import { format, startOfMonth, endOfMonth, addMonths, subMonths, getDaysInMonth, parseISO } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { useAuth } from '@/context/AuthContext'
@@ -36,7 +29,13 @@ import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import {
   getSnapshot, getSnapshotOwner, setSnapshot, formatSnapshotTime, SNAPSHOT_MAX_AGE_MS,
 } from '@/lib/pwa/offlineSnapshot'
-import { C, tint } from '@/lib/palette'
+import { C, SHIFT_KIND_TONES } from '@/lib/palette'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge, type BadgeTone } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Progress } from '@/components/ui/progress'
+import { shiftKindOf } from '@/components/schedule/scheduleHelpers'
+import { cn } from '@/lib/utils'
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -128,14 +127,14 @@ const STATUS_LABELS: Record<string, string> = {
   upcoming: 'Bekleniyor',
   planned: 'Planlandı',
 }
-const STATUS_COLORS: Record<string, string> = {
-  clocked_out: C.success,
-  working: C.brand,
-  on_break: C.warning,
-  working_after_break: C.brand,
-  absent: C.danger,
-  upcoming: C.inkMuted,
-  planned: C.neutral,
+const STATUS_TONES: Record<string, BadgeTone> = {
+  clocked_out: 'success',
+  working: 'brand',
+  on_break: 'warning',
+  working_after_break: 'brand',
+  absent: 'danger',
+  upcoming: 'neutral',
+  planned: 'neutral',
 }
 
 /**
@@ -159,112 +158,63 @@ function displayStatus(entry: DayEntry, now: Date): string {
 
 function DayCard({ entry, isToday }: { entry: DayEntry; isToday: boolean }) {
   const status = displayStatus(entry, new Date())
-  const statusColor = STATUS_COLORS[status] ?? C.inkMuted
   const plannedMins = shiftDurationMins(entry.start_time, entry.end_time)
   const workedMins = entry.worked_minutes ?? 0
+  const date = parseISO(entry.work_date)
+  const tone = SHIFT_KIND_TONES[shiftKindOf(undefined, entry.start_time, entry.end_time)]
 
   return (
-    <Paper elevation={0} sx={{
-      p: 1.5,
-      border: '1px solid',
-      borderColor: isToday ? 'primary.main' : 'divider',
-      borderRadius: 2,
-      bgcolor: isToday ? tint(C.brand, 0.06) : C.surface,
-    }}>
-      {/* Tarih + durum */}
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-        <Box>
-          <Typography variant="caption" fontWeight={700} color={isToday ? 'primary.main' : 'text.primary'}>
-            {format(parseISO(entry.work_date), 'd MMMM', { locale: tr })}
-          </Typography>
-          <Typography variant="caption" color="text.disabled" display="block" fontSize="0.65rem">
-            {format(parseISO(entry.work_date), 'EEEE', { locale: tr })}
-          </Typography>
-        </Box>
-        {entry.is_on_leave ? (
-          <Chip label="İzin" size="small" sx={{
-            height: 20, fontSize: '0.7rem',
-            bgcolor: tint(C.warning, 0.15), color: C.warning,
-          }} />
-        ) : (
-          <Chip
-            label={STATUS_LABELS[status] ?? status}
-            size="small"
-            sx={{
-              height: 20, fontSize: '0.7rem',
-              bgcolor: `${statusColor}20`, color: statusColor,
-              border: '1px solid', borderColor: `${statusColor}40`,
-            }}
-          />
-        )}
-      </Box>
+    <div className={cn('flex gap-3 px-4 py-3', isToday && 'bg-accent')}>
+      {/* Tarih bloğu */}
+      <div className={cn('flex w-11 shrink-0 flex-col items-center rounded-xl py-1.5', isToday ? 'bg-primary text-white' : 'bg-muted')}>
+        <span className="text-lg font-bold leading-none">{format(date, 'd')}</span>
+        <span className={cn('mt-0.5 text-[0.65rem] capitalize', isToday ? 'text-white/85' : 'text-ink-secondary')}>
+          {format(date, 'EEE', { locale: tr })}
+        </span>
+      </div>
 
-      {/* Planlanan saat */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
-        <AccessTimeIcon sx={{ fontSize: 11, color: 'text.disabled' }} />
-        <Typography variant="caption" color="text.secondary" fontSize="0.75rem">
-          Plan: {entry.start_time.slice(0, 5)} – {entry.end_time.slice(0, 5)}
-          {' '}({fmtMins(plannedMins)})
-        </Typography>
-      </Box>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="sr-only">{format(date, 'd MMMM EEEE', { locale: tr })}</span>
+          <span className="rounded-lg px-2 py-0.5 text-[0.78rem] font-bold tabular-nums" style={{ color: tone.text, backgroundColor: tone.soft }}>
+            Plan: {entry.start_time.slice(0, 5)} – {entry.end_time.slice(0, 5)}
+          </span>
+          <span className="text-xs text-ink-secondary">{fmtMins(plannedMins)}</span>
+          <span className="flex-1" />
+          {entry.is_on_leave
+            ? <Badge tone="info">İzin</Badge>
+            : <Badge tone={STATUS_TONES[status] ?? 'neutral'}>{STATUS_LABELS[status] ?? status}</Badge>}
+        </div>
 
-      {/* Gerçekleşen — sadece clocked_out */}
-      {entry.status === 'clocked_out' && (
-        <>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
-            <CheckCircleIcon sx={{ fontSize: 11, color: C.success }} />
-            <Typography variant="caption" color="text.secondary" fontSize="0.75rem">
-              Giriş: {fmtTime(entry.clock_in_at)} → Çıkış: {fmtTime(entry.clock_out_at)}
-            </Typography>
-          </Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-            <Chip
-              label={`Çalışma: ${fmtMins(entry.worked_minutes)}`}
-              size="small"
-              sx={{
-                height: 20, fontSize: '0.7rem',
-                bgcolor: tint(C.success, 0.12), color: C.success,
-              }}
-            />
-            {(entry.break_minutes ?? 0) > 0 && (
-              <Chip
-                label={`Mola: ${fmtMins(entry.break_minutes)}`}
-                size="small"
-                sx={{
-                  height: 20, fontSize: '0.7rem',
-                  bgcolor: tint(C.warning, 0.12), color: C.warning,
-                }}
+        {/* Gerçekleşen — sadece clocked_out */}
+        {entry.status === 'clocked_out' && (
+          <>
+            <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-secondary">
+              <span className="flex items-center gap-1">
+                <CheckCircle2 className="size-3.5 text-success" />
+                Giriş: {fmtTime(entry.clock_in_at)} → Çıkış: {fmtTime(entry.clock_out_at)}
+              </span>
+              <span className="font-semibold text-success">Çalışma: {fmtMins(entry.worked_minutes)}</span>
+              {(entry.break_minutes ?? 0) > 0 && <span className="font-semibold text-warning">Mola: {fmtMins(entry.break_minutes)}</span>}
+            </p>
+            {plannedMins > 0 && (
+              <Progress
+                value={Math.min(100, (workedMins / plannedMins) * 100)}
+                className="mt-2 h-1"
+                indicatorClassName="bg-success"
+                aria-label="Gerçekleşen / planlanan"
               />
             )}
-          </Box>
+          </>
+        )}
 
-          {/* Gerçekleşen / Planlanan progress */}
-          {plannedMins > 0 && (
-            <Box sx={{ mt: 1 }}>
-              <LinearProgress
-                variant="determinate"
-                value={Math.min(100, (workedMins / plannedMins) * 100)}
-                sx={{
-                  height: 3, borderRadius: 2,
-                  bgcolor: tint(C.ink, 0.06),
-                  '& .MuiLinearProgress-bar': { bgcolor: C.success, borderRadius: 2 },
-                }}
-              />
-            </Box>
-          )}
-        </>
-      )}
-
-      {/* Gelmedi */}
-      {status === 'absent' && !entry.is_on_leave && (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.25 }}>
-          <CancelIcon sx={{ fontSize: 11, color: C.danger }} />
-          <Typography variant="caption" color="error.main" fontSize="0.75rem">
-            Kayıt oluşturulmadı
-          </Typography>
-        </Box>
-      )}
-    </Paper>
+        {status === 'absent' && !entry.is_on_leave && (
+          <p className="mt-1.5 flex items-center gap-1 text-xs text-danger">
+            <CircleX className="size-3.5" /> Kayıt oluşturulmadı
+          </p>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -360,34 +310,36 @@ export function MySchedulePage() {
   const profile = employee ?? (offlineMode ? snapshot?.data.profile : null)
   if (!profile) {
     return (
-      <Box sx={{ p: 3 }}>
-        {offlineMode ? (
-          <Alert severity="warning">Çevrimdışısınız — bu cihazda kayıtlı çalışma özeti bulunmuyor. Bağlantı gelince tekrar deneyin.</Alert>
-        ) : (
-          <Alert severity="warning">Bu sayfayı görmek için giriş yapmanız gerekiyor.</Alert>
-        )}
-      </Box>
+      <div className="p-4 md:p-6">
+        <Alert tone="warning">
+          <TriangleAlert />
+          <AlertDescription className="text-ink">
+            {offlineMode
+              ? 'Çevrimdışısınız — bu cihazda kayıtlı çalışma özeti bulunmuyor. Bağlantı gelince tekrar deneyin.'
+              : 'Bu sayfayı görmek için giriş yapmanız gerekiyor.'}
+          </AlertDescription>
+        </Alert>
+      </div>
     )
   }
 
-  return (
-    <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 900, mx: 'auto' }}>
+  const pct = summary.plannedMins > 0 ? Math.min(100, (summary.workedMins / summary.plannedMins) * 100) : 0
 
-      <PageHeader
-        title="Çalışma özetim"
-        subtitle={`${profile.full_name} · ${profile.role}`}
-      />
+  return (
+    <div className="mx-auto max-w-[900px] p-4 md:p-6">
+      <PageHeader title="Çalışma özetim" subtitle={`${profile.full_name} · ${profile.role}`} />
 
       {snapshotMonth && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          Çevrimdışı — son güncelleme: {formatSnapshotTime(snapshotMonth.savedAt)}
+        <Alert tone="warning" className="mb-4">
+          <TriangleAlert />
+          <AlertDescription className="text-ink">Çevrimdışı — son güncelleme: {formatSnapshotTime(snapshotMonth.savedAt)}</AlertDescription>
         </Alert>
       )}
 
       {/* Ay navigasyonu */}
-      <Box sx={{ mb: 2.5 }}>
+      <div className="mb-4">
         <PeriodStepper
-          label={<Box component="span" sx={{ textTransform: 'capitalize' }}>{monthLabel}</Box>}
+          label={<span className="capitalize">{monthLabel}</span>}
           onPrev={() => setCurrentMonth((m) => subMonths(m, 1))}
           onNext={() => setCurrentMonth((m) => addMonths(m, 1))}
           nextDisabled={addMonths(currentMonth, 1) > new Date()}
@@ -395,103 +347,63 @@ export function MySchedulePage() {
           nextLabel="Sonraki ay"
           minLabelWidth={120}
         />
-      </Box>
+      </div>
 
-      {/* Özet stat kartları */}
+      {/* Özet */}
       {isFirstLoad ? <StatCardsSkeleton count={4} /> : (
-      <StatGrid min={130}>
-        <StatCard
-          label="Planlanan"
-          value={fmtHoursTotal(summary.plannedMins)}
-          note={`${entries.filter(e => !e.is_on_leave).length} vardiya`}
-        />
-        <StatCard
-          label="Çalışılan"
-          value={fmtHoursTotal(summary.workedMins)}
-          note={`${summary.workedDays} gün tamamlandı`}
-          valueColor={C.success}
-        />
-        <StatCard label="Mola" value={fmtHoursTotal(summary.breakMins)} />
-        <StatCard
-          label="Devamsızlık"
-          value={`${summary.noShowDays} gün`}
-          valueColor={summary.noShowDays > 0 ? C.danger : undefined}
-        />
-        {summary.leaveDays > 0 && (
-          <StatCard label="İzin" value={`${summary.leaveDays} gün`} valueColor={C.info} />
-        )}
-      </StatGrid>
+        <StatGrid min={130}>
+          <StatCard label="Planlanan" value={fmtHoursTotal(summary.plannedMins)} note={`${entries.filter(e => !e.is_on_leave).length} vardiya`} />
+          <StatCard label="Çalışılan" value={fmtHoursTotal(summary.workedMins)} note={`${summary.workedDays} gün tamamlandı`} valueColor={C.success} />
+          <StatCard label="Mola" value={fmtHoursTotal(summary.breakMins)} />
+          <StatCard label="Devamsızlık" value={`${summary.noShowDays} gün`} valueColor={summary.noShowDays > 0 ? C.danger : undefined} />
+          {summary.leaveDays > 0 && <StatCard label="İzin" value={`${summary.leaveDays} gün`} valueColor={C.info} />}
+        </StatGrid>
       )}
 
-      {/* Planlanan vs gerçekleşen progress */}
+      {/* Planlanan vs gerçekleşen */}
       {!isFirstLoad && summary.plannedMins > 0 && (
-        <Paper elevation={0} sx={{
-          p: 2, mb: 3,
-          border: '1px solid', borderColor: 'divider', borderRadius: 2,
-          bgcolor: C.surface,
-        }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-              <AccessTimeIcon sx={{ fontSize: 14, color: 'primary.main' }} />
-              <Typography variant="caption" fontWeight={600}>Aylık Tamamlanma</Typography>
-            </Box>
-            <Typography variant="caption" color="text.secondary">
-              {fmtMins(summary.workedMins)} / {fmtMins(summary.plannedMins)}
-            </Typography>
-          </Box>
-          <LinearProgress
-            variant="determinate"
-            value={Math.min(100, (summary.workedMins / summary.plannedMins) * 100)}
-            sx={{
-              height: 6, borderRadius: 3,
-              bgcolor: tint(C.ink, 0.06),
-              '& .MuiLinearProgress-bar': { bgcolor: C.success, borderRadius: 3 },
-            }}
-          />
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.75 }}>
-            <Typography variant="caption" color="text.disabled" fontSize="0.65rem">
-              {Math.round((summary.workedMins / summary.plannedMins) * 100)}% tamamlandı
-            </Typography>
-            <Typography variant="caption" color="text.disabled" fontSize="0.65rem">
-              {daysInMonth} günlük ay
-            </Typography>
-          </Box>
-        </Paper>
+        <section className="mb-4 rounded-2xl border bg-card p-4">
+          <div className="mb-2 flex items-center justify-between gap-2 text-sm">
+            <span className="flex items-center gap-1.5 font-semibold"><Clock className="size-4 text-primary" /> Aylık tamamlanma</span>
+            <span className="text-xs text-ink-secondary">{fmtMins(summary.workedMins)} / {fmtMins(summary.plannedMins)}</span>
+          </div>
+          <Progress value={pct} indicatorClassName="bg-success" aria-label="Aylık tamamlanma" />
+          <div className="mt-1.5 flex justify-between text-[0.7rem] text-ink-muted">
+            <span>%{Math.round(pct)} tamamlandı</span>
+            <span>{daysInMonth} günlük ay</span>
+          </div>
+        </section>
       )}
-
-      <Divider sx={{ mb: 2.5, borderColor: tint(C.ink, 0.08) }} />
 
       {/* Günlük liste */}
       {isFirstLoad ? (
         <DayBlocksSkeleton count={7} />
       ) : error ? (
-        <Alert severity="error" action={<Button color="inherit" size="small" onClick={() => void reportQ.mutate()}>Tekrar Dene</Button>}>{error}</Alert>
+        <Alert tone="danger">
+          <AlertCircle />
+          <AlertDescription className="flex flex-wrap items-center justify-between gap-2 text-ink">
+            {error}
+            <Button variant="ghost" size="sm" onClick={() => void reportQ.mutate()}>Tekrar Dene</Button>
+          </AlertDescription>
+        </Alert>
       ) : entries.length === 0 ? (
-        <Box sx={{ textAlign: 'center', py: 6 }}>
-          <EventBusyIcon sx={{ fontSize: 48, color: 'text.disabled', opacity: 0.4, mb: 1 }} />
-          <Typography variant="body2" color="text.secondary">
-            Bu ay için vardiya kaydı bulunmuyor.
-          </Typography>
-        </Box>
+        <div className="flex flex-col items-center gap-2 rounded-2xl border bg-card py-12 text-center">
+          <CalendarX2 className="size-10 text-ink-muted/60" />
+          <p className="text-sm text-ink-secondary">Bu ay için vardiya kaydı bulunmuyor.</p>
+        </div>
       ) : (
-        <>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-            <FreeBreakfastIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
-            <Typography variant="caption" color="text.disabled">
-              {entries.length} vardiya — tıklayarak detay göremezsiniz, bu sadece özet görünümdür
-            </Typography>
-          </Box>
-          <Stack spacing={1}>
+        <section className="overflow-hidden rounded-2xl border bg-card">
+          <div className="flex items-center gap-2 px-4 pt-3.5 pb-2.5">
+            <h2 className="text-[0.95rem] font-bold">Vardiyalar</h2>
+            <span className="text-[0.78rem] text-ink-secondary">{entries.length}</span>
+          </div>
+          <div className="[&>*]:border-t">
             {entries.map((entry) => (
-              <DayCard
-                key={entry.work_date}
-                entry={entry}
-                isToday={entry.work_date === todayStr}
-              />
+              <DayCard key={entry.work_date} entry={entry} isToday={entry.work_date === todayStr} />
             ))}
-          </Stack>
-        </>
+          </div>
+        </section>
       )}
-    </Box>
+    </div>
   )
 }

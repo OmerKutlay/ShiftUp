@@ -16,7 +16,7 @@ test('çevrimdışı bandı görünür, bağlantı gelince "geri geldi" gösteri
   const banner = page.getByRole('status').filter({ hasText: BANNER_OFFLINE })
   await expect(banner).toBeVisible()
 
-  // Bant yüzen alt menü kartının üstünde durur (mobil)
+  // Bant alt menünün üstünde durur (mobil)
   const bannerBox = (await banner.locator('.MuiAlert-root').boundingBox())!
   const nav = page.getByRole('navigation', { name: 'Alt menü' })
   const navBox = (await nav.boundingBox())!
@@ -40,7 +40,7 @@ test('QR Tara: çevrimdışıyken işlem butonları kapalı, bağlantı gelince 
   await expect(page.getByText(/İnternet bağlantısı yok\. Giriş, çıkış ve mola kayıtları/).first()).toBeVisible()
   // Devre dışı butona dokunmak tarayıcıyı/kamerayı açmaz
   await clockIn.click({ force: true })
-  await expect(page.getByRole('heading', { name: 'QR Kodu Okutun' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'QR kodu okutun' })).toHaveCount(0)
 
   const statusRefetch = page.waitForRequest((r) => r.url().endsWith('/api/attendance/current-status'))
   await context.setOffline(false)

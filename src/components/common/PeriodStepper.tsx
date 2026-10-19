@@ -3,9 +3,7 @@
 /**
  * PeriodStepper — "‹ Ekim 2026 ›" biçiminde dönem gezgini (ay / hafta).
  */
-import { Box, ButtonBase, Typography } from '@mui/material'
-import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
-import ChevronRightIcon from '@mui/icons-material/ChevronRight'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 interface Props {
   label: React.ReactNode
@@ -19,56 +17,25 @@ interface Props {
   nextDisabled?: boolean
 }
 
-const arrowSx = {
-  width: 40,
-  alignSelf: 'stretch',
-  color: 'text.secondary',
-  '&:hover': { bgcolor: 'action.hover' },
-  '&.Mui-focusVisible': { bgcolor: 'action.selected' },
-} as const
+const arrow =
+  'flex w-10 items-center justify-center self-stretch text-ink-secondary transition-colors outline-none hover:bg-muted focus-visible:bg-accent disabled:pointer-events-none disabled:text-ink-muted/50'
 
 export function PeriodStepper({ label, onPrev, onNext, prevLabel, nextLabel, minLabelWidth = 96, nextDisabled }: Props) {
   return (
-    <Box
-      sx={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        height: 40,
-        bgcolor: 'background.paper',
-        border: '1px solid',
-        borderColor: 'divider',
-        borderRadius: '10px',
-        overflow: 'hidden',
-        flexShrink: 0,
-      }}
-    >
-      <ButtonBase onClick={onPrev} aria-label={prevLabel} sx={arrowSx}>
-        <ChevronLeftIcon fontSize="small" />
-      </ButtonBase>
-      <Typography
-        component="div"
+    <div className="inline-flex h-10 shrink-0 items-center overflow-hidden rounded-[10px] border bg-card">
+      <button type="button" onClick={onPrev} aria-label={prevLabel} className={arrow}>
+        <ChevronLeft className="size-4" />
+      </button>
+      <div
         aria-live="polite"
-        sx={{
-          px: 1.5,
-          minWidth: minLabelWidth,
-          textAlign: 'center',
-          fontWeight: 600,
-          fontSize: '0.875rem',
-          alignSelf: 'stretch',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          borderLeft: '1px solid',
-          borderRight: '1px solid',
-          borderColor: 'divider',
-          whiteSpace: 'nowrap',
-        }}
+        className="flex items-center justify-center self-stretch whitespace-nowrap border-x px-3 text-sm font-semibold"
+        style={{ minWidth: minLabelWidth }}
       >
         {label}
-      </Typography>
-      <ButtonBase onClick={onNext} aria-label={nextLabel} disabled={nextDisabled} sx={{ ...arrowSx, '&.Mui-disabled': { color: 'text.disabled' } }}>
-        <ChevronRightIcon fontSize="small" />
-      </ButtonBase>
-    </Box>
+      </div>
+      <button type="button" onClick={onNext} aria-label={nextLabel} disabled={nextDisabled} className={arrow}>
+        <ChevronRight className="size-4" />
+      </button>
+    </div>
   )
 }
