@@ -5,7 +5,6 @@
  */
 import { useState } from 'react'
 import { Box, Tab, Tabs } from '@mui/material'
-import BarChartIcon from '@mui/icons-material/BarChart'
 import { PageHeader } from '@/components/common'
 import { AttendanceReportsPage } from './AttendanceReportsPage'
 import { TimesheetPanel } from './TimesheetPanel'
@@ -14,10 +13,8 @@ import { OvertimePanel } from './OvertimePanel'
 export function ReportsPage() {
   const [tab, setTab] = useState(0)
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: 'background.default', color: 'text.primary' }}>
+    <Box sx={{ p: { xs: 2, md: 3 }, color: 'text.primary' }}>
       <PageHeader
-        icon={BarChartIcon}
-        overline="Raporlama"
         title="Raporlar"
         subtitle="Devam kayıtları, aylık puantaj ve fazla çalışma takibi"
       />

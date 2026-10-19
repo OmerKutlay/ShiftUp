@@ -123,7 +123,7 @@ function Calendar({ mode, selected, min, max, clearable, onPick, onClear }: Cale
     borderRadius: 2,
     fontSize: '0.85rem',
     fontWeight: opts.selected ? 700 : 500,
-    color: opts.selected ? t.palette.background.default : opts.muted ? 'text.disabled' : 'text.primary',
+    color: opts.selected ? t.palette.primary.contrastText : opts.muted ? 'text.disabled' : 'text.primary',
     bgcolor: opts.selected ? 'primary.main' : 'transparent',
     border: '1px solid',
     borderColor: opts.today && !opts.selected ? alpha(t.palette.primary.main, 0.6) : 'transparent',

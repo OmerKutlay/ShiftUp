@@ -166,8 +166,6 @@ export function NotificationsPage() {
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 720, mx: 'auto' }}>
       <PageHeader
-        icon={NotificationsIcon}
-        overline="Gelen Kutusu"
         title="Bildirimler"
         titleAdornment={
           unreadCount > 0 && (

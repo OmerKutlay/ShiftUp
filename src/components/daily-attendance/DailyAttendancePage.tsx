@@ -10,7 +10,6 @@ import {
   Divider,
   Button,
 } from '@mui/material'
-import CalendarTodayIcon from '@mui/icons-material/CalendarToday'
 import PeopleIcon from '@mui/icons-material/People'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import type { DailyShiftEntry } from '@/types/attendance'
@@ -44,14 +43,11 @@ export function DailyAttendancePage() {
   return (
     <Box
       sx={{
-        minHeight: '100dvh',
-        bgcolor: 'background.default',
         color: 'text.primary',
         p: { xs: 2, md: 3 },
       }}
     >
       <PageHeader
-        icon={CalendarTodayIcon}
         overline={formatDayNameTurkish(today)}
         title="Günlük Operasyon"
         subtitle={formatDateTurkish(today)}

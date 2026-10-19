@@ -7,7 +7,7 @@ import { test, expect, bottomNav } from './support/fixtures'
 const EMPLOYEE_TABS = ['Vardiyam', 'Plan', 'QR Tara', 'İzin', 'Daha fazla']
 const MANAGER_TABS = ['Bugün', 'Plan', 'QR Tara', 'Bildirimler', 'Daha fazla']
 
-/** Alt menüdeki bağlantıların erişilebilir adları (orta QR butonu aria-label ile) */
+/** Alt menüdeki bağlantıların erişilebilir adları (aria-label varsa o, yoksa metin) */
 async function tabNames(page: import('@playwright/test').Page) {
   const links = bottomNav(page).getByRole('link')
   await expect(links).toHaveCount(5)
@@ -102,7 +102,7 @@ test.describe('Çalışan alt menüsü', () => {
       }
       const nav = document.querySelector('nav[aria-label="Alt menü"]')!
       const navRect = nav.getBoundingClientRect()
-      // Orta QR butonu barın üstüne taşar — en üst noktası
+      // Görünen kartın ve sekmelerin en üst noktası
       let navTop = navRect.top
       for (const el of Array.from(nav.querySelectorAll('*'))) {
         navTop = Math.min(navTop, el.getBoundingClientRect().top)
@@ -111,7 +111,7 @@ test.describe('Çalışan alt menüsü', () => {
     })
 
     expect(geometry.navBottom).toBeCloseTo(geometry.viewport, 0)
-    // Son içerik öğesi barın ve taşan QR butonunun üstünde kalmalı
+    // Son içerik öğesi alt menü kartının üstünde kalmalı
     expect(geometry.lastBottom).toBeLessThanOrEqual(geometry.navTop + 0.5)
   })
 })

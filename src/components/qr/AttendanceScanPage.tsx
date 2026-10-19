@@ -241,8 +241,6 @@ export function AttendanceScanPage() {
     return (
       <Box
         sx={{
-          minHeight: '100dvh',
-          bgcolor: 'background.default',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -269,8 +267,6 @@ export function AttendanceScanPage() {
     return (
       <Box
         sx={{
-          minHeight: '100dvh',
-          bgcolor: 'background.default',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -310,8 +306,6 @@ export function AttendanceScanPage() {
   return (
     <Box
       sx={{
-        minHeight: '100dvh',
-        bgcolor: 'background.default',
         color: 'text.primary',
         p: { xs: 2, md: 4 },
         display: 'flex',

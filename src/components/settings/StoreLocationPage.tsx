@@ -16,7 +16,6 @@ import {
   Divider,
   Chip,
 } from '@mui/material'
-import LocationOnIcon from '@mui/icons-material/LocationOn'
 import SaveIcon from '@mui/icons-material/Save'
 import MyLocationIcon from '@mui/icons-material/MyLocation'
 import type { StoreLocation } from '@/types/location'
@@ -156,11 +155,9 @@ export function StoreLocationPage({ embedded = false }: { embedded?: boolean } =
   }
 
   return (
-    <Box sx={embedded ? undefined : { p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: 'background.default', color: 'text.primary' }}>
+    <Box sx={embedded ? undefined : { p: { xs: 2, md: 3 }, color: 'text.primary' }}>
       {!embedded && (
         <PageHeader
-          icon={LocationOnIcon}
-          overline="Ayarlar"
           title="Mağaza Konumu"
           subtitle="QR devam takibinde kullanılan geofence konumunu yönetin"
         />
