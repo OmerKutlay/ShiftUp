@@ -90,7 +90,7 @@ export function InstallPrompt() {
           position: 'fixed',
           left: 'calc(12px + env(safe-area-inset-left))',
           right: 'calc(12px + env(safe-area-inset-right))',
-          // Mobil yüzen alt navigasyon kartının üstünde kalsın
+          // Mobil alt navigasyonun üstünde kalsın
           bottom: `calc(${BOTTOM_NAV_OVERLAY_OFFSET}px + env(safe-area-inset-bottom))`,
           zIndex: theme.zIndex.snackbar - 1,
           p: 2,

@@ -2,7 +2,7 @@
 
 /**
  * MobileBottomNav — mobilde (md altı) alt sekme çubuğu.
- * Sekmeler role göre navItems.getBottomTabs'tan gelir; ekranın altında yüzen kart, aktif sekme açık kiremit zeminli.
+ * Sekmeler role göre navItems.getBottomTabs'tan gelir; ekranın altına yapışık, aktif sekme açık kiremit zeminli.
  */
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -12,15 +12,13 @@ import { useAuth } from '@/context/AuthContext'
 import { getActiveTabHref, getBottomTabs, type BottomTab } from './navItems'
 import { C, tint } from '@/lib/palette'
 
-/** Alt bar kartının yüksekliği (safe-area hariç) */
+/** Alt bar yüksekliği (safe-area hariç) */
 export const BOTTOM_NAV_HEIGHT = 64
-/** Kartın ekran kenarlarına uzaklığı (yüzen kart) */
-const NAV_GAP = 10
-/** İçeriğin altta bırakması gereken boşluk: kart + alt boşluk */
-export const BOTTOM_NAV_SPACE = BOTTOM_NAV_HEIGHT + NAV_GAP
+/** İçeriğin altta bırakması gereken boşluk (safe-area body padding'inden gelir) */
+export const BOTTOM_NAV_SPACE = BOTTOM_NAV_HEIGHT
 /**
  * Mobilde alttan konumlanan katmanların (çevrimdışı bandı, güncelleme uyarısı, kurulum kartı)
- * alt boşluğu (safe-area hariç): yüzen kartın üstünde 8px.
+ * alt boşluğu (safe-area hariç): alt barın 8px üstü.
  */
 export const BOTTOM_NAV_OVERLAY_OFFSET = BOTTOM_NAV_SPACE + 8
 
@@ -33,7 +31,7 @@ export function MobileBottomNav() {
   const activeHref = getActiveTabHref(pathname, tabs)
 
   return (
-    // Dış kutu ekranın altına yapışık ve saydam; görünen kısım içteki yüzen kart
+    // Ekranın altına yapışık, opak bar; home-indicator alanı (safe-area) barın zemininde kalır
     <Box
       component="nav"
       aria-label="Alt menü"
@@ -43,36 +41,25 @@ export function MobileBottomNav() {
         right: 0,
         bottom: 0,
         zIndex: theme.zIndex.appBar,
-        pb: `calc(${NAV_GAP}px + env(safe-area-inset-bottom))`,
-        pl: `calc(${NAV_GAP}px + env(safe-area-inset-left))`,
-        pr: `calc(${NAV_GAP}px + env(safe-area-inset-right))`,
-        pointerEvents: 'none',
+        height: `calc(${BOTTOM_NAV_HEIGHT}px + env(safe-area-inset-bottom))`,
+        pt: 0.75,
+        px: 'calc(8px + env(safe-area-inset-left))',
+        pb: 'calc(6px + env(safe-area-inset-bottom))',
+        display: 'flex',
+        alignItems: 'stretch',
+        gap: 0.5,
+        bgcolor: 'background.paper',
+        borderTop: '1px solid',
+        borderColor: 'divider',
+        boxShadow: `0 -4px 16px ${tint(C.ink, 0.05)}`,
         userSelect: 'none',
         WebkitUserSelect: 'none',
         WebkitTouchCallout: 'none',
       })}
     >
-      <Box
-        sx={{
-          height: BOTTOM_NAV_HEIGHT,
-          display: 'flex',
-          alignItems: 'stretch',
-          gap: 0.5,
-          p: 0.75,
-          pointerEvents: 'auto',
-          bgcolor: tint(C.surface, 0.94),
-          backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)',
-          border: '1px solid',
-          borderColor: 'divider',
-          borderRadius: '20px',
-          boxShadow: `0 6px 20px ${tint(C.ink, 0.08)}`,
-        }}
-      >
-        {tabs.map((tab) => (
-          <TabLink key={tab.href} tab={tab} active={tab.href === activeHref} />
-        ))}
-      </Box>
+      {tabs.map((tab) => (
+        <TabLink key={tab.href} tab={tab} active={tab.href === activeHref} />
+      ))}
     </Box>
   )
 }

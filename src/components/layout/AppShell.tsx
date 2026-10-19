@@ -224,9 +224,10 @@ export function AppShell({ children }: Props) {
             display: 'flex',
             alignItems: 'center',
             gap: 1,
-            bgcolor: tint(C.canvas, 0.9),
-            backdropFilter: 'blur(12px)',
-            WebkitBackdropFilter: 'blur(12px)',
+            // Opak zemin: kayan içerik üst barın arkasında bulanık görünmesin
+            bgcolor: 'background.default',
+            borderBottom: '1px solid',
+            borderColor: 'divider',
             userSelect: 'none',
             WebkitUserSelect: 'none',
           }}
