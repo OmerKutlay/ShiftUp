@@ -58,7 +58,7 @@ function SwapParty({ name, shift }: { name: string; shift: string }) {
       <PersonAvatar name={name} size={32} />
       <div className="min-w-0">
         <p className="truncate text-sm font-bold" title={name}>{name}</p>
-        <p className="truncate text-xs text-ink-secondary tabular-nums" title={shift}>{shift}</p>
+        <p className="text-xs text-ink-secondary tabular-nums">{shift}</p>
       </div>
     </div>
   )
@@ -220,7 +220,10 @@ export function ShiftSwapPanel({ employees, assignments, currentEmployeeId, isMa
 
                 {/* Durum + aksiyonlar */}
                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <StatusBadge tone={meta.tone} label={meta.label} className="mr-auto" />
+                  {/* Dar ekranda rozet tek başına satırda, butonlar altında yan yana */}
+                  <div className="mr-auto basis-full sm:basis-auto">
+                    <StatusBadge tone={meta.tone} label={meta.label} />
+                  </div>
                   {canRespond && (
                     <>
                       <Button variant="outline" size="sm" className="text-success"
