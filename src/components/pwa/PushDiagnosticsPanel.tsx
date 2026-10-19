@@ -10,14 +10,10 @@
  * collapsible: başlığa tıklanınca açılır ve ancak o zaman yüklenir (varsayılan: hep açık).
  */
 import { useCallback, useEffect, useState } from 'react'
-import {
-  Alert, Box, Button, CircularProgress, Collapse, List, ListItem, ListItemIcon, ListItemText, Paper, Typography,
-} from '@mui/material'
-import CheckCircleIcon from '@mui/icons-material/CheckCircle'
-import CancelIcon from '@mui/icons-material/Cancel'
-import HelpOutlineIcon from '@mui/icons-material/HelpOutline'
-import RefreshIcon from '@mui/icons-material/Refresh'
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import { ChevronDown, CircleCheck, CircleHelp, CircleX, Loader2, RefreshCw } from 'lucide-react'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { apiFetch } from '@/lib/api/http'
 import { getCurrentSubscription } from '@/lib/pwa/push'
 import type { PushDiagnosticStep } from '@/lib/pushDiagnostics'
@@ -43,9 +39,9 @@ async function fetchDiagnostics(): Promise<{ steps: PushDiagnosticStep[] } | { e
 }
 
 function StepIcon({ ok }: { ok: boolean | null }) {
-  if (ok === true) return <CheckCircleIcon fontSize="small" sx={{ color: 'success.main' }} aria-label="Tamam" />
-  if (ok === false) return <CancelIcon fontSize="small" sx={{ color: 'error.main' }} aria-label="Sorun" />
-  return <HelpOutlineIcon fontSize="small" sx={{ color: 'text.disabled' }} aria-label="Bilinmiyor" />
+  if (ok === true) return <CircleCheck className="size-[18px] text-success" aria-label="Tamam" />
+  if (ok === false) return <CircleX className="size-[18px] text-danger" aria-label="Sorun" />
+  return <CircleHelp className="size-[18px] text-ink-muted" aria-label="Bilinmiyor" />
 }
 
 export function PushDiagnosticsPanel({ collapsible = false }: Props) {
@@ -82,80 +78,90 @@ export function PushDiagnosticsPanel({ collapsible = false }: Props) {
 
   const firstFailure = steps?.find((s) => s.ok === false)
 
-  return (
-    <Paper variant="outlined" sx={{ borderColor: 'divider', overflow: 'hidden' }}>
-      <Box
-        component={collapsible ? 'button' : 'div'}
-        type={collapsible ? 'button' : undefined}
-        onClick={collapsible ? () => setOpen((v) => !v) : undefined}
-        aria-expanded={collapsible ? open : undefined}
-        sx={{
-          display: 'flex', alignItems: 'center', gap: 1, width: '100%', px: 2, py: 1.25,
-          bgcolor: 'transparent', border: 0, color: 'inherit', textAlign: 'left', font: 'inherit',
-          cursor: collapsible ? 'pointer' : 'default',
-        }}
-      >
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography variant="body2" fontWeight={600}>
-            Bildirim teşhisi
-          </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-            Bildirimler telefona gelmiyorsa hangi adımın eksik olduğunu gösterir.
-          </Typography>
-        </Box>
-        {collapsible && (
-          <ExpandMoreIcon sx={{ transition: 'transform .2s', transform: open ? 'rotate(180deg)' : 'none' }} />
-        )}
-      </Box>
+  const header = (
+    <>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold text-ink">Bildirim teşhisi</span>
+        <span className="block text-xs text-ink-secondary">
+          Bildirimler telefona gelmiyorsa hangi adımın eksik olduğunu gösterir.
+        </span>
+      </span>
+      {collapsible && (
+        <ChevronDown className={cn('size-5 shrink-0 text-ink-secondary transition-transform', open && 'rotate-180')} />
+      )}
+    </>
+  )
+  const headerCls = 'flex w-full items-center gap-2 px-4 py-3 text-left'
 
-      <Collapse in={open} unmountOnExit>
-        <Box sx={{ px: 2, pb: 2 }}>
+  return (
+    <section className="overflow-hidden rounded-2xl border bg-card">
+      {collapsible ? (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className={cn(headerCls, 'outline-none hover:bg-muted/60 focus-visible:bg-muted')}
+        >
+          {header}
+        </button>
+      ) : (
+        <div className={headerCls}>{header}</div>
+      )}
+
+      {open && (
+        <div className="flex flex-col gap-2 px-4 pb-4">
           {error && (
-            <Alert severity="error" sx={{ mb: 1 }}>
-              {error}
+            <Alert tone="danger">
+              <CircleX />
+              <AlertDescription className="text-ink">{error}</AlertDescription>
             </Alert>
           )}
           {(shouldLoad || (loading && !steps)) && (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
-              <CircularProgress size={24} />
-            </Box>
+            <div className="flex justify-center py-4">
+              <Loader2 className="size-6 animate-spin text-ink-muted" aria-label="Yükleniyor" />
+            </div>
           )}
           {steps && (
-            <List dense disablePadding>
+            <ul className="flex flex-col">
               {steps.map((s) => (
-                <ListItem key={s.key} disableGutters alignItems="flex-start">
-                  <ListItemIcon sx={{ minWidth: 32, mt: 0.5 }}>
+                <li key={s.key} className="flex items-start gap-2.5 py-1.5">
+                  <span className="mt-px flex shrink-0">
                     <StepIcon ok={s.ok} />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary={s.label}
-                    secondary={s.hint}
-                    primaryTypographyProps={{ variant: 'body2', fontWeight: s === firstFailure ? 700 : 500 }}
-                    secondaryTypographyProps={{
-                      variant: 'caption',
-                      color: s.ok === false ? 'warning.light' : 'text.secondary',
-                    }}
-                  />
-                </ListItem>
+                  </span>
+                  <span className="min-w-0">
+                    <span className={cn('block text-sm text-ink', s === firstFailure ? 'font-bold' : 'font-medium')}>
+                      {s.label}
+                    </span>
+                    {s.hint && (
+                      <span className={cn('block text-xs [overflow-wrap:anywhere]', s.ok === false ? 'text-warning' : 'text-ink-secondary')}>
+                        {s.hint}
+                      </span>
+                    )}
+                  </span>
+                </li>
               ))}
-            </List>
+            </ul>
           )}
           {steps && steps.every((s) => s.ok === true) && (
-            <Alert severity="success" sx={{ mt: 1, py: 0 }}>
-              Sunucu tarafında eksik görünmüyor. Bildirim gelmiyorsa telefonun bildirim ayarlarını ve pil tasarrufunu kontrol edin.
+            <Alert tone="success">
+              <CircleCheck />
+              <AlertDescription className="text-ink">
+                Sunucu tarafında eksik görünmüyor. Bildirim gelmiyorsa telefonun bildirim ayarlarını ve pil tasarrufunu kontrol edin.
+              </AlertDescription>
             </Alert>
           )}
           <Button
-            size="small"
-            startIcon={loading ? <CircularProgress size={14} color="inherit" /> : <RefreshIcon fontSize="small" />}
+            variant="ghost"
+            size="sm"
             onClick={() => void load()}
             disabled={loading}
-            sx={{ mt: 1 }}
+            className="-ml-2.5 self-start"
           >
+            {loading ? <Loader2 className="animate-spin" /> : <RefreshCw />}
             Yenile
           </Button>
-        </Box>
-      </Collapse>
-    </Paper>
+        </div>
+      )}
+    </section>
   )
 }
