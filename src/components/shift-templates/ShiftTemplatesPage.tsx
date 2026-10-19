@@ -1,17 +1,11 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import {
-  Box,
-  Typography,
-  Button,
-  Skeleton,
-  Alert,
-  IconButton,
-  Tooltip,
-} from '@mui/material'
-import AddIcon from '@mui/icons-material/Add'
-import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
+import { AlertCircle, Info, PencilLine, Plus } from 'lucide-react'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { ShiftTemplate, CreateShiftTemplatePayload, UpdateShiftTemplatePayload } from '@/types/shiftTemplate'
 import { formatTime } from '@/types/shiftTemplate'
 import {
@@ -79,18 +73,13 @@ export function ShiftTemplatesPage() {
   const activeCount = templates.filter((t) => t.active).length
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, color: 'text.primary' }}>
+    <div className="p-4 md:p-6">
       <PageHeader
         title="Vardiya şablonları"
-        subtitle={isFirstLoad ? <Skeleton width={100} /> : `${activeCount} aktif şablon`}
+        subtitle={isFirstLoad ? <Skeleton className="h-4 w-24" /> : `${activeCount} aktif şablon`}
         actions={
-          <Button
-            variant="contained"
-            color="primary"
-            startIcon={<AddIcon />}
-            onClick={openCreate}
-          >
-            Yeni Şablon
+          <Button onClick={openCreate}>
+            <Plus /> Yeni Şablon
           </Button>
         }
       />
@@ -98,10 +87,18 @@ export function ShiftTemplatesPage() {
       {/* Content */}
       {isFirstLoad && <ListSkeleton count={4} actions={2} />}
 
-      {error && <Alert severity="error">{error}</Alert>}
+      {error && (
+        <Alert tone="danger">
+          <AlertCircle />
+          <AlertDescription className="text-ink">{error}</AlertDescription>
+        </Alert>
+      )}
 
       {!isFirstLoad && !error && templates.length === 0 && (
-        <Alert severity="info">Henüz vardiya şablonu eklenmemiş.</Alert>
+        <Alert tone="info">
+          <Info />
+          <AlertDescription className="text-ink">Henüz vardiya şablonu eklenmemiş.</AlertDescription>
+        </Alert>
       )}
 
       {!isFirstLoad && !error && templates.length > 0 && (
@@ -119,7 +116,7 @@ export function ShiftTemplatesPage() {
         template={editTarget}
         loading={saving}
       />
-    </Box>
+    </div>
   )
 }
 
@@ -148,28 +145,28 @@ function ShiftTemplateCard({
 
   return (
     <SectionRow className={cn('flex-wrap sm:flex-nowrap', !template.active && 'opacity-60')}>
-      <Box sx={{ bgcolor: tone.soft, color: tone.text, borderRadius: '10px', px: 1.25, py: 0.75, minWidth: 124, flexShrink: 0 }}>
-        <Typography fontSize="0.85rem" fontWeight={700} sx={{ fontVariantNumeric: 'tabular-nums' }}>
-          {start} – {end}
-        </Typography>
-        <Typography fontSize="0.68rem" sx={{ opacity: 0.85 }}>{durationLabel}</Typography>
-      </Box>
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Typography fontSize="0.9rem" fontWeight={700}>{template.name}</Typography>
-        {template.description && (
-          <Typography fontSize="0.75rem" color="text.secondary" noWrap>{template.description}</Typography>
-        )}
-      </Box>
+      <div className="min-w-[124px] shrink-0 rounded-[10px] px-2.5 py-1.5" style={{ backgroundColor: tone.soft, color: tone.text }}>
+        <p className="text-[0.85rem] font-bold tabular-nums">{start} – {end}</p>
+        <p className="text-[0.68rem] opacity-85">{durationLabel}</p>
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[0.9rem] font-bold">{template.name}</p>
+        {template.description && <p className="truncate text-xs text-ink-secondary">{template.description}</p>}
+      </div>
       <StatusBadge tone={template.active ? 'success' : 'neutral'} label={template.active ? 'Aktif' : 'Pasif'} />
-      <Tooltip title="Düzenle">
-        <IconButton
-          size="small"
-          onClick={() => onEdit(template)}
-          aria-label={`${template.name} şablonunu düzenle`}
-          sx={{ color: 'text.secondary', '&:hover': { color: 'primary.main' } }}
-        >
-          <EditOutlinedIcon fontSize="small" />
-        </IconButton>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => onEdit(template)}
+            aria-label={`${template.name} şablonunu düzenle`}
+            className="text-ink-secondary hover:text-primary"
+          >
+            <PencilLine />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Düzenle</TooltipContent>
       </Tooltip>
     </SectionRow>
   )
