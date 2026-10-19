@@ -7,22 +7,27 @@
  */
 import { useState } from 'react'
 import useSWR from 'swr'
-import {
-  Box, Typography, Paper, Button, Stack, Chip, CircularProgress, Alert,
-  TextField, Dialog, DialogTitle, DialogContent, DialogActions, Tab, Tabs,
-} from '@mui/material'
-import AccessTimeIcon from '@mui/icons-material/AccessTime'
-import AddIcon from '@mui/icons-material/Add'
+import { AlertCircle, Clock, Loader2, Plus, RefreshCw } from 'lucide-react'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { useAuth } from '@/context/AuthContext'
 import { hasRole, MANAGER_ROLES } from '@/lib/auth/roles'
 import { TimeCorrectionReviewPanel } from './TimeCorrectionReviewPanel'
 import { DateField, PageHeader, PageSkeleton, ListSkeleton } from '@/components/common'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
 import type { TimeCorrectionRequest } from '@/types/timeCorrection'
-import { TIME_CORRECTION_STATUS_LABELS, TIME_CORRECTION_STATUS_COLORS } from '@/types/timeCorrection'
+import { TIME_CORRECTION_STATUS_LABELS, TIME_CORRECTION_STATUS_TONES } from '@/types/timeCorrection'
 import { apiFetch } from '@/lib/api/http'
-import { C } from '@/lib/palette'
+import { TimePill } from './timeCorrectionUi'
 
 // ─── Helpers ─────────────────────────────────────────────────
 function fmtDate(d: string) {
@@ -31,6 +36,40 @@ function fmtDate(d: string) {
 }
 function fmtDateTime(iso: string) {
   try { return format(new Date(iso), 'd MMM HH:mm', { locale: tr }) } catch { return iso }
+}
+
+function MyRequests({ requests, loading }: { requests: TimeCorrectionRequest[]; loading: boolean }) {
+  if (loading) return <ListSkeleton count={3} lines={3} avatar={false} actions={1} />
+  if (requests.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-2 rounded-2xl border bg-card px-4 py-10 text-center">
+        <Clock className="size-8 text-ink-muted" aria-hidden />
+        <p className="text-sm text-ink-secondary">Henüz mesai düzeltme talebiniz yok.</p>
+      </div>
+    )
+  }
+  return (
+    <ul className="overflow-hidden rounded-2xl border bg-card [&>li+li]:border-t">
+      {requests.map((r) => (
+        <li key={r.id} className="flex items-start gap-3 px-4 py-3.5">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-bold">{fmtDate(r.date)}</span>
+              <TimePill start={r.requested_start_time} end={r.requested_end_time} />
+            </div>
+            <p className="mt-1 text-sm text-ink-secondary [overflow-wrap:anywhere]">{r.reason}</p>
+            {r.reviewer_note && (
+              <p className="mt-1 text-xs text-ink-muted [overflow-wrap:anywhere]">Yönetici notu: {r.reviewer_note}</p>
+            )}
+          </div>
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            <Badge tone={TIME_CORRECTION_STATUS_TONES[r.status]}>{TIME_CORRECTION_STATUS_LABELS[r.status]}</Badge>
+            <span className="text-xs text-ink-muted">{fmtDateTime(r.created_at)}</span>
+          </div>
+        </li>
+      ))}
+    </ul>
+  )
 }
 
 export function TimeCorrectionPage() {
@@ -43,7 +82,7 @@ export function TimeCorrectionPage() {
   const requests = requestsQ.data?.requests ?? []
   const isFirstLoad = !requestsQ.data && !requestsQ.error
   const error = requestsQ.error ? (requestsQ.error instanceof Error ? requestsQ.error.message : 'Yüklenemedi.') : null
-  const [managerTab, setManagerTab] = useState(0)
+  const [managerTab, setManagerTab] = useState<'review' | 'mine'>('review')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -87,106 +126,110 @@ export function TimeCorrectionPage() {
 
   // ─── Auth guard ──────────────────────────────────────────────
   if (authStatus === 'loading') return <PageSkeleton rows={4} maxWidth={720} />
-  if (authStatus === 'unauthenticated' || !employee) return <Alert severity="warning" sx={{ m: 3 }}>Bu sayfayı görmek için giriş yapmanız gerekiyor.</Alert>
+  if (authStatus === 'unauthenticated' || !employee) {
+    return (
+      <div className="p-4 md:p-6">
+        <Alert tone="warning">
+          <AlertCircle />
+          <AlertDescription className="text-ink">Bu sayfayı görmek için giriş yapmanız gerekiyor.</AlertDescription>
+        </Alert>
+      </div>
+    )
+  }
 
   const isManager = hasRole(employee.roles?.name ?? employee.role_name ?? null, MANAGER_ROLES)
+  const mine = <MyRequests requests={requests} loading={isFirstLoad} />
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 720, mx: 'auto' }}>
+    <div className="mx-auto w-full max-w-[720px] p-4 md:p-6">
       <PageHeader
         title="Mesai düzeltme"
         subtitle="Eksik veya hatalı giriş/çıkış kayıtları için düzeltme talep edin"
         actions={
-          <Button variant="contained" startIcon={<AddIcon />} onClick={openDialog} sx={{ fontWeight: 700 }}>
-            Yeni Talep
+          <Button onClick={openDialog}>
+            <Plus />
+            Yeni talep
           </Button>
         }
       />
 
-      {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => void requestsQ.mutate()}>{error}</Alert>}
+      {error && (
+        <Alert tone="danger" className="mb-4">
+          <AlertCircle />
+          <AlertDescription className="flex flex-wrap items-center justify-between gap-2 text-ink">
+            <span>{error}</span>
+            <Button size="sm" variant="outline" onClick={() => void requestsQ.mutate()}>
+              <RefreshCw />
+              Tekrar dene
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Yönetici: önce onay bekleyenler (kendi talepleri ayrı sekmede) — mobilde uzun kişisel liste
           onay işini sayfanın en altına gömüyordu */}
-      {isManager && (
-        <Tabs value={managerTab} onChange={(_, v: number) => setManagerTab(v)} sx={{ mb: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
-          <Tab label="Onay Bekleyenler" />
-          <Tab label={`Taleplerim${requests.length ? ` (${requests.length})` : ''}`} />
+      {isManager ? (
+        <Tabs value={managerTab} onValueChange={(v) => setManagerTab(v as 'review' | 'mine')}>
+          <TabsList>
+            <TabsTrigger value="review">Onay bekleyenler</TabsTrigger>
+            <TabsTrigger value="mine">
+              Taleplerim{requests.length ? ` (${requests.length})` : ''}
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="review"><TimeCorrectionReviewPanel /></TabsContent>
+          <TabsContent value="mine">{mine}</TabsContent>
         </Tabs>
-      )}
+      ) : mine}
 
-      {isManager && managerTab === 0 && <TimeCorrectionReviewPanel />}
-
-      {(!isManager || managerTab === 1) && (
-        <>
-      {isFirstLoad ? (
-        <ListSkeleton count={3} lines={3} avatar={false} actions={1} />
-      ) : requests.length === 0 ? (
-        <Paper elevation={0} sx={{ p: 4, textAlign: 'center', border: '1px solid', borderColor: 'divider', borderRadius: 2, bgcolor: C.surface }}>
-          <AccessTimeIcon sx={{ fontSize: 40, color: 'text.disabled', opacity: 0.4, mb: 1 }} />
-          <Typography color="text.secondary">Henüz mesai düzeltme talebiniz yok.</Typography>
-        </Paper>
-      ) : (
-        <Stack spacing={1.5}>
-          {requests.map((r) => {
-            const color = TIME_CORRECTION_STATUS_COLORS[r.status]
-            return (
-              <Paper key={r.id} elevation={0} sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2, bgcolor: C.surface }}>
-                <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', alignItems: 'start', gap: 1.5 }}>
-                  <Box sx={{ minWidth: 0 }}>
-                    <Typography variant="subtitle2" fontWeight={700}>{fmtDate(r.date)}</Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {r.requested_start_time.slice(0, 5)} – {r.requested_end_time.slice(0, 5)}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>{r.reason}</Typography>
-                    {r.reviewer_note && (
-                      <Typography variant="caption" color="text.disabled" display="block" sx={{ mt: 0.5 }}>
-                        Yönetici notu: {r.reviewer_note}
-                      </Typography>
-                    )}
-                  </Box>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5 }}>
-                    <Chip label={TIME_CORRECTION_STATUS_LABELS[r.status]} size="small"
-                      sx={{ bgcolor: `${color}20`, color, border: '1px solid', borderColor: `${color}40`, fontWeight: 700, fontSize: '0.68rem' }} />
-                    <Typography variant="caption" color="text.disabled">{fmtDateTime(r.created_at)}</Typography>
-                  </Box>
-                </Box>
-              </Paper>
-            )
-          })}
-        </Stack>
-      )}
-        </>
-      )}
-
-      {/* Talep Oluşturma Dialog */}
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontWeight: 700 }}>Mesai Düzeltme Talebi Oluştur</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            {saveError && <Alert severity="error" onClose={() => setSaveError(null)}>{saveError}</Alert>}
+      {/* Talep oluşturma penceresi */}
+      <Dialog open={dialogOpen} onOpenChange={(o) => { if (!saving) setDialogOpen(o) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Mesai düzeltme talebi oluştur</DialogTitle>
+            <DialogDescription>Talebiniz bir yönetici tarafından onaylanınca devam kaydınız güncellenir.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            {saveError && (
+              <Alert tone="danger">
+                <AlertCircle />
+                <AlertDescription className="text-ink">{saveError}</AlertDescription>
+              </Alert>
+            )}
             <DateField size="small" label="Tarih" value={form.date}
               onChange={(v) => setForm((f) => ({ ...f, date: v }))} fullWidth />
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <TextField size="small" label="Giriş Saati" type="time" value={form.start}
-                onChange={(e) => setForm((f) => ({ ...f, start: e.target.value }))}
-                inputProps={{ step: 300 }} fullWidth />
-              <TextField size="small" label="Çıkış Saati" type="time" value={form.end}
-                onChange={(e) => setForm((f) => ({ ...f, end: e.target.value }))}
-                inputProps={{ step: 300 }} fullWidth />
-            </Box>
-            <TextField size="small" label="Açıklama / Sebep" value={form.reason} multiline rows={3}
-              onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))}
-              placeholder="Örn: QR ile giriş yapmayı unutttum, sistem saatleri yanlış kaydetmiş..." fullWidth />
-          </Stack>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-1.5">
+                <Label htmlFor="tc-start">Giriş saati</Label>
+                <Input id="tc-start" type="time" step={300} value={form.start}
+                  onChange={(e) => setForm((f) => ({ ...f, start: e.target.value }))} />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="tc-end">Çıkış saati</Label>
+                <Input id="tc-end" type="time" step={300} value={form.end}
+                  onChange={(e) => setForm((f) => ({ ...f, end: e.target.value }))} />
+              </div>
+            </div>
+            {form.end < form.start && (
+              <p className="-mt-2 text-xs text-ink-secondary">
+                Çıkış saati girişten önce — ertesi gün çıkış olarak işlenecek (gece vardiyası).
+              </p>
+            )}
+            <div className="grid gap-1.5">
+              <Label htmlFor="tc-reason">Açıklama / sebep</Label>
+              <Textarea id="tc-reason" rows={3} value={form.reason}
+                onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))}
+                placeholder="Örn: QR ile giriş yapmayı unuttum, sistem saatleri yanlış kaydetmiş..." />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>İptal</Button>
+            <Button onClick={() => void handleSubmit()} disabled={saving}>
+              {saving && <Loader2 className="animate-spin" />}
+              Gönder
+            </Button>
+          </DialogFooter>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2.5 }}>
-          <Button onClick={() => setDialogOpen(false)} color="inherit" disabled={saving}>İptal</Button>
-          <Button onClick={() => void handleSubmit()} variant="contained" disabled={saving}
-            startIcon={saving ? <CircularProgress size={16} color="inherit" /> : null}>
-            Gönder
-          </Button>
-        </DialogActions>
       </Dialog>
-    </Box>
+    </div>
   )
 }

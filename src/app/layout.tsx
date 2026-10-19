@@ -2,9 +2,10 @@ import type { Metadata, Viewport } from 'next'
 import { Figtree } from 'next/font/google'
 import { AppRouterCacheProvider } from '@mui/material-nextjs/v16-appRouter'
 import { Providers } from './providers'
+import './globals.css'
 
 // latin-ext: Türkçe karakterler (ı, ş, ğ, İ) fallback fonta düşmesin
-const figtree = Figtree({ subsets: ['latin', 'latin-ext'], display: 'swap' })
+const figtree = Figtree({ subsets: ['latin', 'latin-ext'], display: 'swap', variable: '--font-figtree' })
 
 export const metadata: Metadata = {
   title: { default: 'ShiftUp — Mağaza Vardiya Yönetimi', template: '%s — ShiftUp' },
@@ -40,7 +41,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="tr">
       {/* paddingTop/Bottom: iOS notch + home-indicator için safe-area inset */}
       <body
-        className={figtree.className}
+        className={`${figtree.className} ${figtree.variable}`}
         style={{
           margin: 0,
           paddingTop: 'env(safe-area-inset-top)',

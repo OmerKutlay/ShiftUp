@@ -1,13 +1,9 @@
 'use client'
 
 import useSWR from 'swr'
-import {
-  Box,
-  CircularProgress,
-  Alert,
-  Button,
-} from '@mui/material'
-import RefreshIcon from '@mui/icons-material/Refresh'
+import { AlertCircle, Info, Loader2, RefreshCw } from 'lucide-react'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
 import type { DailyShiftEntry } from '@/types/attendance'
 import { fetchDailyShifts } from '@/lib/api/attendance'
 import { EmployeeAttendanceRow } from './EmployeeAttendanceRow'
@@ -37,12 +33,7 @@ export function DailyAttendancePage() {
   ).length
 
   return (
-    <Box
-      sx={{
-        color: 'text.primary',
-        p: { xs: 2, md: 3 },
-      }}
-    >
+    <div className="p-4 md:p-6">
       <PageHeader
         overline={formatDayNameTurkish(today)}
         title="Günlük operasyon"
@@ -50,14 +41,8 @@ export function DailyAttendancePage() {
         meta={lastRefreshed && `Son güncelleme: ${lastRefreshed.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`}
         actions={
           /* FAZ 8: Manual refresh button */
-          <Button
-            variant="outlined"
-            color="inherit"
-            startIcon={loading ? <CircularProgress size={14} /> : <RefreshIcon />}
-            onClick={() => void loadShifts()}
-            disabled={loading}
-            sx={{ minHeight: 40, borderColor: 'divider', bgcolor: 'background.paper' }}
-          >
+          <Button variant="outline" onClick={() => void loadShifts()} disabled={loading}>
+            {loading ? <Loader2 className="animate-spin" /> : <RefreshCw />}
             Yenile
           </Button>
         }
@@ -78,20 +63,20 @@ export function DailyAttendancePage() {
       {isFirstLoad && <ListSkeleton count={5} actions={2} />}
 
       {error && (
-        <Alert
-          severity="error"
-          action={
-            <Button color="inherit" size="small" onClick={() => void loadShifts()}>
-              Tekrar Dene
-            </Button>
-          }
-        >
-          {error}
+        <Alert tone="danger">
+          <AlertCircle />
+          <AlertDescription className="flex flex-wrap items-center justify-between gap-2 text-ink">
+            {error}
+            <Button variant="ghost" size="sm" onClick={() => void loadShifts()}>Tekrar Dene</Button>
+          </AlertDescription>
         </Alert>
       )}
 
       {!isFirstLoad && !error && entries.length === 0 && (
-        <Alert severity="info">Bugün için planlanmış vardiya bulunamadı.</Alert>
+        <Alert tone="info">
+          <Info />
+          <AlertDescription className="text-ink">Bugün için planlanmış vardiya bulunamadı.</AlertDescription>
+        </Alert>
       )}
 
       {entries.length > 0 && (
@@ -101,6 +86,6 @@ export function DailyAttendancePage() {
           ))}
         </SectionCard>
       )}
-    </Box>
+    </div>
   )
 }

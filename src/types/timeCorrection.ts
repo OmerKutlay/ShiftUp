@@ -1,4 +1,4 @@
-import { C } from '@/lib/palette'
+import type { BadgeTone } from '@/components/ui/badge'
 /**
  * Manuel Mesai Düzeltme Talebi domain types
  */
@@ -12,11 +12,12 @@ export const TIME_CORRECTION_STATUS_LABELS: Record<TimeCorrectionStatus, string>
   direct:   'Yönetici Girişi',
 }
 
-export const TIME_CORRECTION_STATUS_COLORS: Record<TimeCorrectionStatus, string> = {
-  pending:  C.warning,
-  approved: C.success,
-  rejected: C.danger,
-  direct:   C.plum,
+/** Durum rozeti tonu (shadcn Badge) */
+export const TIME_CORRECTION_STATUS_TONES: Record<TimeCorrectionStatus, BadgeTone> = {
+  pending:  'warning',
+  approved: 'success',
+  rejected: 'danger',
+  direct:   'plum',
 }
 
 export interface TimeCorrectionRequest {
