@@ -16,7 +16,7 @@ test('çevrimdışı bandı görünür, bağlantı gelince "geri geldi" gösteri
   const banner = page.getByRole('status').filter({ hasText: BANNER_OFFLINE })
   await expect(banner).toBeVisible()
 
-  // Bant yüzen alt menü kartının üstünde durur (mobil)
+  // Bant alt menünün üstünde durur (mobil)
   const bannerBox = (await banner.locator('.MuiAlert-root').boundingBox())!
   const nav = page.getByRole('navigation', { name: 'Alt menü' })
   const navBox = (await nav.boundingBox())!
