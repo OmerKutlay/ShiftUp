@@ -66,8 +66,38 @@ export const theme = createTheme({
     },
     MuiAlert: {
       styleOverrides: {
+        root: { borderRadius: 12, alignItems: 'center' },
         // Uzun, boşluksuz mesajlar (ör. DB hata metinleri) dar ekranda taşmasın
         message: { overflowWrap: 'anywhere', minWidth: 0 },
+      },
+      // Yeni UI: yumuşak zemin + koyu metin, ikon tonun rengiyle
+      variants: (
+        [
+          ['error', C.dangerSoft, C.danger],
+          ['warning', C.warningSoft, C.warning],
+          ['success', C.successSoft, C.success],
+          ['info', C.infoSoft, C.info],
+        ] as const
+      ).map(([severity, bg, fg]) => ({
+        props: { severity, variant: 'standard' as const },
+        style: { backgroundColor: bg, color: C.ink, '& .MuiAlert-icon': { color: fg } },
+      })),
+    },
+    MuiToggleButtonGroup: {
+      // SegmentedControl ile aynı görünüm: bej zemin, seçili seçenek beyaz
+      styleOverrides: {
+        root: { backgroundColor: C.surfaceMuted, borderRadius: 10, padding: 3, gap: 2 },
+        grouped: {
+          border: 0,
+          borderRadius: '8px !important',
+          margin: 0,
+          '&.Mui-selected': {
+            backgroundColor: C.surface,
+            color: C.ink,
+            boxShadow: `0 1px 2px ${tint(C.ink, 0.08)}`,
+            '&:hover': { backgroundColor: C.surface },
+          },
+        },
       },
     },
     MuiDialog: {
@@ -96,7 +126,21 @@ export const theme = createTheme({
       styleOverrides: { indicator: { height: 2, borderRadius: 2 } },
     },
     MuiToggleButton: {
-      styleOverrides: { root: { textTransform: 'none', fontWeight: 600 } },
+      styleOverrides: { root: { textTransform: 'none', fontWeight: 600, color: C.inkSecondary } },
+    },
+    MuiLinearProgress: {
+      styleOverrides: {
+        root: { borderRadius: 4, backgroundColor: C.surfaceMuted },
+        bar: { borderRadius: 4 },
+      },
+    },
+    MuiDialogTitle: {
+      styleOverrides: { root: { fontWeight: 700 } },
+    },
+    MuiFab: {
+      styleOverrides: {
+        root: { textTransform: 'none', fontWeight: 600, boxShadow: `0 6px 16px ${tint(C.brand, 0.3)}` },
+      },
     },
     MuiPaper: {
       defaultProps: { elevation: 0 },
@@ -105,6 +149,7 @@ export const theme = createTheme({
           backgroundImage: 'none',
         },
         outlined: { borderColor: C.border },
+        rounded: { borderRadius: 14 },
       },
     },
     MuiButton: {
@@ -144,6 +189,21 @@ export const theme = createTheme({
           borderRadius: 6,
         },
       },
+      // Renkli dolu chip'ler yumuşak zemin + koyu ton (rozet görünümü)
+      variants: (
+        [
+          ['default', C.surfaceMuted, C.inkSecondary],
+          ['primary', C.brandSoft, C.brandDark],
+          ['secondary', C.plumSoft, C.plum],
+          ['error', C.dangerSoft, C.danger],
+          ['warning', C.warningSoft, C.warning],
+          ['success', C.successSoft, C.success],
+          ['info', C.infoSoft, C.info],
+        ] as const
+      ).map(([color, bg, fg]) => ({
+        props: { color, variant: 'filled' as const },
+        style: { backgroundColor: bg, color: fg },
+      })),
     },
     MuiOutlinedInput: {
       styleOverrides: {

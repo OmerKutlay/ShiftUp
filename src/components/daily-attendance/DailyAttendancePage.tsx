@@ -3,22 +3,18 @@
 import useSWR from 'swr'
 import {
   Box,
-  Typography,
   CircularProgress,
   Alert,
-  Stack,
-  Divider,
   Button,
 } from '@mui/material'
-import PeopleIcon from '@mui/icons-material/People'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import type { DailyShiftEntry } from '@/types/attendance'
 import { fetchDailyShifts } from '@/lib/api/attendance'
 import { EmployeeAttendanceRow } from './EmployeeAttendanceRow'
 import { formatDateTurkish, formatDayNameTurkish } from '@/lib/dateUtils'
-import { PageHeader, StatCardsSkeleton, ListSkeleton } from '@/components/common'
+import { PageHeader, StatCardsSkeleton, ListSkeleton, SectionCard, StatCard, StatGrid } from '@/components/common'
 import { useLastUpdated } from '@/hooks/useLastUpdated'
-import { C, tint } from '@/lib/palette'
+import { C } from '@/lib/palette'
 
 export function DailyAttendancePage() {
   const today = new Date()
@@ -49,18 +45,18 @@ export function DailyAttendancePage() {
     >
       <PageHeader
         overline={formatDayNameTurkish(today)}
-        title="Günlük Operasyon"
+        title="Günlük operasyon"
         subtitle={formatDateTurkish(today)}
         meta={lastRefreshed && `Son güncelleme: ${lastRefreshed.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`}
         actions={
           /* FAZ 8: Manual refresh button */
           <Button
-            size="small"
             variant="outlined"
+            color="inherit"
             startIcon={loading ? <CircularProgress size={14} /> : <RefreshIcon />}
             onClick={() => void loadShifts()}
             disabled={loading}
-            sx={{ fontSize: '0.75rem' }}
+            sx={{ minHeight: 40, borderColor: 'divider', bgcolor: 'background.paper' }}
           >
             Yenile
           </Button>
@@ -70,27 +66,13 @@ export function DailyAttendancePage() {
       {/* Stats row */}
       {isFirstLoad && <StatCardsSkeleton count={4} />}
       {!isFirstLoad && !error && (
-      <Box
-          sx={{
-            display: 'flex',
-            gap: 1.5,
-            mb: 3,
-            flexWrap: 'wrap',
-          }}
-        >
-          <StatCard
-            label="Toplam Vardiya"
-            value={entries.length}
-            icon={<PeopleIcon sx={{ fontSize: 18 }} />}
-            color={C.inkMuted}
-          />
-          <StatCard label="Çalışıyor" value={workingCount} color={C.success} />
-          <StatCard label="Molada" value={onBreakCount} color={C.warning} />
-          <StatCard label="Çıkış Yaptı" value={clockedOutCount} color={C.plum} />
-        </Box>
+        <StatGrid min={140}>
+          <StatCard label="Toplam vardiya" value={entries.length} />
+          <StatCard label="Çalışıyor" value={workingCount} valueColor={C.success} />
+          <StatCard label="Molada" value={onBreakCount} valueColor={onBreakCount ? C.warning : undefined} />
+          <StatCard label="Çıkış yaptı" value={clockedOutCount} />
+        </StatGrid>
       )}
-
-      <Divider sx={{ mb: 3, borderColor: tint(C.ink, 0.08) }} />
 
       {/* Content */}
       {isFirstLoad && <ListSkeleton count={5} actions={2} />}
@@ -103,67 +85,22 @@ export function DailyAttendancePage() {
               Tekrar Dene
             </Button>
           }
-          sx={{ bgcolor: tint(C.danger, 0.1), color: C.danger, border: `1px solid ${tint(C.danger, 0.3)}` }}
         >
           {error}
         </Alert>
       )}
 
       {!isFirstLoad && !error && entries.length === 0 && (
-        <Alert
-          severity="info"
-          sx={{ bgcolor: tint(C.plum, 0.1), color: C.plum, border: `1px solid ${tint(C.plum, 0.3)}` }}
-        >
-          Bugün için planlanmış vardiya bulunamadı.
-        </Alert>
+        <Alert severity="info">Bugün için planlanmış vardiya bulunamadı.</Alert>
       )}
 
       {entries.length > 0 && (
-        <Stack spacing={1.5}>
+        <SectionCard title="Bugünkü vardiyalar" count={entries.length} subtitle="Giriş, mola ve çıkış QR okutmayla işlenir">
           {entries.map((entry) => (
             <EmployeeAttendanceRow key={entry.shiftAssignment.id} entry={entry} />
           ))}
-        </Stack>
+        </SectionCard>
       )}
-    </Box>
-  )
-}
-
-// ---------------------------------------------------------------
-function StatCard({
-  label,
-  value,
-  color,
-  icon,
-}: {
-  label: string
-  value: number
-  color: string
-  icon?: React.ReactNode
-}) {
-  return (
-    <Box
-      sx={{
-        px: 2,
-        py: 1.5,
-        bgcolor: 'background.paper',
-        border: '1px solid',
-        borderColor: 'divider',
-        borderRadius: 2,
-        // xs: kart yarısı genişlikte — 2 kart yan yana; sm+: sabit minWidth
-        minWidth: { xs: 'calc(50% - 6px)', sm: 110 },
-        flex: '1 1 0',
-      }}
-    >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.25 }}>
-        {icon && <Box sx={{ color }}>{icon}</Box>}
-        <Typography variant="caption" color="text.secondary" fontSize="0.7rem">
-          {label}
-        </Typography>
-      </Box>
-      <Typography variant="h6" fontWeight={800} sx={{ color, lineHeight: 1 }}>
-        {value}
-      </Typography>
     </Box>
   )
 }
