@@ -6,30 +6,14 @@ import {
   Box,
   Typography,
   Button,
-  Stack,
-  CircularProgress,
   Skeleton,
   Alert,
-  Divider,
-  TextField,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   Tab,
   Tabs,
   Tooltip,
   IconButton,
-  SelectChangeEvent,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
-import CheckIcon from '@mui/icons-material/Check'
-import CloseIcon from '@mui/icons-material/Close'
-import DeleteIcon from '@mui/icons-material/Delete'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import type { EmployeeWithRole } from '@/types/employee'
 import {
@@ -52,7 +36,19 @@ import { useAuth } from '@/context/AuthContext'
 import { hasRole, MANAGER_ROLES } from '@/lib/auth/roles'
 import { apiFetch } from '@/lib/api/http'
 import type { AnnualLeaveBalance } from '@/lib/annualLeave'
-import { C, tint } from '@/lib/palette'
+import { C } from '@/lib/palette'
+import { AlertCircle, Check, Loader2, Trash2, TriangleAlert, X } from 'lucide-react'
+import { Alert as UiAlert, AlertDescription } from '@/components/ui/alert'
+import {
+  AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Button as UiButton } from '@/components/ui/button'
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 
 // ─── Helpers ─────────────────────────────────────────────────
 
@@ -104,11 +100,21 @@ function NewRequestDialog({ open, onClose, onSave, employees, saving }: NewReque
   }
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle sx={{ fontWeight: 700 }}>Yeni İzin Talebi</DialogTitle>
-      <DialogContent sx={{ pt: 1 }}>
-        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-        <Stack spacing={2.5} sx={{ mt: 1 }}>
+    <Dialog open={open} onOpenChange={(next) => { if (!next) onClose() }}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Yeni İzin Talebi</DialogTitle>
+          <DialogDescription>Tarih aralığını ve izin tipini seçin; talep yönetici onayına gider.</DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          {error && (
+            <UiAlert tone="danger" className="sm:col-span-2">
+              <AlertCircle />
+              <AlertDescription className="text-ink">{error}</AlertDescription>
+            </UiAlert>
+          )}
+
           <EmployeeSelect
             employees={employees}
             value={employeeId}
@@ -116,63 +122,63 @@ function NewRequestDialog({ open, onClose, onSave, employees, saving }: NewReque
             onChange={setEmployeeId}
             showRole
             fullWidth
+            className="sm:col-span-2"
           />
 
-          <FormControl fullWidth size="small">
-            <InputLabel>İzin Tipi *</InputLabel>
-            <Select
-              value={leaveType}
-              label="İzin Tipi *"
-              onChange={(e: SelectChangeEvent) => setLeaveType(e.target.value as LeaveType)}
-            >
-              {LEAVE_TYPES.map((t) => (
-                <MenuItem key={t} value={t}>{LEAVE_TYPE_LABELS[t]}</MenuItem>
-              ))}
+          <div className="flex flex-col gap-1.5 sm:col-span-2">
+            <Label htmlFor="leave-type">İzin tipi *</Label>
+            <Select value={leaveType} onValueChange={(v) => setLeaveType(v as LeaveType)}>
+              <SelectTrigger id="leave-type" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {LEAVE_TYPES.map((t) => (
+                  <SelectItem key={t} value={t}>{LEAVE_TYPE_LABELS[t]}</SelectItem>
+                ))}
+              </SelectContent>
             </Select>
-          </FormControl>
+          </div>
 
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-            <DateField
-              fullWidth
-              size="small"
-              label="Başlangıç *"
-              value={startDate}
-              onChange={setStartDate}
-            />
-            <DateField
-              fullWidth
-              size="small"
-              label="Bitiş *"
-              value={endDate}
-              min={startDate || undefined}
-              onChange={setEndDate}
-            />
-          </Stack>
-
-          {days > 0 && startDate <= endDate && (
-            <Typography variant="caption" color="primary.main" fontWeight={600}>
-              Toplam: {days} gün
-            </Typography>
-          )}
-
-          <TextField
+          <DateField
             fullWidth
             size="small"
-            label="Açıklama (opsiyonel)"
-            multiline
-            rows={3}
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder="İzin sebebini açıklayabilirsiniz..."
+            label="Başlangıç *"
+            value={startDate}
+            onChange={setStartDate}
           />
-        </Stack>
+          <DateField
+            fullWidth
+            size="small"
+            label="Bitiş *"
+            value={endDate}
+            min={startDate || undefined}
+            onChange={setEndDate}
+          />
+
+          {days > 0 && startDate <= endDate && (
+            <p className="text-xs font-semibold text-primary sm:col-span-2">Toplam: {days} gün</p>
+          )}
+
+          <div className="flex flex-col gap-1.5 sm:col-span-2">
+            <Label htmlFor="leave-reason">Açıklama (opsiyonel)</Label>
+            <Textarea
+              id="leave-reason"
+              rows={3}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="İzin sebebini açıklayabilirsiniz..."
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <UiButton type="button" variant="ghost" onClick={onClose} disabled={saving}>İptal</UiButton>
+          <UiButton type="button" onClick={handleSave} disabled={saving}>
+            {saving && <Loader2 className="animate-spin" />}
+            Talebi Gönder
+          </UiButton>
+        </DialogFooter>
       </DialogContent>
-      <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button onClick={onClose} disabled={saving}>İptal</Button>
-        <Button variant="contained" onClick={handleSave} disabled={saving}>
-          {saving ? <CircularProgress size={18} /> : 'Talebi Gönder'}
-        </Button>
-      </DialogActions>
     </Dialog>
   )
 }
@@ -205,71 +211,71 @@ function ReviewDialog({ open, request, onClose, onReview, saving }: ReviewDialog
   const days = dayCount(request.start_date, request.end_date)
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle sx={{ fontWeight: 700 }}>İzin Talebini İncele</DialogTitle>
-      <DialogContent sx={{ pt: 1 }}>
-        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-        <Box
-          sx={{
-            p: 2,
-            mb: 2,
-            border: '1px solid',
-            borderColor: 'divider',
-            borderRadius: 2,
-            bgcolor: tint(C.ink, 0.02),
-          }}
-        >
-          <Typography variant="subtitle2" fontWeight={700}>{emp?.full_name ?? '—'}</Typography>
-          <Typography variant="caption" color="text.secondary" display="block">{emp?.role}</Typography>
-          <Divider sx={{ my: 1, borderColor: 'divider' }} />
-          <Stack spacing={0.5}>
-            <Row label="İzin Tipi" value={LEAVE_TYPE_LABELS[request.leave_type]} />
-            <Row label="Tarih" value={`${fmtDate(request.start_date)} – ${fmtDate(request.end_date)} (${days} gün)`} />
-            {request.reason && <Row label="Açıklama" value={request.reason} />}
-          </Stack>
-        </Box>
-        <TextField
-          fullWidth
-          size="small"
-          label="Yönetici notu (opsiyonel)"
-          multiline
-          rows={3}
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="Onay veya red sebebini belirtebilirsiniz..."
-        />
+    <Dialog open={open} onOpenChange={(next) => { if (!next) onClose() }}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>İzin Talebini İncele</DialogTitle>
+          <DialogDescription>Talebi onaylayın ya da gerekçesiyle reddedin.</DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-4">
+          {error && (
+            <UiAlert tone="danger">
+              <AlertCircle />
+              <AlertDescription className="text-ink">{error}</AlertDescription>
+            </UiAlert>
+          )}
+
+          <div className="rounded-xl bg-surface-muted px-4 py-3">
+            <p className="text-sm font-bold text-ink">{emp?.full_name ?? '—'}</p>
+            {emp?.role && <p className="text-xs text-ink-secondary">{emp.role}</p>}
+            <dl className="mt-2.5 grid gap-1.5 border-t pt-2.5">
+              <Row label="İzin tipi" value={LEAVE_TYPE_LABELS[request.leave_type]} />
+              <Row label="Tarih" value={`${fmtDate(request.start_date)} – ${fmtDate(request.end_date)} (${days} gün)`} />
+              {request.reason && <Row label="Açıklama" value={request.reason} />}
+            </dl>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="leave-review-note">Yönetici notu (opsiyonel)</Label>
+            <Textarea
+              id="leave-review-note"
+              rows={3}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Onay veya red sebebini belirtebilirsiniz..."
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <UiButton type="button" variant="ghost" onClick={onClose} disabled={saving}>İptal</UiButton>
+          <UiButton
+            type="button"
+            variant="outline"
+            onClick={() => handle('rejected')}
+            disabled={saving}
+            className="text-danger hover:bg-danger-soft hover:text-danger"
+          >
+            <X />
+            Reddet
+          </UiButton>
+          <UiButton type="button" onClick={() => handle('approved')} disabled={saving}>
+            {saving ? <Loader2 className="animate-spin" /> : <Check />}
+            Onayla
+          </UiButton>
+        </DialogFooter>
       </DialogContent>
-      <DialogActions sx={{ px: 3, pb: 2, gap: 1, flexWrap: 'wrap' }}>
-        <Button onClick={onClose} disabled={saving}>İptal</Button>
-        <Button
-          variant="outlined"
-          color="error"
-          startIcon={<CloseIcon />}
-          onClick={() => handle('rejected')}
-          disabled={saving}
-        >
-          Reddet
-        </Button>
-        <Button
-          variant="contained"
-          color="success"
-          startIcon={<CheckIcon />}
-          onClick={() => handle('approved')}
-          disabled={saving}
-        >
-          {saving ? <CircularProgress size={18} /> : 'Onayla'}
-        </Button>
-      </DialogActions>
     </Dialog>
   )
 }
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <Box sx={{ display: 'flex', gap: 1, alignItems: 'baseline' }}>
-      <Typography variant="caption" color="text.secondary" sx={{ minWidth: 80 }}>{label}:</Typography>
-      <Typography variant="caption" fontWeight={600}>{value}</Typography>
-    </Box>
+    <div className="flex items-baseline gap-2 text-xs">
+      <dt className="min-w-20 text-ink-secondary">{label}</dt>
+      <dd className="font-semibold text-ink [overflow-wrap:anywhere]">{value}</dd>
+    </div>
   )
 }
 
@@ -508,35 +514,37 @@ export function LeavePage() {
       />
 
       {/* Silme onay dialog'u */}
-      <Dialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontWeight: 700 }}>İzin Talebini Sil</DialogTitle>
-        <DialogContent>
-          {deleteTarget && (
-            <Typography variant="body2" color="text.secondary">
-              <strong>{deleteTarget.employees?.full_name}</strong> adlı çalışanın{' '}
-              <strong>{fmtDate(deleteTarget.start_date)} – {fmtDate(deleteTarget.end_date)}</strong>{' '}
-              tarihli izin talebi silinecek.
-              {deleteTarget.status === 'approved' && (
-                <Typography component="span" variant="body2" color="warning.main" display="block" sx={{ mt: 1 }}>
-                  ⚠️ Bu izin onaylıydı. Silme işlemi bu tarihlerdeki &ldquo;İzinli&rdquo; işaretlemelerini de kaldıracaktır.
-                </Typography>
+      <AlertDialog open={!!deleteTarget} onOpenChange={(next) => { if (!next && !deleting) setDeleteTarget(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>İzin Talebini Sil</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget && (
+                <>
+                  <strong className="text-ink">{deleteTarget.employees?.full_name}</strong> adlı çalışanın{' '}
+                  <strong className="text-ink">{fmtDate(deleteTarget.start_date)} – {fmtDate(deleteTarget.end_date)}</strong>{' '}
+                  tarihli izin talebi silinecek.
+                </>
               )}
-            </Typography>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteTarget?.status === 'approved' && (
+            <UiAlert tone="warning">
+              <TriangleAlert />
+              <AlertDescription className="text-ink">
+                Bu izin onaylıydı. Silme işlemi bu tarihlerdeki &ldquo;İzinli&rdquo; işaretlemelerini de kaldıracaktır.
+              </AlertDescription>
+            </UiAlert>
           )}
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setDeleteTarget(null)} disabled={deleting}>İptal</Button>
-          <Button
-            variant="contained"
-            color="error"
-            startIcon={deleting ? <CircularProgress size={16} /> : <DeleteIcon />}
-            onClick={handleDelete}
-            disabled={deleting}
-          >
-            Sil
-          </Button>
-        </DialogActions>
-      </Dialog>
+          <AlertDialogFooter>
+            <UiButton type="button" variant="ghost" onClick={() => setDeleteTarget(null)} disabled={deleting}>İptal</UiButton>
+            <UiButton type="button" variant="destructive" onClick={handleDelete} disabled={deleting}>
+              {deleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
+              Sil
+            </UiButton>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Box>
   )
 }
