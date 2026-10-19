@@ -13,6 +13,7 @@ import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import type { DailyShiftEntry, AttendanceRecord } from '@/types/attendance'
 import { AttendanceStatusChip } from './AttendanceStatusChip'
 import { formatInTimeZone } from '@/lib/dateUtils'
+import { C, tint } from '@/lib/palette'
 
 interface Props {
   entry: DailyShiftEntry
@@ -53,9 +54,9 @@ export function EmployeeAttendanceRow({ entry }: Props) {
                 size="small"
                 sx={{
                   mt: 0.5,
-                  bgcolor: 'rgba(99,102,241,0.15)',
-                  color: '#818cf8',
-                  borderColor: 'rgba(99,102,241,0.3)',
+                  bgcolor: tint(C.plum, 0.15),
+                  color: C.plum,
+                  borderColor: tint(C.plum, 0.3),
                   fontSize: '0.65rem',
                   height: 20,
                   border: '1px solid',
@@ -83,8 +84,8 @@ export function EmployeeAttendanceRow({ entry }: Props) {
                 width: 40,
                 height: 40,
                 borderRadius: '50%',
-                bgcolor: 'rgba(20,184,166,0.15)',
-                border: '2px solid rgba(20,184,166,0.3)',
+                bgcolor: tint(C.brand, 0.15),
+                border: `2px solid ${tint(C.brand, 0.3)}`,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -105,9 +106,9 @@ export function EmployeeAttendanceRow({ entry }: Props) {
                 size="small"
                 sx={{
                   mt: 0.25,
-                  bgcolor: 'rgba(99,102,241,0.15)',
-                  color: '#818cf8',
-                  borderColor: 'rgba(99,102,241,0.3)',
+                  bgcolor: tint(C.plum, 0.15),
+                  color: C.plum,
+                  borderColor: tint(C.plum, 0.3),
                   fontSize: '0.65rem',
                   height: 20,
                   border: '1px solid',
@@ -151,16 +152,16 @@ function TimeInfo({
         <>
           <Divider orientation="vertical" flexItem sx={{ my: 0.5 }} />
           {attendanceRecord.clock_in_at && (
-            <TimeField label="Giriş" value={attendanceRecord.clock_in_at} color="#10b981" />
+            <TimeField label="Giriş" value={attendanceRecord.clock_in_at} color={C.success} />
           )}
           {attendanceRecord.break_start_at && (
-            <TimeField label="Mola" value={attendanceRecord.break_start_at} color="#f59e0b" />
+            <TimeField label="Mola" value={attendanceRecord.break_start_at} color={C.warning} />
           )}
           {attendanceRecord.break_end_at && (
-            <TimeField label="Dönüş" value={attendanceRecord.break_end_at} color="#60a5fa" />
+            <TimeField label="Dönüş" value={attendanceRecord.break_end_at} color={C.info} />
           )}
           {attendanceRecord.clock_out_at && (
-            <TimeField label="Çıkış" value={attendanceRecord.clock_out_at} color="#818cf8" />
+            <TimeField label="Çıkış" value={attendanceRecord.clock_out_at} color={C.plum} />
           )}
         </>
       )}

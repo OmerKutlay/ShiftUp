@@ -42,6 +42,7 @@ import {
 import { EmployeeFormDialog } from './EmployeeFormDialog'
 import { EmployeeStatusChip } from './EmployeeStatusChip'
 import { PageHeader, ListSkeleton } from '@/components/common'
+import { C, tint } from '@/lib/palette'
 
 type Filter = 'all' | 'active' | 'inactive'
 
@@ -157,7 +158,7 @@ export function EmployeesPage() {
   const activeCount = employees.filter((e) => e.active).length
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: '#0f172a', color: 'text.primary' }}>
+    <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: 'background.default', color: 'text.primary' }}>
       <PageHeader
         icon={PeopleIcon}
         overline="Personel"
@@ -206,7 +207,7 @@ export function EmployeesPage() {
         </ToggleButtonGroup>
       </Box>
 
-      <Divider sx={{ mb: 3, borderColor: 'rgba(255,255,255,0.08)' }} />
+      <Divider sx={{ mb: 3, borderColor: tint(C.ink, 0.08) }} />
 
       {/* Content */}
       {isFirstLoad && <ListSkeleton count={6} actions={3} />}
@@ -345,8 +346,8 @@ function EmployeeCard({
             width: 40,
             height: 40,
             borderRadius: '50%',
-            bgcolor: 'rgba(20,184,166,0.12)',
-            border: '2px solid rgba(20,184,166,0.25)',
+            bgcolor: tint(C.brand, 0.12),
+            border: `2px solid ${tint(C.brand, 0.25)}`,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -376,9 +377,9 @@ function EmployeeCard({
                 height: 20,
                 fontSize: '0.65rem',
                 fontWeight: 600,
-                bgcolor: 'rgba(99,102,241,0.12)',
-                color: '#818cf8',
-                border: '1px solid rgba(99,102,241,0.3)',
+                bgcolor: tint(C.plum, 0.12),
+                color: C.plum,
+                border: `1px solid ${tint(C.plum, 0.3)}`,
               }}
             />
             {employee.roles && (
@@ -391,7 +392,7 @@ function EmployeeCard({
                   fontSize: '0.65rem',
                   fontWeight: 500,
                   color: 'text.secondary',
-                  borderColor: 'rgba(255,255,255,0.12)',
+                  borderColor: tint(C.ink, 0.12),
                 }}
               />
             )}

@@ -18,6 +18,7 @@ import {
 } from '@mui/material'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import type { ShiftTemplate, CreateShiftTemplatePayload, UpdateShiftTemplatePayload } from '@/types/shiftTemplate'
+import { C, tint } from '@/lib/palette'
 
 interface Props {
   open: boolean
@@ -184,9 +185,9 @@ export function ShiftTemplateFormDialog({ open, onClose, onSave, template, loadi
                 gap: 0.75,
                 px: 1.5,
                 py: 0.75,
-                bgcolor: 'rgba(20,184,166,0.08)',
+                bgcolor: tint(C.brand, 0.08),
                 borderRadius: 1.5,
-                border: '1px solid rgba(20,184,166,0.2)',
+                border: `1px solid ${tint(C.brand, 0.2)}`,
               }}
             >
               <AccessTimeIcon sx={{ fontSize: 14, color: 'primary.main' }} />

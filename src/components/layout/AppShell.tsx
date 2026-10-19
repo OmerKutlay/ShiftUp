@@ -27,6 +27,7 @@ import { PullToRefresh } from './PullToRefresh'
 import { NAV_ITEMS, SCAN_HREF, filterNavItems, getPageTitle, isNavActive } from './navItems'
 import { NotificationBell } from '@/components/notifications/NotificationBell'
 import { useAuth } from '@/context/AuthContext'
+import { C, tint } from '@/lib/palette'
 
 const DRAWER_WIDTH = 220
 const DRAWER_COLLAPSED = 64
@@ -55,7 +56,7 @@ export function AppShell({ children }: Props) {
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        bgcolor: 'rgba(15,23,42,0.98)',
+        bgcolor: tint(C.canvas, 0.98),
         borderRight: '1px solid',
         borderColor: 'divider',
       }}
@@ -121,8 +122,8 @@ export function AppShell({ children }: Props) {
                   justifyContent: collapsed && !isMobile ? 'center' : 'flex-start',
                   px: collapsed && !isMobile ? 1.5 : 2,
                   '&.Mui-selected': {
-                    bgcolor: 'rgba(20,184,166,0.12)',
-                    '&:hover': { bgcolor: 'rgba(20,184,166,0.18)' },
+                    bgcolor: tint(C.brand, 0.12),
+                    '&:hover': { bgcolor: tint(C.brand, 0.18) },
                   },
                 }}
               >
@@ -235,7 +236,7 @@ export function AppShell({ children }: Props) {
             display: 'flex',
             alignItems: 'center',
             gap: 1,
-            bgcolor: 'rgba(15,23,42,0.85)',
+            bgcolor: tint(C.canvas, 0.85),
             backdropFilter: 'blur(12px)',
             WebkitBackdropFilter: 'blur(12px)',
             borderBottom: '1px solid',

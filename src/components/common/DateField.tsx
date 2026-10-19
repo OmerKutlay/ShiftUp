@@ -17,6 +17,7 @@ import {
   startOfMonth, startOfWeek,
 } from 'date-fns'
 import { tr } from 'date-fns/locale'
+import { C, tint } from '@/lib/palette'
 
 type Mode = 'date' | 'month'
 type View = 'days' | 'months' | 'years'
@@ -331,7 +332,7 @@ function PickerField({ mode, label, value, onChange, min, max, clearable = false
           paper: {
             role: 'dialog',
             'aria-label': label,
-            sx: { mt: 0.75, border: '1px solid', borderColor: 'divider', boxShadow: '0 12px 32px rgba(0,0,0,0.45)' },
+            sx: { mt: 0.75, border: '1px solid', borderColor: 'divider', boxShadow: `0 12px 32px ${tint(C.ink, 0.14)}` },
           },
         }}
       >

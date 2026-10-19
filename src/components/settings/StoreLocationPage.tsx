@@ -22,6 +22,7 @@ import MyLocationIcon from '@mui/icons-material/MyLocation'
 import type { StoreLocation } from '@/types/location'
 import { PageHeader, ListSkeleton } from '@/components/common'
 import { apiFetch } from '@/lib/api/http'
+import { C, tint } from '@/lib/palette'
 
 interface StoreLocationForm {
   id?: string
@@ -155,7 +156,7 @@ export function StoreLocationPage({ embedded = false }: { embedded?: boolean } =
   }
 
   return (
-    <Box sx={embedded ? undefined : { p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: '#0f172a', color: 'text.primary' }}>
+    <Box sx={embedded ? undefined : { p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: 'background.default', color: 'text.primary' }}>
       {!embedded && (
         <PageHeader
           icon={LocationOnIcon}
@@ -301,7 +302,7 @@ export function StoreLocationPage({ embedded = false }: { embedded?: boolean } =
                           height: 18,
                           fontSize: '0.68rem',
                           flexShrink: 0,
-                          bgcolor: loc.active ? 'rgba(20,184,166,0.15)' : 'rgba(255,255,255,0.06)',
+                          bgcolor: loc.active ? tint(C.brand, 0.15) : tint(C.ink, 0.06),
                           color: loc.active ? 'primary.main' : 'text.disabled',
                         }}
                       />

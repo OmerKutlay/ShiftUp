@@ -25,6 +25,7 @@ import { useRouter } from 'next/navigation'
 import { formatDateTurkish, formatDayNameTurkish, formatDateRangeTr } from '@/lib/dateUtils'
 import { LEAVE_TYPE_LABELS } from '@/types/leave'
 import { PageHeader, StatCardsSkeleton, ListSkeleton } from '@/components/common'
+import { C, tint } from '@/lib/palette'
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -68,11 +69,11 @@ interface DashboardData {
 // ─── Constants ───────────────────────────────────────────────
 
 const ATTENDANCE_STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  shift_waiting: { label: 'Bekleniyor', color: '#94a3b8', icon: null },
-  working: { label: 'Çalışıyor', color: '#10b981', icon: <LoginIcon sx={{ fontSize: 14 }} /> },
-  on_break: { label: 'Molada', color: '#f59e0b', icon: <FreeBreakfastIcon sx={{ fontSize: 14 }} /> },
-  working_after_break: { label: 'Çalışıyor', color: '#10b981', icon: <LoginIcon sx={{ fontSize: 14 }} /> },
-  clocked_out: { label: 'Çıkış Yaptı', color: '#818cf8', icon: <LogoutIcon sx={{ fontSize: 14 }} /> },
+  shift_waiting: { label: 'Bekleniyor', color: C.inkMuted, icon: null },
+  working: { label: 'Çalışıyor', color: C.success, icon: <LoginIcon sx={{ fontSize: 14 }} /> },
+  on_break: { label: 'Molada', color: C.warning, icon: <FreeBreakfastIcon sx={{ fontSize: 14 }} /> },
+  working_after_break: { label: 'Çalışıyor', color: C.success, icon: <LoginIcon sx={{ fontSize: 14 }} /> },
+  clocked_out: { label: 'Çıkış Yaptı', color: C.plum, icon: <LogoutIcon sx={{ fontSize: 14 }} /> },
 }
 
 // ─── Stat Card ────────────────────────────────────────────────
@@ -137,7 +138,7 @@ export function DashboardPage() {
   const pendingLeaves = data?.pending_leaves ?? []
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: '#0f172a', color: 'text.primary' }}>
+    <Box sx={{ p: { xs: 2, md: 3 }, minHeight: '100dvh', bgcolor: 'background.default', color: 'text.primary' }}>
       <PageHeader
         icon={DashboardIcon}
         overline={formatDayNameTurkish(today)}
@@ -175,40 +176,40 @@ export function DashboardPage() {
           <StatCard
             label="Aktif Çalışan"
             value={stats.active_employees}
-            color="#94a3b8"
+            color={C.inkMuted}
             icon={<PeopleIcon sx={{ fontSize: 16 }} />}
             onClick={() => router.push('/employees')}
           />
           <StatCard
             label="Bugün Vardiyalı"
             value={stats.today_shifts}
-            color="#60a5fa"
+            color={C.info}
             icon={<LoginIcon sx={{ fontSize: 16 }} />}
             onClick={() => router.push('/')}
           />
           <StatCard
             label="Çalışıyor"
             value={stats.currently_working}
-            color="#10b981"
+            color={C.success}
             icon={<LoginIcon sx={{ fontSize: 16 }} />}
           />
           <StatCard
             label="Molada"
             value={stats.on_break}
-            color="#f59e0b"
+            color={C.warning}
             icon={<FreeBreakfastIcon sx={{ fontSize: 16 }} />}
           />
           <StatCard
             label="Çıkış Yaptı"
             value={stats.clocked_out}
-            color="#818cf8"
+            color={C.plum}
             icon={<LogoutIcon sx={{ fontSize: 16 }} />}
           />
           {stats.pending_leaves > 0 && (
             <StatCard
               label="İzin Bekliyor"
               value={stats.pending_leaves}
-              color="#f59e0b"
+              color={C.warning}
               icon={<BeachAccessIcon sx={{ fontSize: 16 }} />}
               onClick={() => router.push('/leave')}
             />
@@ -216,7 +217,7 @@ export function DashboardPage() {
         </Box>
       )}
 
-      <Divider sx={{ mb: 3, borderColor: 'rgba(255,255,255,0.08)' }} />
+      <Divider sx={{ mb: 3, borderColor: tint(C.ink, 0.08) }} />
 
       {loading && !data && (
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'minmax(0, 1fr) 380px' }, gap: 3 }}>
@@ -328,7 +329,7 @@ export function DashboardPage() {
                   <Chip
                     label={pendingLeaves.length}
                     size="small"
-                    sx={{ height: 18, fontSize: '0.6rem', bgcolor: '#f59e0b20', color: '#f59e0b', border: '1px solid #f59e0b40' }}
+                    sx={{ height: 18, fontSize: '0.6rem', bgcolor: '#f59e0b20', color: C.warning, border: '1px solid #f59e0b40' }}
                   />
                 )}
               </Box>
@@ -356,11 +357,11 @@ export function DashboardPage() {
                       elevation={0}
                       sx={{
                         p: 1.5,
-                        border: '1px solid rgba(245,158,11,0.25)',
+                        border: `1px solid ${tint(C.warning, 0.25)}`,
                         borderRadius: 2,
-                        bgcolor: 'rgba(245,158,11,0.04)',
+                        bgcolor: tint(C.warning, 0.04),
                         cursor: 'pointer',
-                        '&:hover': { borderColor: 'rgba(245,158,11,0.5)' },
+                        '&:hover': { borderColor: tint(C.warning, 0.5) },
                         transition: 'border-color 0.15s',
                       }}
                       onClick={() => router.push('/leave')}
@@ -370,7 +371,7 @@ export function DashboardPage() {
                         <Chip
                           label={LEAVE_TYPE_LABELS[leave.leave_type as keyof typeof LEAVE_TYPE_LABELS] ?? leave.leave_type}
                           size="small"
-                          sx={{ height: 18, fontSize: '0.6rem', bgcolor: 'rgba(99,102,241,0.12)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.3)' }}
+                          sx={{ height: 18, fontSize: '0.6rem', bgcolor: tint(C.plum, 0.12), color: C.plum, border: `1px solid ${tint(C.plum, 0.3)}` }}
                         />
                       </Box>
                       <Typography variant="caption" color="text.secondary">

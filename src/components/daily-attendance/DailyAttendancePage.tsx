@@ -19,6 +19,7 @@ import { EmployeeAttendanceRow } from './EmployeeAttendanceRow'
 import { formatDateTurkish, formatDayNameTurkish } from '@/lib/dateUtils'
 import { PageHeader, StatCardsSkeleton, ListSkeleton } from '@/components/common'
 import { useLastUpdated } from '@/hooks/useLastUpdated'
+import { C, tint } from '@/lib/palette'
 
 export function DailyAttendancePage() {
   const today = new Date()
@@ -44,7 +45,7 @@ export function DailyAttendancePage() {
     <Box
       sx={{
         minHeight: '100dvh',
-        bgcolor: '#0f172a',
+        bgcolor: 'background.default',
         color: 'text.primary',
         p: { xs: 2, md: 3 },
       }}
@@ -85,15 +86,15 @@ export function DailyAttendancePage() {
             label="Toplam Vardiya"
             value={entries.length}
             icon={<PeopleIcon sx={{ fontSize: 18 }} />}
-            color="#94a3b8"
+            color={C.inkMuted}
           />
-          <StatCard label="Çalışıyor" value={workingCount} color="#10b981" />
-          <StatCard label="Molada" value={onBreakCount} color="#f59e0b" />
-          <StatCard label="Çıkış Yaptı" value={clockedOutCount} color="#818cf8" />
+          <StatCard label="Çalışıyor" value={workingCount} color={C.success} />
+          <StatCard label="Molada" value={onBreakCount} color={C.warning} />
+          <StatCard label="Çıkış Yaptı" value={clockedOutCount} color={C.plum} />
         </Box>
       )}
 
-      <Divider sx={{ mb: 3, borderColor: 'rgba(255,255,255,0.08)' }} />
+      <Divider sx={{ mb: 3, borderColor: tint(C.ink, 0.08) }} />
 
       {/* Content */}
       {isFirstLoad && <ListSkeleton count={5} actions={2} />}
@@ -106,7 +107,7 @@ export function DailyAttendancePage() {
               Tekrar Dene
             </Button>
           }
-          sx={{ bgcolor: 'rgba(239,68,68,0.1)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.3)' }}
+          sx={{ bgcolor: tint(C.danger, 0.1), color: C.danger, border: `1px solid ${tint(C.danger, 0.3)}` }}
         >
           {error}
         </Alert>
@@ -115,7 +116,7 @@ export function DailyAttendancePage() {
       {!isFirstLoad && !error && entries.length === 0 && (
         <Alert
           severity="info"
-          sx={{ bgcolor: 'rgba(99,102,241,0.1)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.3)' }}
+          sx={{ bgcolor: tint(C.plum, 0.1), color: C.plum, border: `1px solid ${tint(C.plum, 0.3)}` }}
         >
           Bugün için planlanmış vardiya bulunamadı.
         </Alert>
