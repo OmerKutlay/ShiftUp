@@ -231,17 +231,17 @@ export function OpenShiftsPanel() {
             const tone = SHIFT_KIND_TONES[shiftKindOf(undefined, start, end)]
             const details = [shift.role_needed, shift.description].filter(Boolean).join(' · ')
             return (
-              <div key={shift.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
-                {/* Sol: vardiya bilgisi */}
-                <div className="flex min-w-0 flex-1 items-center gap-3">
+              <div key={shift.id} className="flex flex-wrap items-center gap-x-3 gap-y-2.5 px-4 py-3">
+                {/* Sol: vardiya bilgisi — dar ekranda aksiyonlar alt satıra iner */}
+                <div className="flex min-w-[220px] flex-1 items-start gap-3">
                   <span
-                    className="inline-flex h-8 shrink-0 items-center rounded-[10px] px-2.5 text-[0.8rem] font-bold tabular-nums"
+                    className="inline-flex h-7 shrink-0 items-center rounded-lg px-2 text-xs font-bold tabular-nums"
                     style={{ backgroundColor: tone.soft, color: tone.text }}
                   >
                     {start} – {end}
                   </span>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-bold">
+                  <div className="min-w-0 pt-0.5">
+                    <p className="text-sm font-bold">
                       {format(new Date(shift.work_date), 'd MMMM yyyy', { locale: tr })}
                     </p>
                     {details && (

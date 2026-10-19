@@ -24,10 +24,10 @@ import { cn } from '@/lib/utils'
 
 // ─── Ölçüler ──────────────────────────────────────────────────
 
-const NAME_W = 140
-const DAY_W = 92
-const TOTAL_W = 76
-const LAST_W = 64
+const NAME_W = 132
+const DAY_W = 100
+const TOTAL_W = 70
+const LAST_W = 56
 const TABLE_MIN_W = NAME_W + 7 * DAY_W + TOTAL_W + LAST_W
 
 // ─── Yardımcılar ──────────────────────────────────────────────
@@ -150,7 +150,7 @@ function ShiftBox({ kind, lines, sub, tooltip }: {
       style={{ backgroundColor: tone.soft, color: tone.text }}
     >
       {lines.map((s, i) => (
-        <span key={i} className="block truncate text-[0.78rem] font-bold tabular-nums">{s.start}–{s.end}</span>
+        <span key={i} className="block truncate text-[0.74rem] font-bold tabular-nums tracking-tight">{s.start}–{s.end}</span>
       ))}
       <span className="block truncate text-[0.66rem] font-medium opacity-85">{sub}</span>
     </Tip>
@@ -220,7 +220,7 @@ export function CurrentPlanTable({ weekDays, summaries, maxWeeklyWorkHours }: {
               )}
             </>} />
             {weekDays.map((d) => (
-              <TableCell key={d} className="px-1 py-1.5 text-center whitespace-normal"><CurrentDayCell day={s.days[d]} /></TableCell>
+              <TableCell key={d} className="px-0.5 py-1.5 text-center whitespace-normal"><CurrentDayCell day={s.days[d]} /></TableCell>
             ))}
             <TableCell className="px-1 text-center">
               <p className={cn('text-[0.82rem] font-bold', isOver ? 'text-danger' : s.totalWeeklyMins > 0 ? 'text-ink' : 'text-ink-muted')}>
@@ -284,7 +284,7 @@ export function DraftPlanTable({ draft, weekDays }: { draft: PlannerResult; week
               <span className="text-[0.66rem] text-ink-secondary">{stat.workDays} gün</span>
             </>} />
             {weekDays.map((d) => (
-              <TableCell key={d} className="px-1 py-1.5 text-center whitespace-normal"><DraftDayCell assign={byDate[d]} /></TableCell>
+              <TableCell key={d} className="px-0.5 py-1.5 text-center whitespace-normal"><DraftDayCell assign={byDate[d]} /></TableCell>
             ))}
             <TableCell className="px-1 text-center">
               <Tip content={`Hedef: ${targetH}s`}>
