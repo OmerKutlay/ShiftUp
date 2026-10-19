@@ -85,7 +85,7 @@ export function functionStep(last: PushHttpResponse | undefined): PushDiagnostic
   if (!last) {
     return {
       key: 'function', ok: null, label,
-      hint: 'Henüz çağrı yok (pg_net yanıtları ~6 saat tutulur). Abone bir cihazdan "Test bildirimi gönder" deyip Yenile\'ye basın.',
+      hint: 'Henüz çağrı yok (pg_net yanıtları ~6 saat tutulur). Bir bildirim oluşunca (ör. izin talebi) Yenile\'ye basın.',
     }
   }
   const code = last.status_code
