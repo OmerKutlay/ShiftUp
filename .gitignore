@@ -61,3 +61,7 @@ __test_*.json
 .wrangler/
 .dev.vars*
 
+
+# Push kurulum anahtarları / SQL (scripts/setup-push.sh) — gizli
+.push-keys.local
+push-setup.local.sql
