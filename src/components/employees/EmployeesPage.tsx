@@ -15,18 +15,11 @@ import {
   InputAdornment,
   ToggleButton,
   ToggleButtonGroup,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogContentText,
-  DialogActions,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
-import DeleteIcon from '@mui/icons-material/Delete'
 import SearchIcon from '@mui/icons-material/Search'
-import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import type { EmployeeWithRole, CreateEmployeePayload, UpdateEmployeePayload } from '@/types/employee'
 import {
   fetchEmployees,
@@ -41,6 +34,12 @@ import { EmployeeStatusChip } from './EmployeeStatusChip'
 import { PageHeader, ListSkeleton, PersonAvatar, SectionCard, SectionRow, StatusBadge } from '@/components/common'
 import { ROLE_GROUPS, roleGroupOf } from '@/components/schedule/scheduleHelpers'
 import { cn } from '@/lib/utils'
+import { AlertCircle, Loader2, Trash2, TriangleAlert, UserX } from 'lucide-react'
+import { Alert as UiAlert, AlertDescription } from '@/components/ui/alert'
+import {
+  AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Button as UiButton } from '@/components/ui/button'
 
 type Filter = 'all' | 'active' | 'inactive'
 
@@ -247,65 +246,53 @@ export function EmployeesPage() {
       />
 
       {/* Delete Confirmation Dialog */}
-      <Dialog
-        open={!!deleteTarget}
-        onClose={closeDelete}
-        maxWidth="xs"
-        fullWidth
-        aria-labelledby="delete-dialog-title"
-      >
-        <DialogTitle id="delete-dialog-title" sx={{ display: 'flex', alignItems: 'center', gap: 1, fontWeight: 700 }}>
-          <WarningAmberIcon sx={{ color: 'error.main' }} />
-          Çalışanı Sil
-        </DialogTitle>
-        <DialogContent>
-          {deleteError ? (
-            <Alert
-              severity={deleteError.isFkViolation ? 'warning' : 'error'}
-              sx={{ mb: deleteError.isFkViolation ? 2 : 0 }}
-            >
-              {deleteError.message}
-            </Alert>
-          ) : (
-            <DialogContentText>
-              <strong>{deleteTarget?.full_name}</strong> adlı çalışan kalıcı olarak silinecek.
-              Bu işlem geri alınamaz.
-            </DialogContentText>
+      <AlertDialog open={!!deleteTarget} onOpenChange={(next) => { if (!next) closeDelete() }}>
+        <AlertDialogContent>
+          <AlertDialogHeader className="flex-row items-start gap-3">
+            <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-full bg-danger-soft text-danger">
+              <TriangleAlert className="size-5" />
+            </span>
+            <div className="flex min-w-0 flex-col gap-1.5 pt-1">
+              <AlertDialogTitle>Çalışanı Sil</AlertDialogTitle>
+              <AlertDialogDescription>
+                <strong className="text-ink">{deleteTarget?.full_name}</strong> adlı çalışan kalıcı olarak silinecek.
+                Bu işlem geri alınamaz.
+              </AlertDialogDescription>
+            </div>
+          </AlertDialogHeader>
+
+          {deleteError && (
+            <UiAlert tone={deleteError.isFkViolation ? 'warning' : 'danger'}>
+              {deleteError.isFkViolation ? <TriangleAlert /> : <AlertCircle />}
+              <AlertDescription className="text-ink">{deleteError.message}</AlertDescription>
+            </UiAlert>
           )}
 
           {deleteError?.isFkViolation && (
-            <DialogContentText sx={{ mt: 1 }}>
-              Bunun yerine çalışanı <strong>pasifleştirebilirsiniz</strong> — geçmiş kayıtlar korunur, yeni vardiyalara dahil edilmez.
-            </DialogContentText>
+            <p className="text-sm text-ink-secondary">
+              Bunun yerine çalışanı <strong className="text-ink">pasifleştirebilirsiniz</strong> — geçmiş kayıtlar korunur, yeni vardiyalara dahil edilmez.
+            </p>
           )}
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
-          <Button onClick={closeDelete} disabled={deleting} color="inherit">
-            İptal
-          </Button>
 
-          {deleteError?.isFkViolation ? (
-            <Button
-              variant="contained"
-              color="warning"
-              onClick={handleDeactivateInstead}
-              disabled={deleting}
-            >
-              {deleting ? 'İşleniyor…' : 'Pasifleştir'}
-            </Button>
-          ) : (
-            <Button
-              variant="contained"
-              color="error"
-              startIcon={<DeleteIcon />}
-              onClick={handleDeleteConfirm}
-              disabled={deleting}
-            >
-              {deleting ? 'Siliniyor…' : 'Evet, Sil'}
-            </Button>
-          )}
-        </DialogActions>
-      </Dialog>
+          <AlertDialogFooter>
+            <UiButton type="button" variant="ghost" onClick={closeDelete} disabled={deleting}>
+              İptal
+            </UiButton>
+
+            {deleteError?.isFkViolation ? (
+              <UiButton type="button" onClick={handleDeactivateInstead} disabled={deleting}>
+                {deleting ? <Loader2 className="animate-spin" /> : <UserX />}
+                {deleting ? 'İşleniyor…' : 'Pasifleştir'}
+              </UiButton>
+            ) : (
+              <UiButton type="button" variant="destructive" onClick={handleDeleteConfirm} disabled={deleting}>
+                {deleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
+                {deleting ? 'Siliniyor…' : 'Evet, Sil'}
+              </UiButton>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Box>
   )
 }
