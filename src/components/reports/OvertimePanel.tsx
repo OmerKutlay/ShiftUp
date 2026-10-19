@@ -6,14 +6,15 @@
 import { useState } from 'react'
 import useSWR from 'swr'
 import {
-  Alert, Box, Chip, FormControl, InputLabel, LinearProgress, MenuItem, Paper, Select,
+  Alert, Box, FormControl, InputLabel, LinearProgress, MenuItem, Paper, Select,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography,
 } from '@mui/material'
 import { apiFetch } from '@/lib/api/http'
 import type { OvertimeSummary } from '@/lib/overtime'
 import { ANNUAL_OVERTIME_CAP_HOURS } from '@/lib/laborLaw'
-import { turkeyToday } from '@/lib/dateUtils'
+import { formatShortDateTr, turkeyToday } from '@/lib/dateUtils'
 import { TableSkeleton } from '@/components/common'
+import { StatusBadge } from '@/components/common'
 
 const hours = (mins: number) => (Math.round((mins / 60) * 10) / 10).toLocaleString('tr-TR')
 
@@ -78,8 +79,8 @@ export function OvertimePanel() {
                   <TableCell align="right">{s.weeks.length}</TableCell>
                   <TableCell>
                     {s.consent_at
-                      ? <Chip size="small" label={`Var (${s.consent_at})`} color="success" variant="outlined" />
-                      : <Chip size="small" label="Yok" color="warning" />}
+                      ? <StatusBadge tone="success" label={`Var · ${formatShortDateTr(s.consent_at.slice(0, 10))}`} />
+                      : <StatusBadge tone="warning" label="Yok" />}
                   </TableCell>
                 </TableRow>
               ))}

@@ -53,17 +53,17 @@ test.describe('Çalışan alt menüsü', () => {
     const main = page.getByRole('main')
     await expect(main.getByText('Ayşe Yılmaz')).toBeVisible()
 
-    for (const label of ['Açık Vardiyalar', 'Mesai Düzeltme', 'Bildirimler']) {
+    for (const label of ['Açık vardiyalar', 'Mesai düzeltme', 'Bildirimler']) {
       await expect(main.getByRole('link', { name: label })).toBeVisible()
     }
     // Alt menüde olanlar ve yönetici sayfaları listelenmez
-    for (const label of ['Çalışma Özetim', 'Haftalık Plan', 'QR Tara', 'İzin Talepleri', 'Raporlar', 'Çalışanlar', 'Ayarlar']) {
+    for (const label of ['Çalışma özetim', 'Haftalık plan', 'QR Tara', 'İzinler', 'Raporlar', 'Çalışanlar', 'Ayarlar']) {
       await expect(main.getByRole('link', { name: label })).toHaveCount(0)
     }
     await expect(main.getByRole('heading', { name: 'Planlama' })).toBeVisible()
     await expect(main.getByRole('button', { name: 'Çıkış Yap' })).toBeVisible()
 
-    await main.getByRole('link', { name: 'Açık Vardiyalar' }).click()
+    await main.getByRole('link', { name: 'Açık vardiyalar' }).click()
     await expect(page).toHaveURL(/\/open-shifts$/)
     // Alt menüde olmayan sayfada "Daha fazla" aktif sayılır
     await expect(bottomNav(page).getByRole('link', { name: 'Daha fazla' })).toHaveAttribute('aria-current', 'page')
@@ -139,12 +139,12 @@ test.describe('Yönetici alt menüsü', () => {
     await page.goto('/more')
     const main = page.getByRole('main')
     await expect(main.getByText('Mehmet Müdür')).toBeVisible()
-    for (const label of ['Genel Bakış', 'Çalışanlar', 'Raporlar', 'Ayarlar', 'QR Kiosk', 'İzin Talepleri']) {
+    for (const label of ['Genel bakış', 'Çalışanlar', 'Raporlar', 'Ayarlar', 'QR Kiosk', 'İzinler']) {
       await expect(main.getByRole('link', { name: label })).toBeVisible()
     }
     // Alt menüdekiler tekrar edilmez
     await expect(main.getByRole('link', { name: 'Bildirimler' })).toHaveCount(0)
-    await expect(main.getByRole('link', { name: 'Günlük Operasyon' })).toHaveCount(0)
+    await expect(main.getByRole('link', { name: 'Günlük operasyon' })).toHaveCount(0)
     await expect(main.getByRole('button', { name: 'Çıkış Yap' })).toBeVisible()
   })
 })
