@@ -32,7 +32,8 @@ export function SettingsPage() {
         <TabsContent value="holidays"><HolidaysPanel /></TabsContent>
         <TabsContent value="audit"><AuditLogPanel /></TabsContent>
         <TabsContent value="notifications">
-          <div className="flex max-w-[640px] flex-col gap-4">
+          {/* PushPermissionCard kendi alt boşluğunu taşır */}
+          <div className="max-w-[640px]">
             <PushPermissionCard />
             <PushDiagnosticsPanel />
           </div>
