@@ -22,6 +22,7 @@ import { DateField, PageHeader, PageSkeleton, ListSkeleton } from '@/components/
 import type { TimeCorrectionRequest } from '@/types/timeCorrection'
 import { TIME_CORRECTION_STATUS_LABELS, TIME_CORRECTION_STATUS_COLORS } from '@/types/timeCorrection'
 import { apiFetch } from '@/lib/api/http'
+import { C } from '@/lib/palette'
 
 // ─── Helpers ─────────────────────────────────────────────────
 function fmtDate(d: string) {
@@ -93,8 +94,6 @@ export function TimeCorrectionPage() {
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 720, mx: 'auto' }}>
       <PageHeader
-        icon={AccessTimeIcon}
-        overline="Mesai"
         title="Mesai Düzeltme Talebi"
         subtitle="Eksik veya hatalı giriş/çıkış kayıtları için düzeltme talep edin"
         actions={
@@ -122,7 +121,7 @@ export function TimeCorrectionPage() {
       {isFirstLoad ? (
         <ListSkeleton count={3} lines={3} avatar={false} actions={1} />
       ) : requests.length === 0 ? (
-        <Paper elevation={0} sx={{ p: 4, textAlign: 'center', border: '1px solid', borderColor: 'divider', borderRadius: 2, bgcolor: 'rgba(30,41,59,0.4)' }}>
+        <Paper elevation={0} sx={{ p: 4, textAlign: 'center', border: '1px solid', borderColor: 'divider', borderRadius: 2, bgcolor: C.surface }}>
           <AccessTimeIcon sx={{ fontSize: 40, color: 'text.disabled', opacity: 0.4, mb: 1 }} />
           <Typography color="text.secondary">Henüz mesai düzeltme talebiniz yok.</Typography>
         </Paper>
@@ -131,7 +130,7 @@ export function TimeCorrectionPage() {
           {requests.map((r) => {
             const color = TIME_CORRECTION_STATUS_COLORS[r.status]
             return (
-              <Paper key={r.id} elevation={0} sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2, bgcolor: 'rgba(30,41,59,0.4)' }}>
+              <Paper key={r.id} elevation={0} sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2, bgcolor: C.surface }}>
                 <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', alignItems: 'start', gap: 1.5 }}>
                   <Box sx={{ minWidth: 0 }}>
                     <Typography variant="subtitle2" fontWeight={700}>{fmtDate(r.date)}</Typography>

@@ -36,29 +36,30 @@ import { humanizeIsoDates } from '@/lib/dateUtils'
 import { notificationLink } from '@/lib/notificationLinks'
 import { PushPermissionCard } from '@/components/pwa/PushPermissionCard'
 import { useRouter } from 'next/navigation'
+import { C, tint } from '@/lib/palette'
 
 const TYPE_META: Record<
   NotificationType,
   { icon: React.ReactNode; color: string; label: string }
 > = {
-  shift_reminder:      { icon: <AccessTimeIcon />,            color: '#14b8a6', label: 'Vardiya Hatırlatması' },
-  leave_submitted:     { icon: <EventAvailableIcon />,         color: '#60a5fa', label: 'İzin Talebi' },
-  leave_approved:      { icon: <CheckCircleOutlineIcon />,     color: '#10b981', label: 'İzin Onaylandı' },
-  leave_rejected:      { icon: <EventBusyIcon />,              color: '#ef4444', label: 'İzin Reddedildi' },
-  attendance_override: { icon: <BuildIcon />,                  color: '#f59e0b', label: 'Devam Düzeltmesi' },
-  open_shift_available:{ icon: <EventAvailableIcon />,         color: '#a78bfa', label: 'Açık Vardiya' },
-  time_correction_submitted: { icon: <AccessTimeIcon />,       color: '#60a5fa', label: 'Mesai Talebi' },
-  time_correction_approved:  { icon: <CheckCircleOutlineIcon />, color: '#10b981', label: 'Mesai Onaylandı' },
-  time_correction_rejected:  { icon: <EventBusyIcon />,        color: '#ef4444', label: 'Mesai Reddedildi' },
-  shift_swap_submitted:      { icon: <AccessTimeIcon />,       color: '#60a5fa', label: 'Takas Talebi' },
-  shift_swap_approved:       { icon: <CheckCircleOutlineIcon />, color: '#10b981', label: 'Takas Onaylandı' },
-  shift_swap_rejected:       { icon: <EventBusyIcon />,        color: '#ef4444', label: 'Takas Reddedildi' },
-  open_shift_claimed:        { icon: <EventAvailableIcon />,   color: '#a78bfa', label: 'Açık Vardiya Alındı' },
-  attendance_late_clock_in:  { icon: <WarningAmberIcon />,     color: '#f59e0b', label: 'Geç Giriş' },
-  attendance_late_clock_out: { icon: <WarningAmberIcon />,     color: '#f59e0b', label: 'Geç Çıkış' },
-  attendance_missed_clock_in:  { icon: <WarningAmberIcon />,   color: '#ef4444', label: 'Giriş Okutulmadı' },
-  attendance_missed_clock_out: { icon: <WarningAmberIcon />,   color: '#ef4444', label: 'Çıkış Okutulmadı' },
-  push_test:                 { icon: <NotificationsActiveIcon />, color: '#14b8a6', label: 'Test Bildirimi' },
+  shift_reminder:      { icon: <AccessTimeIcon />,            color: C.brand, label: 'Vardiya Hatırlatması' },
+  leave_submitted:     { icon: <EventAvailableIcon />,         color: C.info, label: 'İzin Talebi' },
+  leave_approved:      { icon: <CheckCircleOutlineIcon />,     color: C.success, label: 'İzin Onaylandı' },
+  leave_rejected:      { icon: <EventBusyIcon />,              color: C.danger, label: 'İzin Reddedildi' },
+  attendance_override: { icon: <BuildIcon />,                  color: C.warning, label: 'Devam Düzeltmesi' },
+  open_shift_available:{ icon: <EventAvailableIcon />,         color: C.plum, label: 'Açık Vardiya' },
+  time_correction_submitted: { icon: <AccessTimeIcon />,       color: C.info, label: 'Mesai Talebi' },
+  time_correction_approved:  { icon: <CheckCircleOutlineIcon />, color: C.success, label: 'Mesai Onaylandı' },
+  time_correction_rejected:  { icon: <EventBusyIcon />,        color: C.danger, label: 'Mesai Reddedildi' },
+  shift_swap_submitted:      { icon: <AccessTimeIcon />,       color: C.info, label: 'Takas Talebi' },
+  shift_swap_approved:       { icon: <CheckCircleOutlineIcon />, color: C.success, label: 'Takas Onaylandı' },
+  shift_swap_rejected:       { icon: <EventBusyIcon />,        color: C.danger, label: 'Takas Reddedildi' },
+  open_shift_claimed:        { icon: <EventAvailableIcon />,   color: C.plum, label: 'Açık Vardiya Alındı' },
+  attendance_late_clock_in:  { icon: <WarningAmberIcon />,     color: C.warning, label: 'Geç Giriş' },
+  attendance_late_clock_out: { icon: <WarningAmberIcon />,     color: C.warning, label: 'Geç Çıkış' },
+  attendance_missed_clock_in:  { icon: <WarningAmberIcon />,   color: C.danger, label: 'Giriş Okutulmadı' },
+  attendance_missed_clock_out: { icon: <WarningAmberIcon />,   color: C.danger, label: 'Çıkış Okutulmadı' },
+  push_test:                 { icon: <NotificationsActiveIcon />, color: C.brand, label: 'Test Bildirimi' },
 }
 
 function NotificationItem({
@@ -90,10 +91,10 @@ function NotificationItem({
           py: 1.75,
           alignItems: 'flex-start',
           gap: 2,
-          bgcolor: notification.is_read ? 'transparent' : 'rgba(20,184,166,0.06)',
+          bgcolor: notification.is_read ? 'transparent' : tint(C.brand, 0.06),
           borderRadius: 1,
           '&:hover': {
-            bgcolor: notification.is_read ? 'rgba(255,255,255,0.04)' : 'rgba(20,184,166,0.1)',
+            bgcolor: notification.is_read ? tint(C.ink, 0.04) : tint(C.brand, 0.1),
           },
         }}
       >
@@ -125,7 +126,7 @@ function NotificationItem({
                   size="small"
                   sx={{
                     bgcolor: 'primary.main',
-                    color: '#fff',
+                    color: C.white,
                     fontWeight: 700,
                     fontSize: '0.65rem',
                     height: 18,
@@ -165,15 +166,13 @@ export function NotificationsPage() {
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 720, mx: 'auto' }}>
       <PageHeader
-        icon={NotificationsIcon}
-        overline="Gelen Kutusu"
         title="Bildirimler"
         titleAdornment={
           unreadCount > 0 && (
             <Chip
               label={`${unreadCount} okunmamış`}
               size="small"
-              sx={{ bgcolor: 'primary.main', color: '#fff', fontWeight: 700 }}
+              sx={{ bgcolor: 'primary.main', color: C.white, fontWeight: 700 }}
             />
           )
         }
@@ -225,7 +224,7 @@ export function NotificationsPage() {
 
       <Paper
         sx={{
-          bgcolor: 'rgba(30,41,59,0.6)',
+          bgcolor: C.surface,
           border: '1px solid',
           borderColor: 'divider',
           borderRadius: 2,

@@ -300,11 +300,12 @@ describe('WeeklySchedulePage — mobil', () => {
     mobileData()
     renderPage()
 
-    await waitFor(() => expect(screen.getByText('Ayşe Demir')).toBeInTheDocument())
+    // Gün görünümünde kısa ad (ad + soyadın baş harfi)
+    await waitFor(() => expect(screen.getByText('Ayşe D.')).toBeInTheDocument())
     expect(screen.getByRole('button', { name: /28 Eylül Pazartesi, 2 kişi/ })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByText('2 kişi çalışıyor', { exact: false })).toBeInTheDocument()
-    const times = screen.getAllByText(/^\d{2}:\d{2}–\d{2}:\d{2}$/).map((el) => el.textContent)
-    expect(times).toEqual(['09:00–18:00', '13:00–22:00'])
+    const times = screen.getAllByText(/^\d{2}:\d{2} – \d{2}:\d{2}$/).map((el) => el.textContent)
+    expect(times).toEqual(['09:00 – 18:00', '13:00 – 22:00'])
     expect(screen.getByText('Çalışmayanlar (1)')).toBeInTheDocument()
     expect(screen.getByText('Can Boş')).toBeInTheDocument()
 
@@ -317,15 +318,15 @@ describe('WeeklySchedulePage — mobil', () => {
     mobileData()
     renderPage()
 
-    await waitFor(() => expect(screen.getByText('Ayşe Demir')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Ayşe D.')).toBeInTheDocument())
     await userEvent.click(screen.getByRole('button', { name: 'Hafta' }))
-    // Tablo başlığı: çalışan sütunu + 7 gün + özet
-    expect(screen.getByText('Çalışan')).toBeInTheDocument()
-    expect(screen.getByText('Özet')).toBeInTheDocument()
-    expect(screen.getByText('28 Eyl')).toBeInTheDocument()
-    expect(screen.getByText('4 Eki')).toBeInTheDocument()
-    // Aynı gündeki iki vardiya yan yana satırlarda, saatleriyle
-    expect(screen.getByText((_, el) => el?.textContent === '09:0018:00' && el.tagName === 'SPAN')).toBeInTheDocument()
-    expect(screen.getByText((_, el) => el?.textContent === '13:0022:00' && el.tagName === 'SPAN')).toBeInTheDocument()
+    // Tablo başlığı: 7 gün (kısa ad + gün numarası) + haftalık saat sütunu
+    expect(screen.getByText('saat')).toBeInTheDocument()
+    expect(screen.getByText('Pt')).toBeInTheDocument()
+    expect(screen.getByText('Pz')).toBeInTheDocument()
+    // Satırlarda ilk ad; vardiya kutularında başlangıç saati, erişilebilir adda tür + saat aralığı
+    expect(screen.getByText('Ayşe')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Açılış 09:00–18:00' })).toHaveTextContent('09')
+    expect(screen.getByRole('button', { name: /13:00–22:00$/ })).toHaveTextContent('13')
   })
 })

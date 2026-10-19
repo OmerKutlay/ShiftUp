@@ -1,3 +1,4 @@
+import { C } from '@/lib/palette'
 /**
  * Manuel Mesai Düzeltme Talebi domain types
  */
@@ -12,10 +13,10 @@ export const TIME_CORRECTION_STATUS_LABELS: Record<TimeCorrectionStatus, string>
 }
 
 export const TIME_CORRECTION_STATUS_COLORS: Record<TimeCorrectionStatus, string> = {
-  pending:  '#f59e0b',
-  approved: '#10b981',
-  rejected: '#ef4444',
-  direct:   '#818cf8',
+  pending:  C.warning,
+  approved: C.success,
+  rejected: C.danger,
+  direct:   C.plum,
 }
 
 export interface TimeCorrectionRequest {

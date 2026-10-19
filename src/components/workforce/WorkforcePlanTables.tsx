@@ -19,6 +19,7 @@ import type { EmployeeWeekSummary, DaySummary, WorkingTimeViolation } from '@/li
 import { shiftDurationMins, netWorkMins } from '@/lib/workingTimeService'
 import type { PlannerResult, DraftAssignment } from '@/lib/workforcePlanner'
 import { PART_TIME_RULES } from '@/types/employee'
+import { C, SHIFT_KIND_TONES, tint } from '@/lib/palette'
 
 // ─── Ölçüler ──────────────────────────────────────────────────
 
@@ -28,8 +29,8 @@ const TOTAL_W = 72
 const LAST_W = 60
 const TABLE_MIN_W = NAME_W + 7 * DAY_W + TOTAL_W + LAST_W
 /** Yarı saydam zemin üstünde sabit sütunun arkası görünmesin */
-const STICKY_BG = '#141d30'
-const HEAD_BG = '#111827'
+const STICKY_BG = C.surface
+const HEAD_BG = C.surfaceAlt
 
 // ─── Yardımcılar ──────────────────────────────────────────────
 
@@ -42,13 +43,9 @@ export function formatMins(mins: number): string {
 
 const hhmm = (t: string) => t.slice(0, 5)
 
-export const SHIFT_KIND_COLORS: Record<string, string> = {
-  opening: '#14b8a6',
-  closing: '#f97316',
-  full: '#a855f7',
-  mid: '#3b82f6',
-  custom: '#64748b',
-}
+export const SHIFT_KIND_COLORS: Record<string, string> = Object.fromEntries(
+  Object.entries(SHIFT_KIND_TONES).map(([kind, tone]) => [kind, tone.text]),
+)
 
 const SHIFT_KIND_LABELS: Record<string, string> = {
   opening: 'Açılış',
@@ -71,7 +68,7 @@ function TableFrame({ weekDays, totalLabel, lastLabel, children }: {
   const todayStr = format(new Date(), 'yyyy-MM-dd')
   return (
     <TableContainer component={Paper}
-      sx={{ bgcolor: 'rgba(15,23,42,0.8)', border: '1px solid', borderColor: 'divider', borderRadius: 2, overflowX: 'auto' }}>
+      sx={{ bgcolor: tint(C.canvas, 0.8), border: '1px solid', borderColor: 'divider', borderRadius: 2, overflowX: 'auto' }}>
       <Table size="small" sx={{ tableLayout: 'fixed', minWidth: TABLE_MIN_W }}>
         <colgroup>
           <col style={{ width: NAME_W }} />
@@ -86,7 +83,7 @@ function TableFrame({ weekDays, totalLabel, lastLabel, children }: {
               const isToday = d === todayStr
               const date = new Date(`${d}T00:00:00`)
               return (
-                <TableCell key={d} align="center" sx={[headCell, isToday && { color: 'primary.main', bgcolor: '#0f2a2c' }] as SxProps<Theme>}>
+                <TableCell key={d} align="center" sx={[headCell, isToday && { color: 'primary.main', bgcolor: C.brandSoft }] as SxProps<Theme>}>
                   <Box component="span" sx={{ display: 'block' }}>
                     {format(date, 'EEE', { locale: tr }).replace(/^./, (c) => c.toLocaleUpperCase('tr-TR'))}
                   </Box>
@@ -112,8 +109,8 @@ function EmploymentChip({ type }: { type: 'full_time' | 'part_time' }) {
     <Chip label={pt ? 'Yarı zamanlı' : 'Tam zamanlı'} size="small"
       sx={{
         height: 16, fontSize: '0.6rem', fontWeight: 700, '& .MuiChip-label': { px: 0.6 },
-        bgcolor: pt ? 'rgba(99,102,241,0.15)' : 'rgba(20,184,166,0.12)',
-        color: pt ? '#818cf8' : 'primary.main',
+        bgcolor: pt ? tint(C.plum, 0.15) : tint(C.brand, 0.12),
+        color: pt ? C.plum : 'primary.main',
       }} />
   )
 }
@@ -145,7 +142,7 @@ function ShiftLines({ shifts, netMins, color, tooltip }: {
   )
 }
 
-const Dash = () => <Typography fontSize="0.8rem" sx={{ color: '#475569' }}>—</Typography>
+const Dash = () => <Typography fontSize="0.8rem" sx={{ color: C.neutral }}>—</Typography>
 
 // ─── Mevcut plan ──────────────────────────────────────────────
 
@@ -153,7 +150,7 @@ function CurrentDayCell({ day }: { day: DaySummary | undefined }) {
   if (!day) return <Dash />
   if (day.isLeave) {
     return (
-      <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, color: '#fbbf24' }}>
+      <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, color: C.warning }}>
         <EventBusyIcon sx={{ fontSize: 14 }} />
         <Typography fontSize="0.72rem" fontWeight={600}>İzinli</Typography>
       </Box>
@@ -165,7 +162,7 @@ function CurrentDayCell({ day }: { day: DaySummary | undefined }) {
     <ShiftLines
       shifts={day.shifts.map((s) => ({ start: hhmm(s.start_time), end: hhmm(s.end_time) }))}
       netMins={day.totalMins}
-      color="#14b8a6"
+      color={C.brand}
       tooltip={`Brüt ${formatMins(gross)} · Mola ${formatMins(gross - day.totalMins)} · Net ${formatMins(day.totalMins)}`}
     />
   )
@@ -173,7 +170,7 @@ function CurrentDayCell({ day }: { day: DaySummary | undefined }) {
 
 function ViolationBadge({ violations }: { violations: WorkingTimeViolation[] }) {
   if (violations.length === 0) return <Typography fontSize="0.75rem" sx={{ color: 'text.disabled' }}>—</Typography>
-  const color = violations.some((v) => v.severity === 'error') ? '#ef4444' : '#eab308'
+  const color = violations.some((v) => v.severity === 'error') ? C.danger : C.warning
   return (
     <Tooltip title={<Box sx={{ whiteSpace: 'pre-line', fontSize: '0.75rem' }}>{violations.map((v) => `• ${v.message}`).join('\n')}</Box>} arrow>
       <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, cursor: 'default', color }}>
@@ -197,12 +194,12 @@ export function CurrentPlanTable({ weekDays, summaries, maxWeeklyWorkHours }: {
         return (
           <TableRow key={s.employeeId} sx={{
             '&:last-child td': { borderBottom: 0 },
-            bgcolor: hasError ? 'rgba(239,68,68,0.05)' : hasWarn ? 'rgba(234,179,8,0.05)' : 'transparent',
+            bgcolor: hasError ? tint(C.danger, 0.05) : hasWarn ? tint(C.warning, 0.05) : 'transparent',
           }}>
             <NameCell name={s.employeeName} sub={<>
               <EmploymentChip type={s.employment_type} />
               {s.employment_type === 'part_time' && (
-                <Typography fontSize="0.65rem" sx={{ color: s.weeklyWorkDays > PART_TIME_RULES.maxWeeklyDays ? '#ef4444' : 'text.secondary' }}>
+                <Typography fontSize="0.65rem" sx={{ color: s.weeklyWorkDays > PART_TIME_RULES.maxWeeklyDays ? C.danger : 'text.secondary' }}>
                   {s.weeklyWorkDays}/{PART_TIME_RULES.maxWeeklyDays} gün
                 </Typography>
               )}
@@ -212,7 +209,7 @@ export function CurrentPlanTable({ weekDays, summaries, maxWeeklyWorkHours }: {
             ))}
             <TableCell align="center" sx={bodyCell}>
               <Typography fontSize="0.8rem" fontWeight={700}
-                sx={{ color: isOver ? '#ef4444' : s.totalWeeklyMins > 0 ? 'primary.main' : 'text.disabled' }}>
+                sx={{ color: isOver ? C.danger : s.totalWeeklyMins > 0 ? 'primary.main' : 'text.disabled' }}>
                 {formatMins(s.totalWeeklyMins)}
               </Typography>
               <Typography fontSize="0.62rem" sx={{ color: 'text.secondary' }}>/ {maxH}s</Typography>
@@ -236,7 +233,7 @@ export function CurrentPlanTable({ weekDays, summaries, maxWeeklyWorkHours }: {
 
 function DraftDayCell({ assign }: { assign: DraftAssignment | undefined }) {
   if (!assign) return <Dash />
-  const color = SHIFT_KIND_COLORS[assign.shift_kind] ?? '#64748b'
+  const color = SHIFT_KIND_COLORS[assign.shift_kind] ?? C.neutral
   const gross = shiftDurationMins(assign.start_time, assign.end_time)
   const net = netWorkMins(assign.start_time, assign.end_time)
   return (
@@ -255,7 +252,7 @@ function DraftDayCell({ assign }: { assign: DraftAssignment | undefined }) {
         color={color}
         tooltip={<Box sx={{ fontSize: '0.72rem' }}>
           <Box>Brüt {formatMins(gross)} · Mola {formatMins(gross - net)} · Net {formatMins(net)}</Box>
-          {assign.reason && <Box sx={{ color: '#94a3b8', mt: 0.25 }}>{assign.reason}</Box>}
+          {assign.reason && <Box sx={{ color: C.inkMuted, mt: 0.25 }}>{assign.reason}</Box>}
         </Box>}
       />
     </Box>
@@ -275,7 +272,7 @@ export function DraftPlanTable({ draft, weekDays }: { draft: PlannerResult; week
         for (const a of stat.assignments) byDate[a.work_date] = a
         const targetH = stat.employment_type === 'part_time' ? PART_TIME_RULES.maxWeeklyHours : 45
         const pct = Math.min(100, Math.round((stat.totalMins / (targetH * 60)) * 100))
-        const color = pct >= 95 ? '#22c55e' : pct >= 80 ? '#14b8a6' : pct >= 60 ? '#eab308' : '#94a3b8'
+        const color = pct >= 95 ? C.success : pct >= 80 ? C.brand : pct >= 60 ? C.warning : C.inkMuted
         return (
           <TableRow key={stat.employeeId} sx={{ '&:last-child td': { borderBottom: 0 } }}>
             <NameCell name={stat.employeeName} sub={<>

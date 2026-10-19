@@ -4,22 +4,22 @@
  * Masaüstü yan menü (AppShell), mobil alt bar (MobileBottomNav) ve /more sayfası
  * aynı listeyi ve aynı rol filtresini kullanır. Saf fonksiyonlar test edilebilir.
  */
-import TodayIcon from '@mui/icons-material/Today'
-import PeopleIcon from '@mui/icons-material/People'
-import ScheduleIcon from '@mui/icons-material/Schedule'
-import CalendarMonthIcon from '@mui/icons-material/CalendarMonth'
-import QrCode2Icon from '@mui/icons-material/QrCode2'
-import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner'
-import BarChartIcon from '@mui/icons-material/BarChart'
-import BeachAccessIcon from '@mui/icons-material/BeachAccess'
-import DashboardIcon from '@mui/icons-material/Dashboard'
-import SettingsIcon from '@mui/icons-material/Settings'
-import GroupsIcon from '@mui/icons-material/Groups'
-import WorkIcon from '@mui/icons-material/Work'
-import EventNoteIcon from '@mui/icons-material/EventNote'
-import EditNoteIcon from '@mui/icons-material/EditNote'
-import NotificationsIcon from '@mui/icons-material/Notifications'
-import MoreHorizIcon from '@mui/icons-material/MoreHoriz'
+import TodayIcon from '@mui/icons-material/TodayOutlined'
+import PeopleIcon from '@mui/icons-material/PeopleOutlined'
+import ScheduleIcon from '@mui/icons-material/ScheduleOutlined'
+import CalendarMonthIcon from '@mui/icons-material/CalendarMonthOutlined'
+import QrCode2Icon from '@mui/icons-material/QrCode2Outlined'
+import QrCodeScannerIcon from '@mui/icons-material/QrCodeScannerOutlined'
+import BarChartIcon from '@mui/icons-material/BarChartOutlined'
+import BeachAccessIcon from '@mui/icons-material/BeachAccessOutlined'
+import DashboardIcon from '@mui/icons-material/DashboardOutlined'
+import SettingsIcon from '@mui/icons-material/SettingsOutlined'
+import GroupsIcon from '@mui/icons-material/GroupsOutlined'
+import WorkIcon from '@mui/icons-material/WorkOutlined'
+import EventNoteIcon from '@mui/icons-material/EventNoteOutlined'
+import EditNoteIcon from '@mui/icons-material/EditNoteOutlined'
+import NotificationsIcon from '@mui/icons-material/NotificationsOutlined'
+import MoreHorizIcon from '@mui/icons-material/MoreHorizOutlined'
 
 import { hasRole, MANAGER_ROLES, ADMIN_ROLES, type RoleName } from '@/lib/auth/roles'
 
@@ -68,19 +68,14 @@ export const NOTIFICATIONS_ITEM: NavItem = {
   label: 'Bildirimler', href: '/notifications', icon: <NotificationsIcon />, group: 'hesap',
 }
 export const MORE_HREF = '/more'
-export const MORE_ITEM: NavItem = {
-  label: 'Daha Fazla', href: MORE_HREF, icon: <MoreHorizIcon />, group: 'hesap',
-}
 
-/** QR Tara rotası — alt bardaki öne çıkan orta buton */
+/** QR Tara rotası — alt barın ortasındaki sekme */
 export const SCAN_HREF = '/attendance/scan'
 
 export interface BottomTab {
   label: string
   href: string
   icon: React.ReactNode
-  /** Ortadaki büyük, yuvarlak birincil eylem */
-  center?: boolean
 }
 
 export function isManagerRole(roleName: string | null | undefined): boolean {
@@ -100,7 +95,7 @@ export function isNavActive(pathname: string, href: string): boolean {
 
 /** Role göre mobil alt bar sekmeleri (5 adet, ortadaki QR Tara) */
 export function getBottomTabs(roleName: string | null | undefined): BottomTab[] {
-  const scan: BottomTab = { label: 'QR Tara', href: SCAN_HREF, icon: <QrCodeScannerIcon />, center: true }
+  const scan: BottomTab = { label: 'QR Tara', href: SCAN_HREF, icon: <QrCodeScannerIcon /> }
   const more: BottomTab = { label: 'Daha fazla', href: MORE_HREF, icon: <MoreHorizIcon /> }
   const plan: BottomTab = { label: 'Plan', href: '/schedule', icon: <CalendarMonthIcon /> }
 
@@ -143,13 +138,4 @@ export function groupNavItems(items: NavItem[]): Array<{ group: NavGroup; label:
   return NAV_GROUP_ORDER
     .map((group) => ({ group, label: NAV_GROUP_LABELS[group], items: items.filter((i) => i.group === group) }))
     .filter((g) => g.items.length > 0)
-}
-
-/** Mobil üst bar başlığı: en uzun eşleşen öğenin etiketi, yoksa 'ShiftUp' */
-export function getPageTitle(pathname: string): string {
-  let best: NavItem | null = null
-  for (const item of [...NAV_ITEMS, NOTIFICATIONS_ITEM, MORE_ITEM]) {
-    if (isNavActive(pathname, item.href) && (!best || item.href.length > best.href.length)) best = item
-  }
-  return best?.label ?? 'ShiftUp'
 }

@@ -24,13 +24,14 @@ import { EmployeeSelect, ListSkeleton } from '@/components/common'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { useLoadedKey } from '@/hooks/useLoadedKey'
+import { C } from '@/lib/palette'
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
-  awaiting_target: { label: 'Karşı Taraf Bekleniyor', color: '#60a5fa' },
-  pending:   { label: 'Yönetici Onayı Bekliyor', color: '#f59e0b' },
-  approved:  { label: 'Onaylandı',     color: '#10b981' },
-  rejected:  { label: 'Reddedildi',    color: '#ef4444' },
-  cancelled: { label: 'İptal',         color: '#94a3b8' },
+  awaiting_target: { label: 'Karşı Taraf Bekleniyor', color: C.info },
+  pending:   { label: 'Yönetici Onayı Bekliyor', color: C.warning },
+  approved:  { label: 'Onaylandı',     color: C.success },
+  rejected:  { label: 'Reddedildi',    color: C.danger },
+  cancelled: { label: 'İptal',         color: C.inkMuted },
 }
 
 type ReviewStatus = 'accepted' | 'declined' | 'approved' | 'rejected' | 'cancelled'
@@ -155,7 +156,7 @@ export function ShiftSwapPanel({ employees, assignments, currentEmployeeId, isMa
             const canReview = isPending && !awaitingTarget && isManager && !isParty
             const canCancel = isPending && swap.requester_id === currentEmployeeId
             return (
-              <Paper key={swap.id} sx={{ p: 1.5, bgcolor: 'rgba(30,41,59,0.5)', border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
+              <Paper key={swap.id} sx={{ p: 1.5, bgcolor: C.surface, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
                 {/* Satır 1: ikon + isimler | durum chip'i (sağ üstte sabit) */}
                 <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', alignItems: 'start', columnGap: 1 }}>
                   <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, minWidth: 0 }}>

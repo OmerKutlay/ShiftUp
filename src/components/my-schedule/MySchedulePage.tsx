@@ -25,7 +25,6 @@ import {
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
-import CalendarMonthIcon from '@mui/icons-material/CalendarMonth'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import CancelIcon from '@mui/icons-material/Cancel'
 import FreeBreakfastIcon from '@mui/icons-material/FreeBreakfast'
@@ -41,6 +40,7 @@ import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import {
   getSnapshot, getSnapshotOwner, setSnapshot, formatSnapshotTime, SNAPSHOT_MAX_AGE_MS,
 } from '@/lib/pwa/offlineSnapshot'
+import { C, tint } from '@/lib/palette'
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -127,13 +127,13 @@ const STATUS_LABELS: Record<string, string> = {
   planned: 'Planlandı',
 }
 const STATUS_COLORS: Record<string, string> = {
-  clocked_out: '#10b981',
-  working: '#14b8a6',
-  on_break: '#f59e0b',
-  working_after_break: '#14b8a6',
-  absent: '#ef4444',
-  upcoming: '#94a3b8',
-  planned: '#64748b',
+  clocked_out: C.success,
+  working: C.brand,
+  on_break: C.warning,
+  working_after_break: C.brand,
+  absent: C.danger,
+  upcoming: C.inkMuted,
+  planned: C.neutral,
 }
 
 /**
@@ -165,7 +165,7 @@ function StatCard({ label, value, sub, color }: {
     <Paper elevation={0} sx={{
       p: 2, flex: 1, minWidth: 110,
       border: '1px solid', borderColor: 'divider',
-      borderRadius: 2, bgcolor: 'rgba(30,41,59,0.5)',
+      borderRadius: 2, bgcolor: C.surface,
     }}>
       <Typography variant="caption" color="text.disabled" display="block" mb={0.5}>{label}</Typography>
       <Typography variant="h6" fontWeight={800} color={color ?? 'text.primary'}>{value}</Typography>
@@ -178,7 +178,7 @@ function StatCard({ label, value, sub, color }: {
 
 function DayCard({ entry, isToday }: { entry: DayEntry; isToday: boolean }) {
   const status = displayStatus(entry, new Date())
-  const statusColor = STATUS_COLORS[status] ?? '#94a3b8'
+  const statusColor = STATUS_COLORS[status] ?? C.inkMuted
   const plannedMins = shiftDurationMins(entry.start_time, entry.end_time)
   const workedMins = entry.worked_minutes ?? 0
 
@@ -188,7 +188,7 @@ function DayCard({ entry, isToday }: { entry: DayEntry; isToday: boolean }) {
       border: '1px solid',
       borderColor: isToday ? 'primary.main' : 'divider',
       borderRadius: 2,
-      bgcolor: isToday ? 'rgba(20,184,166,0.06)' : 'rgba(30,41,59,0.4)',
+      bgcolor: isToday ? tint(C.brand, 0.06) : C.surface,
     }}>
       {/* Tarih + durum */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
@@ -203,7 +203,7 @@ function DayCard({ entry, isToday }: { entry: DayEntry; isToday: boolean }) {
         {entry.is_on_leave ? (
           <Chip label="İzin" size="small" sx={{
             height: 20, fontSize: '0.7rem',
-            bgcolor: 'rgba(251,191,36,0.15)', color: '#fbbf24',
+            bgcolor: tint(C.warning, 0.15), color: C.warning,
           }} />
         ) : (
           <Chip
@@ -231,7 +231,7 @@ function DayCard({ entry, isToday }: { entry: DayEntry; isToday: boolean }) {
       {entry.status === 'clocked_out' && (
         <>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
-            <CheckCircleIcon sx={{ fontSize: 11, color: '#10b981' }} />
+            <CheckCircleIcon sx={{ fontSize: 11, color: C.success }} />
             <Typography variant="caption" color="text.secondary" fontSize="0.75rem">
               Giriş: {fmtTime(entry.clock_in_at)} → Çıkış: {fmtTime(entry.clock_out_at)}
             </Typography>
@@ -242,7 +242,7 @@ function DayCard({ entry, isToday }: { entry: DayEntry; isToday: boolean }) {
               size="small"
               sx={{
                 height: 20, fontSize: '0.7rem',
-                bgcolor: 'rgba(16,185,129,0.12)', color: '#10b981',
+                bgcolor: tint(C.success, 0.12), color: C.success,
               }}
             />
             {(entry.break_minutes ?? 0) > 0 && (
@@ -251,7 +251,7 @@ function DayCard({ entry, isToday }: { entry: DayEntry; isToday: boolean }) {
                 size="small"
                 sx={{
                   height: 20, fontSize: '0.7rem',
-                  bgcolor: 'rgba(245,158,11,0.12)', color: '#f59e0b',
+                  bgcolor: tint(C.warning, 0.12), color: C.warning,
                 }}
               />
             )}
@@ -265,8 +265,8 @@ function DayCard({ entry, isToday }: { entry: DayEntry; isToday: boolean }) {
                 value={Math.min(100, (workedMins / plannedMins) * 100)}
                 sx={{
                   height: 3, borderRadius: 2,
-                  bgcolor: 'rgba(255,255,255,0.06)',
-                  '& .MuiLinearProgress-bar': { bgcolor: '#10b981', borderRadius: 2 },
+                  bgcolor: tint(C.ink, 0.06),
+                  '& .MuiLinearProgress-bar': { bgcolor: C.success, borderRadius: 2 },
                 }}
               />
             </Box>
@@ -277,7 +277,7 @@ function DayCard({ entry, isToday }: { entry: DayEntry; isToday: boolean }) {
       {/* Gelmedi */}
       {status === 'absent' && !entry.is_on_leave && (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.25 }}>
-          <CancelIcon sx={{ fontSize: 11, color: '#ef4444' }} />
+          <CancelIcon sx={{ fontSize: 11, color: C.danger }} />
           <Typography variant="caption" color="error.main" fontSize="0.75rem">
             Kayıt oluşturulmadı
           </Typography>
@@ -393,8 +393,6 @@ export function MySchedulePage() {
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 900, mx: 'auto' }}>
 
       <PageHeader
-        icon={CalendarMonthIcon}
-        overline="Kişisel"
         title="Çalışma Özetim"
         subtitle={`${profile.full_name} · ${profile.role}`}
       />
@@ -410,7 +408,7 @@ export function MySchedulePage() {
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         px: 2, py: 1.25, mb: 3,
         border: '1px solid', borderColor: 'divider', borderRadius: 2,
-        bgcolor: 'rgba(30,41,59,0.5)',
+        bgcolor: C.surface,
       }}>
         <Tooltip title="Önceki ay">
           <IconButton size="small" onClick={() => setCurrentMonth((m) => subMonths(m, 1))} aria-label="Önceki ay">
@@ -448,25 +446,25 @@ export function MySchedulePage() {
           label="Çalışılan Saat"
           value={fmtMins(summary.workedMins)}
           sub={`${summary.workedDays} gün tamamlandı`}
-          color="#10b981"
+          color={C.success}
         />
         <StatCard
           label="Mola Süresi"
           value={fmtMins(summary.breakMins)}
-          color="#f59e0b"
+          color={C.warning}
         />
         <StatCard
           label="Devamsızlık"
           value={String(summary.noShowDays)}
           sub="gün"
-          color={summary.noShowDays > 0 ? '#ef4444' : 'text.secondary'}
+          color={summary.noShowDays > 0 ? C.danger : 'text.secondary'}
         />
         {summary.leaveDays > 0 && (
           <StatCard
             label="İzin Günü"
             value={String(summary.leaveDays)}
             sub="gün"
-            color="#fbbf24"
+            color={C.warning}
           />
         )}
       </Stack>
@@ -477,7 +475,7 @@ export function MySchedulePage() {
         <Paper elevation={0} sx={{
           p: 2, mb: 3,
           border: '1px solid', borderColor: 'divider', borderRadius: 2,
-          bgcolor: 'rgba(30,41,59,0.5)',
+          bgcolor: C.surface,
         }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
@@ -493,8 +491,8 @@ export function MySchedulePage() {
             value={Math.min(100, (summary.workedMins / summary.plannedMins) * 100)}
             sx={{
               height: 6, borderRadius: 3,
-              bgcolor: 'rgba(255,255,255,0.06)',
-              '& .MuiLinearProgress-bar': { bgcolor: '#10b981', borderRadius: 3 },
+              bgcolor: tint(C.ink, 0.06),
+              '& .MuiLinearProgress-bar': { bgcolor: C.success, borderRadius: 3 },
             }}
           />
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.75 }}>
@@ -508,7 +506,7 @@ export function MySchedulePage() {
         </Paper>
       )}
 
-      <Divider sx={{ mb: 2.5, borderColor: 'rgba(255,255,255,0.08)' }} />
+      <Divider sx={{ mb: 2.5, borderColor: tint(C.ink, 0.08) }} />
 
       {/* Günlük liste */}
       {isFirstLoad ? (

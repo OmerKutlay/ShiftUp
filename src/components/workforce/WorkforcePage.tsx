@@ -7,7 +7,6 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   Box, Tabs, Tab, Alert,
 } from '@mui/material'
-import GroupsIcon from '@mui/icons-material/Groups'
 import PeopleIcon from '@mui/icons-material/People'
 import WorkIcon from '@mui/icons-material/Work'
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz'
@@ -59,8 +58,6 @@ export function WorkforcePage() {
   return (
     <Box sx={{ p: { xs: 2, md: 3 } }}>
       <PageHeader
-        icon={GroupsIcon}
-        overline="Planlama"
         title="İş Gücü Planlama"
         subtitle="Müsaitlik, açık vardiyalar ve vardiya takaslarını yönetin"
       />

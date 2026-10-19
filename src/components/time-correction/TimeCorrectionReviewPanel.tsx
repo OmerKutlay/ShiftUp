@@ -24,6 +24,7 @@ import { DateField, EmployeeSelect, ListSkeleton } from '@/components/common'
 import { apiFetch } from '@/lib/api/http'
 import { fetchActiveEmployees } from '@/lib/api/employees'
 import { useAuth } from '@/context/AuthContext'
+import { C, tint } from '@/lib/palette'
 
 /** 422 WORKING_TIME_VIOLATION yanıtındaki ihlal listesi */
 interface ApiResult { error?: string; code?: string; violations?: string[] }
@@ -159,8 +160,8 @@ export function TimeCorrectionReviewPanel() {
                 onClick={() => setStatusFilter(f)}
                 sx={{
                   cursor: 'pointer',
-                  bgcolor: statusFilter === f ? 'primary.main' : 'rgba(255,255,255,0.06)',
-                  color: statusFilter === f ? '#fff' : 'text.secondary',
+                  bgcolor: statusFilter === f ? 'primary.main' : tint(C.ink, 0.06),
+                  color: statusFilter === f ? C.white : 'text.secondary',
                 }} />
             ))}
           </Box>
@@ -178,7 +179,7 @@ export function TimeCorrectionReviewPanel() {
               {requests.map((r) => {
                 const color = TIME_CORRECTION_STATUS_COLORS[r.status]
                 return (
-                  <Paper key={r.id} elevation={0} sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2, bgcolor: 'rgba(30,41,59,0.5)' }}>
+                  <Paper key={r.id} elevation={0} sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2, bgcolor: C.surface }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1.5, alignItems: 'flex-start' }}>
                       <Box sx={{ flex: 1, minWidth: 200 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
@@ -187,7 +188,7 @@ export function TimeCorrectionReviewPanel() {
                             sx={{ bgcolor: `${color}20`, color, border: '1px solid', borderColor: `${color}40`, fontWeight: 700, fontSize: '0.62rem', height: 18 }} />
                         </Box>
                         <Typography variant="caption" color="text.secondary" display="block" fontWeight={600}>{fmtDate(r.date)}</Typography>
-                        <Divider sx={{ my: 0.75, borderColor: 'rgba(255,255,255,0.06)' }} />
+                        <Divider sx={{ my: 0.75, borderColor: tint(C.ink, 0.06) }} />
                         <Typography variant="caption" color="text.disabled" display="block">Talep edilen</Typography>
                         <Typography variant="caption" fontWeight={700} color="primary.main">
                           {fmtTime(r.requested_start_time)} – {fmtTime(r.requested_end_time)}
@@ -296,7 +297,7 @@ export function TimeCorrectionReviewPanel() {
         </DialogTitle>
         <DialogContent>
           {reviewDialog.req && (
-            <Box sx={{ mb: 2, p: 1.5, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 1.5 }}>
+            <Box sx={{ mb: 2, p: 1.5, bgcolor: tint(C.ink, 0.04), borderRadius: 1.5 }}>
               <Typography variant="body2" fontWeight={600}>{reviewDialog.req.employee?.full_name}</Typography>
               <Typography variant="caption" color="text.secondary">
                 {fmtDate(reviewDialog.req.date)} · {fmtTime(reviewDialog.req.requested_start_time)} – {fmtTime(reviewDialog.req.requested_end_time)}

@@ -21,6 +21,7 @@ import type { ShiftAssignmentWithDetails } from '@/types/schedule'
 import type { EmployeeAvailability } from '@/types/workforce'
 import { formatTime } from '@/types/shiftTemplate'
 import { shiftDurationMins } from '@/lib/workingTimeService'
+import { C, tint } from '@/lib/palette'
 
 /** Dialog'dan dışarıya çıkan birleşik payload */
 export interface ShiftSavePayload {
@@ -57,7 +58,7 @@ function AvailabilityBadge({ records, shiftStart, shiftEnd }: {
     return (
       <Box sx={{
         display: 'flex', alignItems: 'center', gap: 0.75, px: 1.5, py: 0.75,
-        bgcolor: 'rgba(239,68,68,0.08)', borderRadius: 1.5, border: '1px solid rgba(239,68,68,0.25)',
+        bgcolor: tint(C.danger, 0.08), borderRadius: 1.5, border: `1px solid ${tint(C.danger, 0.25)}`,
       }}>
         <EventBusyIcon sx={{ fontSize: 14, color: 'error.main' }} />
         <Typography variant="caption" color="error.main" fontWeight={600}>
@@ -83,20 +84,20 @@ function AvailabilityBadge({ records, shiftStart, shiftEnd }: {
           <Chip key={i} size="small"
             label={`${w.start_time.slice(0, 5)}–${w.end_time.slice(0, 5)}`}
             sx={{ height: 18, fontSize: '0.65rem',
-              bgcolor: 'rgba(20,184,166,0.1)', color: 'primary.main',
-              border: '1px solid rgba(20,184,166,0.25)' }} />
+              bgcolor: tint(C.brand, 0.1), color: 'primary.main',
+              border: `1px solid ${tint(C.brand, 0.25)}` }} />
         ))}
       </Box>
       {inWindow === true && (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          <CheckCircleOutlineIcon sx={{ fontSize: 13, color: '#10b981' }} />
-          <Typography variant="caption" color="#10b981" fontSize="0.7rem">Müsaitlik penceresinde ✓</Typography>
+          <CheckCircleOutlineIcon sx={{ fontSize: 13, color: C.success }} />
+          <Typography variant="caption" color={C.success} fontSize="0.7rem">Müsaitlik penceresinde ✓</Typography>
         </Box>
       )}
       {inWindow === false && (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          <WarningAmberIcon sx={{ fontSize: 13, color: '#eab308' }} />
-          <Typography variant="caption" color="#eab308" fontSize="0.7rem">
+          <WarningAmberIcon sx={{ fontSize: 13, color: C.warning }} />
+          <Typography variant="caption" color={C.warning} fontSize="0.7rem">
             Müsaitlik penceresi dışında — devam edebilirsiniz
           </Typography>
         </Box>
@@ -223,8 +224,8 @@ export function ShiftAssignDialog({
 
           {/* Çalışan + tarih */}
           <Box sx={{
-            p: 1.5, bgcolor: 'rgba(20,184,166,0.06)', borderRadius: 1.5,
-            border: '1px solid rgba(20,184,166,0.15)',
+            p: 1.5, bgcolor: tint(C.brand, 0.06), borderRadius: 1.5,
+            border: `1px solid ${tint(C.brand, 0.15)}`,
           }}>
             <Typography variant="subtitle2" fontWeight={700}>{employee?.full_name}</Typography>
             <Typography variant="caption" color="text.secondary">{dateLabel}</Typography>
@@ -323,9 +324,9 @@ export function ShiftAssignDialog({
             <Box sx={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               px: 1.5, py: 0.75,
-              bgcolor: mode === 'custom' ? 'rgba(20,184,166,0.06)' : 'rgba(99,102,241,0.08)',
+              bgcolor: mode === 'custom' ? tint(C.brand, 0.06) : tint(C.plum, 0.08),
               borderRadius: 1.5,
-              border: `1px solid ${mode === 'custom' ? 'rgba(20,184,166,0.2)' : 'rgba(99,102,241,0.2)'}`,
+              border: `1px solid ${mode === 'custom' ? tint(C.brand, 0.2) : tint(C.plum, 0.2)}`,
             }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                 <AccessTimeIcon sx={{ fontSize: 14, color: mode === 'custom' ? 'primary.main' : 'secondary.main' }} />
@@ -342,7 +343,7 @@ export function ShiftAssignDialog({
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                 {isOvernight && (
                   <Chip label="gece geçen" size="small" variant="outlined"
-                    sx={{ height: 16, fontSize: '0.6rem', color: '#818cf8', borderColor: 'rgba(129,140,248,0.4)' }} />
+                    sx={{ height: 16, fontSize: '0.6rem', color: C.plum, borderColor: tint(C.plum, 0.4) }} />
                 )}
                 <Chip label={durationLabel} size="small"
                   color={mode === 'custom' ? 'primary' : 'secondary'} variant="outlined"
@@ -371,10 +372,10 @@ export function ShiftAssignDialog({
               color="inherit"
               startIcon={<WeekendIcon sx={{ fontSize: 16 }} />}
               sx={{
-                borderColor: 'rgba(99,102,241,0.4)',
-                color: '#818cf8',
+                borderColor: tint(C.plum, 0.4),
+                color: C.plum,
                 fontSize: '0.78rem',
-                '&:hover': { bgcolor: 'rgba(99,102,241,0.08)', borderColor: '#818cf8' },
+                '&:hover': { bgcolor: tint(C.plum, 0.08), borderColor: C.plum },
               }}
             >
               Haftalık Tatil

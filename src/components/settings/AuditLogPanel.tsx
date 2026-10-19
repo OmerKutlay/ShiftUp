@@ -27,6 +27,7 @@ import { ListSkeleton } from '@/components/common'
 import {
   auditActionLabel, auditChanges, auditSummary, splitAuditNote, type AuditRefs,
 } from '@/lib/auditFormat'
+import { C, tint } from '@/lib/palette'
 
 interface AuditLog {
   id: string
@@ -44,21 +45,21 @@ interface AuditLog {
 interface Page { logs: AuditLog[]; refs: AuditRefs; next_before: string | null }
 
 const GROUP_ICONS: { prefix: string; icon: SvgIconComponent; color: string }[] = [
-  { prefix: 'attendance', icon: AccessTimeIcon, color: '#14b8a6' },
-  { prefix: 'time_correction', icon: AccessTimeIcon, color: '#14b8a6' },
-  { prefix: 'leave', icon: BeachAccessIcon, color: '#f59e0b' },
-  { prefix: 'shift_swap', icon: SwapHorizIcon, color: '#6366f1' },
-  { prefix: 'shift', icon: EventIcon, color: '#60a5fa' },
-  { prefix: 'employee', icon: PersonIcon, color: '#a78bfa' },
-  { prefix: 'workforce', icon: CalendarViewWeekIcon, color: '#60a5fa' },
-  { prefix: 'store_location', icon: PlaceIcon, color: '#10b981' },
-  { prefix: 'holiday', icon: CelebrationIcon, color: '#f472b6' },
-  { prefix: 'report', icon: DescriptionIcon, color: '#94a3b8' },
+  { prefix: 'attendance', icon: AccessTimeIcon, color: C.brand },
+  { prefix: 'time_correction', icon: AccessTimeIcon, color: C.brand },
+  { prefix: 'leave', icon: BeachAccessIcon, color: C.warning },
+  { prefix: 'shift_swap', icon: SwapHorizIcon, color: C.plum },
+  { prefix: 'shift', icon: EventIcon, color: C.info },
+  { prefix: 'employee', icon: PersonIcon, color: C.plum },
+  { prefix: 'workforce', icon: CalendarViewWeekIcon, color: C.info },
+  { prefix: 'store_location', icon: PlaceIcon, color: C.success },
+  { prefix: 'holiday', icon: CelebrationIcon, color: C.plum },
+  { prefix: 'report', icon: DescriptionIcon, color: C.inkMuted },
 ]
 
 function groupOf(action: string) {
   return GROUP_ICONS.find((g) => action === g.prefix || action.startsWith(`${g.prefix}.`))
-    ?? { icon: HistoryIcon, color: '#94a3b8' }
+    ?? { icon: HistoryIcon, color: C.inkMuted }
 }
 
 const FILTERS = [
@@ -138,7 +139,7 @@ function AuditLogCard({ log, refs }: { log: AuditLog; refs: AuditRefs }) {
               </Button>
               <Collapse in={open} unmountOnExit>
                 <Box sx={{
-                  mt: 0.5, p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(15,23,42,0.5)',
+                  mt: 0.5, p: 1.25, borderRadius: 1.5, bgcolor: tint(C.canvas, 0.5),
                   display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'minmax(140px, auto) 1fr' }, columnGap: 2, rowGap: { xs: 0.25, sm: 0.75 },
                 }}>
                   {changes.map((c) => (
