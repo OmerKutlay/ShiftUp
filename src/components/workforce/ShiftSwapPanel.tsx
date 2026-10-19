@@ -12,7 +12,7 @@ import { AlertCircle, ArrowLeftRight, ArrowRight, Check, Info, Loader2, Plus, Tr
 import type { ShiftSwapRequest, CreateSwapRequestPayload } from '@/types/workforce'
 import type { ShiftAssignmentWithDetails } from '@/types/schedule'
 import type { EmployeeWithRole } from '@/types/employee'
-import { EmployeeSelect, EmptyRow, ListSkeleton, PersonAvatar, StatusBadge } from '@/components/common'
+import { EmptyRow, ListSkeleton, PersonAvatar, StatusBadge } from '@/components/common'
 import type { BadgeTone } from '@/components/common'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
@@ -30,7 +30,6 @@ import { Textarea } from '@/components/ui/textarea'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { useLoadedKey } from '@/hooks/useLoadedKey'
-import { keepMuiPopupsInside } from './dialogGuards'
 
 const STATUS_META: Record<string, { label: string; tone: BadgeTone }> = {
   awaiting_target: { label: 'Karşı taraf bekleniyor', tone: 'info' },
@@ -266,7 +265,7 @@ export function ShiftSwapPanel({ employees, assignments, currentEmployeeId, isMa
 
       {/* Yeni takas talebi dialog */}
       <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) closeDialog() }}>
-        <DialogContent {...keepMuiPopupsInside}>
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Takas Talebi Oluştur</DialogTitle>
           </DialogHeader>
@@ -293,13 +292,19 @@ export function ShiftSwapPanel({ employees, assignments, currentEmployeeId, isMa
                 </Select>
               </div>
             )}
-            <EmployeeSelect
-              employees={employees.filter((e) => e.id !== currentEmployeeId)}
-              value={form.target_id ?? ''}
-              label="Takas Yapılacak Çalışan"
-              onChange={(id) => setForm((f) => ({ ...f, target_id: id, target_shift_id: undefined }))}
-              fullWidth
-            />
+            {/* MUI EmployeeSelect'in açılır listesi Radix Dialog içinde tıklanamıyor — shadcn Select */}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="swap-target">Takas yapılacak çalışan</Label>
+              <Select value={form.target_id ?? ''}
+                onValueChange={(id) => setForm((f) => ({ ...f, target_id: id, target_shift_id: undefined }))}>
+                <SelectTrigger id="swap-target" className="w-full"><SelectValue placeholder="Çalışan seçin" /></SelectTrigger>
+                <SelectContent>
+                  {employees.filter((e) => e.id !== currentEmployeeId).map((e) => (
+                    <SelectItem key={e.id} value={e.id}>{e.full_name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             {form.target_id && targetShifts.length > 0 && (
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="swap-target-shift">Karşılığında alınacak vardiya (isteğe bağlı)</Label>
