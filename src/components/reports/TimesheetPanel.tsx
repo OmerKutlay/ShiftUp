@@ -1,44 +1,42 @@
 'use client'
 
 /**
- * TimesheetPanel — aylık puantaj: KPI kartları, kişi şeritleri + takvim detayı ("Kişiler")
- * ya da çalışan × gün kod tablosu ("Tablo"), Excel indirme.
+ * TimesheetPanel — Raporlar › Aylık puantaj.
+ *
+ * Devam raporuyla aynı dil (DESIGN_GUIDE §9): araç çubuğu (ay, görünüm, arama, Excel) → onay uyarısı →
+ * KPI kartları → "Kişiler" (gün şeritli ekip listesi + seçilen kişinin takvim kartı) ya da
+ * "Tablo" (çalışan × gün kod matrisi, yapışkan ad sütunu).
  */
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
-import { AlertCircle, ChevronLeft, Download, Search, TriangleAlert } from 'lucide-react'
+import {
+  ArrowRight, CalendarDays, CalendarX2, ChevronLeft, Clock3, Download, Search, Timer, TriangleAlert, UserX,
+} from 'lucide-react'
 import { apiFetch } from '@/lib/api/http'
-import { monthDays, TIMESHEET_CODE_LABELS, type TimesheetCode, type TimesheetRow } from '@/lib/timesheet'
-import { turkeyToday } from '@/lib/dateUtils'
-import { PeriodStepper, SegmentedControl, StatCard, TableSkeleton } from '@/components/common'
+import { monthDays, TIMESHEET_CODE_LABELS, type TimesheetRow } from '@/lib/timesheet'
+import { dayOfWeekFromDateString, turkeyToday } from '@/lib/dateUtils'
+import { PeriodStepper, SegmentedControl, StatCard, StatCards, TableSkeleton } from '@/components/common'
 import type { PublicHoliday } from '@/types/holiday'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Card, CardAction, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group'
+import { Skeleton } from '@/components/ui/skeleton'
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { cn } from '@/lib/utils'
-import { PersonCard, PersonDetail, PersonRow, PEOPLE_GRID, StripAxis, StripLegend } from './TimesheetPeople'
-import { hoursLabel, monthLabel, shiftMonth, summarizeTimesheet, type TimesheetKpis } from './timesheetSummary'
-
-// Yeni UI puantaj lejantı: çalıştı yeşil, resmi tatilde çalıştı kiremit, devamsız kırmızı …
-const CODE_COLOR: Partial<Record<TimesheetCode, string>> = {
-  'Ç': 'text-success',
-  'RTÇ': 'text-brand',
-  'HT': 'text-ink-muted',
-  'RT': 'text-warning',
-  'Yİ': 'text-info',
-  'Rİ': 'text-plum',
-  'Üİ': 'text-ink-muted',
-  'Mİ': 'text-plum',
-  'D': 'text-danger',
-  'P': 'text-neutral',
-}
+import { PEOPLE_GRID, PersonDetailCard, PersonItem, PersonRow, StripAxis, StripLegend } from './TimesheetPeople'
+import {
+  CALENDAR_TONE, LEGEND_ORDER, hoursLabel, monthLabel, shiftMonth, summarizeTimesheet, type TimesheetKpis,
+} from './timesheetSummary'
 
 type View = 'people' | 'table'
+
+const normalize = (s: string) => s.toLocaleLowerCase('tr-TR')
 
 export function TimesheetPanel() {
   const isMobile = useIsMobile()
@@ -58,12 +56,12 @@ export function TimesheetPanel() {
   const rows = useMemo(() => data?.rows ?? [], [data])
   const kpis = useMemo(() => summarizeTimesheet(rows, month, today), [rows, month, today])
   const filtered = useMemo(() => {
-    const q = query.trim().toLocaleLowerCase('tr-TR')
-    return q ? rows.filter((r) => r.employee.full_name.toLocaleLowerCase('tr-TR').includes(q)) : rows
+    const q = normalize(query.trim())
+    return q ? rows.filter((r) => normalize(r.employee.full_name).includes(q)) : rows
   }, [rows, query])
   const selected = rows.find((r) => r.employee.id === selectedId) ?? filtered[0] ?? null
   const monthText = monthLabel(month)
-  // Bugün bu ayda değilse şeritte çerçeveli gün olmaz
+  // Bugün bu ayda değilse şeritte işaretli gün olmaz
   const stripToday = today.startsWith(month) ? today : ''
 
   const changeMonth = (n: number) => {
@@ -74,86 +72,116 @@ export function TimesheetPanel() {
   // ── Mobil kişi takvimi ──
   if (isMobile && detailOpen && selected) {
     return (
-      <div>
-        <Button variant="ghost" onClick={() => setDetailOpen(false)} className="mb-3 -ml-2 text-[0.95rem]">
-          <ChevronLeft className="size-5" /> Aylık puantaj
+      <div className="flex flex-col gap-3">
+        <Button variant="ghost" onClick={() => setDetailOpen(false)} className="-ml-2 w-fit">
+          <ChevronLeft /> Aylık puantaj
         </Button>
-        <div className="rounded-2xl border bg-card p-4">
-          <PersonDetail row={selected} days={days} today={stripToday} monthText={monthText} compact />
-        </div>
+        <PersonDetailCard row={selected} days={days} today={stripToday} monthText={monthText} />
       </div>
     )
   }
 
+  const excelLabel = 'Excel olarak indir'
+
   return (
-    <div>
-      {/* Araç çubuğu */}
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <PeriodStepper
-          label={monthText}
-          onPrev={() => changeMonth(-1)}
-          onNext={() => changeMonth(1)}
-          prevLabel="Önceki ay"
-          nextLabel="Sonraki ay"
-          minLabelWidth={110}
-        />
-        {!isMobile && (
-          <SegmentedControl
-            aria-label="Görünüm"
-            value={view}
-            onChange={setView}
-            options={[{ value: 'people', label: 'Kişiler' }, { value: 'table', label: 'Tablo' }]}
+    <div className="flex flex-col gap-4 md:gap-6">
+      {/* Araç çubuğu: ay · görünüm · arama · Excel */}
+      <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center">
+        <div className="flex items-center gap-2">
+          <PeriodStepper
+            label={monthText}
+            onPrev={() => changeMonth(-1)}
+            onNext={() => changeMonth(1)}
+            prevLabel="Önceki ay"
+            nextLabel="Sonraki ay"
+            minLabelWidth={112}
           />
-        )}
-        <span className="flex-1" />
+          {!isMobile && (
+            <SegmentedControl
+              aria-label="Görünüm"
+              value={view}
+              onChange={setView}
+              options={[{ value: 'people', label: 'Kişiler' }, { value: 'table', label: 'Tablo' }]}
+            />
+          )}
+        </div>
+        <InputGroup className="md:w-56">
+          <InputGroupInput placeholder="Çalışan ara…" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Çalışan ara" />
+          <InputGroupAddon><Search /></InputGroupAddon>
+        </InputGroup>
         {data ? (
-          <Button asChild>
+          <Button variant="outline" asChild className="md:ml-auto">
             <a href={`/api/reports/timesheet?month=${month}&format=xlsx`}>
-              <Download /> {isMobile ? 'Excel' : 'Excel olarak indir'}
+              <Download /> {excelLabel}
             </a>
           </Button>
         ) : (
-          <Button disabled><Download /> {isMobile ? 'Excel' : 'Excel olarak indir'}</Button>
+          <Button variant="outline" disabled className="md:ml-auto"><Download /> {excelLabel}</Button>
         )}
       </div>
 
       {error && (
-        <Alert tone="danger" className="mb-4">
-          <AlertCircle />
-          <AlertDescription className="text-ink">{error instanceof Error ? error.message : 'Puantaj yüklenemedi.'}</AlertDescription>
+        <Alert variant="destructive">
+          <TriangleAlert />
+          <AlertTitle>Puantaj yüklenemedi</AlertTitle>
+          <AlertDescription>{error instanceof Error ? error.message : 'Bilinmeyen hata'}</AlertDescription>
         </Alert>
       )}
 
       {kpis.missingConsent.length > 0 && (
-        <div role="status" className="mb-4 flex flex-wrap items-center gap-2.5 rounded-xl bg-warning-soft px-4 py-2.5 text-[0.8rem]">
-          <TriangleAlert className="size-4 shrink-0 text-warning" />
-          <p className="min-w-[200px] flex-1">
-            {isMobile ? (
-              <b>{kpis.missingConsent.length} kişinin fazla çalışma onayı eksik</b>
-            ) : (
-              <>
-                <b>Fazla çalışma onayı eksik:</b> {kpis.missingConsent.join(', ')} — İş Kanunu Md. 41 gereği yazılı onay gerekir.
-              </>
-            )}
-          </p>
-          {!isMobile && (
-            <Link href="/employees" className="font-bold hover:underline">Çalışanlara git →</Link>
-          )}
-        </div>
+        <Alert tone="warning" role="status" className="md:pr-48">
+          <TriangleAlert />
+          <AlertTitle>
+            {kpis.missingConsent.length === 1
+              ? 'Fazla çalışma onayı eksik'
+              : `${kpis.missingConsent.length} kişinin fazla çalışma onayı eksik`}
+          </AlertTitle>
+          <AlertDescription>
+            <p>
+              <span className="font-medium text-foreground">{kpis.missingConsent.join(', ')}</span>
+              {' '}— İş Kanunu Md. 41 gereği yazılı onay gerekir.
+            </p>
+          </AlertDescription>
+          <Button
+            variant="outline"
+            size="sm"
+            asChild
+            className="col-start-2 mt-2 w-fit md:absolute md:top-1/2 md:right-4 md:mt-0 md:-translate-y-1/2"
+          >
+            <Link href="/employees">Çalışanlara git <ArrowRight /></Link>
+          </Button>
+        </Alert>
       )}
 
-      {isLoading && !data && <TableSkeleton rows={6} />}
-
-      {data && (
+      {isLoading && !data ? (
         <>
-          <KpiCards kpis={kpis} isMobile={isMobile} />
+          <div className="grid grid-cols-2 gap-3 md:gap-4 @5xl/main:grid-cols-4">
+            {Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-[124px] rounded-xl" />)}
+          </div>
+          <TableSkeleton rows={8} columns={6} />
+        </>
+      ) : data && (
+        <>
+          <KpiCards kpis={kpis} />
 
-          {view === 'table' && !isMobile ? (
-            <CodeTable rows={filtered} days={days} holidays={data.holidays} />
+          {rows.length === 0 || filtered.length === 0 ? (
+            <div className="rounded-lg border">
+              <Empty className="py-12">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon"><CalendarX2 /></EmptyMedia>
+                  <EmptyTitle>{rows.length === 0 ? 'Puantaj kaydı yok' : 'Eşleşen çalışan yok'}</EmptyTitle>
+                  <EmptyDescription>
+                    {rows.length === 0 ? `${monthText} için planlanmış vardiya bulunmuyor.` : 'Aramayı değiştirin ya da temizleyin.'}
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            </div>
+          ) : view === 'table' && !isMobile ? (
+            <CodeTable rows={filtered} days={days} holidays={data.holidays} today={stripToday} />
           ) : isMobile ? (
-            <div className="flex flex-col gap-2.5">
+            <div className="flex flex-col gap-2">
               {filtered.map((r) => (
-                <PersonCard
+                <PersonItem
                   key={r.employee.id}
                   row={r}
                   days={days}
@@ -165,50 +193,48 @@ export function TimesheetPanel() {
                   }}
                 />
               ))}
+              <div className="px-1 pt-2"><StripLegend today={stripToday} /></div>
             </div>
           ) : (
-            <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
-              <section className="overflow-hidden rounded-2xl border bg-card">
-                <div className="flex items-center gap-3 px-4 pt-3.5 pb-2">
-                  <h2 className="text-[0.9rem] font-bold">Ekip</h2>
-                  <span className="flex-1 text-xs text-ink-secondary">Ayın her günü bir kutu</span>
-                  <div className="relative w-56">
-                    <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-ink-muted" />
-                    <Input
-                      value={query}
-                      onChange={(e) => setQuery(e.target.value)}
-                      placeholder="Çalışan ara…"
-                      aria-label="Çalışan ara"
-                      className="h-9 pl-8 text-[0.8rem]"
-                    />
-                  </div>
-                </div>
-                <div className={cn(PEOPLE_GRID, 'px-4 pb-1')}>
-                  <span />
+            <div className="grid items-start gap-4 md:gap-6 @6xl/main:grid-cols-[minmax(0,1fr)_25rem]">
+              <Card className="gap-0 overflow-hidden py-0 shadow-xs">
+                <CardHeader className="px-6 pt-5 pb-4">
+                  <CardTitle>Ekip</CardTitle>
+                  <CardDescription>Ayın her günü bir kutu — ayrıntı için kişiyi seçin</CardDescription>
+                  <CardAction>
+                    <Badge variant="secondary" className="tabular-nums">{filtered.length} çalışan</Badge>
+                  </CardAction>
+                </CardHeader>
+                <div className={cn(PEOPLE_GRID, 'items-end px-6 pb-2 text-xs text-muted-foreground')}>
+                  <span>Çalışan</span>
                   <StripAxis days={days} today={stripToday} />
-                  <span />
+                  <span className="text-right">Net çalışma</span>
                 </div>
-                {filtered.map((r) => (
-                  <PersonRow
-                    key={r.employee.id}
-                    row={r}
-                    days={days}
-                    today={stripToday}
-                    selected={selected?.employee.id === r.employee.id}
-                    onSelect={() => setSelectedId(r.employee.id)}
-                  />
-                ))}
-                {filtered.length === 0 && (
-                  <p className="border-t px-4 py-6 text-sm text-ink-secondary">Eşleşen çalışan yok.</p>
-                )}
-                <div className="border-t px-4 py-3">
-                  <StripLegend today={today} />
+                <div role="list" aria-label="Ekip puantajı">
+                  {filtered.map((r) => (
+                    <div role="listitem" key={r.employee.id}>
+                      <PersonRow
+                        row={r}
+                        days={days}
+                        today={stripToday}
+                        selected={selected?.employee.id === r.employee.id}
+                        onSelect={() => setSelectedId(r.employee.id)}
+                      />
+                    </div>
+                  ))}
                 </div>
-              </section>
+                <div className="border-t bg-muted/40 px-6 py-3">
+                  <StripLegend today={stripToday} />
+                </div>
+              </Card>
               {selected && (
-                <section className="rounded-2xl border bg-card p-4 lg:sticky lg:top-4">
-                  <PersonDetail row={selected} days={days} today={stripToday} monthText={monthText} />
-                </section>
+                <PersonDetailCard
+                  row={selected}
+                  days={days}
+                  today={stripToday}
+                  monthText={monthText}
+                  className="@6xl/main:sticky @6xl/main:top-4"
+                />
               )}
             </div>
           )}
@@ -220,103 +246,158 @@ export function TimesheetPanel() {
 
 // ─── KPI kartları ─────────────────────────────────────────────
 
-function KpiCards({ kpis, isMobile }: { kpis: TimesheetKpis; isMobile: boolean }) {
-  const consentNote = kpis.missingConsent.length > 0 ? `${kpis.missingConsent.length} kişide onay eksik` : 'onaylar tamam'
-  const cards = [
-    {
-      label: isMobile ? 'Net çalışma' : 'Toplam net çalışma',
-      value: `${hoursLabel(kpis.netMins)} s`,
-      note: isMobile
-        ? `${kpis.people} çalışan`
-        : [`${kpis.people} çalışan`, kpis.daysLeft !== null && `ay sonuna ${kpis.daysLeft} gün`].filter(Boolean).join(' · '),
-    },
-    {
-      label: 'Fazla çalışma',
-      value: `${hoursLabel(kpis.overtimeMins)} s`,
-      note: isMobile ? consentNote : `${kpis.overtimePeople} çalışan · ${consentNote}`,
-    },
-    {
-      label: 'Devamsızlık',
-      value: `${kpis.absentDays} gün`,
-      note: kpis.absentNames.length === 0
-        ? 'devamsızlık yok'
-        : kpis.absentNames.slice(0, 3).join(', ') + (kpis.absentNames.length > 3 ? ` +${kpis.absentNames.length - 3}` : ''),
-    },
-    {
-      label: 'İzin ve rapor',
-      value: `${kpis.leaveDays} gün`,
-      note: `${kpis.annualLeaveDays} yıllık izin · ${kpis.sickDays} rapor`,
-    },
-  ]
-  const shown = isMobile ? cards.slice(0, 2) : cards
+function KpiCards({ kpis }: { kpis: TimesheetKpis }) {
+  const missing = kpis.missingConsent.length
   return (
-    <div className="mb-4 grid grid-cols-2 gap-2.5 md:grid-cols-4 md:gap-4">
-      {shown.map((c) => <StatCard key={c.label} label={c.label} value={c.value} note={c.note} />)}
-    </div>
+    <StatCards>
+      <StatCard
+        icon={<Clock3 />}
+        label="Toplam net çalışma"
+        value={`${hoursLabel(kpis.netMins)} s`}
+        hint={[`${kpis.people} çalışan`, kpis.daysLeft !== null && `ay sonuna ${kpis.daysLeft} gün`].filter(Boolean).join(' · ')}
+      />
+      <StatCard
+        icon={<Timer />}
+        label="Fazla çalışma"
+        value={`${hoursLabel(kpis.overtimeMins)} s`}
+        hint={kpis.overtimePeople > 0 ? `${kpis.overtimePeople} çalışan · ${missing > 0 ? `${missing} kişide onay eksik` : 'onaylar tamam'}` : 'Fazla çalışma yok'}
+      />
+      <StatCard
+        icon={<UserX />}
+        label="Devamsızlık"
+        value={`${kpis.absentDays} gün`}
+        valueClassName={kpis.absentDays > 0 ? 'text-destructive' : undefined}
+        hint={kpis.absentNames.length === 0
+          ? 'Devamsızlık yok'
+          : kpis.absentNames.slice(0, 3).join(', ') + (kpis.absentNames.length > 3 ? ` +${kpis.absentNames.length - 3}` : '')}
+      />
+      <StatCard
+        icon={<CalendarDays />}
+        label="İzin ve rapor"
+        value={`${kpis.leaveDays} gün`}
+        hint={`${kpis.annualLeaveDays} yıllık izin · ${kpis.sickDays} rapor`}
+      />
+    </StatCards>
   )
 }
 
 // ─── Tablo görünümü: çalışan × gün kodları ────────────────────
 
-function CodeTable({ rows, days, holidays: holidayList }: { rows: TimesheetRow[]; days: string[]; holidays: PublicHoliday[] }) {
+const WEEKDAY_INITIALS = ['Pz', 'Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct']
+const isWeekend = (d: string) => {
+  const w = dayOfWeekFromDateString(d)
+  return w === 0 || w === 6
+}
+
+function CodeTable({ rows, days, holidays: holidayList, today }: {
+  rows: TimesheetRow[]; days: string[]; holidays: PublicHoliday[]; today: string
+}) {
   const holidays = new Map(holidayList.map((h) => [h.date, h]))
+  /** Gün sütunu zemini: resmi tatil > hafta sonu */
+  const dayTint = (d: string) => {
+    const h = holidays.get(d)
+    if (h) return h.half_day ? 'bg-warning/5' : 'bg-warning/10'
+    return isWeekend(d) ? 'bg-muted/60' : undefined
+  }
+  const sticky = 'sticky left-0 after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-border'
+  const total = 'px-3 text-right tabular-nums'
+
   return (
-    <>
-      <p className="mb-2 text-xs text-ink-secondary">
-        Kodlar: {Object.entries(TIMESHEET_CODE_LABELS).map(([k, v]) => `${k} ${v}`).join(' · ')}
-      </p>
-      <div className="max-h-[70dvh] overflow-auto rounded-2xl border bg-card">
-        <Table className="[&_td]:border-b">
-          <TableHeader className="sticky top-0 z-[2] bg-card">
+    <div className="flex min-w-0 flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+        {LEGEND_ORDER.map((c) => (
+          <span key={c} className="flex items-center gap-1.5">
+            <span className="w-7 text-center font-semibold" style={{ color: CALENDAR_TONE[c].fg }}>{c}</span>
+            {TIMESHEET_CODE_LABELS[c]}
+          </span>
+        ))}
+      </div>
+
+      <div className="max-h-[70dvh] overflow-auto rounded-lg border">
+        <table className="w-full border-separate border-spacing-0 text-sm">
+          <TableHeader className="sticky top-0 z-20 bg-muted [&_tr]:border-0">
             <TableRow className="hover:bg-transparent">
-              <TableHead className="sticky left-0 z-[3] min-w-40 bg-card">Çalışan</TableHead>
+              <TableHead className={cn(sticky, 'z-30 h-12 min-w-48 border-b bg-muted px-4')}>Çalışan</TableHead>
               {days.map((d) => {
                 const h = holidays.get(d)
-                const cell = (
-                  <TableHead key={d} className={cn('min-w-[34px] px-1 text-center', h && !h.half_day && 'bg-warning-soft')}>
-                    {Number(d.slice(8))}
+                const head = (
+                  <TableHead
+                    key={d}
+                    className={cn(
+                      'h-12 w-9 min-w-9 border-b px-0 text-center leading-tight',
+                      dayTint(d),
+                      d === today && 'text-primary'
+                    )}
+                  >
+                    <span className="block tabular-nums">{Number(d.slice(8))}</span>
+                    <span className={cn('block text-xs font-normal', d === today ? 'text-primary' : 'text-muted-foreground')}>
+                      {WEEKDAY_INITIALS[dayOfWeekFromDateString(d)]}
+                    </span>
                   </TableHead>
                 )
                 return h ? (
                   <Tooltip key={d}>
-                    <TooltipTrigger asChild>{cell}</TooltipTrigger>
-                    <TooltipContent>{h.name}</TooltipContent>
+                    <TooltipTrigger asChild>{head}</TooltipTrigger>
+                    <TooltipContent>{h.name}{h.half_day ? ' (yarım gün)' : ''}</TooltipContent>
                   </Tooltip>
-                ) : cell
+                ) : head
               })}
-              <TableHead className="text-right">Net s</TableHead>
-              <TableHead className="text-right">Fazla s</TableHead>
-              <TableHead className="text-right">Gece s</TableHead>
-              <TableHead className="text-right">RT gün</TableHead>
-              <TableHead className="text-right">SGK</TableHead>
+              <TableHead className={cn(total, 'border-b border-l')}>Net s</TableHead>
+              <TableHead className={cn(total, 'border-b')}>Fazla s</TableHead>
+              <TableHead className={cn(total, 'border-b')}>Gece s</TableHead>
+              <TableHead className={cn(total, 'border-b')}>RT gün</TableHead>
+              <TableHead className={cn(total, 'border-b')}>SGK</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
+          <TableBody className="[&_tr:last-child_td]:border-b-0">
             {rows.map((r) => (
-              <TableRow key={r.employee.id}>
-                <TableCell className="sticky left-0 min-w-40 bg-card font-semibold">{r.employee.full_name}</TableCell>
+              <TableRow key={r.employee.id} className="group border-0 hover:bg-transparent">
+                <TableCell className={cn(sticky, 'z-10 h-10 border-b bg-background px-4 font-medium group-hover:bg-muted')}>
+                  <span className="block max-w-56 truncate">{r.employee.full_name}</span>
+                </TableCell>
                 {days.map((d) => {
                   const code = r.days[d] ?? ''
                   return (
-                    <TableCell key={d} className={cn('px-0.5 text-center text-[0.7rem] font-bold', CODE_COLOR[code])}>
+                    <TableCell
+                      key={d}
+                      title={code ? `${Number(d.slice(8))}: ${TIMESHEET_CODE_LABELS[code]}` : undefined}
+                      className={cn('h-10 border-b px-0 text-center text-xs font-semibold group-hover:bg-muted', dayTint(d))}
+                      style={{ color: CALENDAR_TONE[code].fg }}
+                    >
                       {code}
                     </TableCell>
                   )
                 })}
-                <TableCell className="text-right">{hoursLabel(r.workedMins)}</TableCell>
-                <TableCell className="text-right">
+                <TableCell className={cn(total, 'border-b border-l font-medium group-hover:bg-muted')}>{hoursLabel(r.workedMins)}</TableCell>
+                <TableCell className={cn(total, 'border-b group-hover:bg-muted')}>
                   {r.overtimeMins > 0 ? (
-                    <Badge tone={r.overtimeWithoutConsent ? 'warning' : 'neutral'} className="h-5">{hoursLabel(r.overtimeMins)}</Badge>
-                  ) : '—'}
+                    r.overtimeWithoutConsent
+                      ? <Badge tone="warning" title="Yazılı onay yok">{hoursLabel(r.overtimeMins)}</Badge>
+                      : hoursLabel(r.overtimeMins)
+                  ) : <span className="text-muted-foreground">—</span>}
                 </TableCell>
-                <TableCell className="text-right">{r.nightMins > 0 ? hoursLabel(r.nightMins) : '—'}</TableCell>
-                <TableCell className="text-right">{r.holidayWorkedDays || '—'}</TableCell>
-                <TableCell className="text-right">{r.sgkDays}</TableCell>
+                <TableCell className={cn(total, 'border-b group-hover:bg-muted')}>
+                  {r.nightMins > 0 ? hoursLabel(r.nightMins) : <span className="text-muted-foreground">—</span>}
+                </TableCell>
+                <TableCell className={cn(total, 'border-b group-hover:bg-muted')}>
+                  {r.holidayWorkedDays || <span className="text-muted-foreground">—</span>}
+                </TableCell>
+                <TableCell className={cn(total, 'border-b group-hover:bg-muted')}>{r.sgkDays}</TableCell>
               </TableRow>
             ))}
           </TableBody>
-        </Table>
+        </table>
       </div>
-    </>
+      <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1.5">
+          <span aria-hidden className="size-3 rounded-xs border bg-warning/10" />
+          Resmi tatil (üzerine gelince adı görünür)
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span aria-hidden className="size-3 rounded-xs border bg-muted" />
+          Hafta sonu
+        </span>
+      </p>
+    </div>
   )
 }
