@@ -240,8 +240,8 @@ export function QrKioskPage() {
       className={cn(
         'flex min-h-dvh flex-col bg-muted/40',
         // Kabuksuz tam ekran: iOS çentik / ana ekran çubuğu için güvenli alan kendi dolgumuzda
-        'pt-[max(1rem,var(--app-top))] pr-[max(1rem,env(safe-area-inset-right))] pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))]',
-        'md:pt-[max(1.5rem,var(--app-top))] md:pr-[max(2rem,env(safe-area-inset-right))] md:pb-[max(1.5rem,env(safe-area-inset-bottom))] md:pl-[max(2rem,env(safe-area-inset-left))]'
+        'pt-[max(1rem,var(--app-top))] pr-[max(1rem,env(safe-area-inset-right))] pb-[max(1rem,var(--safe-bottom))] pl-[max(1rem,env(safe-area-inset-left))]',
+        'md:pt-[max(1.5rem,var(--app-top))] md:pr-[max(2rem,env(safe-area-inset-right))] md:pb-[max(1.5rem,var(--safe-bottom))] md:pl-[max(2rem,env(safe-area-inset-left))]'
       )}
     >
       {/* Üst çubuk: marka + mağaza, sağda eylemler */}

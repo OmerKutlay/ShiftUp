@@ -45,7 +45,7 @@ export function ServiceWorkerUpdater({ onVisibleChange }: Props) {
       role="status"
       aria-live="polite"
       // Mobilde alt navigasyonun ve taşan QR düğmesinin üstünde kalsın
-      className="fixed left-1/2 z-[1400] flex w-max max-w-[calc(100vw-24px)] -translate-x-1/2 items-center gap-3 rounded-xl border bg-popover py-2 pr-2 pl-3 text-popover-foreground shadow-lg animate-in fade-in-0 slide-in-from-bottom-2 duration-200 bottom-[calc(var(--overlay-offset)+env(safe-area-inset-bottom))] md:bottom-6"
+      className="fixed left-1/2 z-[1400] flex w-max max-w-[calc(100vw-24px)] -translate-x-1/2 items-center gap-3 rounded-xl border bg-popover py-2 pr-2 pl-3 text-popover-foreground shadow-lg animate-in fade-in-0 slide-in-from-bottom-2 duration-200 bottom-[calc(var(--overlay-offset)+var(--safe-bottom))] md:bottom-6"
       style={{ '--overlay-offset': `${BOTTOM_NAV_OVERLAY_OFFSET}px` } as React.CSSProperties}
     >
       <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-md border bg-muted [&_svg]:size-4">
