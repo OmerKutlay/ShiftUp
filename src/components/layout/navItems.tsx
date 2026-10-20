@@ -127,3 +127,14 @@ export function groupNavItems(items: NavItem[]): Array<{ group: NavGroup; label:
     .map((group) => ({ group, label: NAV_GROUP_LABELS[group], items: items.filter((i) => i.group === group) }))
     .filter((g) => g.items.length > 0)
 }
+
+/** Üst çubuk / breadcrumb için sayfa başlığı ve grup adı (en uzun eşleşen öğe) */
+export function pageMetaFor(pathname: string): { title: string; group: string | null } {
+  const items = [...NAV_ITEMS, NOTIFICATIONS_ITEM]
+  const match = items
+    .filter((i) => isNavActive(pathname, i.href))
+    .sort((a, b) => b.href.length - a.href.length)[0]
+  if (match) return { title: match.label, group: NAV_GROUP_LABELS[match.group] }
+  if (pathname === MORE_HREF) return { title: 'Daha fazla', group: null }
+  return { title: 'ShiftUp', group: null }
+}

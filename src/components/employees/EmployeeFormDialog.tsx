@@ -1,22 +1,33 @@
 'use client'
 
-import { useState, useCallback } from 'react'
-import { AlertCircle, Loader2, Mail, RefreshCw, X } from 'lucide-react'
-import type { EmployeeWithRole, Role, CreateEmployeePayload, UpdateEmployeePayload, EmploymentType } from '@/types/employee'
-import { EMPLOYMENT_TYPE_LABELS } from '@/types/employee'
-import { ACCESS, ACCESS_LABELS } from '@/lib/auth/roles'
-import { DateField, SegmentedControl } from '@/components/common'
+/**
+ * EmployeeFormDialog — çalışan oluştur / düzenle (DESIGN_GUIDE §5 "Formlar").
+ * Bölümler: kişi bilgileri → rol ve çalışma tipi → özlük tarihleri → (düzenlemede) durum.
+ */
+import { useCallback, useState } from 'react'
 import { format } from 'date-fns'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Mail, RefreshCw, TriangleAlert } from 'lucide-react'
+
+import type { CreateEmployeePayload, EmployeeWithRole, EmploymentType, Role, UpdateEmployeePayload } from '@/types/employee'
+import { ACCESS, ACCESS_LABELS } from '@/lib/auth/roles'
+import { DateField } from '@/components/common'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet,
+  FieldTitle,
+} from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@/components/ui/input-group'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
-import { cn } from '@/lib/utils'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { EMPLOYMENT_HINTS, EMPLOYMENT_LABELS, roleSummary } from './format'
 
 interface Props {
   open: boolean
@@ -63,7 +74,7 @@ function toFormState(emp: EmployeeWithRole): FormState {
 }
 
 /**
- * İsimden email önerisi üretir.
+ * İsimden e-posta önerisi üretir.
  * "Ahmet Kaya" → "ahmet.kaya@shiftup.test"
  * Türkçe karakterleri normalize eder.
  */
@@ -81,32 +92,12 @@ function generateEmail(fullName: string): string {
   return normalized ? `${normalized}@shiftup.test` : ''
 }
 
-/** Etiket + alan + yardım/hata metni */
-function Field({ id, label, error, helper, className, children }: {
-  id: string
-  label: string
-  error?: string
-  helper?: React.ReactNode
-  className?: string
-  children: React.ReactNode
-}) {
-  return (
-    <div className={cn('flex flex-col gap-1.5', className)}>
-      <Label htmlFor={id}>{label}</Label>
-      {children}
-      {error ? (
-        <p id={`${id}-msg`} className="text-xs text-danger">{error}</p>
-      ) : helper ? (
-        <p id={`${id}-msg`} className="text-xs text-ink-muted">{helper}</p>
-      ) : null}
-    </div>
-  )
-}
-
 function isValidEmail(email: string): boolean {
   if (email === '') return true  // boş bırakılabilir
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 }
+
+const EMPLOYMENT_TYPES = Object.keys(EMPLOYMENT_LABELS) as EmploymentType[]
 
 export function EmployeeFormDialog({ open, onClose, onSave, employee, roles, loading }: Props) {
   const isEdit = !!employee
@@ -115,12 +106,12 @@ export function EmployeeFormDialog({ open, onClose, onSave, employee, roles, loa
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({})
   const [submitError, setSubmitError] = useState<string | null>(null)
 
-  // İsim değişince email henüz el ile girilmemişse otomatik güncelle
+  // İsim değişince e-posta henüz el ile girilmemişse otomatik güncelle
   const handleNameChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const newName = e.target.value
     setForm((f) => {
       const autoEmail = generateEmail(newName)
-      // Mevcut email ya boşsa ya da önceki isimden türetilmişse güncelle
+      // Mevcut e-posta ya boşsa ya da önceki isimden türetilmişse güncelle
       const prevAuto = generateEmail(f.full_name)
       const shouldAutoUpdate = !isEdit && (f.email === '' || f.email === prevAuto)
       return { ...f, full_name: newName, email: shouldAutoUpdate ? autoEmail : f.email }
@@ -133,7 +124,7 @@ export function EmployeeFormDialog({ open, onClose, onSave, employee, roles, loa
     setErrors((err) => ({ ...err, email: undefined }))
   }
 
-  // Üret butonuna basılınca isimden email yeniden oluştur
+  // Üret düğmesine basılınca isimden e-posta yeniden oluştur
   const regenerateEmail = () => {
     const generated = generateEmail(form.full_name)
     setForm((f) => ({ ...f, email: generated }))
@@ -144,6 +135,7 @@ export function EmployeeFormDialog({ open, onClose, onSave, employee, roles, loa
   const selectableRoles = [...roles]
     .filter((r) => r.access_level !== ACCESS.KIOSK || r.id === form.role_id)
     .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name, 'tr'))
+  const selectedRole = roles.find((r) => r.id === form.role_id)
 
   const handleRoleChange = (value: string) => {
     setForm((f) => ({ ...f, role_id: value }))
@@ -152,9 +144,9 @@ export function EmployeeFormDialog({ open, onClose, onSave, employee, roles, loa
 
   function validate(): boolean {
     const next: typeof errors = {}
-    if (!form.full_name.trim()) next.full_name = 'Ad Soyad zorunludur.'
+    if (!form.full_name.trim()) next.full_name = 'Ad soyad zorunludur.'
     if (!form.role_id) next.role_id = 'Sistem rolü zorunludur.'
-    if (form.email && !isValidEmail(form.email)) next.email = 'Geçerli bir email adresi girin.'
+    if (form.email && !isValidEmail(form.email)) next.email = 'Geçerli bir e-posta adresi girin.'
     setErrors(next)
     return Object.keys(next).length === 0
   }
@@ -179,164 +171,209 @@ export function EmployeeFormDialog({ open, onClose, onSave, employee, roles, loa
     }
   }
 
+  const today = format(new Date(), 'yyyy-MM-dd')
+
   return (
-    <Dialog open={open} onOpenChange={(next) => { if (!next) onClose() }}>
-      <DialogContent className="sm:max-w-xl">
+    <Dialog open={open} onOpenChange={(next) => { if (!next && !loading) onClose() }}>
+      <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{isEdit ? 'Çalışanı Düzenle' : 'Yeni Çalışan Ekle'}</DialogTitle>
+          <DialogTitle>{isEdit ? 'Çalışanı düzenle' : 'Çalışan ekle'}</DialogTitle>
           <DialogDescription>
-            {isEdit ? 'Çalışanın bilgilerini güncelleyin.' : 'Kişisel bilgileri ve çalışma tipini girin.'}
+            {isEdit ? `${employee.full_name} için bilgileri güncelleyin.` : 'Kişi bilgilerini, sistem rolünü ve çalışma tipini girin.'}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          {submitError && (
-            <Alert tone="danger" className="pr-10 sm:col-span-2">
-              <AlertCircle />
-              <AlertDescription className="text-ink">{submitError}</AlertDescription>
-              <button
-                type="button"
-                aria-label="Kapat"
-                onClick={() => setSubmitError(null)}
-                className="absolute top-2 right-2 flex size-7 items-center justify-center rounded-lg text-ink-secondary hover:bg-card/60"
-              >
-                <X className="size-4" />
-              </button>
-            </Alert>
-          )}
-
-          {/* Ad Soyad */}
-          <Field id="emp-full-name" label="Ad Soyad" error={errors.full_name} className="sm:col-span-2">
-            <Input
-              id="emp-full-name"
-              value={form.full_name}
-              onChange={handleNameChange}
-              aria-invalid={!!errors.full_name || undefined}
-              aria-describedby={errors.full_name ? 'emp-full-name-msg' : undefined}
-              autoFocus
-            />
-          </Field>
-
-          {/* Email */}
-          <Field
-            id="emp-email"
-            label="E-posta"
-            error={errors.email}
-            helper={<>Sisteme giriş için kullanılır.{!isEdit && form.full_name && ' İsimden otomatik önerildi.'}</>}
-            className="sm:col-span-2"
-          >
-            <div className="relative">
-              <Mail aria-hidden className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-secondary" />
-              <Input
-                id="emp-email"
-                type="email"
-                value={form.email}
-                onChange={handleEmailChange}
-                aria-invalid={!!errors.email || undefined}
-                aria-describedby="emp-email-msg"
-                className="pr-11 pl-9"
-              />
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                onClick={regenerateEmail}
-                disabled={!form.full_name.trim()}
-                aria-label="Email üret"
-                title="İsimden email üret"
-                className="absolute top-1/2 right-0.5 -translate-y-1/2 text-ink-secondary"
-              >
-                <RefreshCw />
-              </Button>
-            </div>
-          </Field>
-
-          {/* Sistem Rolü — yetki ve planlama grubu buradan gelir */}
-          <Field id="emp-system-role" label="Sistem rolü" error={errors.role_id} className="sm:col-span-2">
-            <Select value={form.role_id || undefined} onValueChange={handleRoleChange}>
-              <SelectTrigger
-                id="emp-system-role"
-                className="w-full"
-                aria-invalid={!!errors.role_id || undefined}
-                aria-describedby={errors.role_id ? 'emp-system-role-msg' : undefined}
-              >
-                <SelectValue placeholder="Rol seçin" />
-              </SelectTrigger>
-              <SelectContent>
-                {selectableRoles.map((r) => (
-                  <SelectItem key={r.id} value={r.id}>
-                    {r.name}
-                    <span className="text-ink-muted">— {ACCESS_LABELS[r.access_level]}</span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-
-          {/* Çalışma Tipi */}
-          <div className="flex flex-col gap-1.5 sm:col-span-2">
-            <span className="text-sm font-semibold">Çalışma tipi</span>
-            <SegmentedControl<EmploymentType>
-              aria-label="Çalışma tipi"
-              value={form.employment_type}
-              onChange={(val) => setForm((f) => ({ ...f, employment_type: val }))}
-              options={(Object.keys(EMPLOYMENT_TYPE_LABELS) as EmploymentType[]).map((key) => ({
-                value: key,
-                label: EMPLOYMENT_TYPE_LABELS[key],
-              }))}
-              fullWidth
-            />
-            {form.employment_type === 'part_time' && (
-              <p className="text-xs text-ink-muted">Yarı zamanlı: haftada en fazla 4 gün ve 30 saat</p>
+        <form
+          id="employee-form"
+          noValidate
+          onSubmit={(e) => { e.preventDefault(); void handleSubmit() }}
+          className="-mx-6 min-h-0 flex-1 overflow-y-auto px-6 py-1"
+        >
+          <FieldGroup className="gap-6">
+            {submitError && (
+              <Alert variant="destructive">
+                <TriangleAlert />
+                <AlertTitle>Kaydedilemedi</AlertTitle>
+                <AlertDescription>{submitError}</AlertDescription>
+              </Alert>
             )}
-          </div>
 
-          {/* Özlük tarihleri — yıllık izin hakkı ve fazla çalışma onayı */}
-          <DateField
-            label="İşe Giriş Tarihi"
-            value={form.hire_date}
-            onChange={(v) => setForm((f) => ({ ...f, hire_date: v }))}
-            helperText="Yıllık izin hakkı bu tarihe göre hesaplanır"
-            clearable
-            fullWidth
-          />
-          <DateField
-            label="Doğum Tarihi"
-            value={form.birth_date}
-            onChange={(v) => setForm((f) => ({ ...f, birth_date: v }))}
-            max={format(new Date(), 'yyyy-MM-dd')}
-            helperText="18 yaş altı / 50 yaş üstü en az 20 gün izin"
-            clearable
-            fullWidth
-          />
-          <DateField
-            label="Fazla Çalışma Onay Tarihi"
-            value={form.overtime_consent_at}
-            onChange={(v) => setForm((f) => ({ ...f, overtime_consent_at: v }))}
-            helperText="Çalışanın fazla çalışmaya yazılı onay verdiği tarih (İş K. Md. 41). Boşsa onay yok sayılır."
-            clearable
-            fullWidth
-            className="sm:col-span-2"
-          />
+            {/* ── Kişi bilgileri ── */}
+            <FieldSet className="gap-4">
+              <FieldLegend>Kişi bilgileri</FieldLegend>
+              <FieldGroup className="grid gap-4 sm:grid-cols-2">
+                <Field data-invalid={!!errors.full_name || undefined}>
+                  <FieldLabel htmlFor="emp-full-name">Ad soyad</FieldLabel>
+                  <Input
+                    id="emp-full-name"
+                    value={form.full_name}
+                    onChange={handleNameChange}
+                    placeholder="Örn: Ayşe Yılmaz"
+                    aria-invalid={!!errors.full_name || undefined}
+                    autoFocus
+                  />
+                  <FieldError>{errors.full_name}</FieldError>
+                </Field>
 
-          {/* Aktif/Pasif — sadece düzenleme modunda */}
-          {isEdit && (
-            <div className="flex items-center gap-3 sm:col-span-2">
-              <Switch
-                id="emp-active"
-                checked={form.active}
-                onCheckedChange={(checked) => setForm((f) => ({ ...f, active: checked }))}
-                className="data-[state=checked]:bg-success"
-              />
-              <Label htmlFor="emp-active">{form.active ? 'Aktif' : 'Pasif'}</Label>
-            </div>
-          )}
-        </div>
+                <Field data-invalid={!!errors.email || undefined}>
+                  <FieldLabel htmlFor="emp-email">E-posta</FieldLabel>
+                  <InputGroup>
+                    <InputGroupInput
+                      id="emp-email"
+                      type="email"
+                      value={form.email}
+                      onChange={handleEmailChange}
+                      placeholder="ad.soyad@shiftup.test"
+                      aria-invalid={!!errors.email || undefined}
+                    />
+                    <InputGroupAddon><Mail /></InputGroupAddon>
+                    <InputGroupAddon align="inline-end">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <InputGroupButton
+                            size="icon-xs"
+                            onClick={regenerateEmail}
+                            disabled={!form.full_name.trim()}
+                            aria-label="İsimden e-posta üret"
+                          >
+                            <RefreshCw />
+                          </InputGroupButton>
+                        </TooltipTrigger>
+                        <TooltipContent>İsimden e-posta üret</TooltipContent>
+                      </Tooltip>
+                    </InputGroupAddon>
+                  </InputGroup>
+                  {errors.email ? (
+                    <FieldError>{errors.email}</FieldError>
+                  ) : (
+                    <FieldDescription>
+                      Giriş için kullanılır.{!isEdit && form.full_name && ' İsimden önerildi.'}
+                    </FieldDescription>
+                  )}
+                </Field>
+              </FieldGroup>
+            </FieldSet>
+
+            {/* ── Rol ve çalışma tipi ── */}
+            <FieldSet className="gap-4">
+              <FieldLegend>Rol ve çalışma tipi</FieldLegend>
+              <FieldGroup className="gap-4">
+                <Field data-invalid={!!errors.role_id || undefined}>
+                  <FieldLabel htmlFor="emp-system-role">Sistem rolü</FieldLabel>
+                  <Select value={form.role_id || undefined} onValueChange={handleRoleChange}>
+                    <SelectTrigger id="emp-system-role" className="w-full" aria-invalid={!!errors.role_id || undefined}>
+                      <SelectValue placeholder="Rol seçin" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {selectableRoles.map((r) => (
+                        <SelectItem key={r.id} value={r.id}>
+                          {r.name}
+                          <span className="text-muted-foreground">· {ACCESS_LABELS[r.access_level]}</span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.role_id ? (
+                    <FieldError>{errors.role_id}</FieldError>
+                  ) : (
+                    <FieldDescription>
+                      {selectedRole ? roleSummary(selectedRole) : 'Yetki seviyesi ve planlamadaki görev bu rolden gelir.'}
+                    </FieldDescription>
+                  )}
+                </Field>
+
+                <FieldSet className="gap-3">
+                  <FieldLegend variant="label" className="mb-0">Çalışma tipi</FieldLegend>
+                  <RadioGroup
+                    value={form.employment_type}
+                    onValueChange={(val) => setForm((f) => ({ ...f, employment_type: val as EmploymentType }))}
+                    className="grid gap-3 sm:grid-cols-2"
+                  >
+                    {EMPLOYMENT_TYPES.map((key) => (
+                      <FieldLabel key={key} htmlFor={`emp-type-${key}`}>
+                        <Field orientation="horizontal">
+                          <FieldContent>
+                            <FieldTitle>{EMPLOYMENT_LABELS[key]}</FieldTitle>
+                            <FieldDescription>{EMPLOYMENT_HINTS[key]}</FieldDescription>
+                          </FieldContent>
+                          <RadioGroupItem value={key} id={`emp-type-${key}`} />
+                        </Field>
+                      </FieldLabel>
+                    ))}
+                  </RadioGroup>
+                </FieldSet>
+              </FieldGroup>
+            </FieldSet>
+
+            {/* ── Özlük tarihleri — yıllık izin hakkı ve fazla çalışma onayı ── */}
+            <FieldSet className="gap-4">
+              <FieldLegend>Özlük tarihleri</FieldLegend>
+              <FieldGroup className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
+                <Field className="content-start">
+                  <FieldTitle aria-hidden>İşe giriş</FieldTitle>
+                  <DateField
+                    label="İşe giriş tarihi"
+                    hideLabel
+                    value={form.hire_date}
+                    onChange={(v) => setForm((f) => ({ ...f, hire_date: v }))}
+                    clearable
+                    fullWidth
+                  />
+                  <FieldDescription>Yıllık izin hakkı buna göre hesaplanır.</FieldDescription>
+                </Field>
+                <Field className="content-start">
+                  <FieldTitle aria-hidden>Doğum tarihi</FieldTitle>
+                  <DateField
+                    label="Doğum tarihi"
+                    hideLabel
+                    value={form.birth_date}
+                    onChange={(v) => setForm((f) => ({ ...f, birth_date: v }))}
+                    max={today}
+                    clearable
+                    fullWidth
+                  />
+                  <FieldDescription>18 yaş altı ve 50 yaş üstüne en az 20 gün izin.</FieldDescription>
+                </Field>
+                <Field className="content-start">
+                  <FieldTitle aria-hidden>Fazla çalışma onayı</FieldTitle>
+                  <DateField
+                    label="Fazla çalışma onay tarihi"
+                    hideLabel
+                    value={form.overtime_consent_at}
+                    onChange={(v) => setForm((f) => ({ ...f, overtime_consent_at: v }))}
+                    clearable
+                    fullWidth
+                  />
+                  <FieldDescription>Yazılı onay tarihi (İş K. Md. 41). Boşsa onay yok sayılır.</FieldDescription>
+                </Field>
+              </FieldGroup>
+            </FieldSet>
+
+            {/* ── Durum — yalnızca düzenlemede ── */}
+            {isEdit && (
+              <FieldLabel htmlFor="emp-active">
+                <Field orientation="horizontal">
+                  <FieldContent>
+                    <FieldTitle>Aktif çalışan</FieldTitle>
+                    <FieldDescription>
+                      Pasif çalışanlar yeni vardiyalara atanmaz; geçmiş kayıtları korunur.
+                    </FieldDescription>
+                  </FieldContent>
+                  <Switch
+                    id="emp-active"
+                    checked={form.active}
+                    onCheckedChange={(checked) => setForm((f) => ({ ...f, active: checked }))}
+                  />
+                </Field>
+              </FieldLabel>
+            )}
+          </FieldGroup>
+        </form>
 
         <DialogFooter>
-          <Button type="button" variant="ghost" onClick={onClose} disabled={loading}>İptal</Button>
-          <Button type="button" onClick={() => handleSubmit()} disabled={loading}>
-            {loading && <Loader2 className="animate-spin" />}
+          <Button type="button" variant="outline" onClick={onClose} disabled={loading}>İptal</Button>
+          <Button type="submit" form="employee-form" disabled={loading}>
+            {loading && <Spinner />}
             {isEdit ? 'Kaydet' : 'Ekle'}
           </Button>
         </DialogFooter>

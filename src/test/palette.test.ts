@@ -1,25 +1,19 @@
 // @vitest-environment node
 /**
- * Renkler iki yerde: src/lib/palette.ts (satır içi style) ve src/app/globals.css (Tailwind).
- * İkisi birbirinden kaymasın.
+ * palette.ts yalnızca globals.css'teki CSS değişkenlerine başvurur; başvurulan her değişken
+ * globals.css'te tanımlı olmalı (renkler tek kaynakta).
  */
 import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
-import { C } from '@/lib/palette'
+import { AVATAR_TONES, C, SHIFT_KIND_TONES } from '@/lib/palette'
 
 const css = fs.readFileSync(path.resolve(__dirname, '../app/globals.css'), 'utf8')
-const kebab = (k: string) => k.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)
-// palette.ts adı → globals.css değişkeni (yalnızca adı farklı olanlar)
-const RENAMED: Record<string, string> = { border: 'line' }
+const all = JSON.stringify([C, SHIFT_KIND_TONES, AVATAR_TONES])
+const vars = [...new Set([...all.matchAll(/var\(--([\w-]+)\)/g)].map((m) => m[1]))]
 
 describe('palette ↔ globals.css', () => {
-  for (const [key, hex] of Object.entries(C)) {
-    if (key === 'white') continue
-    const name = RENAMED[key] ?? kebab(key)
-    it(`--${name} = ${hex}`, () => {
-      const m = new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{6})`).exec(css)
-      expect(m?.[1].toLowerCase()).toBe(hex.toLowerCase())
-    })
-  }
+  it.each(vars)('--%s tanımlı', (name) => {
+    expect(css).toMatch(new RegExp(`--${name}:`))
+  })
 })

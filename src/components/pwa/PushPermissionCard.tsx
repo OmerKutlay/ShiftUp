@@ -3,21 +3,31 @@
 /**
  * PushPermissionCard — bu cihazda push bildirimlerini açma/kapatma.
  *
- * Açıklamalı kart (Bildirimler sayfasının üstü, Ayarlar › Bildirimler).
+ * İki görünüm:
+ *   - Ayarlar › Bildirimler: başlıklı kart, "Bu cihazda bildirimler" anahtarı (Switch) ve durum açıklaması
+ *   - Bildirimler sayfası (hideWhenSubscribed): kompakt öneri satırı (Item) + "Aç" düğmesi;
+ *     abonelik açıkken hiç görünmez
  *
  * Durumlar: desteklenmiyor / iOS'ta ana ekrana ekleme gerekli / izin sorulmadı /
  * açık (abone) / izin verilmiş ama abone değil / reddedilmiş (ayarlardan açma yönergesi).
  */
-import { BellOff, BellRing, Loader2, Share, TriangleAlert } from 'lucide-react'
+import { BellOff, BellRing, Share, TriangleAlert } from 'lucide-react'
 import { usePushSubscription, type PushStatus } from '@/hooks/usePushSubscription'
 import { isIos } from '@/lib/pwa/push'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Field, FieldContent, FieldDescription, FieldLabel } from '@/components/ui/field'
+import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '@/components/ui/item'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Spinner } from '@/components/ui/spinner'
+import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 
 interface Props {
-  /** Abonelik açıkken kartı tamamen gizle */
+  /** Abonelik açıkken kartı tamamen gizle (Bildirimler sayfasındaki kompakt öneri) */
   hideWhenSubscribed?: boolean
+  className?: string
 }
 
 function deniedHelp(): string {
@@ -47,67 +57,90 @@ function statusText(status: PushStatus): string {
   }
 }
 
-export function PushPermissionCard({ hideWhenSubscribed = false }: Props) {
-  const { status, busy, error, enable, disable } = usePushSubscription()
+/** Kullanıcının bu cihazda düzeltebileceği engel (izin, kurulum, sürüm, tarayıcı) */
+function blockerTitle(status: PushStatus): string | null {
+  switch (status) {
+    case 'denied': return 'Bildirim izni engellenmiş'
+    case 'ios-needs-install': return 'Ana ekrana ekleme gerekli'
+    case 'ios-too-old': return 'iOS sürümü eski'
+    case 'unsupported': return 'Tarayıcı desteklemiyor'
+    case 'disabled': return 'Sunucu yapılandırılmadı'
+    default: return null
+  }
+}
 
-  if (status === 'loading') return null
-  // Sunucu yapılandırılmamışsa kullanıcıya gösterilecek bir eylem yok
-  if (status === 'disabled') return null
+export function PushPermissionCard({ hideWhenSubscribed = false, className }: Props) {
+  const { status, busy, error, enable, disable } = usePushSubscription()
 
   const canEnable = status === 'default' || status === 'granted'
   const isOn = status === 'subscribed'
 
-  if (isOn && hideWhenSubscribed) return null
+  // ── Kompakt öneri (Bildirimler sayfası) ──
+  if (hideWhenSubscribed) {
+    // Sunucu yapılandırılmamışsa ya da açıksa kullanıcıya gösterilecek bir eylem yok
+    if (status === 'loading' || status === 'disabled' || isOn) return null
+    const Icon = status === 'ios-needs-install' ? Share : canEnable ? BellRing : BellOff
+    return (
+      <Item variant="outline" className={cn('bg-card shadow-xs', className)}>
+        <ItemMedia variant="icon"><Icon /></ItemMedia>
+        <ItemContent className="min-w-48">
+          <ItemTitle>Vardiya hatırlatmaları ve onaylar için bildirimleri açın</ItemTitle>
+          <ItemDescription className="line-clamp-none">{error ?? statusText(status)}</ItemDescription>
+        </ItemContent>
+        {canEnable && (
+          <ItemActions className="w-full sm:w-auto">
+            <Button size="sm" onClick={() => void enable()} disabled={busy} className="w-full sm:w-auto">
+              {busy && <Spinner />}
+              Aç
+            </Button>
+          </ItemActions>
+        )}
+      </Item>
+    )
+  }
 
-  const Icon = status === 'ios-needs-install' ? Share : isOn || canEnable ? BellRing : BellOff
-
+  // ── Ayarlar kartı ──
+  const blocker = blockerTitle(status)
   return (
-    <div className="mb-4 flex flex-col gap-3 rounded-2xl border bg-card p-4 sm:flex-row sm:items-center">
-      <div className="flex min-w-0 flex-1 gap-3">
-        <span
-          aria-hidden
-          className={cn(
-            'flex size-9 shrink-0 items-center justify-center rounded-xl [&_svg]:size-[18px]',
-            isOn ? 'bg-success-soft text-success' : 'bg-brand-soft text-brand'
-          )}
-        >
-          <Icon />
-        </span>
-        <div className="min-w-0">
-          <p className="text-sm font-bold">
-            {isOn ? 'Bildirimler açık' : 'Vardiya hatırlatmaları ve onaylar için bildirimleri aç'}
-          </p>
-          <p className="mt-0.5 text-sm text-ink-secondary">{statusText(status)}</p>
-          {error && (
-            <Alert tone="warning" className="mt-2 py-2">
-              <TriangleAlert />
-              <AlertDescription className="text-ink">{error}</AlertDescription>
-            </Alert>
-          )}
-        </div>
-      </div>
-      {canEnable && (
-        <Button
-          size="sm"
-          onClick={() => void enable()}
-          disabled={busy}
-          className="shrink-0 self-stretch sm:self-center"
-        >
-          {busy && <Loader2 className="animate-spin" />}
-          Aç
-        </Button>
-      )}
-      {isOn && (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => void disable()}
-          disabled={busy}
-          className="shrink-0 self-end text-ink-secondary sm:self-center"
-        >
-          Kapat
-        </Button>
-      )}
-    </div>
+    <Card className={cn('gap-5 shadow-xs', className)}>
+      <CardHeader className="px-4 md:px-6">
+        <CardTitle>Anlık bildirimler</CardTitle>
+        <CardDescription>İzin talepleri, onaylar ve vardiya hatırlatmaları uygulama kapalıyken de bu cihaza gelir.</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4 px-4 md:px-6">
+        {status === 'loading' ? (
+          <Skeleton className="h-20 w-full rounded-lg" />
+        ) : (
+          <Field orientation="horizontal" data-disabled={!canEnable && !isOn ? true : undefined} className="rounded-lg border p-4">
+            <FieldContent>
+              <FieldLabel htmlFor="push-toggle">Bu cihazda bildirimler</FieldLabel>
+              <FieldDescription>{isOn ? 'Açık — bildirimler bu cihaza gönderiliyor.' : canEnable ? statusText(status) : 'Kapalı'}</FieldDescription>
+            </FieldContent>
+            <span className="flex items-center gap-2">
+              {busy && <Spinner className="text-muted-foreground" />}
+              <Switch
+                id="push-toggle"
+                checked={isOn}
+                disabled={busy || (!canEnable && !isOn)}
+                onCheckedChange={(v) => void (v ? enable() : disable())}
+              />
+            </span>
+          </Field>
+        )}
+        {blocker && (
+          <Alert tone="warning">
+            <TriangleAlert />
+            <AlertTitle>{blocker}</AlertTitle>
+            <AlertDescription>{statusText(status)}</AlertDescription>
+          </Alert>
+        )}
+        {error && (
+          <Alert variant="destructive">
+            <TriangleAlert />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+      </CardContent>
+    </Card>
   )
 }

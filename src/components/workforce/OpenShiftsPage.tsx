@@ -1,16 +1,22 @@
 'use client'
 
 import { OpenShiftsPanel } from './OpenShiftsPanel'
-import { PageHeader } from '@/components/common'
+import { Page, PageHeader } from '@/components/common'
+import { useAuth } from '@/context/AuthContext'
+import { hasRole, MANAGER_ROLES } from '@/lib/auth/roles'
 
 export function OpenShiftsPage() {
+  const { employee } = useAuth()
+  const isManager = hasRole(employee?.roles?.access_level ?? null, MANAGER_ROLES)
   return (
-    <div className="mx-auto w-full max-w-[800px] p-4 md:p-6">
+    <Page>
       <PageHeader
         title="Açık vardiyalar"
-        subtitle="Boşta kalan vardiyaları görüntüleyin ve üstlenin"
+        description={isManager
+          ? 'Boşta kalan vardiyaları havuza ekleyin; uygun çalışanlar üstlensin'
+          : 'Boşta kalan vardiyaları görün ve kendi adınıza üstlenin'}
       />
       <OpenShiftsPanel />
-    </div>
+    </Page>
   )
 }

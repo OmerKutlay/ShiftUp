@@ -19,14 +19,16 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
-import { AlertCircle, ArrowLeft, Bug, Info, Loader2, Mail } from 'lucide-react'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Bug, CircleAlert, Mail, MailCheck } from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field'
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group'
+import { Spinner } from '@/components/ui/spinner'
 import { BrandMark } from '@/components/common/BrandMark'
+import { cn } from '@/lib/utils'
 
 type Step = 'email' | 'otp'
 
@@ -37,8 +39,8 @@ const RESEND_COOLDOWN_SEC = 60
 
 const EMAIL_ERRORS: Record<string, string> = {
   EMPLOYEE_INACTIVE: 'Bu hesap aktif değil. Yöneticinizle iletişime geçin.',
-  EMPLOYEE_NOT_FOUND: 'Bu email adresiyle kayıtlı çalışan bulunamadı.',
-  INVALID_EMAIL: 'Geçerli bir email adresi giriniz.',
+  EMPLOYEE_NOT_FOUND: 'Bu e-posta adresiyle kayıtlı çalışan bulunamadı.',
+  INVALID_EMAIL: 'Geçerli bir e-posta adresi girin.',
   RATE_LIMITED: 'Çok fazla deneme yapıldı. Lütfen biraz bekleyip tekrar deneyin.',
 }
 
@@ -90,6 +92,8 @@ export function LoginForm({ authMode }: Props) {
 
   // Tekrar gönder geri sayımı
   const [cooldown, setCooldown] = useState(0)
+  /** Kod kutularında etkin kutu vurgusu için */
+  const [otpFocused, setOtpFocused] = useState(false)
   useEffect(() => {
     if (cooldown <= 0) return
     const t = setTimeout(() => setCooldown((c) => c - 1), 1000)
@@ -115,7 +119,7 @@ export function LoginForm({ authMode }: Props) {
     const email = state.email.trim().toLowerCase()
 
     if (!email || !email.includes('@')) {
-      setPartial({ error: 'Geçerli bir email adresi giriniz.' })
+      setPartial({ error: 'Geçerli bir e-posta adresi girin.' })
       return
     }
 
@@ -154,8 +158,8 @@ export function LoginForm({ authMode }: Props) {
         step: 'otp',
         otp: '',
         info: isDevMode
-          ? 'Development modu aktif. Giriş kodunuzu girin.'
-          : `${email} kayıtlı bir çalışana aitse giriş kodu gönderildi.`,
+          ? 'Geliştirme modu etkin. Giriş kodunuzu girin.'
+          : 'Bu adres kayıtlı bir çalışana aitse giriş kodu gönderildi.',
         email,
       })
     } catch {
@@ -169,7 +173,7 @@ export function LoginForm({ authMode }: Props) {
     const token = state.otp.replace(/\D/g, '').slice(0, 6)
 
     if (isDevMode ? token.length < 4 : token.length !== OTP_LENGTH) {
-      setPartial({ error: 'Kodu eksiksiz giriniz.' })
+      setPartial({ error: 'Kodu eksiksiz girin.' })
       return
     }
 
@@ -205,133 +209,200 @@ export function LoginForm({ authMode }: Props) {
   }
 
   // ─── Render ──────────────────────────────────────────────
+  const isEmail = state.step === 'email'
+  const otpInvalid = !isEmail && !!state.error
+  const activeSlot = Math.min(state.otp.length, OTP_LENGTH - 1)
+
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-sm py-0">
-        <CardContent className="flex flex-col gap-6 p-6 sm:p-8">
-          {/* Logo + dev rozeti */}
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-2.5">
-              <BrandMark size={36} />
-              <h1 className="text-2xl font-bold text-ink">ShiftUp</h1>
-              {isDevMode && (
-                <Badge tone="warning" className="ml-auto">
-                  <Bug aria-hidden />
-                  DEV
-                </Badge>
-              )}
-            </div>
-            <p className="text-sm text-ink-secondary">
-              {state.step === 'email'
-                ? 'Email adresinizi girerek devam edin.'
+    <div
+      className={cn(
+        'flex min-h-dvh flex-col items-center justify-center bg-muted/40 p-6 md:p-10',
+        // Kabuksuz sayfa: iOS çentik / ana ekran çubuğu için güvenli alan kendi dolgumuzda
+        'pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))]'
+      )}
+    >
+      <div className="flex w-full max-w-sm flex-col gap-6">
+        {/* Marka */}
+        <div className="flex items-center justify-center gap-2.5">
+          <BrandMark size={32} />
+          <span className="text-lg font-semibold tracking-tight">ShiftUp</span>
+          {isDevMode && (
+            <Badge tone="warning">
+              <Bug aria-hidden />
+              Geliştirme
+            </Badge>
+          )}
+        </div>
+
+        <Card className="gap-6 shadow-xs">
+          <CardHeader className="px-6 text-center">
+            <CardTitle className="text-xl">
+              <h1>{isEmail ? 'Hoş geldiniz' : 'Giriş kodunu girin'}</h1>
+            </CardTitle>
+            <CardDescription>
+              {isEmail
+                ? 'Devam etmek için iş e-posta adresinizi girin.'
                 : isDevMode
-                ? 'Development kodu girin (varsayılan: 12345).'
-                : 'Email adresinize gönderilen 6 haneli kodu girin.'}
-            </p>
-          </div>
+                ? 'Geliştirme kodunu girin (varsayılan: 12345).'
+                : 'E-posta adresinize gönderilen 6 haneli kodu girin.'}
+            </CardDescription>
+          </CardHeader>
 
-          {(state.error || state.info) && (
-            <div className="flex flex-col gap-2">
-              {state.error && (
-                <Alert tone="danger">
-                  <AlertCircle />
-                  <AlertDescription className="text-ink">{state.error}</AlertDescription>
-                </Alert>
-              )}
-              {state.info && (
-                <Alert tone="info" role="status">
-                  <Info />
-                  <AlertDescription className="text-ink">{state.info}</AlertDescription>
-                </Alert>
-              )}
-            </div>
-          )}
-
-          {/* Adım 1: Email */}
-          {state.step === 'email' && (
-            <form onSubmit={handleEmailSubmit} noValidate className="flex flex-col gap-4">
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="login-email">Email</Label>
-                <div className="relative">
-                  <Mail
-                    aria-hidden
-                    className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-muted"
-                  />
-                  <Input
-                    id="login-email"
-                    type="email"
-                    value={state.email}
-                    onChange={(e) => setPartial({ email: e.target.value, error: null })}
-                    autoFocus
-                    autoComplete="email"
-                    placeholder="ad.soyad@ornek.com"
-                    disabled={state.loading}
-                    aria-invalid={state.error ? true : undefined}
-                    className="h-11 pl-9"
-                  />
-                </div>
-              </div>
-              <Button type="submit" size="lg" className="w-full" disabled={state.loading}>
-                {state.loading ? <Loader2 className="size-5 animate-spin" aria-label="Yükleniyor" /> : 'Devam Et'}
-              </Button>
-            </form>
-          )}
-
-          {/* Adım 2: OTP */}
-          {state.step === 'otp' && (
-            <form onSubmit={handleOtpSubmit} noValidate className="flex flex-col gap-4">
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="login-otp">{isDevMode ? 'Development Kodu' : 'Giriş Kodu'}</Label>
-                <Input
-                  id="login-otp"
-                  type="text"
-                  inputMode="numeric"
-                  value={state.otp}
-                  onChange={(e) => {
-                    const v = e.target.value.replace(/\D/g, '').slice(0, 6)
-                    setPartial({ otp: v, error: null })
-                  }}
-                  autoFocus
-                  autoComplete="one-time-code"
-                  maxLength={6}
-                  disabled={state.loading}
-                  aria-invalid={state.error ? true : undefined}
-                  // pl: tracking son hanenin sağına da boşluk ekler — rakamlar ortada dursun
-                  className="h-14 pl-[calc(0.75rem+0.5em)] text-center font-mono text-2xl font-semibold tracking-[0.5em] md:text-2xl"
-                />
-              </div>
-              <Button type="submit" size="lg" className="w-full" disabled={state.loading}>
-                {state.loading ? <Loader2 className="size-5 animate-spin" aria-label="Yükleniyor" /> : 'Giriş Yap'}
-              </Button>
-              <div className="flex flex-col gap-1">
-                {!isDevMode && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="w-full text-primary"
-                    disabled={state.loading || cooldown > 0}
-                    onClick={() => handleEmailSubmit()}
-                  >
-                    {cooldown > 0 ? `Kodu tekrar gönder (${cooldown} sn)` : 'Kodu tekrar gönder'}
+          <CardContent className="px-6">
+            {/* Adım 1: E-posta */}
+            {isEmail && (
+              <form onSubmit={handleEmailSubmit} noValidate>
+                <FieldGroup className="gap-5">
+                  {state.error && (
+                    <Alert variant="destructive">
+                      <CircleAlert />
+                      <AlertTitle>Giriş yapılamadı</AlertTitle>
+                      <AlertDescription>{state.error}</AlertDescription>
+                    </Alert>
+                  )}
+                  <Field data-invalid={state.error ? true : undefined}>
+                    <FieldLabel htmlFor="login-email">E-posta</FieldLabel>
+                    <InputGroup className="h-11">
+                      <InputGroupInput
+                        id="login-email"
+                        type="email"
+                        value={state.email}
+                        onChange={(e) => setPartial({ email: e.target.value, error: null })}
+                        autoFocus
+                        autoComplete="email"
+                        placeholder="ad.soyad@ornek.com"
+                        disabled={state.loading}
+                        aria-invalid={state.error ? true : undefined}
+                        className="text-base"
+                      />
+                      <InputGroupAddon><Mail /></InputGroupAddon>
+                    </InputGroup>
+                  </Field>
+                  <Button type="submit" size="lg" className="h-11 w-full" disabled={state.loading}>
+                    {state.loading && <Spinner />}
+                    {state.loading ? 'Gönderiliyor…' : 'Devam et'}
                   </Button>
-                )}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="w-full text-ink-secondary"
-                  disabled={state.loading}
-                  onClick={() => setPartial({ step: 'email', otp: '', error: null, info: null })}
-                >
-                  <ArrowLeft />
-                  Email adresini değiştir
-                </Button>
-              </div>
-            </form>
-          )}
-        </CardContent>
-      </Card>
+                </FieldGroup>
+              </form>
+            )}
+
+            {/* Adım 2: Kod */}
+            {!isEmail && (
+              <form onSubmit={handleOtpSubmit} noValidate>
+                <FieldGroup className="gap-5">
+                  {state.error && (
+                    <Alert variant="destructive">
+                      <CircleAlert />
+                      <AlertTitle>Kod doğrulanamadı</AlertTitle>
+                      <AlertDescription>{state.error}</AlertDescription>
+                    </Alert>
+                  )}
+                  {state.info && !state.error && (
+                    <Alert role="status">
+                      <MailCheck />
+                      <AlertDescription className="text-foreground">{state.info}</AlertDescription>
+                    </Alert>
+                  )}
+
+                  {/* E-posta + değiştir */}
+                  <div className="flex items-center gap-2 rounded-md border bg-muted/40 py-1.5 pr-1.5 pl-3 text-sm">
+                    <Mail className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                    <span className="min-w-0 flex-1 truncate font-medium">{state.email}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={state.loading}
+                      onClick={() => setPartial({ step: 'email', otp: '', error: null, info: null })}
+                    >
+                      Değiştir
+                    </Button>
+                  </div>
+
+                  <Field data-invalid={otpInvalid || undefined}>
+                    <FieldLabel htmlFor="login-otp">{isDevMode ? 'Geliştirme kodu' : 'Giriş kodu'}</FieldLabel>
+                    {/*
+                     * InputOTP benzeri görünüm: tek gerçek <input> (otomatik doldurma, yapıştırma, ekran
+                     * okuyucu) kutuların üstünde saydam durur; kutular yalnızca girilen rakamları gösterir.
+                     */}
+                    <div className="relative">
+                      <input
+                        id="login-otp"
+                        type="text"
+                        inputMode="numeric"
+                        value={state.otp}
+                        onChange={(e) => {
+                          const v = e.target.value.replace(/\D/g, '').slice(0, 6)
+                          setPartial({ otp: v, error: null })
+                        }}
+                        onFocus={() => setOtpFocused(true)}
+                        onBlur={() => setOtpFocused(false)}
+                        autoFocus
+                        autoComplete="one-time-code"
+                        maxLength={6}
+                        disabled={state.loading}
+                        aria-invalid={otpInvalid || undefined}
+                        className="absolute inset-0 z-10 size-full cursor-text text-base opacity-0 disabled:cursor-not-allowed"
+                      />
+                      <div aria-hidden className="grid grid-cols-6 gap-2">
+                        {Array.from({ length: OTP_LENGTH }, (_, i) => {
+                          const char = state.otp[i]
+                          const active = otpFocused && i === activeSlot
+                          return (
+                            <div
+                              key={i}
+                              className={cn(
+                                'relative flex h-12 items-center justify-center rounded-md border border-input bg-background font-mono text-xl font-semibold text-foreground tabular-nums shadow-xs transition-[color,box-shadow]',
+                                active && 'z-[1] border-ring ring-[3px] ring-ring/50',
+                                otpInvalid && 'border-destructive',
+                                state.loading && 'opacity-50'
+                              )}
+                            >
+                              {char}
+                              {active && !char && (
+                                <span className="h-5 w-px animate-pulse bg-foreground" />
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                    {!otpInvalid && (
+                      <FieldDescription>
+                        {isDevMode ? 'En az 4 haneli geliştirme kodu.' : 'Kod birkaç dakika geçerlidir. Gelen kutunuzu ve spam klasörünü kontrol edin.'}
+                      </FieldDescription>
+                    )}
+                  </Field>
+
+                  <Button type="submit" size="lg" className="h-11 w-full" disabled={state.loading}>
+                    {state.loading && <Spinner />}
+                    {state.loading ? 'Doğrulanıyor…' : 'Giriş yap'}
+                  </Button>
+
+                  {!isDevMode && (
+                    <p className="text-center text-sm text-muted-foreground">
+                      Kod gelmedi mi?{' '}
+                      <Button
+                        type="button"
+                        variant="link"
+                        className="h-auto p-0"
+                        disabled={state.loading || cooldown > 0}
+                        onClick={() => handleEmailSubmit()}
+                      >
+                        {cooldown > 0 ? `Tekrar gönder (${cooldown} sn)` : 'Tekrar gönder'}
+                      </Button>
+                    </p>
+                  )}
+                </FieldGroup>
+              </form>
+            )}
+          </CardContent>
+        </Card>
+
+        <p className="px-6 text-center text-xs text-muted-foreground">
+          Giriş sorunu yaşıyorsanız mağaza yöneticinize başvurun.
+        </p>
+      </div>
     </div>
   )
 }

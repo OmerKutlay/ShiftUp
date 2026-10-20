@@ -166,7 +166,7 @@ export function PullToRefresh({ children, disabled = false }: Props) {
           aria-label={refreshing ? 'Yenileniyor' : 'Yenilemek için bırakın'}
           className={cn(
             'pointer-events-none absolute top-0 left-1/2 z-[2] -ml-5 flex size-10 items-center justify-center',
-            'rounded-full border bg-white text-primary shadow-[0_4px_12px_rgb(43_33_27/0.1)]',
+            'rounded-full border bg-background text-primary shadow-md',
             (pull === 0 || refreshing) && 'transition-transform duration-200'
           )}
           style={{ transform: `translateY(${pull - 28}px)` }}

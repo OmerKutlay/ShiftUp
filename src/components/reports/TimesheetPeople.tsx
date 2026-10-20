@@ -1,40 +1,42 @@
 'use client'
 
 /**
- * TimesheetPeople — aylık puantajın "Kişiler" görünümü (yeni UI):
- * her çalışan için ayın günlerinden oluşan renkli şerit + seçilen kişinin takvim detayı.
+ * TimesheetPeople — aylık puantajın "Kişiler" görünümü:
+ * her çalışan için ayın günlerinden oluşan şerit (DayStrip) + seçilen kişinin takvim kartı.
+ * Gün kodu renkleri timesheetSummary'deki STRIP_TONE / CALENDAR_TONE eşlemesinden gelir.
  */
 import { ChevronRight } from 'lucide-react'
 import { PersonAvatar } from '@/components/common'
 import { Badge } from '@/components/ui/badge'
-import { C } from '@/lib/palette'
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { TIMESHEET_CODE_LABELS, type TimesheetCode, type TimesheetRow } from '@/lib/timesheet'
 import { dayOfWeekFromDateString } from '@/lib/dateUtils'
 import {
-  CALENDAR_TONE, STRIP_TONE, codeCounts, hoursLabel, leaveTotal, planLabel,
+  CALENDAR_TONE, STRIP_TONE, codeCounts, hoursLabel, leaveTotal, planLabel, toneBorder,
 } from './timesheetSummary'
 
-/** Kişi satırı ve eksen başlığı aynı sütunları paylaşır */
-export const PEOPLE_GRID = 'grid grid-cols-1 gap-x-4 md:grid-cols-[minmax(150px,190px)_1fr_176px]'
-
-const boxBorder = (tone: { border?: string; dashed?: boolean }) =>
-  tone.border ? `1px ${tone.dashed ? 'dashed' : 'solid'} ${tone.border}` : undefined
+/** Kişi satırı ve eksen başlığı aynı sütunları paylaşır: kişi · şerit · toplam */
+export const PEOPLE_GRID = 'grid grid-cols-[minmax(0,11.5rem)_minmax(0,1fr)_9rem] gap-x-5'
 
 // ─── Şerit ────────────────────────────────────────────────────
 
-export function DayStrip({ row, days, today, height = 18 }: {
-  row: TimesheetRow; days: string[]; today: string; height?: number
+export function DayStrip({ row, days, today, size = 'md' }: {
+  row: TimesheetRow; days: string[]; today: string; size?: 'sm' | 'md'
 }) {
   return (
-    <div aria-hidden className="flex min-w-0 gap-[2px]">
+    <div aria-hidden className="flex min-w-0 gap-0.5">
       {days.map((d) => {
         const tone = STRIP_TONE[row.days[d] ?? '']
         return (
           <span
             key={d}
-            className={cn('min-w-0 flex-1 rounded-[3px]', d === today && 'outline-[1.5px] outline-offset-1 outline-primary outline-solid')}
-            style={{ height, backgroundColor: tone.bg, border: boxBorder(tone) }}
+            className={cn(
+              'min-w-0 flex-1 rounded-xs',
+              size === 'md' ? 'h-6' : 'h-4',
+              d === today && 'outline outline-offset-1 outline-foreground'
+            )}
+            style={{ backgroundColor: tone.bg, border: toneBorder(tone) }}
           />
         )
       })}
@@ -42,28 +44,29 @@ export function DayStrip({ row, days, today, height = 18 }: {
   )
 }
 
-/** Şerit üstü/altı gün numaraları: 1, 8, 15, 22, 29 ya da (mobil) 1 · bugün · son gün */
+/** Şerit eksenindeki gün numaraları: haftalık (1, 8, 15 …) + bugün; dar ekranda 1 · bugün · son gün */
 export function StripAxis({ days, today, compact }: { days: string[]; today: string; compact?: boolean }) {
-  const ticks = compact
-    ? [0, days.indexOf(today), days.length - 1].filter((i, k, a) => i >= 0 && a.indexOf(i) === k)
-    : [0, 7, 14, 21, 28].filter((i) => i < days.length)
+  const t = days.indexOf(today)
+  const base = compact ? [0, days.length - 1] : [0, 7, 14, 21, 28].filter((i) => i < days.length)
+  // Bugün, yakındaki haftalık işaretin yerini alır (üst üste binmesin)
+  const ticks = t < 0 ? base : [...base.filter((i) => Math.abs(i - t) > (compact ? 3 : 2)), t].sort((a, b) => a - b)
   return (
-    <div aria-hidden className="relative h-3.5">
+    <div aria-hidden className="relative h-4">
       {ticks.map((i) => {
-        const isToday = days[i] === today && compact
-        const isEnd = i === days.length - 1
+        const isToday = i === t
+        const isEnd = i === days.length - 1 && !isToday
         return (
           <span
             key={i}
             className={cn(
-              'absolute whitespace-nowrap text-[0.65rem] leading-[14px]',
-              isToday ? 'font-bold text-primary' : 'font-medium text-ink-muted',
+              'absolute text-xs leading-4 whitespace-nowrap tabular-nums',
+              isToday ? 'font-medium text-foreground' : 'text-muted-foreground',
               !isEnd && '-translate-x-1/2'
             )}
             style={isEnd ? { right: 0 } : { left: `${((i + 0.5) / days.length) * 100}%` }}
           >
             {Number(days[i].slice(8))}
-            {isToday && ' · bugün'}
+            {isToday && compact && ' · bugün'}
           </span>
         )
       })}
@@ -71,21 +74,39 @@ export function StripAxis({ days, today, compact }: { days: string[]; today: str
   )
 }
 
-// ─── Rozetler ─────────────────────────────────────────────────
+// ─── Kişi özeti ───────────────────────────────────────────────
 
-export function RowBadges({ row, align = 'end' }: { row: TimesheetRow; align?: 'end' | 'start' }) {
+/** Satırdaki dikkat noktaları: fazla çalışma (onay yoksa uyarı rengi), devamsızlık, izin */
+function RowFlags({ row, className }: { row: TimesheetRow; className?: string }) {
   const leave = leaveTotal(row)
-  if (!row.overtimeMins && !row.absentDays && !leave) return null
+  const parts: React.ReactNode[] = []
+  if (row.overtimeMins > 0) {
+    parts.push(
+      <span key="ot" className={cn('whitespace-nowrap', row.overtimeWithoutConsent && 'font-medium text-warning')}>
+        +{hoursLabel(row.overtimeMins)} s fazla
+      </span>
+    )
+    if (row.overtimeWithoutConsent) parts.push(<span key="c" className="font-medium whitespace-nowrap text-warning">onay yok</span>)
+  }
+  if (row.absentDays > 0) parts.push(<span key="d" className="font-medium whitespace-nowrap text-destructive">{row.absentDays} devamsız</span>)
+  if (leave > 0) parts.push(<span key="l" className="whitespace-nowrap">{leave} gün izin</span>)
+  if (parts.length === 0) parts.push(<span key="w" className="whitespace-nowrap">{row.workedDays} gün çalıştı</span>)
   return (
-    <div className={cn('flex flex-wrap gap-1', align === 'end' ? 'justify-end' : 'justify-start')}>
-      {row.overtimeMins > 0 && (
-        <Badge tone={row.overtimeWithoutConsent ? 'warning' : 'neutral'} className="h-5 px-1.5 text-[0.68rem]">
-          +{hoursLabel(row.overtimeMins)} s fazla{row.overtimeWithoutConsent ? ' · onay yok' : ''}
-        </Badge>
-      )}
-      {row.absentDays > 0 && <Badge tone="danger" className="h-5 px-1.5 text-[0.68rem]">{row.absentDays} devamsız</Badge>}
-      {leave > 0 && <Badge tone="info" className="h-5 px-1.5 text-[0.68rem]">{leave} gün izin</Badge>}
-    </div>
+    <span className={cn('text-xs text-muted-foreground tabular-nums', className)}>
+      {parts.map((p, i) => <span key={i}>{i > 0 && ' · '}{p}</span>)}
+    </span>
+  )
+}
+
+function PersonName({ row }: { row: TimesheetRow }) {
+  return (
+    <span className="flex min-w-0 items-center gap-3">
+      <PersonAvatar name={row.employee.full_name} size={32} />
+      <span className="grid min-w-0">
+        <span className="truncate text-sm font-medium">{row.employee.full_name}</span>
+        <span className="truncate text-xs text-muted-foreground">{row.employee.role_name}</span>
+      </span>
+    </span>
   )
 }
 
@@ -102,37 +123,26 @@ export function PersonRow({ row, days, today, selected, onSelect }: {
       aria-label={`${row.employee.full_name} — ${hoursLabel(row.workedMins)} saat`}
       className={cn(
         PEOPLE_GRID,
-        'relative w-full items-center border-t px-4 py-2.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
+        'relative w-full items-center border-t px-6 py-3 text-left transition-colors outline-none',
+        'focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:ring-inset',
         selected
-          ? 'bg-accent before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-primary'
-          : 'hover:bg-muted/70'
+          ? 'bg-muted/60 before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-primary'
+          : 'hover:bg-muted/40'
       )}
     >
       <PersonName row={row} />
       <DayStrip row={row} days={days} today={today} />
-      <div className="flex flex-col items-end gap-1 text-right">
-        <span className="text-[0.9rem] font-bold">{hoursLabel(row.workedMins)} s</span>
-        <RowBadges row={row} />
-      </div>
+      <span className="grid min-w-0 justify-items-end text-right">
+        <span className="text-sm font-semibold tabular-nums">{hoursLabel(row.workedMins)} s</span>
+        <RowFlags row={row} className="text-balance" />
+      </span>
     </button>
-  )
-}
-
-function PersonName({ row }: { row: TimesheetRow }) {
-  return (
-    <div className="flex min-w-0 items-center gap-2.5">
-      <PersonAvatar name={row.employee.full_name} size={32} />
-      <div className="min-w-0">
-        <p className="truncate text-[0.85rem] font-bold">{row.employee.full_name}</p>
-        <p className="truncate text-xs text-ink-secondary">{row.employee.role_name}</p>
-      </div>
-    </div>
   )
 }
 
 // ─── Kişi kartı (mobil) ───────────────────────────────────────
 
-export function PersonCard({ row, days, today, onOpen }: {
+export function PersonItem({ row, days, today, onOpen }: {
   row: TimesheetRow; days: string[]; today: string; onOpen: () => void
 }) {
   return (
@@ -140,19 +150,18 @@ export function PersonCard({ row, days, today, onOpen }: {
       type="button"
       onClick={onOpen}
       aria-label={`${row.employee.full_name} — ${hoursLabel(row.workedMins)} saat, takvimi aç`}
-      className={cn(
-        'block w-full rounded-[14px] border bg-card p-3 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
-        row.overtimeWithoutConsent && 'border-danger-fill'
-      )}
+      className="flex w-full flex-col gap-3 rounded-lg border bg-card p-4 text-left shadow-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
     >
-      <div className="mb-2.5 flex items-center gap-2">
-        <div className="min-w-0 flex-1"><PersonName row={row} /></div>
-        <span className="text-[0.9rem] font-bold">{hoursLabel(row.workedMins)} s</span>
-        <ChevronRight className="size-4 text-ink-muted" />
-      </div>
-      <DayStrip row={row} days={days} today={today} height={14} />
-      <div className="mt-1"><StripAxis days={days} today={today} compact /></div>
-      <div className="mt-1.5"><RowBadges row={row} align="start" /></div>
+      <span className="flex items-center gap-2">
+        <span className="min-w-0 flex-1"><PersonName row={row} /></span>
+        <span className="text-sm font-semibold tabular-nums">{hoursLabel(row.workedMins)} s</span>
+        <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
+      </span>
+      <span className="grid gap-1">
+        <DayStrip row={row} days={days} today={today} size="sm" />
+        <StripAxis days={days} today={today} compact />
+      </span>
+      <RowFlags row={row} />
     </button>
   )
 }
@@ -161,109 +170,127 @@ export function PersonCard({ row, days, today, onOpen }: {
 
 const LEGEND: Array<Exclude<TimesheetCode, ''>> = ['Ç', 'HT', 'Yİ', 'Rİ', 'D', 'RT', 'RTÇ', 'P']
 
-export function StripLegend({ today }: { today: string }) {
+export function LegendSwatch({ code, className }: { code: TimesheetCode; className?: string }) {
+  const tone = STRIP_TONE[code]
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-      {LEGEND.map((c) => (
-        <span key={c} className="flex items-center gap-1.5 text-xs text-ink-secondary">
-          <LegendDot code={c} />
-          {TIMESHEET_CODE_LABELS[c]}
-        </span>
-      ))}
-      <span className="text-xs text-ink-secondary">
-        Çerçeveli gün: bugün ({Number(today.slice(8))} {monthName(today)})
-      </span>
-    </div>
+    <span
+      aria-hidden
+      className={cn('size-3 shrink-0 rounded-xs', className)}
+      style={{ backgroundColor: tone.bg, border: toneBorder(tone) }}
+    />
   )
 }
 
-function LegendDot({ code }: { code: TimesheetCode }) {
-  const tone = STRIP_TONE[code]
-  return <span aria-hidden className="size-2.5 shrink-0 rounded-[3px]" style={{ backgroundColor: tone.bg, border: boxBorder(tone) }} />
+export function StripLegend({ today, codes = LEGEND }: { today: string; codes?: Array<Exclude<TimesheetCode, ''>> }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+      {codes.map((c) => (
+        <span key={c} className="flex items-center gap-1.5">
+          <LegendSwatch code={c} />
+          {TIMESHEET_CODE_LABELS[c]}
+        </span>
+      ))}
+      {today && (
+        <span className="flex items-center gap-1.5">
+          <span aria-hidden className="size-3 rounded-xs outline outline-offset-1 outline-foreground" />
+          Bugün ({Number(today.slice(8))} {monthName(today)})
+        </span>
+      )}
+    </div>
+  )
 }
 
 const monthName = (date: string) =>
   new Date(`${date}T12:00:00Z`).toLocaleDateString('tr-TR', { month: 'long', timeZone: 'UTC' })
 
-// ─── Kişi detayı: takvim ──────────────────────────────────────
+// ─── Kişi detayı: ay takvimi ──────────────────────────────────
 
 const WEEKDAYS = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
-const WEEKDAYS_SHORT = ['Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct', 'Pz']
 
-export function PersonDetail({ row, days, today, monthText, compact }: {
-  row: TimesheetRow; days: string[]; today: string; monthText: string; compact?: boolean
+export function PersonDetailCard({ row, days, today, monthText, className }: {
+  row: TimesheetRow; days: string[]; today: string; monthText: string; className?: string
 }) {
   const lead = (dayOfWeekFromDateString(days[0]) + 6) % 7
-  const stats: Array<{ label: string; value: string; warn?: boolean }> = [
+  const stats: Array<{ label: string; value: string; tone?: string }> = [
     { label: 'Net', value: `${hoursLabel(row.workedMins)} s` },
-    { label: 'Fazla', value: `${hoursLabel(row.overtimeMins)} s`, warn: row.overtimeMins > 0 },
+    { label: 'Fazla', value: `${hoursLabel(row.overtimeMins)} s`, tone: row.overtimeMins > 0 ? 'text-warning' : undefined },
     { label: 'Gece', value: `${hoursLabel(row.nightMins)} s` },
     { label: 'SGK', value: `${row.sgkDays} gün` },
   ]
 
   return (
-    <div>
-      <div className="mb-4 flex items-center gap-3">
-        <PersonAvatar name={row.employee.full_name} size={compact ? 44 : 40} />
-        <div className="min-w-0 flex-1">
-          <p className={cn('truncate font-bold', compact ? 'text-lg' : 'text-base')}>{row.employee.full_name}</p>
-          <p className="truncate text-[0.78rem] text-ink-secondary">{[row.employee.role_name, monthText].filter(Boolean).join(' · ')}</p>
+    <Card className={cn('@container/detail gap-5 shadow-xs', className)}>
+      <CardHeader className="grid-cols-[auto_1fr] items-center gap-x-3 gap-y-0 px-5 has-data-[slot=card-action]:grid-cols-[auto_1fr_auto]">
+        <PersonAvatar name={row.employee.full_name} size={40} className="row-span-2" />
+        <CardTitle className="truncate leading-snug">{row.employee.full_name}</CardTitle>
+        <CardDescription className="col-start-2 truncate">
+          {[row.employee.role_name, monthText].filter(Boolean).join(' · ')}
+        </CardDescription>
+        {row.overtimeWithoutConsent && (
+          <CardAction className="col-start-3 row-span-2 self-center">
+            <Badge tone="warning">Onay yok</Badge>
+          </CardAction>
+        )}
+      </CardHeader>
+
+      <CardContent className="grid gap-5 px-5">
+        <dl className="grid grid-cols-4 divide-x rounded-lg border">
+          {stats.map((s) => (
+            <div key={s.label} className="min-w-0 px-3 py-2">
+              <dt className="text-xs text-muted-foreground">{s.label}</dt>
+              <dd className={cn('truncate text-sm font-semibold tabular-nums', s.tone)}>{s.value}</dd>
+            </div>
+          ))}
+        </dl>
+
+        {/* Geniş kartta (alt alta düzen) takvim ve döküm yan yana */}
+        <div className="grid gap-5 @2xl/detail:grid-cols-[minmax(0,1fr)_15rem] @2xl/detail:items-start @2xl/detail:gap-6">
+          <div className="grid grid-cols-7 gap-1">
+            {WEEKDAYS.map((w) => (
+              <span key={w} aria-hidden className="pb-1 text-center text-xs text-muted-foreground">{w}</span>
+            ))}
+            {Array.from({ length: lead }).map((_, i) => <span key={`b${i}`} aria-hidden />)}
+            {days.map((d) => <CalendarCell key={d} row={row} date={d} today={today} />)}
+          </div>
+
+          <div className="grid gap-2 border-t pt-4 @2xl/detail:border-t-0 @2xl/detail:border-l @2xl/detail:pt-0 @2xl/detail:pl-6">
+            <p className="text-xs font-medium text-muted-foreground">Ay dökümü</p>
+            {codeCounts(row).map(({ code, count }) => (
+              <div key={code} className="flex items-center gap-2 text-sm">
+                <LegendSwatch code={code} />
+                <span className="flex-1">{TIMESHEET_CODE_LABELS[code]}</span>
+                <span className="font-medium tabular-nums">{count} gün</span>
+              </div>
+            ))}
+          </div>
         </div>
-        {row.overtimeWithoutConsent && <Badge tone="danger">Onay yok</Badge>}
-      </div>
-
-      <div className="mb-4 grid grid-cols-4 gap-2">
-        {stats.map((s) => (
-          <div key={s.label} className="rounded-[10px] bg-muted px-2.5 py-2">
-            <p className="text-[0.7rem] text-ink-secondary">{s.label}</p>
-            <p className={cn('truncate text-[0.95rem] font-bold', s.warn && 'text-warning')}>{s.value}</p>
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-7 gap-1">
-        {(compact ? WEEKDAYS_SHORT : WEEKDAYS).map((w) => (
-          <span key={w} className="pb-1 text-center text-[0.68rem] text-ink-secondary">{w}</span>
-        ))}
-        {Array.from({ length: lead }).map((_, i) => <span key={`b${i}`} />)}
-        {days.map((d) => <CalendarCell key={d} row={row} date={d} today={today} compact={compact} />)}
-      </div>
-
-      <div className="mt-4 flex flex-col gap-1.5 border-t pt-3">
-        {codeCounts(row).map(({ code, count }) => (
-          <div key={code} className="flex items-center gap-2 text-[0.8rem]">
-            <LegendDot code={code} />
-            <span className="flex-1">{TIMESHEET_CODE_LABELS[code]}</span>
-            <span className="font-bold">{count} gün</span>
-          </div>
-        ))}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   )
 }
 
-function CalendarCell({ row, date, today, compact }: { row: TimesheetRow; date: string; today: string; compact?: boolean }) {
+function CalendarCell({ row, date, today }: { row: TimesheetRow; date: string; today: string }) {
   const code = row.days[date] ?? ''
   const tone = CALENDAR_TONE[code]
   const mins = row.dayMins?.[date]
   const plan = row.dayPlan?.[date]
-  const value = mins !== undefined ? `${hoursLabel(mins)}${compact ? '' : ' s'}` : code === 'P' && plan ? planLabel(plan) : tone.label
-  const border = tone.dashed
-    ? `1px dashed ${C.sand}`
-    : code === 'D' ? `1px solid ${C.dangerFill}` : code === '' ? `1px solid ${C.border}` : '1px solid transparent'
+  const value = mins !== undefined ? `${hoursLabel(mins)} s` : code === 'P' && plan ? planLabel(plan) : tone.label
+  const label = code ? `${TIMESHEET_CODE_LABELS[code]}${value ? ` (${value})` : ''}` : undefined
   return (
     <div
-      title={code ? TIMESHEET_CODE_LABELS[code] : undefined}
-      className={cn('flex min-w-0 flex-col justify-between overflow-hidden rounded-lg px-[5px] py-1', compact ? 'min-h-12' : 'min-h-11')}
-      style={{
-        backgroundColor: tone.bg,
-        color: tone.fg,
-        border,
-        boxShadow: date === today ? `inset 3px 0 0 ${C.brand}` : undefined,
-      }}
+      title={label}
+      className={cn(
+        'flex min-h-12 min-w-0 flex-col justify-between gap-1 overflow-hidden rounded-md p-1 @2xl/detail:min-h-14 @2xl/detail:p-1.5',
+        date === today && 'ring-2 ring-foreground'
+      )}
+      style={{ backgroundColor: tone.bg, color: tone.fg, border: toneBorder(tone) ?? '1px solid transparent' }}
     >
-      <span className="text-[0.65rem] font-semibold leading-tight opacity-85">{Number(date.slice(8))}</span>
-      <span className={cn('font-bold leading-[1.15]', value.length > 6 ? 'text-[0.62rem]' : 'text-[0.72rem]')}>{value}</span>
+      <span className={cn('text-xs leading-none tabular-nums', date === today ? 'font-semibold text-foreground' : 'opacity-70')}>
+        {Number(date.slice(8))}
+        {date === today && <span className="sr-only"> (bugün)</span>}
+      </span>
+      {value && <span aria-hidden={!!label} className="text-xs leading-tight font-medium tracking-tight tabular-nums">{value}</span>}
+      {label && <span className="sr-only">{label}</span>}
     </div>
   )
 }

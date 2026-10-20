@@ -32,7 +32,7 @@ test('çevrimdışı bandı görünür, bağlantı gelince "geri geldi" gösteri
 
 test('QR Tara: çevrimdışıyken işlem butonları kapalı, bağlantı gelince açılır', async ({ page, context }) => {
   await page.goto('/attendance/scan')
-  const clockIn = page.getByRole('button', { name: /Giriş Yap/ })
+  const clockIn = page.getByRole('button', { name: /Giriş yap/ })
   await expect(clockIn).toBeEnabled()
 
   await context.setOffline(true)
