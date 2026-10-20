@@ -483,7 +483,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
           <Button
             size="lg"
             className="fixed right-[calc(1rem+env(safe-area-inset-right))] z-40 rounded-full px-5 shadow-lg"
-            style={{ bottom: `calc(${BOTTOM_NAV_OVERLAY_OFFSET}px + env(safe-area-inset-bottom))` }}
+            style={{ bottom: `calc(${BOTTOM_NAV_OVERLAY_OFFSET}px + var(--safe-bottom))` }}
           >
             <Plus /> Vardiya ekle
           </Button>
