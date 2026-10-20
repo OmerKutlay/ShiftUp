@@ -26,7 +26,7 @@ describe('auditChanges', () => {
       after: { status: 'clocked_out', clock_in_at: '2026-10-16T06:00:00.000Z', clock_out_at: '2026-10-16T15:05:00.000Z', completed_break_minutes: 30 },
     }, refs)
     expect(changes).toEqual([
-      { label: 'Durum', before: 'Çalışıyor', after: 'Çıkış Yaptı' },
+      { label: 'Durum', before: 'Çalışıyor', after: 'Çıkış yaptı' },
       { label: 'Çıkış', before: '—', after: '16 Ekim 2026 18:05' },
     ])
   })
