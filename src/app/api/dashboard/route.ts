@@ -87,6 +87,7 @@ export async function GET(req: NextRequest) {
         start_time: shift.start_time,
         end_time: shift.end_time,
         attendance_status: att?.status ?? 'shift_waiting',
+        is_on_leave: Boolean(shift.is_on_leave),
         clock_in_at: att?.clock_in_at ?? null,
         clock_out_at: att?.clock_out_at ?? null,
       }

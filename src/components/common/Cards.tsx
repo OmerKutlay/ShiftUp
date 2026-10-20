@@ -86,7 +86,8 @@ export function StatCard({
         className
       )}
     >
-      <CardHeader className="px-4 md:px-5">
+      {/* Rozet gizlendiğinde (dar kart) başlık tek sütuna dönsün; yoksa değer sağ sütuna kayar */}
+      <CardHeader className="px-4 md:px-5 @max-[199px]/card:grid-cols-1!">
         <CardDescription className="flex min-w-0 items-center gap-1.5 [&_svg]:size-4 [&_svg]:shrink-0">
           {icon}
           <span className="truncate">{label}</span>

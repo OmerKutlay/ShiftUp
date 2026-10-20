@@ -53,6 +53,8 @@ interface RosterEntry {
   start_time: string
   end_time: string
   attendance_status: string
+  /** Onaylı izinli vardiya */
+  is_on_leave?: boolean
   clock_in_at: string | null
   clock_out_at: string | null
 }
@@ -75,10 +77,7 @@ interface DashboardData {
 
 // ─── Durum ───────────────────────────────────────────────────
 
-/**
- * Kadro satırının durumu. Bu uç izin bilgisini taşımadığından giriş okutulmamış başlamış
- * vardiya "Gelmedi" değil, tarafsız "Giriş yok" olarak gösterilir.
- */
+/** Kadro satırının durumu: izinli, başlamadı ve gelmedi Günlük operasyonla aynı tanımda */
 function rosterStatus(r: RosterEntry, now: number): { label: string; tone: BadgeTone; order: number } {
   switch (r.attendance_status) {
     case 'working':
@@ -89,10 +88,11 @@ function rosterStatus(r: RosterEntry, now: number): { label: string; tone: Badge
     case 'clocked_out':
       return { label: 'Çıkış yaptı', tone: 'plum', order: 4 }
   }
+  if (r.is_on_leave) return { label: 'İzinli', tone: 'info', order: 5 }
   const win = shiftWindow(turkeyDate(now), r.start_time, r.end_time)
   return now < win.start
     ? { label: 'Başlamadı', tone: 'neutral', order: 3 }
-    : { label: 'Giriş yok', tone: 'warning', order: 0 }
+    : { label: 'Gelmedi', tone: 'danger', order: 0 }
 }
 
 const sentence = (s: string) => s.charAt(0) + s.slice(1).toLocaleLowerCase('tr-TR')
@@ -343,12 +343,12 @@ export function DashboardPage() {
             />
             <StatCard
               icon={<UserX />}
-              label="Giriş yapılmadı"
-              value={stats.no_show}
-              valueClassName={noClockIn > 0 ? 'text-warning' : undefined}
+              label="Gelmedi"
+              value={noClockIn}
+              valueClassName={noClockIn > 0 ? 'text-destructive' : undefined}
               hint={notStarted > 0
                 ? `${notStarted} vardiya henüz başlamadı`
-                : stats.no_show > 0 ? 'Günlük operasyondan takip edin' : 'Herkes giriş yaptı'}
+                : noClockIn > 0 ? 'Günlük operasyondan takip edin' : 'Herkes giriş yaptı'}
               href="/"
             />
             <StatCard
