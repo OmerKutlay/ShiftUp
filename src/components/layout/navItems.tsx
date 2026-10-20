@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Menu, Bell, Plane, QrCode, ScanLine, Settings, Users, UsersRound,
 } from 'lucide-react'
 
-import { hasRole, MANAGER_ROLES, ADMIN_ROLES, type AccessLevel } from '@/lib/auth/roles'
+import { hasRole, MANAGER_ROLES, ADMIN_ROLES, ACCESS, type AccessLevel } from '@/lib/auth/roles'
 
 /** /more sayfasındaki gruplama */
 export type NavGroup = 'operasyon' | 'planlama' | 'devam' | 'yonetim' | 'hesap'
@@ -31,15 +31,22 @@ export interface NavItem {
   group: NavGroup
   /** Bu nav item yalnızca belirtilen rollere gösterilir. Undefined = herkese. */
   requiredRoles?: AccessLevel[]
-  /** Yönetici olmayanlara farklı ad / grup (aynı sayfanın çalışan görünümü) */
+  /** Yönetici olmayanlara farklı ad / grup / adres (aynı sayfanın çalışan görünümü) */
   employeeLabel?: string
   employeeGroup?: NavGroup
+  employeeHref?: string
 }
+
+/**
+ * Günlük operasyonun çalışan adresi. "/" yöneticinin ana sayfasıdır; çalışanın ana sayfası
+ * (uygulama açılışı, giriş sonrası) Vardiyam olarak kalsın diye aynı sayfa çalışana burada açılır.
+ */
+export const DAILY_EMPLOYEE_HREF = '/daily'
 
 /** Masaüstü yan menüdeki öğeler (sıra = menü sırası) */
 export const NAV_ITEMS: NavItem[] = [
   { label: 'Genel bakış',        href: '/dashboard',       icon: <LayoutDashboard />,     group: 'operasyon', requiredRoles: MANAGER_ROLES },
-  { label: 'Günlük operasyon',   href: '/',                icon: <ClipboardCheck />,         group: 'operasyon', requiredRoles: MANAGER_ROLES },
+  { label: 'Günlük operasyon',   href: '/',                icon: <ClipboardCheck />,         group: 'operasyon', employeeHref: DAILY_EMPLOYEE_HREF },
   { label: 'Çalışanlar',         href: '/employees',       icon: <Users />,        group: 'yonetim',   requiredRoles: MANAGER_ROLES },
   { label: 'Vardiya şablonları', href: '/shift-templates', icon: <Layers />,      group: 'planlama',  requiredRoles: MANAGER_ROLES },
   { label: 'Haftalık plan',      href: '/schedule',        icon: <CalendarDays />, group: 'planlama' },
@@ -82,6 +89,7 @@ export function filterNavItems(items: NavItem[], accessLevel: AccessLevel | null
       ...item,
       label: item.employeeLabel ?? item.label,
       group: item.employeeGroup ?? item.group,
+      href: item.employeeHref ?? item.href,
     }))
 }
 
@@ -125,10 +133,13 @@ export function getActiveTabHref(pathname: string, tabs: BottomTab[]): string | 
   return tabs.some((t) => t.href === MORE_HREF) ? MORE_HREF : null
 }
 
-/** /more sayfasında listelenecek öğeler: erişilebilir olup alt barda bulunmayanlar */
+/**
+ * /more sayfasında listelenecek öğeler: erişilebilir olup alt barda bulunmayanlar.
+ * Günlük operasyon yöneticide "Bugün" sekmesi olsa da Operasyon grubunda adıyla da listelenir.
+ */
 export function getMoreItems(accessLevel: AccessLevel | null | undefined): NavItem[] {
   const tabHrefs = new Set(getBottomTabs(accessLevel).map((t) => t.href))
-  return filterNavItems([...NAV_ITEMS, NOTIFICATIONS_ITEM], accessLevel).filter((i) => !tabHrefs.has(i.href))
+  return filterNavItems([...NAV_ITEMS, NOTIFICATIONS_ITEM], accessLevel).filter((i) => i.href === '/' || !tabHrefs.has(i.href))
 }
 
 /** Öğeleri NAV_GROUP_ORDER sırasıyla gruplar (boş gruplar atlanır) */
@@ -143,10 +154,11 @@ export function pageMetaFor(
   pathname: string,
   accessLevel?: AccessLevel | null,
 ): { title: string; group: string | null } {
-  // Rol bilinmiyorsa (oturum yükleniyor) yönetici adları kullanılır
+  // Rol bilinmiyorsa (oturum yükleniyor) yönetici adları önce gelir; çalışan adresleri de eşleşsin
+  const all = [...NAV_ITEMS, NOTIFICATIONS_ITEM]
   const items = accessLevel === undefined
-    ? [...NAV_ITEMS, NOTIFICATIONS_ITEM]
-    : filterNavItems([...NAV_ITEMS, NOTIFICATIONS_ITEM], accessLevel)
+    ? [...all, ...filterNavItems(all, ACCESS.EMPLOYEE)]
+    : filterNavItems(all, accessLevel)
   const match = items
     .filter((i) => isNavActive(pathname, i.href))
     .sort((a, b) => b.href.length - a.href.length)[0]
