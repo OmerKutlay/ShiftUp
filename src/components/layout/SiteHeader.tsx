@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * SiteHeader — masaüstü içerik panelinin üst çubuğu: menü düğmesi · konum (breadcrumb) · bildirimler.
+ * SiteHeader — masaüstü içerik panelinin üst çubuğu: menü düğmesi · konum (breadcrumb) · tema · bildirimler.
  */
 import { usePathname } from 'next/navigation'
 
@@ -11,6 +11,7 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { NotificationBell } from '@/components/notifications/NotificationBell'
+import { ThemeSwitch } from '@/components/common/ThemeSwitch'
 import { useAuth } from '@/context/AuthContext'
 import { pageMetaFor } from './navItems'
 
@@ -38,6 +39,7 @@ export function SiteHeader() {
           </BreadcrumbList>
         </Breadcrumb>
         <div className="ml-auto flex items-center gap-1">
+          <ThemeSwitch />
           {status === 'authenticated' && employee && <NotificationBell employeeId={employee.id} />}
         </div>
       </div>

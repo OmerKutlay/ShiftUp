@@ -15,6 +15,7 @@ import { LogIn } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { BrandMark } from '@/components/common/BrandMark'
 import { NotificationBell } from '@/components/notifications/NotificationBell'
+import { ThemeSwitch } from '@/components/common/ThemeSwitch'
 import { useAuth } from '@/context/AuthContext'
 import { pageMetaFor } from './navItems'
 
@@ -33,6 +34,7 @@ export function MobileTopBar() {
       <div className="flex items-center gap-3 px-4" style={{ height: MOBILE_TOP_BAR_HEIGHT }}>
         <BrandMark size={28} />
         <p className="min-w-0 flex-1 truncate text-base font-semibold">{meta.title}</p>
+        <ThemeSwitch />
         {status === 'authenticated' && employee && <NotificationBell employeeId={employee.id} />}
         {status === 'unauthenticated' && (
           <Button asChild variant="ghost" size="icon">
