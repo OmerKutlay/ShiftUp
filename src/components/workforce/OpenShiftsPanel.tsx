@@ -10,7 +10,8 @@
  */
 import { useState } from 'react'
 import useSWR from 'swr'
-import { Ban, BriefcaseBusiness, Check, MoreHorizontal, Plus, TriangleAlert } from 'lucide-react'
+import { Ban, BriefcaseBusiness, Check, Lock, MoreHorizontal, Plus, TriangleAlert } from 'lucide-react'
+import { format } from 'date-fns'
 import { toast } from 'sonner'
 import type { OpenShift } from '@/types/workforce'
 import { useAuth } from '@/context/AuthContext'
@@ -36,6 +37,7 @@ import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from '@/co
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
 import { Textarea } from '@/components/ui/textarea'
+import { matchesRoleNeeded } from '@/lib/openShiftEligibility'
 import {
   KindBar, SHIFT_KIND_LABELS, fetchOpenShifts, fmtDay, fmtDuration, hhmm, kindOf, openShiftsKey, relativeDay,
 } from './workforceShared'
@@ -59,6 +61,7 @@ const FILTER_LABELS: Record<StatusFilter, string> = {
 }
 
 const ANY_ROLE = '__any__'
+const todayIso = () => format(new Date(), 'yyyy-MM-dd')
 const EMPTY_FORM = { work_date: '', start_time: '09:00', end_time: '18:00', role_needed: '', description: '' }
 type OpenShiftForm = typeof EMPTY_FORM
 
@@ -178,6 +181,7 @@ export function OpenShiftsPanel() {
     MANAGER_ROLES
   )
   const confirm = useConfirm()
+  const myRoleName = authEmployee?.roles?.name ?? null
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('open')
@@ -276,6 +280,18 @@ export function OpenShiftsPanel() {
   const actions = (shift: OpenShift) => {
     if (shift.status !== 'open') return null
     if (!isManager) {
+      // Sunucu bu durumlarda üstlenmeyi zaten reddeder; düğme yerine nedenini göster
+      if (shift.work_date < todayIso()) {
+        return <span className="text-sm text-muted-foreground">Süresi geçti</span>
+      }
+      if (!matchesRoleNeeded(shift.role_needed, myRoleName)) {
+        return (
+          <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+            <Lock className="size-3.5" />
+            Yalnızca {shift.role_needed}
+          </span>
+        )
+      }
       const busy = claimingId === shift.id
       return (
         <Button variant="outline" size="sm" onClick={() => void handleClaim(shift.id)} disabled={busy}>
