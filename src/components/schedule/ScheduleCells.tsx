@@ -233,6 +233,7 @@ export function ShiftCell({ assignment, isOnLeave, isRestDay, availStatus, daily
   const kind = shiftKindOf(assignment.shift_templates?.name, start, end)
   const grossMins = shiftDurationMins(assignment.start_time, assignment.end_time)
   const netMins = netWorkMins(assignment.start_time, assignment.end_time)
+  const workedMins = assignment.worked_minutes ?? null
   const availWarn = availStatus === 'off' || availStatus === 'partial'
   const danger = dailyOver || availStatus === 'off'
 
@@ -240,6 +241,7 @@ export function ShiftCell({ assignment, isOnLeave, isRestDay, availStatus, daily
     <div className="flex flex-col gap-0.5">
       <span className="font-medium">{name} · {fmtRange(start, end)}</span>
       <span>Brüt {fmtDuration(grossMins)} · mola {fmtDuration(grossMins - netMins)} · net {fmtDuration(netMins)}</span>
+      {workedMins !== null && <span>Gerçekleşen net {fmtDuration(workedMins)} (mola otomatik düşülmüş)</span>}
       {dailyOver && <span>Günlük azami çalışma süresi aşıldı</span>}
       {availStatus === 'off' && <span>Çalışan bu gün müsait değil</span>}
       {availStatus === 'partial' && <span>Müsaitlik penceresinin dışında</span>}
@@ -271,7 +273,7 @@ export function ShiftCell({ assignment, isOnLeave, isRestDay, availStatus, daily
                   className={cn('size-3', danger ? 'text-destructive' : 'text-warning')}
                 />
               )}
-              {fmtDuration(netMins)}
+              {fmtDuration(workedMins ?? netMins)}
             </span>
           </span>
         </span>

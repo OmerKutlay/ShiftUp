@@ -53,10 +53,7 @@ export interface ManualAttendanceOverride {
   record_id: string
   status?: string
   clock_in_at?: string | null
-  break_start_at?: string | null
-  break_end_at?: string | null
   clock_out_at?: string | null
-  /** Önceki (son mola hariç) molaların toplamı — dakika */
-  completed_break_minutes?: number
+  // Mola alanları yok: mola elle girilmez, otomatik hesaplanır
   exception_note: string  // zorunlu — override sebebi
 }

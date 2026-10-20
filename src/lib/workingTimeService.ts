@@ -42,7 +42,12 @@ export function shiftDurationMins(startTime: string, endTime: string): number {
  * Sonuç hiçbir zaman yasal asgarinin altına düşmez.
  */
 export function plannedBreakMins(startTime: string, endTime: string): number {
-  const brut = shiftDurationMins(startTime, endTime)
+  return plannedBreakForGrossMins(shiftDurationMins(startTime, endTime))
+}
+
+/** plannedBreakMins'in brüt süre (dk) üzerinden hali — erken çıkışta fiili süreye uygulanır */
+export function plannedBreakForGrossMins(brut: number): number {
+  if (brut <= 0) return 0
   let policy: number
   if (brut <= 4 * 60) policy = 15
   else if (brut >= 11 * 60) policy = 120

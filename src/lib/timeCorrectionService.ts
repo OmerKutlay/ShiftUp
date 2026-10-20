@@ -9,13 +9,14 @@
  *      devam kaydına yazılır; plan yoksa (planlanmamış çalışma) düzeltme saatleriyle
  *      bir vardiya oluşturulur. Böylece planlanan ↔ fiili karşılaştırması bozulmaz.
  *   2. Devam kaydı: giriş/çıkış düzeltilmiş saatlere ayarlanır, çıkış girişten
- *      küçükse ertesi gün sayılır (gece vardiyası). Mola, verilmediyse İş Kanunu
- *      Md. 68 yasal asgarisi olarak işlenir.
+ *      küçükse ertesi gün sayılır (gece vardiyası). Mola elle girilmez: kayda mola
+ *      yazılmaz, düşülecek mola süre hesabında otomatik bulunur (bkz. attendanceDurations).
  *   3. Çalışma süresi ihlalleri checkCorrectionViolations ile önceden hesaplanır;
  *      route'lar yöneticinin açık onayı olmadan ihlalli düzeltmeyi uygulamaz.
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { grossMins, statutoryMinBreakMins } from '@/lib/laborLaw'
+import { grossMins } from '@/lib/laborLaw'
+import { deductedBreakMinutes } from '@/lib/attendanceDurations'
 import { getWorkingTimeConfig } from '@/lib/workingTimeConfig'
 import { validateShiftAssignment, type WorkingTimeViolation } from '@/lib/workingTimeService'
 import { getWeekDays } from '@/lib/scheduleUtils'
@@ -28,14 +29,13 @@ export interface ApplyParams {
   date: string         // 'YYYY-MM-DD'
   startTime: string    // 'HH:MM'
   endTime: string      // 'HH:MM' (startTime'dan küçükse ertesi gün)
-  /** Kullanılan toplam mola (dk). Verilmezse yasal asgari uygulanır. */
-  breakMinutes?: number | null
 }
 
 export interface ApplyResult {
   attendanceRecordId: string
   shiftAssignmentId: string
   createdShift: boolean
+  /** Otomatik düşülen mola (dk) — denetim kaydı için */
   breakMinutes: number
 }
 
@@ -85,7 +85,7 @@ function pickShift(shifts: ShiftRow[], startTime: string, endTime: string): Shif
  * O haftanın ve komşu günlerin diğer vardiyaları + düzeltilmiş saatler kontrol edilir.
  */
 export async function checkCorrectionViolations(
-  params: Omit<ApplyParams, 'breakMinutes'>
+  params: ApplyParams
 ): Promise<{ errors: WorkingTimeViolation[]; warnings: WorkingTimeViolation[] }> {
   const { admin, employeeId, date, startTime, endTime } = params
   const weekDays = getWeekDays(new Date(`${date}T12:00:00`))
@@ -158,16 +158,12 @@ export async function applyTimeCorrection(params: ApplyParams): Promise<ApplyRes
 
   // ── 2. Devam kaydı ──────────────────────────────────────────
   const { clockIn, clockOut } = correctionTimestamps(date, start, end)
-  const breakMinutes = Math.max(
-    0,
-    Math.round(params.breakMinutes ?? statutoryMinBreakMins(grossMins(start, end)))
-  )
   const fields = {
     clock_in_at: clockIn,
     clock_out_at: clockOut,
     break_start_at: null,
     break_end_at: null,
-    completed_break_minutes: breakMinutes,
+    completed_break_minutes: 0,
     status: 'clocked_out',
     verification_method: 'manual_correction',
   }
@@ -194,5 +190,6 @@ export async function applyTimeCorrection(params: ApplyParams): Promise<ApplyRes
     recordId = rec.id as string
   }
 
+  const breakMinutes = deductedBreakMinutes(fields, shift)
   return { attendanceRecordId: recordId, shiftAssignmentId: shift.id, createdShift, breakMinutes }
 }
