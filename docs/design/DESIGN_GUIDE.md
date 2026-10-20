@@ -80,8 +80,13 @@ Grafik serileri: `chart-1` marka, `chart-2` yeşil-mavi, `chart-3` mavi, `chart-
     ana ekrandan silinip yeniden eklenmelidir.
   - Görünüm alanı durum çubuğu kadar kısa hesaplanabildiği için (WebKit 301108)
     `globals.css`'te standalone için `html { min-height: … }` düzeltmesi vardır; silmeyin.
+  - iOS 26+ üst kenara ~40pt'lik bir bulanıklık geçişi (scroll edge effect) çizer; sayfanın bunu
+    kapatabileceği bir ayar yoktur. Bu yüzden ekranın üstünden konumlanan her şey
+    `env(safe-area-inset-top)` yerine **`var(--app-top)`** kullanır: iOS 26+ ana ekran uygulamasında
+    bu değer bandı (`--edge-ramp`) içerir ve bant üst barın düz zeminiyle dolar. Stüdyoda
+    `STUDIO_EDGE_RAMP=2.5rem` ile görülebilir.
   - `body`'de safe-area boşluğu yoktur: kabuk dışı sayfalar (giriş, kiosk) kendi
-    `env(safe-area-inset-*)` boşluklarını verir.
+    `var(--app-top)` / `env(safe-area-inset-*)` boşluklarını verir.
 
 ## 4. Sayfa iskeleti
 

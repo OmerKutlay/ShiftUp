@@ -10,6 +10,8 @@
  *   STUDIO_PERSONA manager | employee | anon
  *   STUDIO_CLOCK   0 → tarayıcı saati gerçek kalır (varsayılan: bugün, mocks.ts demoTime saati;
  *                  sahte devam kayıtlarıyla "şimdi" çizgisi ve gecikme hesapları tutarlı olsun)
+ *   STUDIO_EDGE_RAMP  ör. 2.5rem → iOS 26+ ana ekran uygulamasındaki üst kenar bandını taklit eder
+ *                  (Chromium globals.css'teki iOS @supports koşulunu sağlamaz)
  *   STUDIO_FOLD    1 → mobilde ayrıca yalnızca ilk ekranın görüntüsü (…--fold.png): sabit üst/alt bar
  *
  * Oturum e2e/support/fake-supabase.mjs ile doğrulanır; /api/* uçları mocks.ts'den yanıtlanır.
@@ -26,6 +28,7 @@ const ONLY = process.env.STUDIO_ONLY?.split(',').map((s) => s.trim()).filter(Boo
 const DEVICE = process.env.STUDIO_DEVICE
 const PERSONA = process.env.STUDIO_PERSONA
 const FOLD = process.env.STUDIO_FOLD === '1'
+const EDGE_RAMP = process.env.STUDIO_EDGE_RAMP
 const CLOCK = process.env.STUDIO_CLOCK !== '0' && mockOptions.demoTime !== 'real'
 
 /** Bugünün İstanbul tarihi + demoTime → an (İstanbul UTC+3, yaz saati yok) */
@@ -112,6 +115,7 @@ for (const [device, opts] of Object.entries(DEVICES)) {
           await settle(page)
           // Next.js geliştirme rozeti görüntüye girmesin
           await page.addStyleTag({ content: 'nextjs-portal { display: none !important; }' })
+          if (EDGE_RAMP) await page.addStyleTag({ content: `:root { --edge-ramp: ${EDGE_RAMP} !important; }` })
           fs.mkdirSync(OUT, { recursive: true })
           if (FOLD && device === 'mobile' && !shot.viewportOnly) {
             await page.screenshot({ path: path.join(OUT, file.replace('.png', '--fold.png')) })
