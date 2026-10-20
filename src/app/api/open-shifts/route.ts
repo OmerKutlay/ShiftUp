@@ -19,6 +19,8 @@ import { isUuid, isValidDate, isValidTime } from '@/lib/validation'
 import { turkeyToday } from '@/lib/dateUtils'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
+import { matchesRoleNeeded } from '@/lib/openShiftEligibility'
+import { roleNameOf } from '@/lib/roleJoin'
 
 const STATUSES = ['open', 'filled', 'cancelled']
 
@@ -91,7 +93,8 @@ export async function POST(req: NextRequest) {
       .single()
     if (error) return serverError('POST /api/open-shifts', error)
 
-    // Aktif 'Çalışan' rolündekilere tek toplu insert ile bildirim
+    // Vardiyayı üstlenebilecek çalışanlara tek toplu insert ile bildirim:
+    // gerekli rol varsa o rol (yetki seviyesinden bağımsız), yoksa 'Çalışan' yetkisindekiler
     try {
       const shift = data
       const dateLabel = format(new Date(`${shift.work_date}T12:00:00`), 'd MMMM yyyy EEEE', { locale: tr })
@@ -100,12 +103,16 @@ export async function POST(req: NextRequest) {
 
       const { data: employees } = await admin
         .from('employees')
-        .select('id, roles(access_level)')
+        .select('id, roles(name, access_level)')
         .eq('active', true)
 
-      const targets = (employees ?? []).filter(
-        (emp) => accessLevelOf(emp.roles) === ACCESS.EMPLOYEE
-      )
+      const targets = (employees ?? []).filter((emp) => {
+        const level = accessLevelOf(emp.roles)
+        if (level === ACCESS.KIOSK) return false
+        return shift.role_needed
+          ? matchesRoleNeeded(shift.role_needed, roleNameOf(emp))
+          : level === ACCESS.EMPLOYEE
+      })
       await createNotifications(
         admin,
         targets.map((emp) => ({
