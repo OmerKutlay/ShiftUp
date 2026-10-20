@@ -114,15 +114,22 @@ export function lateMinutes(clockInAt: string | null | undefined, win: ShiftWind
   return mins >= LATE_TOLERANCE_MINS ? mins : null
 }
 
-/** Net çalışma (dk): giriş → çıkış (ya da şimdi), molalar düşülür */
-export function workedMinutes(rec: AttendanceRecord | null, now: number): number | null {
+/**
+ * Net çalışma (dk): giriş → çıkış (ya da şimdi), molalar düşülür.
+ * Çıkış yapıldıysa planlanan mola ile fiili moladan büyüğü düşülür (mola okutmayan mola yapmış sayılır);
+ * vardiya sürerken yalnızca fiili mola düşülür.
+ */
+export function workedMinutes(rec: AttendanceRecord | null, now: number, plannedBreakMins = 0): number | null {
   const inAt = ms(rec?.clock_in_at)
   if (!rec || inAt === null) return null
-  const outAt = ms(rec.clock_out_at) ?? now
+  const clockOut = ms(rec.clock_out_at)
+  const outAt = clockOut ?? now
   const bStart = ms(rec.break_start_at)
   const bEnd = ms(rec.break_end_at) ?? (rec.status === 'on_break' ? now : null)
   const lastBreak = bStart !== null && bEnd !== null ? Math.max(0, bEnd - bStart) / MINUTE_MS : 0
-  return Math.max(0, (outAt - inAt) / MINUTE_MS - (rec.completed_break_minutes ?? 0) - lastBreak)
+  const actualBreak = (rec.completed_break_minutes ?? 0) + lastBreak
+  const breakMins = clockOut !== null ? Math.max(plannedBreakMins, actualBreak) : actualBreak
+  return Math.max(0, (outAt - inAt) / MINUTE_MS - breakMins)
 }
 
 // ─── Zaman çizelgesi ─────────────────────────────────────────

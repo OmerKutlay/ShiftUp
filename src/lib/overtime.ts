@@ -7,11 +7,15 @@
  */
 import { workedMinutes, type AttendanceTimes } from '@/lib/attendanceDurations'
 import { ANNUAL_OVERTIME_CAP_HOURS, MAX_WEEKLY_WORK_MINS } from '@/lib/laborLaw'
+import { plannedBreakMins } from '@/lib/workingTimeService'
 import { addDaysToDateString, dayOfWeekFromDateString } from '@/lib/dateUtils'
 
 export interface OvertimeShift {
   employee_id: string
   work_date: string
+  /** Planlı vardiya saatleri — planlanan mola bunlardan hesaplanır */
+  start_time?: string
+  end_time?: string
   attendance: AttendanceTimes | null
 }
 
@@ -61,7 +65,8 @@ export function summarizeOvertime(
     for (const s of shifts) {
       if (s.employee_id !== emp.id || s.work_date < from || s.work_date > to || !s.attendance?.clock_in_at) continue
       const w = mondayOf(s.work_date)
-      byWeek.set(w, (byWeek.get(w) ?? 0) + (workedMinutes(s.attendance) ?? 0))
+      const planned = s.start_time && s.end_time ? plannedBreakMins(s.start_time, s.end_time) : 0
+      byWeek.set(w, (byWeek.get(w) ?? 0) + (workedMinutes(s.attendance, planned) ?? 0))
     }
     const weeks: OvertimeWeek[] = [...byWeek.entries()]
       .map(([weekStart, workedMins]) => ({ weekStart, workedMins, overtimeMins: Math.max(0, workedMins - MAX_WEEKLY_WORK_MINS) }))

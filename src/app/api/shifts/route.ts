@@ -4,8 +4,8 @@
  * POST /api/shifts                             — vardiya atar (Müdür Yardımcısı+)
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth, requireMinRole, ACCESS } from '@/lib/auth'
-import { fetchWeeklyAssignments, fetchAssignmentsInRange, createShiftAssignment } from '@/lib/scheduleRepository'
+import { requireAuth, requireMinRole, ACCESS, hasRole, MANAGER_ROLES } from '@/lib/auth'
+import { fetchWeeklyAssignments, fetchAssignmentsInRange, createShiftAssignment, attachWorkedMinutes } from '@/lib/scheduleRepository'
 import { ShiftConflictError } from '@/types/schedule'
 import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/apiErrors'
 import { isUuid, isValidDate, isValidTime } from '@/lib/validation'
@@ -21,18 +21,20 @@ export async function GET(req: NextRequest) {
   const week = sp.get('week')
   const start = sp.get('start')
   const end = sp.get('end')
+  // Fiili çalışma süreleri: yönetici herkesinkini, çalışan yalnızca kendisininkini görür
+  const onlyEmployeeId = hasRole(auth.employee.access_level, MANAGER_ROLES) ? undefined : auth.employee.id
 
   try {
     if (week) {
       if (!isValidDate(week)) return badRequest('Geçersiz hafta tarihi.')
       const assignments = await fetchWeeklyAssignments(new Date(`${week}T12:00:00`))
-      return NextResponse.json({ assignments })
+      return NextResponse.json({ assignments: await attachWorkedMinutes(assignments, onlyEmployeeId) })
     }
     if (isValidDate(start) && isValidDate(end)) {
       const days = (Date.parse(end) - Date.parse(start)) / 86_400_000
       if (days < 0 || days > 62) return badRequest('Tarih aralığı 0–62 gün olmalıdır.')
       const assignments = await fetchAssignmentsInRange(start, end)
-      return NextResponse.json({ assignments })
+      return NextResponse.json({ assignments: await attachWorkedMinutes(assignments, onlyEmployeeId) })
     }
     return badRequest('week veya start/end parametresi gerekli.')
   } catch (err) {

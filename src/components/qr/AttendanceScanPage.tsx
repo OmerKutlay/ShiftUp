@@ -287,8 +287,6 @@ export function AttendanceScanPage() {
   const statusLabel = ATTENDANCE_STATUS_TR[currentStatus ?? ''] ?? '—'
   const buttons = getButtons(currentStatus)
   const hasShift = statusData?.has_shift ?? false
-  // Birincil (dolu) düğme: sunucunun önerdiği işlem, yoksa ilk seçenek
-  const primaryAction = buttons.find((b) => b.action === statusData?.suggested_action)?.action ?? buttons[0]?.action
 
   const isLocationError =
     !!locationErrorKind ||
@@ -391,12 +389,12 @@ export function AttendanceScanPage() {
 
               {buttons.map((btn) => {
                 const Icon = btn.icon
-                const primary = btn.action === primaryAction
+                const primary = btn.primary
                 return (
                   <Button
                     key={btn.action}
                     type="button"
-                    variant={primary ? 'default' : 'outline'}
+                    variant={primary ? 'default' : 'secondary'}
                     disabled={!online}
                     onClick={() => handleSelectAction(btn.action)}
                     className="h-auto w-full justify-start gap-4 rounded-xl px-4 py-4 text-left whitespace-normal has-[>svg]:px-4"
@@ -405,18 +403,18 @@ export function AttendanceScanPage() {
                       aria-hidden
                       className={cn(
                         'flex size-10 shrink-0 items-center justify-center rounded-lg [&_svg]:size-5',
-                        primary ? 'bg-primary-foreground/15' : 'border bg-muted'
+                        primary ? 'bg-primary-foreground/15' : 'bg-secondary-foreground/10'
                       )}
                     >
                       <Icon />
                     </span>
                     <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                       <span className="text-base font-semibold">{btn.label}</span>
-                      <span className={cn('text-sm font-normal', primary ? 'text-primary-foreground/80' : 'text-muted-foreground')}>
+                      <span className={cn('text-sm font-normal', primary ? 'text-primary-foreground/80' : 'text-secondary-foreground/80')}>
                         {btn.description}
                       </span>
                     </span>
-                    <ScanLine aria-hidden className={cn('size-5', primary ? 'opacity-80' : 'text-muted-foreground')} />
+                    <ScanLine aria-hidden className="size-5 opacity-80" />
                   </Button>
                 )
               })}
