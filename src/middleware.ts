@@ -26,13 +26,16 @@ const PUBLIC_API_PREFIX = '/api/auth/'
 // Cron çağrısı oturumsuz gelir; route kendi içinde CRON_SECRET / rol kontrolü yapar
 const CRON_API_PATHS = ['/api/attendance/alerts/scan']
 
-/** Sayfa → en düşük gerekli rol. Listede olmayan sayfalar tüm aktif çalışanlara açıktır. */
+/**
+ * Sayfa → en düşük gerekli rol. Listede olmayan sayfalar tüm aktif çalışanlara açıktır.
+ * /workforce herkese açık: çalışan kendi müsaitliğini ve takas taleplerini yönetir; yetkiler
+ * API'lerde uygulanır, Haftalık plan sekmesi yalnızca yöneticiye görünür.
+ */
 const PAGE_MIN_ROLE: Array<[prefix: string, minRole: AccessLevel]> = [
   ['/settings', ACCESS.STORE_MANAGER],
   ['/dashboard', ACCESS.MANAGER],
   ['/employees', ACCESS.MANAGER],
   ['/shift-templates', ACCESS.MANAGER],
-  ['/workforce', ACCESS.MANAGER],
   ['/reports', ACCESS.MANAGER],
 ]
 /** Çalışanların varsayılan sayfası (yönetici sayfasına girmeye çalışırlarsa) */
