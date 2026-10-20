@@ -53,5 +53,4 @@ export const ICON_TONE_CLASS: Record<NotificationMeta['tone'], string> = {
   danger: 'bg-danger-soft text-danger',
   info: 'bg-info-soft text-info',
   plum: 'bg-plum-soft text-plum',
-  peach: 'bg-peach-soft text-peach',
 }

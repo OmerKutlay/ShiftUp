@@ -6,7 +6,7 @@ import { TimerOff } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 // qrcode kütüphanesi gerçek renk ister — CSS değişkeni değil, palette hex değerleri
-import { C } from '@/lib/palette'
+import { RAW } from '@/lib/palette'
 
 interface Props {
   data: string
@@ -29,8 +29,8 @@ export function QrCodeDisplay({ data, size = 240, loading = false, expired = fal
       width: size,
       margin: 2,
       color: {
-        dark: C.ink,
-        light: C.white,
+        dark: RAW.ink,
+        light: RAW.white,
       },
       errorCorrectionLevel: 'M',
     }).catch((err: unknown) => {

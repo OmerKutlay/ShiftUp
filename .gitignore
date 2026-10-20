@@ -65,3 +65,6 @@ __test_*.json
 # Push kurulum anahtarları / SQL (scripts/setup-push.sh) — gizli
 .push-keys.local
 push-setup.local.sql
+
+# UI stüdyosu ekran görüntüleri
+scripts/ui-studio/out/

@@ -10,7 +10,7 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
     // e2e/: Playwright testleri (npm run test:e2e)
-    exclude: [...configDefaults.exclude, 'e2e/**', 'playwright-report/**', 'test-results/**'],
+    exclude: [...configDefaults.exclude, 'e2e/**', 'scripts/ui-studio/**', 'playwright-report/**', 'test-results/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
