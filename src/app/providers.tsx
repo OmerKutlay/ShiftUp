@@ -6,16 +6,21 @@ import { AuthProvider } from '@/context/AuthContext'
 import { AppShellWrapper } from '@/components/layout/AppShellWrapper'
 import { ConfirmProvider } from '@/components/common/ConfirmDialog'
 import { PwaLayer } from '@/components/pwa/PwaLayer'
+import { Toaster } from '@/components/ui/sonner'
+import { TooltipProvider } from '@/components/ui/tooltip'
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <SWRConfig value={swrConfig}>
-      <ConfirmProvider>
-        <AuthProvider>
-          <AppShellWrapper>{children}</AppShellWrapper>
-          <PwaLayer />
-        </AuthProvider>
-      </ConfirmProvider>
+      <TooltipProvider delayDuration={300}>
+        <ConfirmProvider>
+          <AuthProvider>
+            <AppShellWrapper>{children}</AppShellWrapper>
+            <PwaLayer />
+            <Toaster position="top-center" richColors closeButton />
+          </AuthProvider>
+        </ConfirmProvider>
+      </TooltipProvider>
     </SWRConfig>
   )
 }

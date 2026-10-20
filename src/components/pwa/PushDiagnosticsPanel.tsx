@@ -3,16 +3,21 @@
 /**
  * PushDiagnosticsPanel — anlık bildirim zincirinin adım adım teşhisi (Mağaza Müdürü+).
  *
- * GET /api/push/diagnostics'in `steps` listesini ✓ / ✗ / ? simgeleriyle gösterir; ilk
+ * GET /api/push/diagnostics'in `steps` listesini durum ikonlu bir Item listesiyle gösterir; ilk
  * başarısız adımın ipucu ne yapılacağını söyler (çoğunlukla scripts/setup-push.sh).
  * Bu cihazın aboneliği sunucuda kayıtlı mı diye kontrol için endpoint de gönderilir.
  *
- * collapsible: başlığa tıklanınca açılır ve ancak o zaman yüklenir (varsayılan: hep açık).
+ * collapsible: başlıktaki düğmeyle açılır ve ancak o zaman yüklenir (varsayılan: hep açık).
  */
-import { useCallback, useEffect, useState } from 'react'
-import { ChevronDown, CircleCheck, CircleHelp, CircleX, Loader2, RefreshCw } from 'lucide-react'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Fragment, useCallback, useEffect, useState } from 'react'
+import { ChevronDown, CircleCheck, CircleHelp, CircleX, RefreshCw } from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Item, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemSeparator, ItemTitle } from '@/components/ui/item'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
 import { apiFetch } from '@/lib/api/http'
 import { getCurrentSubscription } from '@/lib/pwa/push'
@@ -39,9 +44,9 @@ async function fetchDiagnostics(): Promise<{ steps: PushDiagnosticStep[] } | { e
 }
 
 function StepIcon({ ok }: { ok: boolean | null }) {
-  if (ok === true) return <CircleCheck className="size-[18px] text-success" aria-label="Tamam" />
-  if (ok === false) return <CircleX className="size-[18px] text-danger" aria-label="Sorun" />
-  return <CircleHelp className="size-[18px] text-ink-muted" aria-label="Bilinmiyor" />
+  if (ok === true) return <CircleCheck className="text-success" aria-label="Tamam" />
+  if (ok === false) return <CircleX className="text-destructive" aria-label="Sorun" />
+  return <CircleHelp className="text-muted-foreground" aria-label="Bilinmiyor" />
 }
 
 export function PushDiagnosticsPanel({ collapsible = false }: Props) {
@@ -77,91 +82,99 @@ export function PushDiagnosticsPanel({ collapsible = false }: Props) {
   }, [shouldLoad])
 
   const firstFailure = steps?.find((s) => s.ok === false)
-
-  const header = (
-    <>
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-semibold text-ink">Bildirim teşhisi</span>
-        <span className="block text-xs text-ink-secondary">
-          Bildirimler telefona gelmiyorsa hangi adımın eksik olduğunu gösterir.
-        </span>
-      </span>
-      {collapsible && (
-        <ChevronDown className={cn('size-5 shrink-0 text-ink-secondary transition-transform', open && 'rotate-180')} />
-      )}
-    </>
-  )
-  const headerCls = 'flex w-full items-center gap-2 px-4 py-3 text-left'
+  const okCount = steps?.filter((s) => s.ok === true).length ?? 0
 
   return (
-    <section className="overflow-hidden rounded-2xl border bg-card">
-      {collapsible ? (
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-          className={cn(headerCls, 'outline-none hover:bg-muted/60 focus-visible:bg-muted')}
-        >
-          {header}
-        </button>
-      ) : (
-        <div className={headerCls}>{header}</div>
-      )}
+    <Card className="gap-5 shadow-xs">
+      <CardHeader className="px-4 md:px-6">
+        <CardTitle className="flex items-center gap-2">
+          Bildirim teşhisi
+          {steps && (
+            <Badge variant="secondary" className="tabular-nums">{okCount}/{steps.length}</Badge>
+          )}
+        </CardTitle>
+        <CardDescription>Bildirimler telefona gelmiyorsa hangi adımın eksik olduğunu gösterir.</CardDescription>
+        <CardAction className="flex gap-1">
+          {open && (
+            <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading || shouldLoad}>
+              {loading ? <Spinner /> : <RefreshCw />}
+              <span className="max-sm:sr-only">Yenile</span>
+            </Button>
+          )}
+          {collapsible && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => setOpen((v) => !v)}
+              aria-expanded={open}
+              aria-label={open ? 'Teşhisi gizle' : 'Teşhisi göster'}
+            >
+              <ChevronDown className={cn('transition-transform', open && 'rotate-180')} />
+            </Button>
+          )}
+        </CardAction>
+      </CardHeader>
 
       {open && (
-        <div className="flex flex-col gap-2 px-4 pb-4">
+        <CardContent className="flex flex-col gap-4 px-4 md:px-6">
           {error && (
-            <Alert tone="danger">
+            <Alert variant="destructive">
               <CircleX />
-              <AlertDescription className="text-ink">{error}</AlertDescription>
+              <AlertTitle>Teşhis bilgisi alınamadı</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
-          {(shouldLoad || (loading && !steps)) && (
-            <div className="flex justify-center py-4">
-              <Loader2 className="size-6 animate-spin text-ink-muted" aria-label="Yükleniyor" />
-            </div>
+
+          {firstFailure && (
+            <Alert variant="destructive">
+              <CircleX />
+              <AlertTitle>Sorun: {firstFailure.label}</AlertTitle>
+              {firstFailure.hint && <AlertDescription className="[overflow-wrap:anywhere]">{firstFailure.hint}</AlertDescription>}
+            </Alert>
           )}
-          {steps && (
-            <ul className="flex flex-col">
-              {steps.map((s) => (
-                <li key={s.key} className="flex items-start gap-2.5 py-1.5">
-                  <span className="mt-px flex shrink-0">
-                    <StepIcon ok={s.ok} />
-                  </span>
-                  <span className="min-w-0">
-                    <span className={cn('block text-sm text-ink', s === firstFailure ? 'font-bold' : 'font-medium')}>
-                      {s.label}
-                    </span>
-                    {s.hint && (
-                      <span className={cn('block text-xs [overflow-wrap:anywhere]', s.ok === false ? 'text-warning' : 'text-ink-secondary')}>
-                        {s.hint}
-                      </span>
-                    )}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-          {steps && steps.every((s) => s.ok === true) && (
+          {steps && steps.length > 0 && steps.every((s) => s.ok === true) && (
             <Alert tone="success">
               <CircleCheck />
-              <AlertDescription className="text-ink">
-                Sunucu tarafında eksik görünmüyor. Bildirim gelmiyorsa telefonun bildirim ayarlarını ve pil tasarrufunu kontrol edin.
+              <AlertTitle>Sunucu tarafında eksik görünmüyor</AlertTitle>
+              <AlertDescription>
+                Bildirim gelmiyorsa telefonun bildirim ayarlarını ve pil tasarrufunu kontrol edin.
               </AlertDescription>
             </Alert>
           )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => void load()}
-            disabled={loading}
-            className="-ml-2.5 self-start"
-          >
-            {loading ? <Loader2 className="animate-spin" /> : <RefreshCw />}
-            Yenile
-          </Button>
-        </div>
+
+          {(shouldLoad || (loading && !steps)) && (
+            <div role="status" aria-label="Yükleniyor" className="flex flex-col gap-3">
+              {Array.from({ length: 5 }, (_, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <Skeleton className="size-5 rounded-full" />
+                  <Skeleton className="h-4 w-2/3" />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {steps && (
+            <ItemGroup className="rounded-lg border">
+              {steps.map((s, i) => (
+                <Fragment key={s.key}>
+                  {i > 0 && <ItemSeparator />}
+                  <Item size="sm" className={cn('rounded-none', s === firstFailure && 'bg-destructive/5')}>
+                    <ItemMedia className="self-start pt-0.5 [&_svg]:size-4.5">
+                      <StepIcon ok={s.ok} />
+                    </ItemMedia>
+                    <ItemContent className="min-w-0">
+                      <ItemTitle className={cn('w-full', s === firstFailure && 'text-destructive')}>{s.label}</ItemTitle>
+                      {s.hint && (
+                        <ItemDescription className="line-clamp-none [overflow-wrap:anywhere]">{s.hint}</ItemDescription>
+                      )}
+                    </ItemContent>
+                  </Item>
+                </Fragment>
+              ))}
+            </ItemGroup>
+          )}
+        </CardContent>
       )}
-    </section>
+    </Card>
   )
 }

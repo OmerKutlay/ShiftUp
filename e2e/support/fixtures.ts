@@ -23,15 +23,21 @@ export function makeEmployee(role: RoleName) {
     id: isManager ? MANAGER_ID : EMPLOYEE_ID,
     full_name: isManager ? 'Mehmet Müdür' : 'Ayşe Yılmaz',
     email: isManager ? 'mudur@example.com' : 'ayse@example.com',
-    role: isManager ? 'Mağaza Müdürü' : 'Kasiyer',
     role_id: isManager ? 'role-2' : 'role-4',
     active: true,
     employment_type: 'full_time',
     auth_user_id: PERSONA_BY_ROLE[role].userId,
     created_at: '2026-01-01T00:00:00.000Z',
     updated_at: '2026-01-01T00:00:00.000Z',
-    roles: { id: isManager ? 'role-2' : 'role-4', name: role, description: null, created_at: '2026-01-01T00:00:00.000Z' },
-    role_name: role,
+    roles: {
+      id: isManager ? 'role-2' : 'role-4',
+      name: isManager ? 'Mağaza Müdürü' : 'Kasiyer',
+      description: null,
+      access_level: isManager ? 'store_manager' : 'employee',
+      planning_group: isManager ? 'store_manager' : 'cashier',
+      sort_order: isManager ? 20 : 60,
+      created_at: '2026-01-01T00:00:00.000Z',
+    },
   }
 }
 

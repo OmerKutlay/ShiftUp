@@ -1,8 +1,11 @@
 'use client'
 
 /**
- * MobileBottomNav — mobilde (md altı) alt sekme çubuğu.
- * Sekmeler role göre navItems.getBottomTabs'tan gelir; ekranın altına yapışık, aktif sekme açık kiremit zeminli.
+ * MobileBottomNav — telefonda alt sekme çubuğu.
+ *
+ * Beş eşit sütun (grid); her sekmede ikon + tek satır etiket, hepsi aynı taban çizgisinde.
+ * Çubuk ekranın altına yapışık ve opaktır; ev göstergesi alanı (safe-area) çubuğun zemininde
+ * kalır. Sekmeler role göre navItems.getBottomTabs'tan gelir.
  */
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -12,8 +15,8 @@ import { getActiveTabHref, getBottomTabs, type BottomTab } from './navItems'
 import { cn } from '@/lib/utils'
 
 /** Alt bar yüksekliği (safe-area hariç) */
-export const BOTTOM_NAV_HEIGHT = 64
-/** İçeriğin altta bırakması gereken boşluk (safe-area body padding'inden gelir) */
+export const BOTTOM_NAV_HEIGHT = 56
+/** İçeriğin altta bırakması gereken boşluk (safe-area hariç) */
 export const BOTTOM_NAV_SPACE = BOTTOM_NAV_HEIGHT
 /**
  * Mobilde alttan konumlanan katmanların (çevrimdışı bandı, güncelleme uyarısı, kurulum kartı)
@@ -24,21 +27,20 @@ export const BOTTOM_NAV_OVERLAY_OFFSET = BOTTOM_NAV_SPACE + 8
 export function MobileBottomNav() {
   const pathname = usePathname()
   const { employee, status } = useAuth()
-  const roleName = employee?.roles?.access_level ?? null
   // Oturum yüklenirken çalışan sekmeleri gösterilip sonra yöneticiye dönmesin (flash)
-  const tabs = status === 'loading' ? [] : getBottomTabs(roleName)
+  const tabs = status === 'loading' ? [] : getBottomTabs(employee?.roles?.access_level ?? null)
   const activeHref = getActiveTabHref(pathname, tabs)
 
   return (
-    // Ekranın altına yapışık, opak bar; home-indicator alanı (safe-area) barın zemininde kalır
     <nav
       aria-label="Alt menü"
-      className="fixed inset-x-0 bottom-0 z-[1100] flex items-stretch gap-1 border-t bg-card pt-1.5 pr-[calc(8px+env(safe-area-inset-right))] pb-[calc(6px+env(safe-area-inset-bottom))] pl-[calc(8px+env(safe-area-inset-left))] shadow-[0_-4px_16px_rgb(43_33_27/0.05)] select-none [-webkit-touch-callout:none]"
-      style={{ height: `calc(${BOTTOM_NAV_HEIGHT}px + env(safe-area-inset-bottom))` }}
+      className="fixed inset-x-0 bottom-0 z-40 border-t bg-background pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] select-none [-webkit-touch-callout:none]"
     >
-      {tabs.map((tab) => (
-        <TabLink key={tab.href} tab={tab} active={tab.href === activeHref} />
-      ))}
+      <div className="grid grid-cols-5" style={{ height: BOTTOM_NAV_HEIGHT }}>
+        {tabs.map((tab) => (
+          <TabLink key={tab.href} tab={tab} active={tab.href === activeHref} />
+        ))}
+      </div>
     </nav>
   )
 }
@@ -50,12 +52,18 @@ function TabLink({ tab, active }: { tab: BottomTab; active: boolean }) {
       prefetch={false}
       aria-current={active ? 'page' : undefined}
       className={cn(
-        'flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-[14px] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring active:opacity-70 [&_svg]:size-[22px]',
-        active ? 'bg-accent text-primary' : 'text-ink-secondary'
+        'relative flex min-w-0 flex-col items-center justify-center gap-1 outline-none transition-colors',
+        'focus-visible:bg-accent active:bg-accent [&_svg]:size-5 [&_svg]:shrink-0',
+        active ? 'text-primary' : 'text-muted-foreground'
       )}
     >
+      {/* Aktif gösterge: ikonun üstünde ince çizgi */}
+      <span
+        aria-hidden
+        className={cn('absolute top-0 h-0.5 w-8 rounded-full bg-primary transition-opacity', active ? 'opacity-100' : 'opacity-0')}
+      />
       {tab.icon}
-      <span className={cn('max-w-full truncate text-[0.68rem] leading-tight', active ? 'font-bold' : 'font-medium')}>
+      <span className={cn('w-full truncate px-1 text-center text-[11px] leading-none', active ? 'font-semibold' : 'font-medium')}>
         {tab.label}
       </span>
     </Link>

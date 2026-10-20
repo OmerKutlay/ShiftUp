@@ -13,12 +13,13 @@
  */
 import { useState } from 'react'
 import { usePathname } from 'next/navigation'
-import { BellRing, Loader2 } from 'lucide-react'
+import { BellRing } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
+import { Spinner } from '@/components/ui/spinner'
 import { usePushSubscription } from '@/hooks/usePushSubscription'
 import { isDismissedRecently, isInstallPromptHiddenPath, useIsStandalone } from '@/lib/pwa/install'
-import { BottomPromptCard } from './BottomPromptCard'
+import { BottomPromptCard, PromptIcon } from './BottomPromptCard'
 import { useIsNarrow } from './useIsNarrow'
 
 const DISMISS_KEY = 'shiftup.pushPrompt.dismissedAt'
@@ -76,12 +77,11 @@ function PushPromptCard({ onDismiss }: { onDismiss: () => void }) {
     <BottomPromptCard
       titleId="push-prompt-title"
       title="Bildirimleri aç"
-      className="max-w-[480px]"
       onClose={onDismiss}
       media={
-        <span aria-hidden className="flex size-10 items-center justify-center rounded-xl bg-brand-soft text-brand [&_svg]:size-5">
+        <PromptIcon>
           <BellRing />
-        </span>
+        </PromptIcon>
       }
       actions={
         <>
@@ -89,13 +89,13 @@ function PushPromptCard({ onDismiss }: { onDismiss: () => void }) {
             Şimdi değil
           </Button>
           <Button size="sm" onClick={() => void enable()} disabled={busy}>
-            {busy && <Loader2 className="animate-spin" />}
+            {busy && <Spinner />}
             Aç
           </Button>
         </>
       }
     >
-      <p className="mt-1 text-sm text-ink-secondary">
+      <p className="text-sm text-muted-foreground">
         {error ??
           'İzin talepleri, onaylar ve vardiya hatırlatmaları uygulama kapalıyken de telefonunuza gelsin.'}
       </p>

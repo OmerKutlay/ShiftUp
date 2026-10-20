@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { renderWithProviders } from './helpers/renderWithProviders'
 import userEvent from '@testing-library/user-event'
 import type { EmployeeWithRole } from '@/types/employee'
@@ -140,11 +140,11 @@ describe('WeeklySchedulePage — yükleme', () => {
 
     renderPage()
 
+    // Boş durum (Empty) kartı
     await waitFor(() => {
-      const alerts = screen.getAllByRole('alert')
-      const infoAlert = alerts.find((el) => el.textContent?.includes('çalışan bulunamadı'))
-      expect(infoAlert).toBeDefined()
+      expect(screen.getByText('Aktif çalışan bulunamadı')).toBeInTheDocument()
     })
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
   })
 })
 
@@ -229,10 +229,44 @@ describe('WeeklySchedulePage — vardiya atama', () => {
     await waitFor(() => screen.getByText('Ahmet Kaya'))
 
     // İlk boş hücreye tıkla — tüm günler boş
-    // Sadece hücre tıklanabilir olduğunu test et (dialog açılır)
-    // Desktop grid'de her boş hücre tıklanabilir box
-    // Alternatif: dialog açılmadan önce hiçbir dialog visible olmamalı
-    expect(screen.queryByText('Vardiya Ata')).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    const emptyCells = within(screen.getByRole('table')).getAllByRole('button', { name: 'Vardiya ekle' })
+    expect(emptyCells).toHaveLength(7)
+    await userEvent.click(emptyCells[0])
+
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText('Vardiya ata')).toBeInTheDocument()
+    expect(within(dialog).getByText('Ahmet Kaya')).toBeInTheDocument()
+  })
+
+  it('şablon seçilip "Ata" ile createShiftAssignment çağrılır', async () => {
+    vi.mocked(scheduleRepo.createShiftAssignment).mockResolvedValue(makeAssignment())
+    setupMocks([makeEmployee()], [makeTemplate()], [])
+
+    renderPage()
+    await waitFor(() => screen.getByText('Ahmet Kaya'))
+
+    await userEvent.click(within(screen.getByRole('table')).getAllByRole('button', { name: 'Vardiya ekle' })[0])
+    const dialog = await screen.findByRole('dialog')
+
+    // Şablon seçmeden kaydetmek alan hatası verir
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Ata' }))
+    expect(within(dialog).getByText('Bir vardiya şablonu seçin.')).toBeInTheDocument()
+    expect(scheduleRepo.createShiftAssignment).not.toHaveBeenCalled()
+
+    await userEvent.click(within(dialog).getByRole('radio'))
+    expect(within(dialog).getByText('Brüt 9s · mola 1s · net 8s')).toBeInTheDocument()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Ata' }))
+
+    await waitFor(() => {
+      expect(scheduleRepo.createShiftAssignment).toHaveBeenCalledWith(
+        expect.objectContaining({
+          employee_id: 'emp-001', shift_template_id: 'tpl-001', work_date: '2026-09-28', start_time: '09:00', end_time: '18:00',
+        }),
+        true,
+        undefined
+      )
+    })
   })
 
   it('createShiftAssignment çağrılır ve liste yenilenir', async () => {
@@ -303,9 +337,9 @@ describe('WeeklySchedulePage — mobil', () => {
     await waitFor(() => expect(screen.getByText('Ayşe D.')).toBeInTheDocument())
     expect(screen.getByRole('button', { name: /28 Eylül Pazartesi, 2 kişi/ })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByText('2 kişi çalışıyor', { exact: false })).toBeInTheDocument()
-    const times = screen.getAllByText(/^\d{2}:\d{2} – \d{2}:\d{2}$/).map((el) => el.textContent)
-    expect(times).toEqual(['09:00 – 18:00', '13:00 – 22:00'])
-    expect(screen.getByText('Çalışmayanlar (1)')).toBeInTheDocument()
+    const times = screen.getAllByText(/^\d{2}:\d{2}–\d{2}:\d{2}$/).map((el) => el.textContent)
+    expect(times).toEqual(['09:00–18:00', '13:00–22:00'])
+    expect(screen.getByText('Çalışmayanlar')).toHaveTextContent('Çalışmayanlar1')
     expect(screen.getByText('Can Boş')).toBeInTheDocument()
 
     // Başka güne geçiş

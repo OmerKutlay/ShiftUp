@@ -1,86 +1,88 @@
 /**
- * palette — ShiftUp renk token'larının tek kaynağı (yeni açık, sıcak tonlu UI).
+ * palette — satır içi `style` gereken yerler için tema renkleri (vardiya türü, grafik, avatar).
  *
- * Tailwind tarafındaki karşılıkları src/app/globals.css'te; bu dosya yalnızca dinamik
- * renk gereken satır içi style değerleri (vardiya türü, avatar, QR) için kullanılır.
- * Bileşenlerde ham hex / rgba yazılmaz.
- *
- * Adlandırma: <ton> = metin/ikon için okunaklı koyu ton, <ton>Fill = çubuk/nokta
- * gibi dolgu, <ton>Soft = rozet/hücre zemini.
+ * Değerler globals.css'teki CSS değişkenlerine başvurur; tek kaynak globals.css'tir.
+ * Sınıf yazılabilen her yerde Tailwind token'ı (`text-success`, `bg-success/10`) tercih edilir.
+ * Canvas gibi CSS değişkeni okuyamayan yerler RAW değerlerini kullanır.
  */
 
+const v = (name: string) => `var(--${name})`
+/** Rengin yarı saydam hali (CSS color-mix) */
+export function tint(color: string, a: number): string {
+  return `color-mix(in oklch, ${color} ${Math.round(a * 100)}%, transparent)`
+}
+
 export const C = {
-  // Yüzeyler
-  canvas: '#F5EFE6',       // uygulama zemini (sidebar, mobil arka plan)
-  surface: '#FFFDFA',      // kart / içerik paneli
-  surfaceAlt: '#FAF5EE',   // ikincil yüzey (KPI kutusu, input)
-  surfaceMuted: '#F2ECE3', // segment kontrol zemini
-  sand: '#E6DCCD',         // hafta tatili (puantaj şeridi)
-  border: '#ECE4D8',       // kart kenarlığı, ayraç
+  canvas: v('muted'),
+  surface: v('card'),
+  surfaceAlt: v('muted'),
+  surfaceMuted: v('secondary'),
+  sand: v('sand'),
+  border: v('border'),
 
-  // Metin
-  ink: '#2B211B',
-  inkSecondary: '#605853',
-  inkMuted: '#8C827A',
+  ink: v('foreground'),
+  inkSecondary: v('muted-foreground'),
+  inkMuted: v('ink-muted'),
 
-  // Marka (kiremit)
-  brand: '#C2532D',
-  brandDark: '#A3441F',
-  brandLight: '#E0814F',
-  brandSoft: '#FBEDE5',
+  brand: v('primary'),
+  brandDark: v('brand-dark'),
+  brandLight: v('brand-light'),
+  brandSoft: v('brand-soft'),
 
-  // Durum tonları
-  success: '#4E7A3B',
-  successFill: '#B9D4A6',
-  successSoft: '#E6F0DF',
-  warning: '#946A1E',
-  warningFill: '#E6A93E',
-  warningSoft: '#FCEFD2',
-  danger: '#B8412C',
-  dangerFill: '#C8452F',
-  dangerSoft: '#FBE4DF',
-  info: '#356BA8',
-  infoFill: '#3F7CC0',
-  infoSoft: '#E4EDF7',
-  plum: '#874F71',
-  plumFill: '#A35A87',
-  plumSoft: '#F2E1EB',
-  peach: '#985032',
-  peachFill: '#E0814F',
-  peachSoft: '#FCE3D5',
-  neutral: '#7A706A',
-  neutralSoft: '#F2ECE3',
+  success: v('success'),
+  successFill: v('success-fill'),
+  successSoft: v('success-soft'),
+  warning: v('warning'),
+  warningFill: v('warning-fill'),
+  warningSoft: v('warning-soft'),
+  danger: v('destructive'),
+  dangerFill: v('danger-fill'),
+  dangerSoft: v('danger-soft'),
+  info: v('info'),
+  infoFill: v('info-fill'),
+  infoSoft: v('info-soft'),
+  plum: v('plum'),
+  plumFill: v('plum-fill'),
+  plumSoft: v('plum-soft'),
+  peach: v('peach'),
+  peachFill: v('peach-fill'),
+  peachSoft: v('peach-soft'),
+  neutral: v('muted-foreground'),
+  neutralSoft: v('secondary'),
 
   white: '#FFFFFF',
 } as const
 
 export type ColorToken = keyof typeof C
 
-/** Hex token'dan yarı saydam rgba üretir: tint(C.brand, 0.1) */
-export function tint(hex: string, a: number): string {
-  const h = hex.replace('#', '')
-  const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16)
-  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`
-}
-
-/** Vardiya türü renkleri (Açılış / Ortacı / Kapanış …) — hücre zemini, metin ve çubuk */
-export const SHIFT_KIND_TONES = {
-  opening: { soft: C.warningSoft, text: C.warning, fill: C.warningFill },
-  mid: { soft: C.peachSoft, text: C.peach, fill: C.peachFill },
-  closing: { soft: C.plumSoft, text: C.plum, fill: C.plumFill },
-  full: { soft: C.infoSoft, text: C.info, fill: C.infoFill },
-  custom: { soft: C.neutralSoft, text: C.neutral, fill: C.inkMuted },
+/** CSS değişkeni okuyamayan çizimler (QR canvas) için ham renkler */
+export const RAW = {
+  ink: '#1C1917',
+  white: '#FFFFFF',
 } as const
 
-/** Kişi avatarları için pastel zemin + koyu baş harf rengi (ada göre sabit seçilir) */
+/** Vardiya türü renkleri (Açılış / Ortacı / Kapanış …) — hücre zemini, metin ve çubuk */
+const kind = (name: string) => ({
+  soft: `color-mix(in oklch, var(--${name}) 14%, var(--background))`,
+  text: `color-mix(in oklch, var(--${name}) 70%, var(--foreground))`,
+  fill: v(name),
+})
+export const SHIFT_KIND_TONES = {
+  opening: kind('shift-open'),
+  mid: kind('shift-mid'),
+  closing: kind('shift-close'),
+  full: kind('info'),
+  custom: { soft: v('secondary'), text: v('muted-foreground'), fill: v('ink-muted') },
+} as const
+
+/** Kişi avatarları: nötr zemin + koyu baş harf (shadcn Avatar varsayılanı); renk ada göre sabit seçilir */
 export const AVATAR_TONES = [
-  { bg: C.peachSoft, fg: C.peach },
-  { bg: C.warningSoft, fg: C.warning },
-  { bg: C.successSoft, fg: C.success },
-  { bg: C.plumSoft, fg: C.plum },
-  { bg: C.neutralSoft, fg: C.neutral },
-  { bg: C.dangerSoft, fg: C.danger },
-  { bg: C.infoSoft, fg: C.info },
+  { bg: 'color-mix(in oklch, var(--chart-1) 14%, var(--background))', fg: 'color-mix(in oklch, var(--chart-1) 75%, var(--foreground))' },
+  { bg: 'color-mix(in oklch, var(--chart-2) 14%, var(--background))', fg: 'color-mix(in oklch, var(--chart-2) 75%, var(--foreground))' },
+  { bg: 'color-mix(in oklch, var(--chart-3) 12%, var(--background))', fg: 'color-mix(in oklch, var(--chart-3) 75%, var(--foreground))' },
+  { bg: 'color-mix(in oklch, var(--chart-4) 18%, var(--background))', fg: 'color-mix(in oklch, var(--chart-4) 60%, var(--foreground))' },
+  { bg: 'color-mix(in oklch, var(--chart-5) 12%, var(--background))', fg: 'color-mix(in oklch, var(--chart-5) 75%, var(--foreground))' },
+  { bg: v('secondary'), fg: v('secondary-foreground') },
 ] as const
 
 export function avatarTone(seed: string) {

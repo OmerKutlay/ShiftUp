@@ -10,7 +10,6 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useIsMobile } from '@/hooks/useIsMobile'
-import { cn } from '@/lib/utils'
 import { NotificationPanel } from './NotificationPanel'
 import { useNotifications } from '@/hooks/useNotifications'
 
@@ -35,13 +34,13 @@ export function NotificationBell({ employeeId, collapsed = false }: Props) {
         variant="ghost"
         size="icon"
         aria-label={`Bildirimler${unreadCount > 0 ? `, ${unreadCount} okunmamış` : ''}`}
-        className={cn('relative rounded-xl', unreadCount > 0 ? 'text-primary' : 'text-ink-secondary')}
+        className="relative text-muted-foreground hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground"
       >
         <Bell className="size-5" />
         {unreadCount > 0 && (
           <span
             aria-hidden
-            className="absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[0.62rem] leading-none font-bold text-white ring-2 ring-background"
+            className="absolute top-0.5 right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-xs leading-none font-medium text-white tabular-nums ring-2 ring-background"
           >
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>

@@ -1,17 +1,27 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { AlertCircle, Clock, Loader2, X } from 'lucide-react'
-import type { ShiftTemplate, CreateShiftTemplatePayload, UpdateShiftTemplatePayload } from '@/types/shiftTemplate'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+/**
+ * ShiftTemplateFormDialog — vardiya şablonu oluştur / düzenle (DESIGN_GUIDE §5 "Formlar").
+ * Diyalog her açılışta yeni `key` ile mount edilir (bkz. ShiftTemplatesPage) → form ilk değerden başlar.
+ */
+import { useState } from 'react'
+import { MoonStar, TriangleAlert } from 'lucide-react'
+
+import type { CreateShiftTemplatePayload, ShiftTemplate, UpdateShiftTemplatePayload } from '@/types/shiftTemplate'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldTitle,
+} from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { Item, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '@/components/ui/item'
+import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { SHIFT_KIND_LABELS, fmtMins, shiftTiming } from './format'
 
 interface Props {
   open: boolean
@@ -55,18 +65,9 @@ function isValidTime(val: string): boolean {
 
 export function ShiftTemplateFormDialog({ open, onClose, onSave, template, loading }: Props) {
   const isEdit = !!template
-  const [form, setForm] = useState<FormState>(EMPTY_FORM)
+  const [form, setForm] = useState<FormState>(() => (template ? toFormState(template) : EMPTY_FORM))
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({})
   const [submitError, setSubmitError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (open) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setForm(template ? toFormState(template) : EMPTY_FORM)
-      setErrors({})
-      setSubmitError(null)
-    }
-  }, [open, template])
 
   function validate(): boolean {
     const next: typeof errors = {}
@@ -74,12 +75,12 @@ export function ShiftTemplateFormDialog({ open, onClose, onSave, template, loadi
     if (!form.start_time) {
       next.start_time = 'Başlangıç saati zorunludur.'
     } else if (!isValidTime(form.start_time)) {
-      next.start_time = 'Geçerli bir saat girin (ÖR: 09:00).'
+      next.start_time = 'Geçerli bir saat girin (örn: 09:00).'
     }
     if (!form.end_time) {
       next.end_time = 'Bitiş saati zorunludur.'
     } else if (!isValidTime(form.end_time)) {
-      next.end_time = 'Geçerli bir saat girin (ÖR: 18:00).'
+      next.end_time = 'Geçerli bir saat girin (örn: 18:00).'
     }
     setErrors(next)
     return Object.keys(next).length === 0
@@ -92,7 +93,7 @@ export function ShiftTemplateFormDialog({ open, onClose, onSave, template, loadi
     }
 
   const handleSubmit = async () => {
-    if (!validate()) return
+    if (loading || !validate()) return
     setSubmitError(null)
     try {
       await onSave({
@@ -107,115 +108,133 @@ export function ShiftTemplateFormDialog({ open, onClose, onSave, template, loadi
     }
   }
 
-  // Süre hesapla (preview)
-  const durationLabel = (() => {
-    if (!isValidTime(form.start_time) || !isValidTime(form.end_time)) return null
-    const [sh, sm] = form.start_time.split(':').map(Number)
-    const [eh, em] = form.end_time.split(':').map(Number)
-    let mins = (eh * 60 + em) - (sh * 60 + sm)
-    if (mins <= 0) mins += 24 * 60  // gece yarısı geçen vardiyalar
-    const h = Math.floor(mins / 60)
-    const m = mins % 60
-    return m > 0 ? `${h} saat ${m} dakika` : `${h} saat`
-  })()
+  // Önizleme: tür rengi, brüt süre, planlanan mola, net çalışma
+  const timing = isValidTime(form.start_time) && isValidTime(form.end_time) && form.start_time !== form.end_time
+    ? shiftTiming(form.name || undefined, form.start_time, form.end_time)
+    : null
 
   return (
-    <Dialog open={open} onOpenChange={(next) => { if (!next) onClose() }}>
-      <DialogContent className="sm:max-w-md">
+    <Dialog open={open} onOpenChange={(next) => { if (!next && !loading) onClose() }}>
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{isEdit ? 'Şablonu Düzenle' : 'Yeni Vardiya Şablonu'}</DialogTitle>
-          <DialogDescription>Haftalık planda tek tıkla atanacak vardiya saatleri.</DialogDescription>
+          <DialogTitle>{isEdit ? 'Şablonu düzenle' : 'Yeni vardiya şablonu'}</DialogTitle>
+          <DialogDescription>Haftalık planda tek tıkla atanan vardiya saatleri.</DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          {submitError && (
-            <Alert tone="danger" className="pr-10 sm:col-span-2">
-              <AlertCircle />
-              <AlertDescription className="text-ink">{submitError}</AlertDescription>
-              <button
-                type="button"
-                aria-label="Kapat"
-                onClick={() => setSubmitError(null)}
-                className="absolute top-2 right-2 flex size-7 items-center justify-center rounded-lg text-ink-secondary hover:bg-card/60"
-              >
-                <X className="size-4" />
-              </button>
-            </Alert>
-          )}
+        <form id="shift-template-form" noValidate onSubmit={(e) => { e.preventDefault(); void handleSubmit() }}>
+          <FieldGroup className="gap-5">
+            {submitError && (
+              <Alert variant="destructive">
+                <TriangleAlert />
+                <AlertTitle>Kaydedilemedi</AlertTitle>
+                <AlertDescription>{submitError}</AlertDescription>
+              </Alert>
+            )}
 
-          <div className="flex flex-col gap-1.5 sm:col-span-2">
-            <Label htmlFor="tpl-name">Şablon adı</Label>
-            <Input
-              id="tpl-name"
-              placeholder="Açılış, Kapanış, Ortacı…"
-              value={form.name}
-              onChange={handleText('name')}
-              aria-invalid={!!errors.name || undefined}
-              autoFocus
-            />
-            {errors.name && <p className="text-xs text-danger">{errors.name}</p>}
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="tpl-start">Başlangıç saati</Label>
-            <Input
-              id="tpl-start"
-              type="time"
-              step={300}
-              value={form.start_time}
-              onChange={handleText('start_time')}
-              aria-invalid={!!errors.start_time || undefined}
-            />
-            {errors.start_time && <p className="text-xs text-danger">{errors.start_time}</p>}
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="tpl-end">Bitiş saati</Label>
-            <Input
-              id="tpl-end"
-              type="time"
-              step={300}
-              value={form.end_time}
-              onChange={handleText('end_time')}
-              aria-invalid={!!errors.end_time || undefined}
-            />
-            {errors.end_time && <p className="text-xs text-danger">{errors.end_time}</p>}
-          </div>
-
-          {durationLabel && (
-            <p className="flex items-center gap-1.5 text-xs font-semibold text-primary sm:col-span-2">
-              <Clock aria-hidden className="size-3.5" />
-              {durationLabel}
-            </p>
-          )}
-
-          <div className="flex flex-col gap-1.5 sm:col-span-2">
-            <Label htmlFor="tpl-desc">Açıklama (opsiyonel)</Label>
-            <Textarea
-              id="tpl-desc"
-              rows={2}
-              className="min-h-16"
-              value={form.description}
-              onChange={handleText('description')}
-            />
-          </div>
-
-          {isEdit && (
-            <div className="flex items-center gap-3 sm:col-span-2">
-              <Switch
-                id="tpl-active"
-                checked={form.active}
-                onCheckedChange={(checked) => setForm((f) => ({ ...f, active: checked }))}
-                className="data-[state=checked]:bg-success"
+            <Field data-invalid={!!errors.name || undefined}>
+              <FieldLabel htmlFor="tpl-name">Şablon adı</FieldLabel>
+              <Input
+                id="tpl-name"
+                placeholder="Açılış, Ortacı, Kapanış…"
+                value={form.name}
+                onChange={handleText('name')}
+                aria-invalid={!!errors.name || undefined}
+                autoFocus
               />
-              <Label htmlFor="tpl-active">{form.active ? 'Aktif' : 'Pasif'}</Label>
+              {errors.name ? (
+                <FieldError>{errors.name}</FieldError>
+              ) : (
+                <FieldDescription>Açılış, Ortacı, Kapanış ve Full adları planda kendi rengini alır.</FieldDescription>
+              )}
+            </Field>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field data-invalid={!!errors.start_time || undefined}>
+                <FieldLabel htmlFor="tpl-start">Başlangıç saati</FieldLabel>
+                <Input
+                  id="tpl-start"
+                  type="time"
+                  step={300}
+                  value={form.start_time}
+                  onChange={handleText('start_time')}
+                  aria-invalid={!!errors.start_time || undefined}
+                  className="tabular-nums"
+                />
+                <FieldError>{errors.start_time}</FieldError>
+              </Field>
+              <Field data-invalid={!!errors.end_time || undefined}>
+                <FieldLabel htmlFor="tpl-end">Bitiş saati</FieldLabel>
+                <Input
+                  id="tpl-end"
+                  type="time"
+                  step={300}
+                  value={form.end_time}
+                  onChange={handleText('end_time')}
+                  aria-invalid={!!errors.end_time || undefined}
+                  className="tabular-nums"
+                />
+                <FieldError>{errors.end_time}</FieldError>
+              </Field>
             </div>
-          )}
-        </div>
+
+            {timing && (
+              <Item variant="muted" size="sm" aria-live="polite">
+                <ItemMedia>
+                  <span aria-hidden className="h-9 w-1 rounded-full" style={{ backgroundColor: timing.tone.fill }} />
+                </ItemMedia>
+                <ItemContent>
+                  <ItemTitle className="tabular-nums">
+                    {fmtMins(timing.gross)} · {SHIFT_KIND_LABELS[timing.kind]}
+                  </ItemTitle>
+                  <ItemDescription className="tabular-nums">
+                    {fmtMins(timing.breakMins)} planlanan mola · {fmtMins(timing.net)} net çalışma
+                  </ItemDescription>
+                </ItemContent>
+                {timing.overnight && (
+                  <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <MoonStar className="size-3.5" aria-hidden />
+                    Ertesi gün biter
+                  </span>
+                )}
+              </Item>
+            )}
+
+            <Field>
+              <FieldLabel htmlFor="tpl-desc">
+                Açıklama <span className="font-normal text-muted-foreground">(isteğe bağlı)</span>
+              </FieldLabel>
+              <Textarea
+                id="tpl-desc"
+                rows={2}
+                className="min-h-16"
+                placeholder="Örn: Mağaza açılışı, kasa açılış sayımı"
+                value={form.description}
+                onChange={handleText('description')}
+              />
+            </Field>
+
+            {isEdit && (
+              <FieldLabel htmlFor="tpl-active">
+                <Field orientation="horizontal">
+                  <FieldContent>
+                    <FieldTitle>Aktif şablon</FieldTitle>
+                    <FieldDescription>Pasif şablonlar haftalık planda seçilemez.</FieldDescription>
+                  </FieldContent>
+                  <Switch
+                    id="tpl-active"
+                    checked={form.active}
+                    onCheckedChange={(checked) => setForm((f) => ({ ...f, active: checked }))}
+                  />
+                </Field>
+              </FieldLabel>
+            )}
+          </FieldGroup>
+        </form>
 
         <DialogFooter>
-          <Button type="button" variant="ghost" onClick={onClose} disabled={loading}>İptal</Button>
-          <Button type="button" onClick={handleSubmit} disabled={loading}>
-            {loading && <Loader2 className="animate-spin" />}
+          <Button type="button" variant="outline" onClick={onClose} disabled={loading}>İptal</Button>
+          <Button type="submit" form="shift-template-form" disabled={loading}>
+            {loading && <Spinner />}
             {isEdit ? 'Kaydet' : 'Ekle'}
           </Button>
         </DialogFooter>

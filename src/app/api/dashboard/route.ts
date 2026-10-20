@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { requireMinRole, ACCESS } from '@/lib/auth'
 import { serverError } from '@/lib/apiErrors'
-import { turkeyToday } from '@/lib/dateUtils'
+import { formatInTimeZone, turkeyToday } from '@/lib/dateUtils'
 import { NOT_KIOSK_FILTER } from '@/lib/auth/roles'
 import { roleNameOf } from '@/lib/roleJoin'
 
@@ -16,6 +16,7 @@ interface TodayShift {
   employee_id: string
   start_time: string
   end_time: string
+  is_on_leave: boolean | null
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   employees: any
 }
@@ -46,7 +47,7 @@ export async function GET(req: NextRequest) {
       admin
         .from('shift_assignments')
         .select(`
-          id, employee_id, start_time, end_time,
+          id, employee_id, start_time, end_time, is_on_leave,
           employees ( id, full_name, roles ( name ) )
         `)
         .eq('work_date', today)
@@ -86,6 +87,7 @@ export async function GET(req: NextRequest) {
         start_time: shift.start_time,
         end_time: shift.end_time,
         attendance_status: att?.status ?? 'shift_waiting',
+        is_on_leave: Boolean(shift.is_on_leave),
         clock_in_at: att?.clock_in_at ?? null,
         clock_out_at: att?.clock_out_at ?? null,
       }
@@ -96,7 +98,12 @@ export async function GET(req: NextRequest) {
     ).length
     const onBreak = todayAttendance.filter((a) => a.status === 'on_break').length
     const clockedOut = todayAttendance.filter((a) => a.status === 'clocked_out').length
-    const noShow = todayShifts.length - todayAttendance.length
+    // Gelmedi: başlamış, izinli olmayan ve giriş kaydı olmayan vardiyalar
+    // (izinliler ve henüz başlamamış vardiyalar sayılmaz — Devam raporuyla aynı tanım)
+    const nowHm = formatInTimeZone(new Date().toISOString())
+    const noShow = todayShifts.filter(
+      (s) => !s.is_on_leave && !attByShift.has(s.id) && s.start_time.slice(0, 5) <= nowHm
+    ).length
 
     return NextResponse.json({
       stats: {

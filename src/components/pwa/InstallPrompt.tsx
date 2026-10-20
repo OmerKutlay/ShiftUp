@@ -76,7 +76,7 @@ export function InstallPrompt() {
       onClose={dismiss}
       media={
         // eslint-disable-next-line @next/next/no-img-element -- statik simge, optimizasyon gerekmez
-        <img src="/icon-192.png" alt="" className="size-10 rounded-xl" />
+        <img src="/icon-192.png" alt="" className="size-10 rounded-lg border" />
       }
       actions={
         variant === 'android' ? (
@@ -97,24 +97,24 @@ export function InstallPrompt() {
       }
     >
       {variant === 'android' ? (
-        <p className="mt-1 text-sm text-ink-secondary">
+        <p className="text-sm text-muted-foreground">
           Tek dokunuşla açılır, tam ekran çalışır ve bildirimleri kaçırmazsınız.
         </p>
       ) : (
         <>
-          <p className="mt-1 text-sm text-ink-secondary">
+          <p className="text-sm text-muted-foreground">
             iPhone&apos;da bildirim alabilmek için ShiftUp&apos;ın ana ekrana eklenmesi gerekir.
           </p>
-          <ol className="mt-2 list-decimal space-y-0.5 pl-5 text-sm text-ink">
+          <ol className="mt-1 list-decimal space-y-1 pl-5 text-sm">
             <li>
               Alttaki{' '}
-              <span className="font-semibold whitespace-nowrap">
-                Paylaş <Share className="inline size-3.5 align-[-2px]" aria-hidden />
+              <span className="font-medium whitespace-nowrap">
+                Paylaş <Share className="inline size-3.5 align-text-bottom" aria-hidden />
               </span>{' '}
               simgesine dokunun
             </li>
             <li>
-              <span className="font-semibold">&quot;Ana Ekrana Ekle&quot;</span> seçeneğini seçin
+              <span className="font-medium">&quot;Ana Ekrana Ekle&quot;</span> seçeneğini seçin
             </li>
           </ol>
         </>

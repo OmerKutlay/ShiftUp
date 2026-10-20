@@ -1,22 +1,35 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { FileQuestion } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 
 export const metadata: Metadata = {
-  title: 'Sayfa Bulunamadı',
+  title: 'Sayfa bulunamadı',
 }
 
 export default function NotFound() {
   return (
-    <div className="flex min-h-[60dvh] flex-col items-center justify-center p-4 text-center">
-      <p className="text-5xl font-extrabold tracking-tight text-primary">404</p>
-      <h1 className="mt-2 text-xl font-bold text-ink">Sayfa bulunamadı</h1>
-      <p className="mt-2 mb-6 max-w-[360px] text-sm text-ink-secondary">
-        Aradığınız sayfa taşınmış, silinmiş ya da hiç var olmamış olabilir.
-      </p>
-      <Button asChild>
-        <Link href="/my-schedule">Ana Sayfaya Dön</Link>
-      </Button>
+    <div className="flex min-h-[60dvh] items-center justify-center p-4">
+      <Empty>
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <FileQuestion aria-hidden />
+          </EmptyMedia>
+          <p className="text-sm font-medium text-muted-foreground tabular-nums">404</p>
+          <EmptyTitle>
+            <h1>Sayfa bulunamadı</h1>
+          </EmptyTitle>
+          <EmptyDescription>
+            Aradığınız sayfa taşınmış, silinmiş ya da hiç var olmamış olabilir. Adresi kontrol edin veya ana sayfaya dönün.
+          </EmptyDescription>
+        </EmptyHeader>
+        <EmptyContent>
+          <Button asChild>
+            <Link href="/my-schedule">Ana sayfaya dön</Link>
+          </Button>
+        </EmptyContent>
+      </Empty>
     </div>
   )
 }
