@@ -58,22 +58,46 @@ describe('mapReportRow', () => {
     expect(mapReportRow({ ...shift, attendance_records: [] }, now).status).toBe('shift_waiting')
   })
 
-  it('önceki molaları net çalışmadan düşer', () => {
-    const row = mapReportRow({
-      ...shift,
-      attendance_records: [{
-        id: 'r1',
-        status: 'clocked_out',
-        clock_in_at: '2026-10-01T06:00:00Z',
-        break_start_at: '2026-10-01T11:00:00Z',
-        break_end_at: '2026-10-01T11:15:00Z',
-        clock_out_at: '2026-10-01T14:00:00Z',
-        completed_break_minutes: 30,
-      }],
-    }, now)
+  const clockedOut = (rec: Record<string, unknown>) => mapReportRow({
+    ...shift,
+    attendance_records: [{
+      id: 'r1',
+      status: 'clocked_out',
+      clock_in_at: '2026-10-01T06:00:00Z',
+      break_start_at: null,
+      break_end_at: null,
+      clock_out_at: '2026-10-01T14:00:00Z',
+      completed_break_minutes: 0,
+      ...rec,
+    }],
+  }, now)
+
+  // 09:00–17:00 (8s brüt) vardiyanın planlanan molası 60 dk
+  it('molaları uzatan çalışanın aşan dakikaları net çalışmadan düşer', () => {
+    const row = clockedOut({
+      break_start_at: '2026-10-01T11:00:00Z',
+      break_end_at: '2026-10-01T11:25:00Z',
+      completed_break_minutes: 50,
+    })
     expect(row.record_id).toBe('r1')
-    expect(row.break_minutes).toBe(45)
-    expect(row.worked_minutes).toBe(8 * 60 - 45)
+    expect(row.break_minutes).toBe(75)
+    expect(row.worked_minutes).toBe(8 * 60 - 75)
+  })
+
+  it('planlanandan kısa mola yapan çalışandan planlanan mola düşülür', () => {
+    const row = clockedOut({
+      break_start_at: '2026-10-01T11:00:00Z',
+      break_end_at: '2026-10-01T11:15:00Z',
+      completed_break_minutes: 30,
+    })
+    expect(row.break_minutes).toBe(60)
+    expect(row.worked_minutes).toBe(8 * 60 - 60)
+  })
+
+  it('mola okutmayan çalışan planlanan molayı yapmış sayılır', () => {
+    const row = clockedOut({})
+    expect(row.break_minutes).toBe(60)
+    expect(row.worked_minutes).toBe(8 * 60 - 60)
   })
 })
 
@@ -109,6 +133,19 @@ describe('buildFieldPatch — çoklu mola', () => {
       clock_out_at: '2026-10-01T15:00:00Z',
       completed_break_minutes: 30,
     })).toBe(9 * 60 - 45)
+  })
+
+  it('planlanan mola ile fiili toplam moladan büyüğü düşülür', () => {
+    const rec = {
+      clock_in_at: '2026-10-01T06:00:00Z',
+      break_start_at: '2026-10-01T12:00:00Z',
+      break_end_at: '2026-10-01T12:15:00Z',
+      clock_out_at: '2026-10-01T15:00:00Z',
+      completed_break_minutes: 30,
+    }
+    expect(workedMinutes(rec, 60)).toBe(9 * 60 - 60)
+    expect(workedMinutes(rec, 30)).toBe(9 * 60 - 45)
+    expect(workedMinutes({ ...rec, break_start_at: null, break_end_at: null, completed_break_minutes: 0 }, 60)).toBe(9 * 60 - 60)
   })
 })
 

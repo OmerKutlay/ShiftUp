@@ -7,6 +7,8 @@ import type { ShiftAssignmentWithDetails, CreateShiftAssignmentPayload, UpdateSh
 import { ShiftConflictError } from '@/types/schedule'
 import { format, addDays, parseISO } from 'date-fns'
 import { getWeekRange, getWeekDays, timesOverlap, shiftAbsoluteRange } from '@/lib/scheduleUtils'
+import { workedMinutes, type AttendanceTimes } from '@/lib/attendanceDurations'
+import { plannedBreakMins } from '@/lib/workingTimeService'
 
 // Saf yardımcılar geriye dönük uyumluluk için buradan da export edilir
 export { getWeekRange, getWeekDays, timesOverlap, shiftAbsoluteRange }
@@ -47,6 +49,39 @@ export async function fetchAssignmentsInRange(
 
   if (error) throw new Error(`Haftalık plan yüklenemedi: ${error.message}`)
   return (data ?? []) as unknown as ShiftAssignmentWithDetails[]
+}
+
+/**
+ * Çıkış yapılmış vardiyalara fiili net çalışmayı (worked_minutes) ekler.
+ * onlyEmployeeId verilirse yalnızca o çalışanın vardiyalarına eklenir (çalışan başkasının devamını görmez).
+ */
+export async function attachWorkedMinutes(
+  assignments: ShiftAssignmentWithDetails[],
+  onlyEmployeeId?: string
+): Promise<ShiftAssignmentWithDetails[]> {
+  const ids = assignments
+    .filter((a) => !onlyEmployeeId || a.employee_id === onlyEmployeeId)
+    .map((a) => a.id)
+  if (ids.length === 0) return assignments
+
+  const recs: Array<AttendanceTimes & { shift_assignment_id: string }> = []
+  // Uzun id listesi URL sınırına takılmasın diye parçalı sorgu
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data, error } = await db
+      .from('attendance_records')
+      .select('shift_assignment_id, clock_in_at, clock_out_at, break_start_at, break_end_at, completed_break_minutes')
+      .in('shift_assignment_id', ids.slice(i, i + 200))
+      .not('clock_out_at', 'is', null)
+    if (error) throw new Error(`Devam kayıtları yüklenemedi: ${error.message}`)
+    recs.push(...((data ?? []) as Array<AttendanceTimes & { shift_assignment_id: string }>))
+  }
+  const byShift = new Map(recs.map((r) => [r.shift_assignment_id, r]))
+
+  return assignments.map((a) => {
+    const rec = byShift.get(a.id)
+    if (!rec) return a
+    return { ...a, worked_minutes: workedMinutes(rec, plannedBreakMins(a.start_time, a.end_time)) }
+  })
 }
 
 /**
