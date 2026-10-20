@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
 
     const { data: request, error: reqErr } = await admin
       .from('manual_time_correction_requests')
-      .select('id, status, employee_id, date, requested_start_time, requested_end_time, break_minutes, reason')
+      .select('id, status, employee_id, date, requested_start_time, requested_end_time, reason')
       .eq('id', body.request_id)
       .maybeSingle()
     if (reqErr) return serverError('POST /api/time-correction/review', reqErr)
@@ -106,7 +106,6 @@ export async function POST(req: NextRequest) {
           date: request.date,
           startTime: start,
           endTime: end,
-          breakMinutes: request.break_minutes,
         })
         await logAudit({
           actorId: reviewer.id,

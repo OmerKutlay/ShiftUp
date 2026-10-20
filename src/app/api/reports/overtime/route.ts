@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
     for (let offset = 0; ; offset += PAGE) {
       const { data, error } = await admin
         .from('shift_assignments')
-        .select('id, employee_id, work_date, attendance_records ( clock_in_at, clock_out_at, break_start_at, break_end_at, completed_break_minutes )')
+        .select('id, employee_id, work_date, start_time, end_time, attendance_records ( clock_in_at, clock_out_at, break_start_at, break_end_at, completed_break_minutes )')
         .gte('work_date', from)
         .lte('work_date', to)
         .order('id')
@@ -46,6 +46,8 @@ export async function GET(req: NextRequest) {
         shifts.push({
           employee_id: s.employee_id as string,
           work_date: s.work_date as string,
+          start_time: s.start_time as string,
+          end_time: s.end_time as string,
           attendance: Array.isArray(recs) ? recs[0] ?? null : recs,
         })
       }
