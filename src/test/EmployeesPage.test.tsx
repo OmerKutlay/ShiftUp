@@ -117,7 +117,7 @@ describe('EmployeesPage — yeni çalışan ekleme', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /yeni çalışan/i })).toBeInTheDocument())
     await userEvent.click(screen.getByRole('button', { name: /yeni çalışan/i }))
 
-    expect(screen.getByText('Yeni Çalışan Ekle')).toBeInTheDocument()
+    expect(await screen.findByText('Yeni Çalışan Ekle')).toBeInTheDocument()
   })
 
   it('3. Form submit edilince createEmployee çağrılır', async () => {
@@ -161,7 +161,7 @@ describe('EmployeesPage — düzenleme', () => {
     const editBtn = screen.getByRole('button', { name: /düzenle/i })
     fireEvent.click(editBtn)
 
-    expect(screen.getByText('Çalışanı Düzenle')).toBeInTheDocument()
+    expect(await screen.findByText('Çalışanı Düzenle')).toBeInTheDocument()
     // Mevcut veriler form'a yüklenmiş olmalı
     expect(screen.getByDisplayValue('Ahmet Kaya')).toBeInTheDocument()
   })

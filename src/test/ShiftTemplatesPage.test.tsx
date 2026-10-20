@@ -104,7 +104,7 @@ describe('ShiftTemplatesPage — yeni şablon ekleme', () => {
     await waitFor(() => screen.getByRole('button', { name: /yeni şablon/i }))
     await userEvent.click(screen.getByRole('button', { name: /yeni şablon/i }))
 
-    expect(screen.getByText('Yeni Vardiya Şablonu')).toBeInTheDocument()
+    expect(await screen.findByText('Yeni Vardiya Şablonu')).toBeInTheDocument()
   })
 
   it('form submit edilince createShiftTemplate çağrılır', async () => {
@@ -153,8 +153,8 @@ describe('ShiftTemplatesPage — düzenleme', () => {
     await waitFor(() => screen.getByText('Açılış'))
     await userEvent.click(screen.getByRole('button', { name: /düzenle/i }))
 
-    expect(screen.getByText('Şablonu Düzenle')).toBeInTheDocument()
-    expect(screen.getByDisplayValue('Açılış')).toBeInTheDocument()
+    expect(await screen.findByText('Şablonu Düzenle')).toBeInTheDocument()
+    expect(await screen.findByDisplayValue('Açılış')).toBeInTheDocument()
   })
 })
 
