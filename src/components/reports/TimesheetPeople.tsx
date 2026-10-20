@@ -122,11 +122,11 @@ function PersonName({ row }: { row: TimesheetRow }) {
   return (
     <div className="flex min-w-0 items-center gap-2.5">
       <PersonAvatar name={row.employee.full_name} size={32} />
-      <Box sx={{ minWidth: 0 }}>
-        <Typography fontWeight={700} fontSize="0.85rem" noWrap>{row.employee.full_name}</Typography>
-        <Typography fontSize="0.72rem" color="text.secondary" noWrap>{row.employee.role_name}</Typography>
-      </Box>
-    </Box>
+      <div className="min-w-0">
+        <p className="truncate text-[0.85rem] font-bold">{row.employee.full_name}</p>
+        <p className="truncate text-xs text-ink-secondary">{row.employee.role_name}</p>
+      </div>
+    </div>
   )
 }
 
@@ -205,14 +205,12 @@ export function PersonDetail({ row, days, today, monthText, compact }: {
     <div>
       <div className="mb-4 flex items-center gap-3">
         <PersonAvatar name={row.employee.full_name} size={compact ? 44 : 40} />
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography fontWeight={700} fontSize={compact ? '1.1rem' : '1rem'} noWrap>{row.employee.full_name}</Typography>
-          <Typography fontSize="0.78rem" color="text.secondary" noWrap>{[row.employee.role_name, monthText].filter(Boolean).join(' · ')}</Typography>
-        </Box>
-        {row.overtimeWithoutConsent && (
-          <Chip size="small" label="Onay yok" sx={{ ...badgeSx, bgcolor: C.dangerSoft, color: C.danger }} />
-        )}
-      </Box>
+        <div className="min-w-0 flex-1">
+          <p className={cn('truncate font-bold', compact ? 'text-lg' : 'text-base')}>{row.employee.full_name}</p>
+          <p className="truncate text-[0.78rem] text-ink-secondary">{[row.employee.role_name, monthText].filter(Boolean).join(' · ')}</p>
+        </div>
+        {row.overtimeWithoutConsent && <Badge tone="danger">Onay yok</Badge>}
+      </div>
 
       <div className="mb-4 grid grid-cols-4 gap-2">
         {stats.map((s) => (

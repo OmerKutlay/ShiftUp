@@ -38,9 +38,7 @@ export function MorePage() {
             <div className="min-w-0 flex-1">
               <p className="truncate font-bold">{employee?.full_name ?? 'Giriş yapılmadı'}</p>
               {employee && (
-                <Typography variant="body2" color="text.secondary" noWrap>
-                  {employee.roles?.name}
-                </Typography>
+                <p className="truncate text-sm text-ink-secondary">{employee.roles?.name}</p>
               )}
             </div>
           </>
