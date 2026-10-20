@@ -17,7 +17,7 @@ import { pageMetaFor } from './navItems'
 export function SiteHeader() {
   const pathname = usePathname()
   const { employee, status } = useAuth()
-  const meta = pageMetaFor(pathname)
+  const meta = pageMetaFor(pathname, status === 'loading' ? undefined : employee?.roles?.access_level ?? null)
 
   return (
     <header className="flex h-12 shrink-0 items-center gap-2 border-b">
