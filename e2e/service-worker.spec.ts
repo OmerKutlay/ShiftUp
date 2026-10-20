@@ -52,15 +52,15 @@ test('Çalışma Özetim çevrimdışı yeniden açılışta önbellek + anlık 
   // SW kontrolündeki ikinci açılış: HTML (network-first) ve JS (cache-first) önbelleğe girer
   await page.reload()
   const main = page.getByRole('main')
-  await expect(main.getByText(/Plan: 09:00 – 17:00/).first()).toBeVisible()
-  const cardsOnline = await main.getByText(/Plan: 09:00 – 17:00/).count()
+  await expect(main.getByText('09:00–17:00', { exact: true }).filter({ visible: true }).first()).toBeVisible()
+  const cardsOnline = await main.getByText('09:00–17:00', { exact: true }).filter({ visible: true }).count()
 
   await context.setOffline(true)
   await page.reload()
   // /api/auth/me'ye ulaşılamaz → cihazdaki sahibin anlık görüntüsü kullanılır
   await expect(main.getByText(/Çevrimdışı — son güncelleme:/)).toBeVisible()
   await expect(main.getByText('Ayşe Yılmaz · Kasiyer')).toBeVisible()
-  await expect(main.getByText(/Plan: 09:00 – 17:00/)).toHaveCount(cardsOnline)
+  await expect(main.getByText('09:00–17:00', { exact: true }).filter({ visible: true })).toHaveCount(cardsOnline)
   await expect(page.getByText('Bağlantı yok — bazı işlemler kullanılamaz')).toBeVisible()
 })
 
