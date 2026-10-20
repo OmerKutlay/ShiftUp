@@ -21,3 +21,5 @@ export { StatCard, StatCards, StatGrid, SectionCard, SectionRow, EmptyRow, Statu
 export { Page } from './Page'
 export type { BadgeTone } from './Cards'
 export { BrandMark } from './BrandMark'
+export { DataTable } from './DataTable'
+export type { ColumnDef } from './DataTable'

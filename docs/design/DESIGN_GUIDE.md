@@ -177,3 +177,37 @@ içinde `aspect-auto h-[250px]`. Renkler yalnızca `--chart-*`.
 - [ ] 390px genişlikte yatay taşma yok, alt bar içeriği örtmüyor
 - [ ] UI stüdyosu ile masaüstü + mobil ekran görüntüsü kontrol edildi
   (`npx playwright test -c scripts/ui-studio/playwright.config.ts`)
+
+---
+
+## 9. Örnek sayfa
+
+`src/components/reports/AttendanceReportsPage.tsx` (Raporlar › Devam raporu) bu rehberin
+uygulanmış hali: filtre çubuğu (dönem ön ayarı + tarih + çalışan, kendiliğinden yüklenir) →
+`StatCards` → grafik kartı → `Tabs` + araç çubuğu → `DataTable` (mobilde `Item` kartları) →
+satır eylemleri `DropdownMenu` → düzenleme `Dialog` + `Field` → sonuç `toast`.
+Yeni bir sayfa yazarken önce bu dosyayı okuyun.
+
+## 10. Sayfa envanteri ve denetim (Ekim 2026)
+
+Tarama `scripts/ui-studio` ile tüm sayfaların masaüstü/mobil görüntüleri üzerinden yapıldı.
+Ortak bulgular: sayfalar shadcn bileşen adlarını kullanıyor ama eski görsel dili (krem zemin,
+pastel dolgulu kutular, elle boyanmış hap rozetler, `text-[0.72rem]` gibi keyfi ölçüler)
+taşıyordu; tablo, boş durum, form alanı ve geri bildirim kalıpları sayfadan sayfaya farklıydı.
+
+| Rota | Bileşen | Bulgu → hedef |
+|---|---|---|
+| `/` Günlük operasyon | daily-attendance/* | Uzun satır listesi, renkli "Giriş/Mola" etiketleri → KPI + durum filtresiyle `DataTable`, zaman çizelgesi hücresi |
+| `/dashboard` Genel bakış | dashboard/DashboardPage | 6 sıkışık KPI, iki liste → 4 KPI + saatlik kadro grafiği + kadro tablosu + onay bekleyenler `Item` listesi |
+| `/employees` | employees/* | Gruplu satır listesi → arama/filtreli `DataTable`, satır menüsü, form `Field` |
+| `/shift-templates` | shift-templates/* | Kart listesi → `DataTable` (tür rengi, süre, durum), form `Field` |
+| `/schedule` Haftalık plan | schedule/* | Izgara korunur, hücreler shadcn dilinde; araç çubuğu `ButtonGroup`; atama `Dialog` `Field` |
+| `/my-schedule` | my-schedule/* | Pastel gün kutuları → KPI + ilerleme kartı + gün `Item` listesi |
+| `/open-shifts`, `/workforce` | workforce/* | Sekmeler korunur; listeler `Item`/`DataTable`, plan tabloları `Table` |
+| `/leave` | leave/* | Hap listesi → sekmeli `DataTable` / `Item`, bakiye kartı `StatCard` |
+| `/time-correction` | time-correction/* | Form + listeler → `Field` formu, `Item` listesi, onay `Dialog` |
+| `/reports` | reports/* | Devam raporu örnek sayfa; puantaj ve fazla çalışma aynı dile |
+| `/settings` | settings/* | Sekmeler korunur; formlar `Field`, denetim kaydı `DataTable` |
+| `/notifications`, `/more` | notifications/*, more/* | `Item` listeleri, boş durum `Empty` |
+| `/attendance/scan`, `/qr-kiosk` | qr/* | Tam ekran deneyim korunur; kartlar/rozetler yeni dilde |
+| `/login`, hata/çevrimdışı sayfaları | auth/*, app/* | shadcn login-01 kalıbı (`Card` + `Field`), `Empty` |
