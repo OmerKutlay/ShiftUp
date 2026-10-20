@@ -1,52 +1,71 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+/**
+ * WeeklySchedulePage — Planlama › Haftalık plan.
+ *
+ * DESIGN_GUIDE iskeleti: PageHeader (özet + uyarı rozeti, "Vardiya ekle") → araç çubuğu
+ * (hafta gezgini, Bugün, Hafta/Gün, rol filtresi, vardiya türü lejantı) → kart içinde haftalık
+ * tablo ya da günün zaman çizelgesi. Yönetici hücreye tıklayıp vardiya atar; çalışan salt okunur görür.
+ */
+import { useMemo, useState } from 'react'
+import Link from 'next/link'
+import { addWeeks, format, subWeeks } from 'date-fns'
+import { tr } from 'date-fns/locale'
+import { CircleAlert, Info, Plus, Trash2, Users } from 'lucide-react'
+import { toast } from 'sonner'
+
 import type { EmployeeWithRole } from '@/types/employee'
 import type { ShiftAssignmentWithDetails, WeeklyScheduleEntry } from '@/types/schedule'
 import type { EmployeeAvailability } from '@/types/workforce'
-import {
-  createShiftAssignment,
-  updateShiftAssignment,
-  deleteShiftAssignment,
-} from '@/lib/api/schedule'
-import { getWorkingTimeConfig } from '@/lib/workingTimeConfig'
-import { useWeeklySchedule } from './useWeeklySchedule'
+import { createShiftAssignment, updateShiftAssignment, deleteShiftAssignment } from '@/lib/api/schedule'
 import { ApiError } from '@/lib/api/http'
-import { ShiftAssignDialog } from './ShiftAssignDialog'
-import type { ShiftSavePayload } from './ShiftAssignDialog'
-import { PageHeader, PeriodStepper, PersonAvatar, ScheduleGridSkeleton, SegmentedControl, useConfirm } from '@/components/common'
-import { BOTTOM_NAV_OVERLAY_OFFSET } from '@/components/layout/MobileBottomNav'
-import { addWeeks, format, subWeeks } from 'date-fns'
-import { tr } from 'date-fns/locale'
-
-import {
-  compareRoles, JS_DAY_TO_KEY, EmployeeWeekStats, calcEmployeeStats, getAvailStatus,
-  ROLE_GROUPS, roleGroupOf, fmtHoursTr, type RoleGroupKey,
-} from './scheduleHelpers'
-import { weeklyLimitMins } from './ScheduleCells'
-import { MobileDayBoard } from './MobileDayBoard'
-import { WeekGrid } from './WeekGrid'
+import { getWorkingTimeConfig } from '@/lib/workingTimeConfig'
+import type { ShiftKind } from '@/lib/workforcePlanner'
 import { useAuth } from '@/context/AuthContext'
-import { SHIFT_KIND_TONES } from '@/lib/palette'
 import { useIsMobile } from '@/hooks/useIsMobile'
-import { AlertCircle, CalendarX2, Info, Loader2, Plus, Trash2 } from 'lucide-react'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { BOTTOM_NAV_OVERLAY_OFFSET } from '@/components/layout/MobileBottomNav'
+import { Page, PageHeader, PeriodStepper, SegmentedControl, useConfirm } from '@/components/common'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import {
   AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Spinner } from '@/components/ui/spinner'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
-// ─── Ana bileşen ──────────────────────────────────────────────
-interface WeeklySchedulePageProps {
-  /** true → hücre tıklanamaz, dialog açılmaz, edit ikonları gizlenir */
-  readOnly?: boolean
+import { useWeeklySchedule } from './useWeeklySchedule'
+import { ShiftAssignDialog, type ShiftSavePayload } from './ShiftAssignDialog'
+import {
+  compareRoles, JS_DAY_TO_KEY, calcEmployeeStats, fmtHoursTr, fmtRange, getAvailStatus, shiftKindOf,
+  ROLE_GROUPS, roleGroupOf, type EmployeeWeekStats, type RoleGroupKey,
+} from './scheduleHelpers'
+import { ShiftKindLegend, weeklyLimitMins } from './ScheduleCells'
+import { MobileDayBoard } from './MobileDayBoard'
+import { WeekGrid, WeekGridSkeleton } from './WeekGrid'
+import { AddShiftMenu } from './AddShiftMenu'
+
+const KIND_ORDER: ShiftKind[] = ['opening', 'mid', 'closing', 'full', 'custom']
+
+const parseDay = (d: string) => new Date(`${d}T00:00:00`)
+const longDate = (d: string) => format(parseDay(d), 'd MMMM EEEE', { locale: tr })
+
+/** "19–25 Ekim" · ay geçişinde "28 Eylül–4 Ekim" */
+function weekLabel(from: string, to: string): string {
+  const a = parseDay(from)
+  const b = parseDay(to)
+  return a.getMonth() === b.getMonth()
+    ? `${a.getDate()}–${format(b, 'd MMMM', { locale: tr })}`
+    : `${format(a, 'd MMMM', { locale: tr })}–${format(b, 'd MMMM', { locale: tr })}`
 }
 
+interface WeeklySchedulePageProps {
+  /** true → hücre tıklanamaz, dialog açılmaz, düzenleme eylemleri gizlenir */
+  readOnly?: boolean
+}
 
 export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps) {
   const isMobile = useIsMobile()
@@ -66,21 +85,18 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     leaveDayToId,
     restDayMap,
     isFirstLoad,
-    error: loadError,
+    error,
     reload: load,
   } = useWeeklySchedule(currentWeek, { readOnly })
-  // Kayıt/silme işlem hataları (yükleme hataları hook'tan gelir)
-  const [actionError, setError] = useState<string | null>(null)
-  const error = actionError ?? loadError
 
-  // Dialog state
+  // Atama diyaloğu
   const [dialogOpen, setDialogOpen] = useState(false)
   const [dialogEmployee, setDialogEmployee] = useState<EmployeeWithRole | null>(null)
   const [dialogDate, setDialogDate] = useState('')
   const [dialogExisting, setDialogExisting] = useState<ShiftAssignmentWithDetails | null>(null)
   const [saving, setSaving] = useState(false)
 
-  // İzin silme dialog state
+  // İzin / tatil silme diyaloğu
   const [leaveDeleteDialog, setLeaveDeleteDialog] = useState<{
     employee: EmployeeWithRole
     date: string
@@ -95,7 +111,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     return m
   }, [assignments])
 
-  // Grid entries — role sıralamasına göre: Müdür → Müdür yrd. → Reyon sorumlusu → Kasa → Satış → Görsel → Depo
+  // Satırlar rol sırasına göre: Müdür → Müdür yrd. → Reyon sorumlusu → Kasa → Satış → Görsel → Depo
   const scheduleEntries: WeeklyScheduleEntry[] = useMemo(() => {
     const entries = employees.map((emp) => ({
       employee: emp,
@@ -106,15 +122,12 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     entries.sort((a, b) => {
       const byRole = compareRoles(a.employee.roles, b.employee.roles)
       if (byRole !== 0) return byRole
-      // Aynı roldeyse isme göre alfabetik
       return (a.employee.full_name ?? '').localeCompare(b.employee.full_name ?? '', 'tr')
     })
     return entries
-  },
-    [employees, weekDays, assignmentMap]
-  )
+  }, [employees, weekDays, assignmentMap])
 
-  // Per-employee stats (haftalık özet)
+  // Çalışan bazında haftalık özet
   const statsMap = useMemo(() => {
     const m = new Map<string, EmployeeWeekStats>()
     for (const entry of scheduleEntries) {
@@ -124,11 +137,9 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     return m
   }, [scheduleEntries, assignments, weekDays])
 
-  const handleWeekChange = (newWeek: Date) => setCurrentWeek(newWeek)
-
   const openAssignDialog = (emp: EmployeeWithRole, date: string) => {
     if (readOnly) return   // çalışan modu — sadece görüntüleme
-    // İzinli gün: izin silme dialog'u aç
+    // İzinli / tatil günü: silme onayı
     const leaveKey = `${emp.id}:${date}`
     const leaveId = leaveDayToId.get(leaveKey)
     if (leaveId && approvedLeaveMap.has(leaveKey)) {
@@ -141,6 +152,8 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     setDialogExisting(existing)
     setDialogOpen(true)
   }
+
+  const dialogSubject = () => `${dialogEmployee?.full_name ?? ''} · ${dialogDate ? longDate(dialogDate) : ''}`
 
   const handleAssignRestDay = async () => {
     if (!dialogEmployee || !dialogDate) return
@@ -159,6 +172,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
       })
       const data = await res.json() as { error?: string }
       if (!res.ok) throw new Error(data.error ?? 'Tatil atanamadı.')
+      toast.success('Haftalık tatil atandı', { description: dialogSubject() })
       setDialogOpen(false)
       await load()
     } finally {
@@ -168,15 +182,19 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
 
   const handleLeaveDelete = async () => {
     if (!leaveDeleteDialog) return
+    const isRest = restDayMap.has(`${leaveDeleteDialog.employee.id}:${leaveDeleteDialog.date}`)
     setLeaveDeleting(true)
     try {
       const res = await fetch(`/api/leave?id=${leaveDeleteDialog.leaveId}`, { method: 'DELETE' })
       const data = await res.json() as { error?: string }
       if (!res.ok) throw new Error(data.error ?? 'İzin silinemedi.')
+      toast.success(isRest ? 'Haftalık tatil kaldırıldı' : 'İzin silindi', {
+        description: `${leaveDeleteDialog.employee.full_name} · ${longDate(leaveDeleteDialog.date)}`,
+      })
       setLeaveDeleteDialog(null)
       await load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'İzin silme hatası.')
+      toast.error(err instanceof Error ? err.message : 'İzin silme hatası.')
       setLeaveDeleteDialog(null)
     } finally {
       setLeaveDeleting(false)
@@ -207,6 +225,9 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
           options
         )
       }
+      toast.success(dialogExisting ? 'Vardiya güncellendi' : 'Vardiya atandı', {
+        description: `${dialogSubject()} · ${fmtRange(payload.startTime, payload.endTime)}`,
+      })
       setDialogOpen(false)
       await load()
     } catch (err) {
@@ -214,11 +235,11 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
       if (!acknowledge && err instanceof ApiError && err.code === 'WORKING_TIME_VIOLATION') {
         const violations = (err.details.violations as string[] | undefined) ?? []
         if (await confirm({
-          title: 'İş Kanunu İhlali',
+          title: 'İş Kanunu ihlali',
           message: 'Bu vardiya şu kuralları ihlal ediyor:',
           items: violations,
           footer: 'Yine de kaydedilsin mi?',
-          confirmText: 'Yine de Kaydet',
+          confirmText: 'Yine de kaydet',
         })) {
           setSaving(false)
           return handleSave(payload, true)
@@ -235,6 +256,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     setSaving(true)
     try {
       await deleteShiftAssignment(dialogExisting.id)
+      toast.success('Vardiya kaldırıldı', { description: dialogSubject() })
       setDialogOpen(false)
       await load()
     } finally {
@@ -242,7 +264,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     }
   }
 
-  // Dialog'da seçilen günün availability kayıtları
+  // Diyalogda seçilen günün müsaitlik kayıtları
   const dialogAvailability: EmployeeAvailability[] = useMemo(() => {
     if (!dialogEmployee || !dialogDate) return []
     const dayKey = JS_DAY_TO_KEY[new Date(dialogDate).getDay()]
@@ -292,25 +314,19 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     return { shifts, mins, warnings }
   }, [scheduleEntries, statsMap, weekDays, approvedLeaveMap, restDayMap, availabilityMap, config])
 
-  // "Vardiya ekle" menüsü: seçili gün boşta olanlar önce, vardiyası / izni olanlar altta ve açıklamalı
-  const addCandidates = useMemo(() => {
-    const list = scheduleEntries.map((e) => {
-      const key = `${e.employee.id}:${selectedDay}`
-      const a = e.dayAssignments[selectedDay]
-      const busy = restDayMap.has(key) ? 'Hafta tatili'
-        : approvedLeaveMap.has(key) || a?.is_on_leave ? 'İzinli'
-        : a ? `Vardiyası var · ${a.start_time.slice(0, 5)}–${a.end_time.slice(0, 5)}`
-        : null
-      return { emp: e.employee, busy }
-    })
-    return [...list.filter((c) => !c.busy), ...list.filter((c) => c.busy)]
-  }, [scheduleEntries, selectedDay, restDayMap, approvedLeaveMap])
+  // Lejant: bu hafta kullanılan vardiya türleri
+  const presentKinds = useMemo(() => {
+    const kinds = new Set(assignments.filter((a) => !a.is_on_leave).map((a) =>
+      shiftKindOf(a.shift_templates?.name, a.start_time.slice(0, 5), a.end_time.slice(0, 5))))
+    return KIND_ORDER.filter((k) => kinds.has(k))
+  }, [assignments])
 
-  const weekRange = `${format(new Date(`${weekDays[0]}T00:00:00`), 'd', { locale: tr })} – ${format(new Date(`${weekDays[6]}T00:00:00`), 'd MMMM', { locale: tr })}`
+  const weekRange = weekLabel(weekDays[0], weekDays[6])
   const firstName = authEmployee?.full_name.split(/\s+/)[0]
   const hour = new Date().getHours()
   const greeting = firstName ? `${hour < 12 ? 'Günaydın' : hour < 18 ? 'İyi günler' : 'İyi akşamlar'}, ${firstName}` : undefined
   const isThisWeek = weekDays.includes(todayStr)
+  const goToday = () => { setCurrentWeek(new Date()); setPickedDay(null) }
 
   const viewToggle = (
     <SegmentedControl
@@ -324,51 +340,68 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
   )
   const weekStepper = (
     <PeriodStepper
-      label={weekRange}
-      onPrev={() => handleWeekChange(subWeeks(currentWeek, 1))}
-      onNext={() => handleWeekChange(addWeeks(currentWeek, 1))}
+      label={<span className="tabular-nums">{weekRange}</span>}
+      onPrev={() => setCurrentWeek(subWeeks(currentWeek, 1))}
+      onNext={() => setCurrentWeek(addWeeks(currentWeek, 1))}
       prevLabel="Önceki hafta"
       nextLabel="Sonraki hafta"
-      minLabelWidth={isMobile ? 120 : 130}
+      minLabelWidth={isMobile ? 120 : 136}
     />
   )
+  const addMenuProps = {
+    entries: scheduleEntries,
+    weekDays,
+    restDayMap,
+    approvedLeaveMap,
+    onPick: openAssignDialog,
+  }
+
+  const description = hasData && !isMobile
+    ? `${weekRange} · ${scheduleEntries.length} kişi · ${summary.shifts} vardiya · ${fmtHoursTr(summary.mins).replace(' s', ' saat')}`
+    : !isMobile ? 'Ekibin haftalık vardiya planı' : undefined
+
+  const leaveIsRest = !!leaveDeleteDialog && restDayMap.has(`${leaveDeleteDialog.employee.id}:${leaveDeleteDialog.date}`)
 
   return (
-    <div className="p-4 text-ink md:p-6">
+    <Page>
       <PageHeader
         overline={isMobile ? greeting : undefined}
         title="Haftalık plan"
-        subtitle={hasData && !isMobile ? (
-          <>
-            {weekRange} · {scheduleEntries.length} kişi, {summary.shifts} vardiya, toplam {fmtHoursTr(summary.mins).replace(' s', ' saat')}
-          </>
-        ) : undefined}
+        description={description}
         titleAdornment={hasData && summary.warnings > 0 && !isMobile ? (
-          <Badge tone="danger" className="self-center">{summary.warnings} uyarı</Badge>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge tone="warning" tabIndex={0} className="cursor-default tabular-nums">{summary.warnings} uyarı</Badge>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-64">
+              Limit üstü saatler, dinlenme ihlalleri ve müsaitlik dışı vardiyalar; hücrelerde uyarı simgesiyle işaretlidir.
+            </TooltipContent>
+          </Tooltip>
         ) : undefined}
-        actions={!isMobile ? (
-          <>
-            {viewToggle}
-            {weekStepper}
-            <Button variant="outline" disabled={isThisWeek} onClick={() => handleWeekChange(new Date())}>
-              Bugün
+        actions={hasData && !readOnly && !isMobile ? (
+          <AddShiftMenu {...addMenuProps} day={view === 'day' ? selectedDay : undefined}>
+            <Button>
+              <Plus />
+              Vardiya ekle
             </Button>
-          </>
+          </AddShiftMenu>
         ) : undefined}
       />
 
-      {isMobile && (
-        <div className="mb-4 flex items-center gap-2 [&>:first-child]:flex-1">
+      {/* Araç çubuğu */}
+      {isMobile ? (
+        <div className="flex items-center gap-2 [&>:first-child]:flex-1">
           {weekStepper}
           {hasData && viewToggle}
         </div>
-      )}
-
-      {hasData && !isMobile && (
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          {presentGroups.length > 1 && (
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          {weekStepper}
+          <Button variant="outline" disabled={isThisWeek} onClick={goToday}>Bugün</Button>
+          {hasData && viewToggle}
+          {hasData && presentGroups.length > 1 && (
             <Select value={roleFilter} onValueChange={(v) => setRoleFilter(v as RoleGroupKey | 'all')}>
-              <SelectTrigger size="sm" aria-label="Rol filtresi" className="min-w-[150px] text-[0.82rem]">
+              <SelectTrigger aria-label="Rol filtresi" className="w-44">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -377,28 +410,38 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
               </SelectContent>
             </Select>
           )}
-          <div className="flex-1" />
-          {view === 'week' && <ShiftKindLegend />}
+          {hasData && view === 'week' && <ShiftKindLegend kinds={presentKinds} className="ml-auto" />}
         </div>
       )}
 
-      {isFirstLoad && <ScheduleGridSkeleton rows={Math.min(Math.max(employees.length, 6), 12)} />}
+      {isFirstLoad && <WeekGridSkeleton rows={Math.min(Math.max(employees.length, 6), 10)} />}
       {error && (
-        <Alert tone="danger">
-          <AlertCircle />
-          <AlertDescription className="text-ink">{error}</AlertDescription>
+        <Alert variant="destructive">
+          <CircleAlert />
+          <AlertTitle>Plan yüklenemedi</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
       {!isFirstLoad && !error && scheduleEntries.length === 0 && (
-        <Alert tone="info">
-          <Info />
-          <AlertDescription className="text-ink">Aktif çalışan bulunamadı.</AlertDescription>
-        </Alert>
+        <Card className="py-0 shadow-xs">
+          <Empty className="border-0">
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><Users /></EmptyMedia>
+              <EmptyTitle>Aktif çalışan bulunamadı</EmptyTitle>
+              <EmptyDescription>Plan oluşturmak için önce çalışan ekleyin.</EmptyDescription>
+            </EmptyHeader>
+            {!readOnly && (
+              <EmptyContent>
+                <Button asChild variant="outline"><Link href="/employees">Çalışanlara git</Link></Button>
+              </EmptyContent>
+            )}
+          </Empty>
+        </Card>
       )}
 
       {hasData && view === 'day' && (
-        // Mobilde yüzen "Vardiya ekle" butonu son satırı örtmesin
-        <div className={isMobile ? (readOnly ? undefined : 'pb-16') : 'max-w-[720px]'}>
+        // Mobilde yüzen "Vardiya ekle" düğmesi son satırı örtmesin
+        <div className={isMobile && !readOnly ? 'pb-16' : undefined}>
           <MobileDayBoard
             entries={visibleEntries}
             weekDays={weekDays}
@@ -416,63 +459,38 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
       )}
 
       {hasData && view === 'week' && (
-        isMobile ? (
-          <div className="rounded-2xl border bg-card p-2">
-            <WeekGrid
-              compact
-              entries={visibleEntries} weekDays={weekDays} todayStr={todayStr} holidayMap={holidayMap}
-              statsMap={statsMap} approvedLeaveMap={approvedLeaveMap} restDayMap={restDayMap}
-              availabilityMap={availabilityMap} config={config} onCellClick={openAssignDialog} readOnly={readOnly}
-            />
-          </div>
-        ) : (
-          <WeekGrid
-            entries={visibleEntries} weekDays={weekDays} todayStr={todayStr} holidayMap={holidayMap}
-            statsMap={statsMap} approvedLeaveMap={approvedLeaveMap} restDayMap={restDayMap}
-            availabilityMap={availabilityMap} config={config} onCellClick={openAssignDialog} readOnly={readOnly}
-          />
-        )
-      )}
-
-      {/* Mobil gün görünümü: seçili güne vardiya ekle — önce o gün boşta olanlar */}
-      {hasData && view === 'day' && isMobile && !readOnly && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              size="lg"
-              className="fixed right-[calc(16px+env(safe-area-inset-right))] z-[1050] rounded-full px-5 shadow-[0_8px_24px_rgb(194_83_45/0.35)]"
-              style={{ bottom: `calc(${BOTTOM_NAV_OVERLAY_OFFSET}px + env(safe-area-inset-bottom))` }}
-            >
-              <Plus /> Vardiya ekle
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent side="top" align="end" className="max-h-[60dvh] min-w-60 overflow-y-auto">
-            <DropdownMenuLabel>
-              {format(new Date(`${selectedDay}T00:00:00`), 'd MMMM EEEE', { locale: tr })} için çalışan seçin
-            </DropdownMenuLabel>
-            {addCandidates.map(({ emp, busy }) => (
-              <DropdownMenuItem key={emp.id} onSelect={() => openAssignDialog(emp, selectedDay)} className="gap-2.5">
-                <PersonAvatar name={emp.full_name} size={28} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[0.85rem] font-semibold">{emp.full_name}</p>
-                  <p className="truncate text-[0.7rem] text-ink-secondary">{busy ?? emp.roles?.name}</p>
-                </div>
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <WeekGrid
+          compact={isMobile}
+          entries={visibleEntries} weekDays={weekDays} todayStr={todayStr} holidayMap={holidayMap}
+          statsMap={statsMap} approvedLeaveMap={approvedLeaveMap} restDayMap={restDayMap}
+          availabilityMap={availabilityMap} config={config} onCellClick={openAssignDialog} readOnly={readOnly}
+          meId={readOnly ? authEmployee?.id : undefined}
+        />
       )}
 
       {hasData && view === 'week' && isMobile && (
-        <div className="mt-3">
-          <ShiftKindLegend />
-          <p className="mt-2 text-[0.7rem] text-ink-secondary">
-            Kutudaki sayı başlangıç saati · kırmızı nokta: dinlenme / limit uyarısı
+        <div className="flex flex-col gap-2">
+          <ShiftKindLegend kinds={presentKinds} />
+          <p className="text-xs text-muted-foreground">
+            Kutudaki sayı başlangıç saatidir · kırmızı nokta: dinlenme / limit uyarısı
           </p>
         </div>
       )}
 
-      {/* Assign Dialog — sadece manager modunda */}
+      {/* Mobil gün görünümü: seçili güne vardiya ekle — önce o gün boşta olanlar */}
+      {hasData && view === 'day' && isMobile && !readOnly && (
+        <AddShiftMenu {...addMenuProps} day={selectedDay} side="top">
+          <Button
+            size="lg"
+            className="fixed right-[calc(1rem+env(safe-area-inset-right))] z-40 rounded-full px-5 shadow-lg"
+            style={{ bottom: `calc(${BOTTOM_NAV_OVERLAY_OFFSET}px + env(safe-area-inset-bottom))` }}
+          >
+            <Plus /> Vardiya ekle
+          </Button>
+        </AddShiftMenu>
+      )}
+
+      {/* Atama diyaloğu — yalnızca yönetici */}
       {!readOnly && (
         <ShiftAssignDialog
           key={`${dialogEmployee?.id ?? ''}:${dialogDate}:${dialogExisting?.id ?? 'new'}`}
@@ -490,77 +508,45 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
         />
       )}
 
-      {/* İzin silme onay dialog'u */}
-      {!readOnly && (() => {
-        const isRestDay = !!leaveDeleteDialog && restDayMap.has(`${leaveDeleteDialog.employee.id}:${leaveDeleteDialog.date}`)
-        const dateText = leaveDeleteDialog
-          ? new Date(leaveDeleteDialog.date + 'T00:00:00').toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })
-          : ''
-        return (
-          <AlertDialog
-            open={!!leaveDeleteDialog}
-            onOpenChange={(next) => { if (!next && !leaveDeleting) setLeaveDeleteDialog(null) }}
-          >
-            <AlertDialogContent>
-              <AlertDialogHeader className="flex-row items-start gap-3">
-                <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-full bg-warning-soft text-warning">
-                  <CalendarX2 className="size-5" />
-                </span>
-                <div className="flex min-w-0 flex-col gap-1.5 pt-1">
-                  <AlertDialogTitle>{isRestDay ? 'Tatili Kaldır' : 'İzni İptal Et'}</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    {leaveDeleteDialog && (
-                      <>
-                        <strong className="text-ink">{leaveDeleteDialog.employee.full_name}</strong> adlı çalışanın{' '}
-                        <strong className="text-ink">{dateText}</strong>{' '}
-                        {isRestDay
-                          ? 'tarihindeki haftalık tatili kaldırılacak. Bu gün vardiya atanabilir hale gelecektir.'
-                          : 'tarihini kapsayan onaylı izni silinecek.'}
-                      </>
-                    )}
-                  </AlertDialogDescription>
-                </div>
-              </AlertDialogHeader>
-              {leaveDeleteDialog && !isRestDay && (
-                <Alert tone="info">
-                  <Info />
-                  <AlertDescription className="text-ink">
-                    İzin tüm kapsamıyla (başlangıç–bitiş aralığı) silinir, yalnızca bu gün değil.
-                  </AlertDescription>
-                </Alert>
-              )}
-              <AlertDialogFooter>
-                <Button type="button" variant="ghost" onClick={() => setLeaveDeleteDialog(null)} disabled={leaveDeleting}>
-                  Vazgeç
-                </Button>
-                <Button type="button" variant="destructive" onClick={handleLeaveDelete} disabled={leaveDeleting}>
-                  {leaveDeleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
-                  İzni Sil
-                </Button>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        )
-      })()}
-    </div>
-  )
-}
-
-
-/** Açılış / Ortacı / Kapanış renk lejantı */
-function ShiftKindLegend() {
-  const items = [
-    { label: 'Açılış', tone: SHIFT_KIND_TONES.opening },
-    { label: 'Ortacı', tone: SHIFT_KIND_TONES.mid },
-    { label: 'Kapanış', tone: SHIFT_KIND_TONES.closing },
-  ]
-  return (
-    <div className="flex gap-1.5">
-      {items.map(({ label, tone }) => (
-        <span key={label} className="rounded-md px-2 py-0.5 text-[0.7rem] font-semibold" style={{ backgroundColor: tone.soft, color: tone.text }}>
-          {label}
-        </span>
-      ))}
-    </div>
+      {/* İzin / tatil silme onayı */}
+      {!readOnly && (
+        <AlertDialog
+          open={!!leaveDeleteDialog}
+          onOpenChange={(next) => { if (!next && !leaveDeleting) setLeaveDeleteDialog(null) }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{leaveIsRest ? 'Haftalık tatil kaldırılsın mı?' : 'İzin iptal edilsin mi?'}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {leaveDeleteDialog && (
+                  <>
+                    <span className="font-medium text-foreground">{leaveDeleteDialog.employee.full_name}</span> ·{' '}
+                    <span className="font-medium text-foreground">{longDate(leaveDeleteDialog.date)}</span>.{' '}
+                    {leaveIsRest
+                      ? 'Haftalık tatil kaldırılır; bu güne vardiya atanabilir.'
+                      : 'Bu günü kapsayan onaylı izin silinir.'}
+                  </>
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            {leaveDeleteDialog && !leaveIsRest && (
+              <Alert tone="info">
+                <Info />
+                <AlertDescription>İzin tüm kapsamıyla (başlangıç–bitiş aralığı) silinir, yalnızca bu gün değil.</AlertDescription>
+              </Alert>
+            )}
+            <AlertDialogFooter>
+              <Button type="button" variant="outline" onClick={() => setLeaveDeleteDialog(null)} disabled={leaveDeleting}>
+                Vazgeç
+              </Button>
+              <Button type="button" variant="destructive" onClick={handleLeaveDelete} disabled={leaveDeleting}>
+                {leaveDeleting ? <Spinner /> : <Trash2 />}
+                {leaveIsRest ? 'Tatili kaldır' : 'İzni sil'}
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
+    </Page>
   )
 }
