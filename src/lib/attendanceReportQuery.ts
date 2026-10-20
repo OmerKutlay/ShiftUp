@@ -11,7 +11,6 @@ import type {
   AttendanceReportStatus,
 } from '@/types/report'
 import { deductedBreakMinutes, workedMinutes } from '@/lib/attendanceDurations'
-import { plannedBreakMins } from '@/lib/workingTimeService'
 import { DEFAULT_ATTENDANCE_ALERT_CONFIG } from '@/lib/attendanceAlerts'
 
 const REPORT_PAGE_SIZE = 1000
@@ -110,8 +109,8 @@ export function mapReportRow(row: any, now: number): AttendanceReportRow {
     completed_break_minutes: rec?.completed_break_minutes ?? 0,
   }
   const hasBreak = !!times.clock_out_at || !!times.break_start_at || times.completed_break_minutes > 0
-  // Planlanan mola ile fiili moladan büyüğü düşülür; vardiya bitmeden yalnızca fiili mola gösterilir
-  const planned = plannedBreakMins(row.start_time, row.end_time)
+  // Mola kuralı (bkz. attendanceDurations); vardiya bitmeden yalnızca fiili mola gösterilir
+  const shift = { work_date: row.work_date, start_time: row.start_time, end_time: row.end_time }
 
   return {
     record_id: rec?.id ?? null,
@@ -127,8 +126,8 @@ export function mapReportRow(row: any, now: number): AttendanceReportRow {
     break_start_at: times.break_start_at,
     break_end_at: times.break_end_at,
     clock_out_at: times.clock_out_at,
-    worked_minutes: workedMinutes(times, planned),
-    break_minutes: hasBreak ? deductedBreakMinutes(times, times.clock_out_at ? planned : 0) : null,
+    worked_minutes: workedMinutes(times, shift),
+    break_minutes: hasBreak ? deductedBreakMinutes(times, times.clock_out_at ? shift : null) : null,
     verification_method: rec?.verification_method ?? null,
     exception_note: rec?.exception_note ?? null,
   }

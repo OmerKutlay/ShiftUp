@@ -8,7 +8,6 @@ import { ShiftConflictError } from '@/types/schedule'
 import { format, addDays, parseISO } from 'date-fns'
 import { getWeekRange, getWeekDays, timesOverlap, shiftAbsoluteRange } from '@/lib/scheduleUtils'
 import { workedMinutes, type AttendanceTimes } from '@/lib/attendanceDurations'
-import { plannedBreakMins } from '@/lib/workingTimeService'
 
 // Saf yardımcılar geriye dönük uyumluluk için buradan da export edilir
 export { getWeekRange, getWeekDays, timesOverlap, shiftAbsoluteRange }
@@ -80,7 +79,7 @@ export async function attachWorkedMinutes(
   return assignments.map((a) => {
     const rec = byShift.get(a.id)
     if (!rec) return a
-    return { ...a, worked_minutes: workedMinutes(rec, plannedBreakMins(a.start_time, a.end_time)) }
+    return { ...a, worked_minutes: workedMinutes(rec, a) }
   })
 }
 
