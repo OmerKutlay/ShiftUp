@@ -293,86 +293,52 @@ export function AttendanceScanPage() {
             <ChevronLeft className="size-5" />
           </Button>
         )}
-      </Box>
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-ink-secondary">{scanning ? 'Kiosk ekranındaki kodu okutun' : 'QR tara'}</p>
+          <h1 className="text-[1.6rem] font-bold leading-tight tracking-tight md:text-[1.85rem]">
+            {scanning ? 'QR kodu okutun' : 'Devam takibi'}
+          </h1>
+        </div>
+      </header>
 
-      <Paper
-        elevation={0}
-        sx={{
-          p: { xs: 2.5, md: 3 },
-          border: '1px solid',
-          borderColor: 'divider',
-          borderRadius: 3,
-          bgcolor: 'background.paper',
-          width: '100%',
-          maxWidth: 440,
-        }}
-      >
-        {/* Çalışan bilgisi + geri butonu */}
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 1.25,
-            mb: 3,
-            p: 1.5,
-            bgcolor: tint(C.brand, 0.06),
-            borderRadius: 1.5,
-            border: `1px solid ${tint(C.brand, 0.15)}`,
-          }}
-        >
-          {(pageState === 'scanning') && (
-            <IconButton
-              size="small"
-              onClick={handleBackToSelect}
-              aria-label="Geri"
-              sx={{ color: 'primary.main', ml: -0.5, mr: 0.25 }}
-            >
-              <ChevronLeftIcon />
-            </IconButton>
-          )}
-          <PersonIcon sx={{ fontSize: 18, color: 'primary.main' }} />
-          <Box sx={{ flex: 1 }}>
-            <Typography variant="subtitle2" fontWeight={700} color="text.primary">
-              {employee.full_name}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              {employee.roles?.name}
-            </Typography>
-          </Box>
-          {/* Mevcut durum chip — scanning dışı ekranlarda */}
-          {currentStatus && currentStatus !== 'clocked_out' && pageState !== 'scanning' && (
-            <Chip
-              label={statusLabel}
-              size="small"
-              sx={{
-                bgcolor: `${statusColor}20`,
-                color: statusColor,
-                border: '1px solid',
-                borderColor: `${statusColor}40`,
-                fontWeight: 600,
-                fontSize: '0.7rem',
-              }}
-            />
-          )}
-        </Box>
+      {/* Kişi + mevcut durum */}
+      <section className="flex items-center gap-3 rounded-2xl border bg-card p-3.5">
+        <PersonAvatar name={employee.full_name} size={44} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-bold">{employee.full_name}</p>
+          <p className="flex items-center gap-1 truncate text-xs text-ink-secondary">
+            {hasShift && statusData?.shift_start ? (
+              <>
+                <Clock className="size-3.5" />
+                Vardiya {statusData.shift_start.slice(0, 5)} – {statusData.shift_end?.slice(0, 5)}
+              </>
+            ) : (
+              employee.roles?.name
+            )}
+          </p>
+        </div>
+        {currentStatus && !scanning && <Badge tone={statusTone}>{statusLabel}</Badge>}
+      </section>
 
-        <Divider sx={{ mb: 3, borderColor: tint(C.ink, 0.08) }} />
+      {/* ── DURUM YÜKLENİYOR ── */}
+      {pageState === 'loading_status' && (
+        <div role="status" aria-busy="true" aria-label={LOADING_LABEL} className="flex flex-col gap-3">
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="h-20 w-full rounded-2xl" />
+          <Skeleton className="h-20 w-full rounded-2xl" />
+        </div>
+      )}
 
-        <Stack spacing={2.5} alignItems="center">
+      {/* ── AMAÇ SEÇİMİ ── */}
+      {pageState === 'select_action' && (
+        <section className="flex flex-col gap-3">
+          {!online && hasShift && buttons.length > 0 && <OfflineActionAlert />}
 
-          {/* ── DURUM YÜKLENİYOR ── */}
-          {pageState === 'loading_status' && (
-            <Box
-              role="status"
-              aria-busy="true"
-              aria-label={LOADING_LABEL}
-              sx={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 1.5 }}
-            >
-              <Skeleton variant="rounded" height={88} sx={{ borderRadius: 2 }} />
-              <Skeleton variant="text" width={140} sx={{ mt: 1 }} />
-              <Skeleton variant="rounded" height={52} sx={{ borderRadius: 2 }} />
-              <Skeleton variant="rounded" height={52} sx={{ borderRadius: 2 }} />
-            </Box>
+          {!hasShift && (
+            <Alert tone="info">
+              <AlertCircle />
+              <AlertDescription className="text-ink">Bugün için tanımlı vardiya yok.</AlertDescription>
+            </Alert>
           )}
 
           {hasShift && currentStatus === 'clocked_out' && (
