@@ -13,7 +13,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { requireAuth } from '@/lib/auth'
-import { totalBreakMinutes, workedMinutes } from '@/lib/attendanceDurations'
+import { deductedBreakMinutes, workedMinutes } from '@/lib/attendanceDurations'
+import { plannedBreakMins } from '@/lib/workingTimeService'
 import { grossMins, statutoryMinBreakMins } from '@/lib/laborLaw'
 import { isValidDate } from '@/lib/validation'
 import { serverError } from '@/lib/apiErrors'
@@ -80,9 +81,11 @@ export async function GET(req: NextRequest) {
         clock_out_at:   rec?.clock_out_at   ?? null,
         completed_break_minutes: rec?.completed_break_minutes ?? 0,
       }
-      const workedMins = workedMinutes(times)
-      const breakMins = times.break_start_at || times.completed_break_minutes > 0
-        ? totalBreakMinutes(times)
+      // Planlanan mola ile fiili moladan büyüğü düşülür (mola okutmayan mola yapmış sayılır)
+      const planned = plannedBreakMins(row.start_time as string, row.end_time as string)
+      const workedMins = workedMinutes(times, planned)
+      const breakMins = times.clock_out_at || times.break_start_at || times.completed_break_minutes > 0
+        ? deductedBreakMinutes(times, times.clock_out_at ? planned : 0)
         : null
 
       return {

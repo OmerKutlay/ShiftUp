@@ -12,7 +12,6 @@ import { tr } from 'date-fns/locale'
 import type { EmployeeWithRole } from '@/types/employee'
 import type { ShiftAssignmentWithDetails, WeeklyScheduleEntry } from '@/types/schedule'
 import type { PublicHoliday } from '@/types/holiday'
-import { netWorkMins } from '@/lib/workingTimeService'
 import { SHIFT_KIND_TONES } from '@/lib/palette'
 import { PersonAvatar } from '@/components/common'
 import { Badge } from '@/components/ui/badge'
@@ -21,7 +20,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemSeparator, ItemTitle } from '@/components/ui/item'
 import { cn } from '@/lib/utils'
 import {
-  DAY_LABELS, fmtDuration, fmtHoursTr, fmtRange, getAvailStatus, shiftDisplayName, shiftKindOf,
+  DAY_LABELS, fmtDuration, fmtHoursTr, fmtRange, getAvailStatus, shiftDisplayName, shiftKindOf, shiftNetMins,
   type AvailabilityMap, type AvailStatus,
 } from './scheduleHelpers'
 import { OFF_META, type OffKind } from './ScheduleCells'
@@ -112,7 +111,7 @@ export function MobileDayBoard({
       if (asgn?.is_on_leave || approvedLeaveMap.has(key)) { off.push({ emp: e.employee, kind: 'leave' }); continue }
       const avail = getAvailStatus(e.employee.id, selectedDay, availabilityMap, asgn?.start_time, asgn?.end_time)
       if (!asgn) { off.push({ emp: e.employee, kind: avail === 'off' ? 'unavailable' : 'unassigned' }); continue }
-      const net = netWorkMins(asgn.start_time, asgn.end_time)
+      const net = shiftNetMins(asgn)
       working.push({
         emp: e.employee, asgn, span: spanOf(asgn), net,
         warn: net > maxDailyMins ? 'over' : avail === 'off' || avail === 'partial' ? avail : null,

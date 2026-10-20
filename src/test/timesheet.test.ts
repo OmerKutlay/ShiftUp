@@ -107,11 +107,27 @@ describe('timesheet — gün kodları', () => {
 
 describe('timesheet — fazla çalışma (Md. 41)', () => {
   it('haftalık 45 saati aşan net süre fazla çalışmadır; onay yoksa işaretlenir', () => {
-    // 5–11 Ekim haftası: 6 gün × 9s net (10s brüt, 60dk mola) = 54s → 9s fazla
+    // 5–11 Ekim haftası: 6 gün × 8,5s net (10s brüt, 90dk mola) = 51s → 6s fazla
+    const shifts = ['05', '06', '07', '08', '09', '10'].map((d) => worked(`2026-10-${d}`, '08:00', '18:00', 90))
+    const [row] = buildTimesheet({ month: '2026-10', employees: [EMP], holidays: [], today: '2026-10-31', shifts, leaves: [] })
+    expect(row.overtimeMins).toBe(6 * 60)
+    expect(row.overtimeWithoutConsent).toBe(true)
+  })
+
+  it('planlanandan kısa mola okutulsa da planlanan mola düşülür', () => {
+    // 08:00–18:00 vardiyanın planlanan molası 90 dk: 6 gün × 8,5s = 51s → 6s fazla
     const shifts = ['05', '06', '07', '08', '09', '10'].map((d) => worked(`2026-10-${d}`, '08:00', '18:00', 60))
     const [row] = buildTimesheet({ month: '2026-10', employees: [EMP], holidays: [], today: '2026-10-31', shifts, leaves: [] })
-    expect(row.overtimeMins).toBe(9 * 60)
-    expect(row.overtimeWithoutConsent).toBe(true)
+    expect(row.overtimeMins).toBe(6 * 60)
+    expect(row.dayMins['2026-10-05']).toBe(8.5 * 60)
+  })
+
+  it('molasını uzatan çalışanın aşan dakikaları çalışmadan düşer', () => {
+    // 09:00–18:00 vardiyanın planlanan molası 60 dk; 85 dk mola → 9s − 85dk
+    const [row] = buildTimesheet({
+      month: '2026-10', employees: [EMP], holidays: [], today: '2026-10-31', shifts: [worked('2026-10-05', '09:00', '18:00', 85)], leaves: [],
+    })
+    expect(row.dayMins['2026-10-05']).toBe(9 * 60 - 85)
   })
 
   it('onay tarihi varsa uyarı yok', () => {

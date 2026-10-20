@@ -79,7 +79,18 @@ export interface ActionButton {
   description: string
   icon: LucideIcon
   tone: 'brand' | 'warning' | 'danger'
+  /** Birincil (primary renkli) düğme; diğerleri secondary renkte gösterilir */
+  primary: boolean
 }
+
+/**
+ * Duruma göre düğmeler — primary olan önce gelir:
+ *   shift_waiting       → Giriş yap (primary)
+ *   working             → Molaya çık (primary), Çıkış yap (secondary)
+ *   on_break            → Moladan dön (primary)
+ *   working_after_break → Çıkış yap (primary), Molaya çık (secondary — ikinci molaya karışılmaz;
+ *                          fazla mola çalışma süresinden düşülür)
+ */
 
 export function getButtons(status: AttendanceStatus | null): ActionButton[] {
   switch (status) {
@@ -91,6 +102,7 @@ export function getButtons(status: AttendanceStatus | null): ActionButton[] {
           description: 'Vardiyama başlamak istiyorum',
           icon: LogIn,
           tone: 'brand',
+          primary: true,
         },
       ]
     case 'working':
@@ -101,6 +113,7 @@ export function getButtons(status: AttendanceStatus | null): ActionButton[] {
           description: 'Mola vermek istiyorum',
           icon: Coffee,
           tone: 'warning',
+          primary: true,
         },
         {
           action: 'clock_out',
@@ -108,6 +121,7 @@ export function getButtons(status: AttendanceStatus | null): ActionButton[] {
           description: 'Vardiyamı tamamlamak istiyorum',
           icon: LogOut,
           tone: 'danger',
+          primary: false,
         },
       ]
     case 'on_break':
@@ -118,24 +132,27 @@ export function getButtons(status: AttendanceStatus | null): ActionButton[] {
           description: 'Molam bitti, işe dönüyorum',
           icon: Undo2,
           tone: 'brand',
+          primary: true,
         },
         // Molada çıkış yok — kural gereği dahil edilmedi
       ]
     case 'working_after_break':
       return [
         {
-          action: 'break_start',
-          label: 'Molaya çık',
-          description: 'Tekrar mola vermek istiyorum',
-          icon: Coffee,
-          tone: 'warning',
-        },
-        {
           action: 'clock_out',
           label: 'Çıkış yap',
           description: 'Vardiyamı tamamlamak istiyorum',
           icon: LogOut,
           tone: 'danger',
+          primary: true,
+        },
+        {
+          action: 'break_start',
+          label: 'Molaya çık',
+          description: 'Tekrar mola vermek istiyorum',
+          icon: Coffee,
+          tone: 'warning',
+          primary: false,
         },
       ]
     default:

@@ -91,6 +91,14 @@ export function breakMinsOf(start: string, end: string): number {
   return shiftDurationMins(start, end) - netWorkMins(start, end)
 }
 
+/**
+ * Vardiyanın net süresi: çıkış yapıldıysa fiili net çalışma (planlanan mola ile fiili moladan
+ * büyüğü düşülmüş), yoksa planlanan net süre.
+ */
+export function shiftNetMins(a: Pick<ShiftAssignmentWithDetails, 'start_time' | 'end_time' | 'worked_minutes'>): number {
+  return a.worked_minutes ?? netWorkMins(a.start_time, a.end_time)
+}
+
 /** Şablonsuz (planlayıcının ürettiği) vardiyalar için saatlerden ad türet */
 export function shiftDisplayName(templateName: string | undefined, start: string, end: string): string {
   if (templateName) return templateName
@@ -135,7 +143,7 @@ export function calcEmployeeStats(
 
   for (const d of weekDays) {
     const dayShifts = assignments.filter((a) => a.work_date === d && !a.is_on_leave)
-    const mins = dayShifts.reduce((sum, a) => sum + netWorkMins(a.start_time, a.end_time), 0)
+    const mins = dayShifts.reduce((sum, a) => sum + shiftNetMins(a), 0)
     dailyMins[d] = mins
     totalMins += mins
     totalBreakMins += dayShifts.reduce((sum, a) => sum + breakMinsOf(a.start_time, a.end_time), 0)
