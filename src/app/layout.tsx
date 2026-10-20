@@ -42,6 +42,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="tr">
       {/* Safe-area boşlukları kabukta: üst bar ve alt bar kendi zeminleriyle doldurur */}
       <body className={`${geistSans.variable} ${geistMono.variable} font-sans`}>
+        {/*
+          iOS 26+ ana ekran uygulaması üst kenara bulanıklık (scroll edge effect) çizer; ekranın
+          en üstünde tam genişlikte, 10px'ten yüksek, zeminli bir `position: fixed` öğe bulursa
+          bulanıklık yerine onun düz rengini kullanır (WebKit LocalFrameView::fixedContainerEdges).
+          Bu şerit o öğedir: her sayfada (iPad'in yan menülü düzeni, giriş, kiosk) ve açık
+          diyalogların üstünde de bulunur. bg-clip-text: metni olmadığından hiçbir şey boyamaz.
+        */}
+        <div
+          aria-hidden
+          className="pointer-events-none fixed inset-x-0 top-0 z-[2147483647] hidden h-3 bg-background bg-clip-text standalone:block"
+        />
         {/* Service Worker kaydı ve güncelleme uyarısı: PwaLayer → ServiceWorkerUpdater */}
         <Providers>{children}</Providers>
       </body>

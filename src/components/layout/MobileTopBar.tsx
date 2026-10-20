@@ -6,8 +6,8 @@
  * iOS 26'da ana ekrandan açılan uygulama, durum çubuğunun rengini sayfanın en üstündeki
  * opak, tam genişlikte, `position: fixed` bir öğeden örnekler; uygun öğe yoksa üst kenara kendi
  * bulanıklığını çizer. Bu yüzden çubuk sabit, opak ve tam genişliktir (blur / saydamlık yok);
- * durum çubuğu alanını (safe-area) kendi zemini doldurur. iOS 26+ yine de üst kenara ~40pt'lik
- * bir bulanıklık geçişi çizdiği için içerik --app-top kadar aşağıdan başlar (globals.css).
+ * durum çubuğu alanını (safe-area) kendi zemini doldurur. Durum çubuğu opak olduğundan
+ * --app-top 0'dır ve çubuk ekranın en üstüne oturur (bkz. layout.tsx'teki kenar şeridi).
  */
 import { usePathname } from 'next/navigation'
 import { LogIn } from 'lucide-react'
