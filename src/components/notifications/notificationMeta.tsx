@@ -17,7 +17,7 @@ export interface NotificationMeta {
 }
 
 export const NOTIFICATION_META: Record<NotificationType, NotificationMeta> = {
-  shift_reminder:              { Icon: Clock,         tone: 'brand',   label: 'Vardiya hatırlatması', short: 'Vardiya' },
+  shift_reminder:              { Icon: Clock,         tone: 'neutral', label: 'Vardiya hatırlatması', short: 'Vardiya' },
   leave_submitted:             { Icon: CalendarPlus,  tone: 'info',    label: 'İzin talebi',          short: 'İzin talebi' },
   leave_approved:              { Icon: CircleCheck,   tone: 'success', label: 'İzin onaylandı',       short: 'Onaylandı' },
   leave_rejected:              { Icon: CalendarX,     tone: 'danger',  label: 'İzin reddedildi',      short: 'Reddedildi' },
@@ -44,13 +44,13 @@ export function notificationMeta(type: NotificationType): NotificationMeta {
   return NOTIFICATION_META[type] ?? FALLBACK_META
 }
 
-/** Tür ikonunun yumuşak zemini (rozet tonuyla aynı) */
+/** Tür ikonu kutusu (ItemMedia variant="icon"): tek renk token, zemin/kenar opaklıkla türetilir */
 export const ICON_TONE_CLASS: Record<NotificationMeta['tone'], string> = {
-  neutral: 'bg-surface-muted text-ink-secondary',
-  brand: 'bg-brand-soft text-brand',
-  success: 'bg-success-soft text-success',
-  warning: 'bg-warning-soft text-warning',
-  danger: 'bg-danger-soft text-danger',
-  info: 'bg-info-soft text-info',
-  plum: 'bg-plum-soft text-plum',
+  neutral: 'text-muted-foreground',
+  brand: 'border-primary/20 bg-primary/10 text-primary',
+  success: 'border-success/20 bg-success/10 text-success',
+  warning: 'border-warning/20 bg-warning/10 text-warning',
+  danger: 'border-destructive/20 bg-destructive/10 text-destructive',
+  info: 'border-info/20 bg-info/10 text-info',
+  plum: 'border-plum/20 bg-plum/10 text-plum',
 }

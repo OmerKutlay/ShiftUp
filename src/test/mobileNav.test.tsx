@@ -153,7 +153,7 @@ describe('MorePage', () => {
     expect(screen.getByRole('heading', { name: 'Devam ve izin' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Açık vardiyalar/ })).toHaveAttribute('href', '/open-shifts')
     expect(screen.queryByRole('link', { name: /Çalışanlar/ })).not.toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Çıkış Yap' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Çıkış yap' }))
     expect(signOut).toHaveBeenCalled()
   })
 
