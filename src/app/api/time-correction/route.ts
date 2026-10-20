@@ -36,7 +36,6 @@ interface Body {
   requested_start_time?: string
   requested_end_time?: string
   reason?: string
-  break_minutes?: number | null
   acknowledge_violations?: boolean
 }
 
@@ -55,8 +54,9 @@ function validateFields(body: Body): string | null {
   }
   if (typeof body.reason !== 'string' || !body.reason.trim()) return 'Sebep açıklaması zorunludur.'
   if (body.reason.length > 500) return 'Sebep en fazla 500 karakter olabilir.'
-  if (body.break_minutes != null && (!Number.isInteger(body.break_minutes) || body.break_minutes < 0 || body.break_minutes > 240)) {
-    return 'Mola süresi 0–240 dakika arasında olmalıdır.'
+  // Mola elle girilmez; süre hesabında otomatik düşülür (bkz. attendanceDurations)
+  if ('break_minutes' in body && (body as { break_minutes?: unknown }).break_minutes != null) {
+    return 'Mola süresi elle girilemez; mola otomatik hesaplanır.'
   }
   return null
 }
@@ -157,7 +157,6 @@ export async function POST(req: NextRequest) {
           date,
           requested_start_time: start,
           requested_end_time: end,
-          break_minutes: body.break_minutes ?? null,
           reason,
           status: 'direct',
           reviewed_by: currentEmployee.id,
@@ -170,7 +169,7 @@ export async function POST(req: NextRequest) {
       let applied
       try {
         applied = await applyTimeCorrection({
-          admin, employeeId, date, startTime: start, endTime: end, breakMinutes: body.break_minutes,
+          admin, employeeId, date, startTime: start, endTime: end,
         })
       } catch (applyErr) {
         // Uygulanamayan doğrudan kaydı geri al
@@ -227,7 +226,6 @@ export async function POST(req: NextRequest) {
         date,
         requested_start_time: start,
         requested_end_time: end,
-        break_minutes: body.break_minutes ?? null,
         reason,
         status: 'pending',
       })

@@ -45,7 +45,7 @@ export function buildDailyRows(entries: DailyShiftEntry[], now: number): DailyRo
       win,
       status,
       late: lateMinutes(rec?.clock_in_at, win),
-      worked: workedMinutes(rec, now),
+      worked: workedMinutes(rec, now, sa),
       segments: timelineSegments(win, rec, status, now),
       summary: `Vardiya ${sa.start_time.slice(0, 5)}–${sa.end_time.slice(0, 5)}${parts.length ? `, ${parts.join(', ')}` : ', okutma yok'}`,
     }

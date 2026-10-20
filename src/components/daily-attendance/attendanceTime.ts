@@ -11,6 +11,7 @@
 import { useEffect, useState } from 'react'
 import type { BadgeTone } from '@/components/common'
 import type { AttendanceRecord, AttendanceStatus } from '@/types/attendance'
+import { workedMinutes as completedWorkedMinutes, type PlannedShift } from '@/lib/attendanceDurations'
 
 const TURKEY_UTC_OFFSET = '+03:00'
 const MINUTE_MS = 60_000
@@ -114,10 +115,15 @@ export function lateMinutes(clockInAt: string | null | undefined, win: ShiftWind
   return mins >= LATE_TOLERANCE_MINS ? mins : null
 }
 
-/** Net çalışma (dk): giriş → çıkış (ya da şimdi), molalar düşülür */
-export function workedMinutes(rec: AttendanceRecord | null, now: number): number | null {
+/**
+ * Net çalışma (dk): giriş → çıkış (ya da şimdi), molalar düşülür.
+ * Çıkış yapıldıysa ve vardiya verildiyse puantajdaki hesap kullanılır (mola kuralı + tam/buçuklu
+ * saate yuvarlama, bkz. lib/attendanceDurations); vardiya sürerken yalnızca fiili mola düşülür.
+ */
+export function workedMinutes(rec: AttendanceRecord | null, now: number, shift?: PlannedShift): number | null {
   const inAt = ms(rec?.clock_in_at)
   if (!rec || inAt === null) return null
+  if (rec.clock_out_at && shift) return completedWorkedMinutes(rec, shift)
   const outAt = ms(rec.clock_out_at) ?? now
   const bStart = ms(rec.break_start_at)
   const bEnd = ms(rec.break_end_at) ?? (rec.status === 'on_break' ? now : null)

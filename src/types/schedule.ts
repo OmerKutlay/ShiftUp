@@ -7,6 +7,11 @@ import type { ShiftTemplate } from '@/types/shiftTemplate'
 export interface ShiftAssignmentWithDetails extends ShiftAssignment {
   shift_templates: ShiftTemplate | null  // Supabase join
   employees: EmployeeWithRole | null     // Supabase join
+  /**
+   * Fiili net çalışma (dk) — yalnızca çıkış yapılmış vardiyalarda (GET /api/shifts doldurur).
+   * Planlanan mola ile fiili moladan büyüğü düşülmüştür. Yöneticiler herkesinkini, çalışan yalnızca kendisininkini görür.
+   */
+  worked_minutes?: number | null
 }
 
 // Haftalık grid hücresi

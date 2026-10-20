@@ -58,22 +58,67 @@ describe('mapReportRow', () => {
     expect(mapReportRow({ ...shift, attendance_records: [] }, now).status).toBe('shift_waiting')
   })
 
-  it('önceki molaları net çalışmadan düşer', () => {
-    const row = mapReportRow({
-      ...shift,
-      attendance_records: [{
-        id: 'r1',
-        status: 'clocked_out',
-        clock_in_at: '2026-10-01T06:00:00Z',
-        break_start_at: '2026-10-01T11:00:00Z',
-        break_end_at: '2026-10-01T11:15:00Z',
-        clock_out_at: '2026-10-01T14:00:00Z',
-        completed_break_minutes: 30,
-      }],
-    }, now)
+  const clockedOut = (rec: Record<string, unknown>) => mapReportRow({
+    ...shift,
+    attendance_records: [{
+      id: 'r1',
+      status: 'clocked_out',
+      clock_in_at: '2026-10-01T06:00:00Z',
+      break_start_at: null,
+      break_end_at: null,
+      clock_out_at: '2026-10-01T14:00:00Z',
+      completed_break_minutes: 0,
+      ...rec,
+    }],
+  }, now)
+
+  // 09:00–17:00 (8s brüt) vardiyanın planlanan molası 60 dk
+  it('molaları uzatan çalışanın aşan dakikaları düşer, sonuç buçuklu saate yuvarlanır', () => {
+    const row = clockedOut({
+      break_start_at: '2026-10-01T11:00:00Z',
+      break_end_at: '2026-10-01T11:25:00Z',
+      completed_break_minutes: 50,
+    })
     expect(row.record_id).toBe('r1')
-    expect(row.break_minutes).toBe(45)
-    expect(row.worked_minutes).toBe(8 * 60 - 45)
+    expect(row.break_minutes).toBe(75)
+    // 8s − 75dk = 6s 45dk → 6s 30dk
+    expect(row.worked_minutes).toBe(6 * 60 + 30)
+  })
+
+  it('mola okutmadan erken çıkandan mola düşülmez', () => {
+    // 09:00 giriş, 12:00 çıkış (5 saat erken)
+    const row = clockedOut({ clock_out_at: '2026-10-01T09:00:00Z' })
+    expect(row.break_minutes).toBe(0)
+    expect(row.worked_minutes).toBe(3 * 60)
+  })
+
+  it('molaya çıkıp erken çıkanın süresi fiilene göre hesaplanır', () => {
+    // 09:00–15:12 (6s 12dk kaldı): bu süre için planlanan mola 60 dk
+    const out = '2026-10-01T12:12:00Z'
+    // 70 dk mola okuttu → 5s 2dk → 5s
+    const longBreak = clockedOut({ break_start_at: '2026-10-01T09:00:00Z', break_end_at: '2026-10-01T10:10:00Z', clock_out_at: out })
+    expect(longBreak.break_minutes).toBe(70)
+    expect(longBreak.worked_minutes).toBe(5 * 60)
+    // 40 dk mola okuttu → kalınan süreye göre 60 dk düşülür → 5s 12dk → 5s
+    const shortBreak = clockedOut({ break_start_at: '2026-10-01T09:00:00Z', break_end_at: '2026-10-01T09:40:00Z', clock_out_at: out })
+    expect(shortBreak.break_minutes).toBe(60)
+    expect(shortBreak.worked_minutes).toBe(5 * 60)
+  })
+
+  it('planlanandan kısa mola yapan çalışandan planlanan mola düşülür', () => {
+    const row = clockedOut({
+      break_start_at: '2026-10-01T11:00:00Z',
+      break_end_at: '2026-10-01T11:15:00Z',
+      completed_break_minutes: 30,
+    })
+    expect(row.break_minutes).toBe(60)
+    expect(row.worked_minutes).toBe(8 * 60 - 60)
+  })
+
+  it('mola okutmayan çalışan planlanan molayı yapmış sayılır', () => {
+    const row = clockedOut({})
+    expect(row.break_minutes).toBe(60)
+    expect(row.worked_minutes).toBe(8 * 60 - 60)
   })
 })
 
@@ -109,6 +154,21 @@ describe('buildFieldPatch — çoklu mola', () => {
       clock_out_at: '2026-10-01T15:00:00Z',
       completed_break_minutes: 30,
     })).toBe(9 * 60 - 45)
+  })
+
+  it('vardiyayı tamamlayandan planlanan mola ile fiili toplam moladan büyüğü düşülür', () => {
+    // 09:00–18:00 (TR) vardiya, planlanan mola 60 dk
+    const shift = { work_date: '2026-10-01', start_time: '09:00', end_time: '18:00' }
+    const rec = {
+      clock_in_at: '2026-10-01T06:00:00Z',
+      break_start_at: '2026-10-01T12:00:00Z',
+      break_end_at: '2026-10-01T12:15:00Z',
+      clock_out_at: '2026-10-01T15:00:00Z',
+      completed_break_minutes: 30,
+    }
+    expect(workedMinutes(rec, shift)).toBe(9 * 60 - 60)
+    expect(workedMinutes({ ...rec, completed_break_minutes: 75 }, shift)).toBe(7 * 60 + 30) // 90 dk mola
+    expect(workedMinutes({ ...rec, break_start_at: null, break_end_at: null, completed_break_minutes: 0 }, shift)).toBe(9 * 60 - 60)
   })
 })
 

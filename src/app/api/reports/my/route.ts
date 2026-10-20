@@ -13,8 +13,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { requireAuth } from '@/lib/auth'
-import { totalBreakMinutes, workedMinutes } from '@/lib/attendanceDurations'
-import { grossMins, statutoryMinBreakMins } from '@/lib/laborLaw'
+import { deductedBreakMinutes, roundWorkedMinutes, workedMinutes } from '@/lib/attendanceDurations'
+import { plannedBreakMins } from '@/lib/workingTimeService'
+import { grossMins } from '@/lib/laborLaw'
 import { isValidDate } from '@/lib/validation'
 import { serverError } from '@/lib/apiErrors'
 
@@ -61,7 +62,7 @@ export async function GET(req: NextRequest) {
     // Manuel düzeltmeler (approved + direct) — eski (devam kaydı yazılmamış) düzeltmeler için
     const { data: corrData } = await admin
       .from('manual_time_correction_requests')
-      .select('id, date, requested_start_time, requested_end_time, break_minutes, status, reason')
+      .select('id, date, requested_start_time, requested_end_time, status, reason')
       .eq('employee_id', employee.id)
       .in('status', ['approved', 'direct'])
       .gte('date', dateFrom)
@@ -80,9 +81,11 @@ export async function GET(req: NextRequest) {
         clock_out_at:   rec?.clock_out_at   ?? null,
         completed_break_minutes: rec?.completed_break_minutes ?? 0,
       }
-      const workedMins = workedMinutes(times)
-      const breakMins = times.break_start_at || times.completed_break_minutes > 0
-        ? totalBreakMinutes(times)
+      // Mola kuralı ve yuvarlama: bkz. attendanceDurations
+      const shift = { work_date: row.work_date as string, start_time: row.start_time as string, end_time: row.end_time as string }
+      const workedMins = workedMinutes(times, shift)
+      const breakMins = times.clock_out_at || times.break_start_at || times.completed_break_minutes > 0
+        ? deductedBreakMinutes(times, times.clock_out_at ? shift : null)
         : null
 
       return {
@@ -110,10 +113,10 @@ export async function GET(req: NextRequest) {
       const corrDate  = corr.date as string
       const startTime = (corr.requested_start_time as string).slice(0, 5)
       const endTime   = (corr.requested_end_time as string).slice(0, 5)
-      // Gece yarısını geçen düzeltme desteklenir; mola (verilmediyse Md. 68 asgari) düşülür
+      // Gece yarısını geçen düzeltme desteklenir; mola elle girilmez — planlanan mola otomatik düşülür
       const gross     = grossMins(startTime, endTime)
-      const corrBreak = (corr.break_minutes as number | null) ?? statutoryMinBreakMins(gross)
-      const corrMins  = Math.max(0, gross - corrBreak)
+      const corrBreak = plannedBreakMins(startTime, endTime)
+      const corrMins  = roundWorkedMinutes(gross - corrBreak)
 
       if (rowDateSet.has(corrDate)) {
         // Shift var → worked_minutes attendance'tan geliyor.

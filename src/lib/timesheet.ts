@@ -52,6 +52,11 @@ export interface TimesheetShift {
   attendance: (AttendanceTimes & { status?: string }) | null
 }
 
+/** Vardiyanın net fiili çalışması — mola kuralı ve yuvarlama: bkz. attendanceDurations */
+function shiftWorkedMins(s: TimesheetShift): number {
+  return s.attendance ? workedMinutes(s.attendance, s) ?? 0 : 0
+}
+
 export interface TimesheetLeave {
   employee_id: string
   leave_type: string
@@ -173,7 +178,7 @@ export function buildTimesheet(params: {
         if (holiday && !holiday.half_day) row.holidayWorkedDays++
         let dayTotal = 0
         for (const s of worked) {
-          dayTotal += workedMinutes(s.attendance!) ?? 0
+          dayTotal += shiftWorkedMins(s)
           if (s.attendance!.clock_in_at && s.attendance!.clock_out_at) {
             row.nightMins += nightMinutesBetween(s.attendance!.clock_in_at, s.attendance!.clock_out_at)
           }
@@ -204,7 +209,7 @@ export function buildTimesheet(params: {
       const monday = addDaysToDateString(sunday, -6)
       const weekMins = empShifts
         .filter((s) => s.work_date >= monday && s.work_date <= sunday && s.attendance?.clock_in_at)
-        .reduce((sum, s) => sum + (workedMinutes(s.attendance!) ?? 0), 0)
+        .reduce((sum, s) => sum + shiftWorkedMins(s), 0)
       row.overtimeMins += Math.max(0, weekMins - MAX_WEEKLY_WORK_MINS)
     }
     row.overtimeWithoutConsent = row.overtimeMins > 0 && !emp.overtime_consent_at
