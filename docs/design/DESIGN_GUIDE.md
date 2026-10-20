@@ -85,6 +85,10 @@ Grafik serileri: `chart-1` marka, `chart-2` yeşil-mavi, `chart-3` mavi, `chart-
     `env(safe-area-inset-top)` yerine **`var(--app-top)`** kullanır: iOS 26+ ana ekran uygulamasında
     bu değer bandı (`--edge-ramp`) içerir ve bant üst barın düz zeminiyle dolar. Stüdyoda
     `STUDIO_EDGE_RAMP=2.5rem` ile görülebilir.
+  - Alttan konumlanan her şey `env(safe-area-inset-bottom)` yerine **`var(--safe-bottom)`**
+    kullanır (34px ile sınırlı): iOS ana ekran uygulaması bu değeri ilk döndürmeye kadar şişkin
+    bildirebiliyor ve alt bar ekranın dibinden kopmuş görünüyordu.
+  - Cihazdaki gerçek ölçümler: ana ekran uygulamasında "Daha fazla" › "Ekran bilgisi".
   - `body`'de safe-area boşluğu yoktur: kabuk dışı sayfalar (giriş, kiosk) kendi
     `var(--app-top)` / `env(safe-area-inset-*)` boşluklarını verir.
 
