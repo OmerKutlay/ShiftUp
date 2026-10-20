@@ -1173,8 +1173,9 @@ function dashboard(ctx: Ctx) {
       currently_working: recs.filter((r) => r.status === 'working' || r.status === 'working_after_break').length,
       on_break: recs.filter((r) => r.status === 'on_break').length,
       clocked_out: recs.filter((r) => r.status === 'clocked_out').length,
-      // route ile aynı: vardiya sayısı − devam kaydı sayısı (izinli / henüz başlamamış vardiyalar dahil)
-      no_show: entries.length - recs.length,
+      // route ile aynı: başlamış, izinli olmayan ve devam kaydı olmayan vardiyalar
+      no_show: entries.filter((e) => !e.shiftAssignment.is_on_leave && !e.attendanceRecord
+        && toMin(e.shiftAssignment.start_time.slice(0, 5)) <= (mockOptions.demoTime === 'real' ? 24 * 60 : toMin(mockOptions.demoTime))).length,
       pending_leaves: pending.length,
     },
     today_roster: entries.map((e) => ({
@@ -1184,6 +1185,7 @@ function dashboard(ctx: Ctx) {
       start_time: e.shiftAssignment.start_time,
       end_time: e.shiftAssignment.end_time,
       attendance_status: e.attendanceRecord?.status ?? 'shift_waiting',
+      is_on_leave: Boolean(e.shiftAssignment.is_on_leave),
       clock_in_at: e.attendanceRecord?.clock_in_at ?? null,
       clock_out_at: e.attendanceRecord?.clock_out_at ?? null,
     })),

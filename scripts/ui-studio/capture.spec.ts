@@ -8,6 +8,8 @@
  *   STUDIO_ONLY    virgüllü çekim adı filtresi (ör. "reports-attendance,today")
  *   STUDIO_DEVICE  desktop | mobile (varsayılan: ikisi)
  *   STUDIO_PERSONA manager | employee | anon
+ *   STUDIO_CLOCK   0 → tarayıcı saati gerçek kalır (varsayılan: bugün, mocks.ts demoTime saati;
+ *                  sahte devam kayıtlarıyla "şimdi" çizgisi ve gecikme hesapları tutarlı olsun)
  *   STUDIO_FOLD    1 → mobilde ayrıca yalnızca ilk ekranın görüntüsü (…--fold.png): sabit üst/alt bar
  *
  * Oturum e2e/support/fake-supabase.mjs ile doğrulanır; /api/* uçları mocks.ts'den yanıtlanır.
@@ -16,7 +18,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { test, type Page } from '@playwright/test'
 import { addSessionCookie } from '../../e2e/support/fixtures'
-import { mockApiResponse, type Persona as ApiPersona } from './mocks'
+import { mockApiResponse, mockOptions, type Persona as ApiPersona } from './mocks'
 import { SHOTS, type Persona, type Shot, type Step } from './shots'
 
 const OUT = process.env.STUDIO_OUT ?? path.join(__dirname, 'out')
@@ -24,6 +26,13 @@ const ONLY = process.env.STUDIO_ONLY?.split(',').map((s) => s.trim()).filter(Boo
 const DEVICE = process.env.STUDIO_DEVICE
 const PERSONA = process.env.STUDIO_PERSONA
 const FOLD = process.env.STUDIO_FOLD === '1'
+const CLOCK = process.env.STUDIO_CLOCK !== '0' && mockOptions.demoTime !== 'real'
+
+/** Bugünün İstanbul tarihi + demoTime → an (İstanbul UTC+3, yaz saati yok) */
+function demoNow(): Date {
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul' }).format(new Date())
+  return new Date(`${today}T${mockOptions.demoTime}:00+03:00`)
+}
 
 const DEVICES = {
   desktop: { viewport: { width: 1440, height: 900 }, isMobile: false, hasTouch: false, deviceScaleFactor: 1 },
@@ -65,6 +74,7 @@ for (const [device, opts] of Object.entries(DEVICES)) {
           if (persona !== 'anon') {
             await addSessionCookie(context, baseURL!, persona === 'manager' ? 'Mağaza Müdürü' : 'Çalışan')
           }
+          if (CLOCK) await page.clock.install({ time: demoNow() })
           await context.addInitScript(() => {
             try {
               localStorage.setItem('shiftup.installPrompt.dismissedAt', String(Date.now()))

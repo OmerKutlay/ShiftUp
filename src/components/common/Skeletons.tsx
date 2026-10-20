@@ -30,7 +30,7 @@ function LoadingRegion({ children, className }: { children: React.ReactNode; cla
 // ----------------------------------------------------------------
 export function PageHeaderSkeleton({ withActions = false }: { withActions?: boolean }) {
   return (
-    <div className="mb-6 flex items-start justify-between gap-4">
+    <div className="flex items-start justify-between gap-4">
       <div className="flex flex-col gap-2">
         <Skeleton className="h-3 w-[90px]" />
         <Skeleton className="h-7 w-[220px] max-w-[60vw]" />
@@ -47,7 +47,7 @@ export function PageHeaderSkeleton({ withActions = false }: { withActions?: bool
 export function StatCardsSkeleton({ count = 4 }: { count?: number }) {
   // StatCards ızgarasıyla aynı: 2 sütun, geniş içerikte 4
   return (
-    <LoadingRegion className="mb-4 grid grid-cols-2 gap-3 md:mb-6 md:gap-4 @5xl/main:grid-cols-4">
+    <LoadingRegion className="grid grid-cols-2 gap-3 md:gap-4 @5xl/main:grid-cols-4">
       {Array.from({ length: count }).map((_, i) => (
         <div key={i} className={cn(cardClass, 'flex flex-col gap-3 px-4 py-4 md:px-5 md:py-5')}>
           <Skeleton className="h-4 w-24" />
