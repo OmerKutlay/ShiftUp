@@ -53,6 +53,15 @@
   --info: oklch(0.546 0.245 262.881);
   --plum: oklch(0.55 0.16 305);
 
+  /*
+   * Üst kenar: ekranın üstünde içeriğin başlayabileceği yer.
+   * iOS 26+ ana ekran uygulaması üst kenara ~40pt'lik, sayfanın kapatamadığı bir bulanıklık
+   * geçişi (scroll edge effect) çizer; --edge-ramp bu bandı düz zeminle doldurup üst barın
+   * içeriğini altına indirir (aşağıdaki @supports). Diğer her yerde 0.
+   */
+  --edge-ramp: 0px;
+  --app-top: calc(env(safe-area-inset-top) + var(--edge-ramp));
+
   /* Vardiya türleri */
   --shift-open: oklch(0.769 0.188 70.08);
   --shift-mid: oklch(0.685 0.169 237.323);
@@ -115,6 +124,15 @@
   --color-shift-open: var(--shift-open);
   --color-shift-mid: var(--shift-mid);
   --color-shift-close: var(--shift-close);
+}
+
+/* iOS (-webkit-touch-callout) + Safari 26+ (anchor-name) + ana ekrandan açılmış uygulama */
+@supports (-webkit-touch-callout: none) and (anchor-name: --a) {
+  @media (display-mode: standalone) and (orientation: portrait), (display-mode: standalone) and (min-width: 768px) {
+    :root {
+      --edge-ramp: 2.5rem;
+    }
+  }
 }
 
 @layer base {
