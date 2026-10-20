@@ -39,7 +39,7 @@ export function QrCodeDisplay({ data, size = 240, loading = false, expired = fal
   }, [data, size, loading, expired])
 
   // Responsive: tam genişlik, maxWidth ile üst sınır — kart içinde her zaman sığar
-  const frame = 'aspect-square w-full rounded-2xl'
+  const frame = 'aspect-square w-full rounded-xl'
 
   if (loading) {
     return (
@@ -55,26 +55,26 @@ export function QrCodeDisplay({ data, size = 240, loading = false, expired = fal
   if (expired) {
     return (
       <div
-        className={cn(frame, 'flex flex-col items-center justify-center gap-1.5 bg-danger-soft text-center', className)}
+        className={cn(frame, 'flex flex-col items-center justify-center gap-1.5 border border-dashed bg-muted/50 text-center', className)}
         style={{ maxWidth: size }}
       >
-        <TimerOff className="mb-1 size-7 text-danger" aria-hidden />
-        <p className="text-sm font-semibold text-danger">QR süresi doldu</p>
-        <p className="text-xs text-ink-secondary">Yenileniyor…</p>
+        <TimerOff className="mb-1 size-6 text-destructive" aria-hidden />
+        <p className="text-sm font-medium">QR süresi doldu</p>
+        <p className="text-xs text-muted-foreground">Yenileniyor…</p>
       </div>
     )
   }
 
   return (
     <div
-      className={cn(frame, 'overflow-hidden border bg-white p-2', className)}
+      className={cn(frame, 'overflow-hidden border bg-white p-2 shadow-xs', className)}
       style={{ maxWidth: size }}
     >
       {/*
        * Canvas: width/height attribute'u piksel çözünürlüğünü belirler.
        * CSS w-full ile container'a göre ölçeklenir — mobilde taşmaz.
        */}
-      <canvas ref={canvasRef} width={size} height={size} className="block h-auto w-full rounded-lg" />
+      <canvas ref={canvasRef} width={size} height={size} className="block h-auto w-full rounded-md" />
     </div>
   )
 }
