@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from './helpers/renderWithProviders'
 import type { ShiftTemplate } from '@/types/shiftTemplate'
@@ -12,6 +12,13 @@ vi.mock('@/lib/api/shiftTemplates', () => ({
   deactivateShiftTemplate: vi.fn(),
   activateShiftTemplate: vi.fn(),
 }))
+
+// jsdom'da yok; Radix Switch (useSize) kullanıyor
+globalThis.ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
 
 vi.mock('next/navigation', () => ({
   usePathname: () => '/shift-templates',
@@ -54,8 +61,9 @@ describe('ShiftTemplatesPage — listeleme', () => {
     renderPage()
 
     await waitFor(() => {
-      expect(screen.getByText('Açılış')).toBeInTheDocument()
-      expect(screen.getByText(/09:00/)).toBeInTheDocument()
+      const table = screen.getByRole('table')
+      expect(within(table).getAllByText('Açılış').length).toBeGreaterThanOrEqual(1)
+      expect(within(table).getByText(/09:00/)).toBeInTheDocument()
     })
   })
 
@@ -69,14 +77,8 @@ describe('ShiftTemplatesPage — listeleme', () => {
       expect(screen.queryByLabelText(LOADING_LABEL)).not.toBeInTheDocument()
     })
 
-    // Alert render edilmeli ve içinde doğru metin olmalı
-    await waitFor(() => {
-      const alerts = screen.getAllByRole('alert')
-      const infoAlert = alerts.find((el) =>
-        el.textContent?.includes('eklenmemiş') || el.textContent?.includes('Henüz')
-      )
-      expect(infoAlert).toBeDefined()
-    })
+    // Boş durum (Empty) doğru metni göstermeli
+    expect(await screen.findByText(/henüz vardiya şablonu eklenmemiş/i)).toBeInTheDocument()
   })
 
   it('aktif şablon sayısı header\'da gösterilir', async () => {
@@ -104,7 +106,7 @@ describe('ShiftTemplatesPage — yeni şablon ekleme', () => {
     await waitFor(() => screen.getByRole('button', { name: /yeni şablon/i }))
     await userEvent.click(screen.getByRole('button', { name: /yeni şablon/i }))
 
-    expect(await screen.findByText('Yeni Vardiya Şablonu')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Yeni vardiya şablonu' })).toBeInTheDocument()
   })
 
   it('form submit edilince createShiftTemplate çağrılır', async () => {
@@ -145,15 +147,16 @@ describe('ShiftTemplatesPage — yeni şablon ekleme', () => {
 describe('ShiftTemplatesPage — düzenleme', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('Düzenle butonuna tıklayınca dialog açılır ve mevcut data gelir', async () => {
+  it('Satır menüsünden Düzenle seçilince dialog açılır ve mevcut data gelir', async () => {
     vi.mocked(repo.fetchShiftTemplates).mockResolvedValue([makeTemplate()])
 
     renderPage()
 
-    await waitFor(() => screen.getByText('Açılış'))
-    await userEvent.click(screen.getByRole('button', { name: /düzenle/i }))
+    await waitFor(() => screen.getByRole('button', { name: /açılış işlemleri/i }))
+    await userEvent.click(screen.getByRole('button', { name: /açılış işlemleri/i }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: /düzenle/i }))
 
-    expect(await screen.findByText('Şablonu Düzenle')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Şablonu düzenle' })).toBeInTheDocument()
     expect(await screen.findByDisplayValue('Açılış')).toBeInTheDocument()
   })
 })
@@ -169,7 +172,7 @@ describe('ShiftTemplatesPage — pasif şablon', () => {
     renderPage()
 
     await waitFor(() => {
-      expect(screen.getByText('Açılış')).toBeInTheDocument()
+      expect(screen.getAllByText('Açılış').length).toBeGreaterThanOrEqual(1)
       const passiveLabels = screen.getAllByText(/^Pasif$/)
       expect(passiveLabels.length).toBeGreaterThanOrEqual(1)
     })
