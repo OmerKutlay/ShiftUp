@@ -34,7 +34,7 @@ const cap = (s: string) => s.charAt(0).toLocaleUpperCase('tr-TR') + s.slice(1)
 /** Takvim hücresi (gün / ay / yıl) ortak görünümü */
 function cellClass(opts: { selected?: boolean; today?: boolean; muted?: boolean }) {
   return cn(
-    'flex items-center justify-center rounded-[10px] border border-transparent text-sm font-medium transition-colors outline-none',
+    'flex items-center justify-center rounded-md border border-transparent text-sm font-medium transition-colors outline-none',
     'focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-30',
     opts.selected
       ? 'bg-primary font-bold text-primary-foreground hover:bg-brand-dark'
@@ -277,7 +277,7 @@ interface DateFieldProps {
   min?: string
   max?: string
   clearable?: boolean
-  /** 'small' = h-10 (varsayılan), 'medium' = h-11 */
+  /** 'small' = h-9 (varsayılan), 'medium' = h-10 */
   size?: 'small' | 'medium'
   fullWidth?: boolean
   required?: boolean
@@ -287,11 +287,13 @@ interface DateFieldProps {
   placeholder?: string
   /** Kapsayıcıya eklenecek sınıflar (genişlik, boşluk) */
   className?: string
+  /** Etiket yalnızca ekran okuyucular için (araç çubuğunda) */
+  hideLabel?: boolean
 }
 
 function PickerField({
   mode, label, value, onChange, min, max, clearable = false, size = 'small', fullWidth, required, disabled, error,
-  helperText, placeholder, className,
+  helperText, placeholder, className, hideLabel,
 }: DateFieldProps & { mode: Mode }) {
   const id = useId()
   const inputId = `${id}-input`
@@ -309,7 +311,7 @@ function PickerField({
 
   return (
     <div className={cn('flex flex-col gap-1.5', fullWidth ? 'w-full' : 'w-full sm:w-auto', className)}>
-      <Label htmlFor={inputId}>
+      <Label htmlFor={inputId} className={hideLabel ? 'sr-only' : undefined}>
         {label}
         {required && <span aria-hidden className="-ml-1.5 text-danger">*</span>}
       </Label>
@@ -318,9 +320,9 @@ function PickerField({
           <div
             ref={anchorRef}
             className={cn(
-              'relative flex w-full items-center rounded-[10px] border border-input bg-card transition-[color,box-shadow]',
+              'relative flex w-full items-center rounded-md border border-input bg-transparent shadow-xs transition-[color,box-shadow]',
               'focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/40',
-              size === 'small' ? 'h-10' : 'h-11',
+              size === 'small' ? 'h-9' : 'h-10',
               error && 'border-destructive',
               disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
             )}

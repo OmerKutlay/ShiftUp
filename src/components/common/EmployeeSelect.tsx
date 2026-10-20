@@ -34,6 +34,8 @@ interface EmployeeSelectProps<T extends EmployeeOption> {
   disabled?: boolean
   /** Kapsayıcıya eklenecek sınıflar (genişlik, boşluk) */
   className?: string
+  /** Etiket yalnızca ekran okuyucular için (araç çubuğunda) */
+  hideLabel?: boolean
 }
 
 const TR_MAP: Record<string, string> = { ç: 'c', ğ: 'g', ı: 'i', ö: 'o', ş: 's', ü: 'u' }
@@ -56,6 +58,7 @@ export function EmployeeSelect<T extends EmployeeOption>({
   fullWidth,
   disabled,
   className,
+  hideLabel,
 }: EmployeeSelectProps<T>) {
   const id = useId()
   const inputId = `${id}-input`
@@ -116,14 +119,14 @@ export function EmployeeSelect<T extends EmployeeOption>({
 
   return (
     <div className={cn('flex flex-col gap-1.5', fullWidth ? 'w-full' : 'w-full sm:w-auto', className)}>
-      <Label htmlFor={inputId}>{label}</Label>
+      <Label htmlFor={inputId} className={hideLabel ? 'sr-only' : undefined}>{label}</Label>
       <Popover open={open} onOpenChange={(next) => { if (!next) closeList() }}>
         <PopoverAnchor asChild>
           <div
             className={cn(
-              'relative flex w-full items-center rounded-[10px] border border-input bg-card transition-[color,box-shadow]',
+              'relative flex w-full items-center rounded-md border border-input bg-transparent shadow-xs transition-[color,box-shadow]',
               'focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/40',
-              size === 'small' ? 'h-10' : 'h-11',
+              size === 'small' ? 'h-9' : 'h-10',
               disabled && 'cursor-not-allowed opacity-50'
             )}
           >
