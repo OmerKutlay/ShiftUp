@@ -1749,6 +1749,7 @@ const ROUTES: Route[] = [
   // ── İzinler ───────────────────────────────────────────────
   get('/api/leave', ({ ctx, q }) => {
     const status = q.get('status'), employeeId = q.get('employee_id'), from = q.get('from'), to = q.get('to')
+    const excludeType = q.get('exclude_type')
     if (status && !['pending', 'approved', 'rejected'].includes(status)) return bad('Geçersiz durum filtresi.')
     if ((from && !isValidDate(from)) || (to && !isValidDate(to))) return bad('Geçersiz tarih aralığı.')
     // Haftalık tatiller: aralık verilmişse o aralık (en fazla 62 gün), yoksa yalnızca bu hafta
@@ -1756,7 +1757,7 @@ const ROUTES: Route[] = [
     const restTo = to && (!from || diffDays(from, to) <= 62) ? to : addDays(restFrom, from ? 62 : 6)
     let list = [...ctx.leaves, ...weeklyRestLeaves(ctx, restFrom, restTo)]
       .filter((l) => (!status || l.status === status) && (!employeeId || l.employee_id === employeeId) &&
-        (!to || l.start_date <= to) && (!from || l.end_date >= from))
+        (!to || l.start_date <= to) && (!from || l.end_date >= from) && l.leave_type !== excludeType)
       .sort((a, b) => b.created_at.localeCompare(a.created_at))
       .map(withEmployee)
     if (!ctx.isManager) {
