@@ -1,81 +1,51 @@
 'use client'
 /**
- * WorkforcePlanTables — İş Gücü > Haftalık Plan ekranının "Mevcut Plan" ve "Taslak" tabloları.
+ * WorkforcePlanTables — İş gücü › Haftalık plan ekranının "Mevcut plan" ve "Taslak" tabloları.
  *
- * 7 gün sütunu dar ekrana sıkıştırılınca hücre içerikleri komşu hücrelere taşıyordu; burada her
- * sütunun en az bir genişliği var, sığmazsa tablo yatay kayar ve çalışan sütunu sabit kalır.
- * Hücreler haftalık plan tablosundaki gibi vardiya türü renkli kutular: saat + net süre;
- * ayrıntı ipucunda.
+ * Kart içinde kenarsız tablo: çalışan sütunu sabit, 7 gün sütunu en az bir genişlikte; sığmazsa
+ * tablo yatay kayar. Hücreler vardiya türü renk çubuğu + saat + kısa alt satır; ayrıntı ipucunda.
  */
-import type { CSSProperties, ReactNode } from 'react'
-import { Plane, TriangleAlert } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { Lock, TriangleAlert } from 'lucide-react'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import type { EmployeeWeekSummary, DaySummary, WorkingTimeViolation } from '@/lib/workingTimeService'
 import { shiftDurationMins, netWorkMins } from '@/lib/workingTimeService'
 import type { PlannerResult, DraftAssignment, ShiftKind } from '@/lib/workforcePlanner'
-import { kindFromTimes } from '@/lib/workforcePlanner'
 import { PART_TIME_RULES } from '@/types/employee'
-import { C, SHIFT_KIND_TONES } from '@/lib/palette'
+import { PersonAvatar } from '@/components/common'
 import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { cn } from '@/lib/utils'
+import { KindBar, SHIFT_KIND_LABELS, fmtDuration, hhmm, kindOf, toneOf } from './workforceShared'
 
 // ─── Ölçüler ──────────────────────────────────────────────────
 
-const NAME_W = 132
-const DAY_W = 100
-const TOTAL_W = 70
-const LAST_W = 56
-const TABLE_MIN_W = NAME_W + 7 * DAY_W + TOTAL_W + LAST_W
+const NAME_W = 208
+/** Telefonda çalışan sütunu daralır (avatar gizli) — günlere yer kalsın */
+const NAME_W_MOBILE = 140
+const DAY_W = 104
+const TOTAL_W = 92
+const LAST_W = 72
 
-// ─── Yardımcılar ──────────────────────────────────────────────
+const stickyCls = 'sticky left-0 z-10 border-r bg-card'
+const Dash = () => <span className="text-muted-foreground/40">—</span>
 
-export function formatMins(mins: number): string {
-  if (mins === 0) return '—'
-  const h = Math.floor(mins / 60)
-  const m = mins % 60
-  return m === 0 ? `${h}s` : `${h}s ${m}dk`
-}
-
-const hhmm = (t: string) => t.slice(0, 5)
-
-export const SHIFT_KIND_COLORS: Record<string, string> = Object.fromEntries(
-  Object.entries(SHIFT_KIND_TONES).map(([kind, tone]) => [kind, tone.text]),
-)
-
-const SHIFT_KIND_LABELS: Record<string, string> = {
-  opening: 'Açılış',
-  closing: 'Kapanış',
-  full: 'Full',
-  mid: 'Ortacı',
-  custom: 'Özel',
-}
-
-const toneOf = (kind: string) => SHIFT_KIND_TONES[kind as ShiftKind] ?? SHIFT_KIND_TONES.custom
-
-/** Satır vurgusu: sabit sütun yarı saydam olamaz (altından kayan hücreler görünür) → karta karıştırılmış opak ton */
-type RowTone = 'danger' | 'warning' | null
-const ROW_BG: Record<NonNullable<RowTone>, string> = {
-  danger: 'bg-[color-mix(in_srgb,var(--danger-soft)_45%,var(--card))]',
-  warning: 'bg-[color-mix(in_srgb,var(--warning-soft)_45%,var(--card))]',
-}
-
-const stickyCls = 'sticky left-0 z-[1] border-r bg-card'
+// ─── Ortak parçalar ───────────────────────────────────────────
 
 /** İpucu taşıyan, klavyeyle de odaklanabilen hücre içeriği */
-function Tip({ content, children, className, style }: {
-  content: ReactNode; children: ReactNode; className?: string; style?: CSSProperties
-}) {
+function Tip({ content, children, className }: { content: ReactNode; children: ReactNode; className?: string }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <div tabIndex={0} style={style} className={cn('cursor-default rounded-[10px] outline-none focus-visible:ring-2 focus-visible:ring-ring/50', className)}>
+        <div tabIndex={0} className={cn('cursor-default rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50', className)}>
           {children}
         </div>
       </TooltipTrigger>
-      <TooltipContent side="top">{content}</TooltipContent>
+      <TooltipContent side="top" className="max-w-72 whitespace-pre-line">{content}</TooltipContent>
     </Tooltip>
   )
 }
@@ -84,113 +54,104 @@ function TableFrame({ weekDays, totalLabel, lastLabel, children }: {
   weekDays: string[]; totalLabel: string; lastLabel: ReactNode; children: ReactNode
 }) {
   const todayStr = format(new Date(), 'yyyy-MM-dd')
+  const nameW = useIsMobile() ? NAME_W_MOBILE : NAME_W
   return (
-    <div className="overflow-hidden rounded-2xl border bg-card">
-      <Table className="table-fixed" style={{ minWidth: TABLE_MIN_W }}>
-        <colgroup>
-          <col style={{ width: NAME_W }} />
-          {weekDays.map((d) => <col key={d} style={{ minWidth: DAY_W }} />)}
-          <col style={{ width: TOTAL_W }} />
-          <col style={{ width: LAST_W }} />
-        </colgroup>
-        <TableHeader>
-          <TableRow className="bg-surface-alt hover:bg-surface-alt">
-            <TableHead className={cn(stickyCls, 'z-[2] bg-surface-alt')}>Çalışan</TableHead>
-            {weekDays.map((d) => {
-              const isToday = d === todayStr
-              const date = new Date(`${d}T00:00:00`)
-              return (
-                <TableHead key={d} className={cn('h-auto px-1 py-2 text-center leading-tight', isToday && 'bg-brand-soft text-primary')}>
-                  <span className="block">
-                    {format(date, 'EEE', { locale: tr }).replace(/^./, (c) => c.toLocaleUpperCase('tr-TR'))}
-                  </span>
-                  <span className="block text-[0.68rem] font-medium opacity-80">
-                    {format(date, 'd MMM', { locale: tr })}
-                  </span>
-                </TableHead>
-              )
-            })}
-            <TableHead className="px-1 text-center">{totalLabel}</TableHead>
-            <TableHead className="px-1 text-center">{lastLabel}</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>{children}</TableBody>
-      </Table>
-    </div>
+    <Table className="table-fixed" style={{ minWidth: nameW + weekDays.length * DAY_W + TOTAL_W + LAST_W }}>
+      <colgroup>
+        <col style={{ width: nameW }} />
+        {weekDays.map((d) => <col key={d} style={{ minWidth: DAY_W }} />)}
+        <col style={{ width: TOTAL_W }} />
+        <col style={{ width: LAST_W }} />
+      </colgroup>
+      <TableHeader className="bg-muted">
+        <TableRow className="hover:bg-transparent">
+          <TableHead className={cn(stickyCls, 'z-20 bg-muted pl-4')}>Çalışan</TableHead>
+          {weekDays.map((d) => {
+            const isToday = d === todayStr
+            const date = new Date(`${d}T12:00:00`)
+            return (
+              <TableHead key={d} className={cn('h-auto px-2 py-2 leading-tight', isToday && 'text-primary')}>
+                <span className="block">
+                  {format(date, 'EEE', { locale: tr })}
+                  {isToday && <span className="sr-only"> (bugün)</span>}
+                </span>
+                <span className={cn('block text-xs font-normal', isToday ? 'text-primary' : 'text-muted-foreground')}>
+                  {format(date, 'd MMM', { locale: tr })}
+                </span>
+              </TableHead>
+            )
+          })}
+          <TableHead className="px-2 text-right">{totalLabel}</TableHead>
+          <TableHead className="pr-4 pl-2 text-right">{lastLabel}</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>{children}</TableBody>
+    </Table>
   )
 }
 
-function EmploymentBadge({ type }: { type: 'full_time' | 'part_time' }) {
-  const pt = type === 'part_time'
+function NameCell({ name, sub }: { name: string; sub: ReactNode }) {
   return (
-    <Badge tone={pt ? 'plum' : 'brand'} className="h-[18px] px-1.5 text-[0.62rem]">
-      {pt ? 'Yarı zamanlı' : 'Tam zamanlı'}
-    </Badge>
-  )
-}
-
-function NameCell({ name, sub, rowTone }: { name: string; sub: ReactNode; rowTone: RowTone }) {
-  return (
-    <TableCell className={cn(stickyCls, rowTone && ROW_BG[rowTone], 'whitespace-normal')}>
-      <p className="truncate text-[0.82rem] font-bold" title={name}>{name}</p>
-      <div className="mt-1 flex flex-wrap items-center gap-1">{sub}</div>
+    <TableCell className={cn(stickyCls, 'py-2 pl-4')}>
+      <div className="flex min-w-0 items-center gap-2.5">
+        <PersonAvatar name={name} size={28} className="max-md:hidden" />
+        <div className="flex min-w-0 flex-col">
+          <span className="truncate font-medium" title={name}>{name}</span>
+          <span className="truncate text-xs text-muted-foreground">{sub}</span>
+        </div>
+      </div>
     </TableCell>
   )
 }
 
-/** Vardiya kutusu: tür rengi zeminli; saat aralığı + alt satır. Taşmaz; ayrıntı ipucunda. */
-function ShiftBox({ kind, lines, sub, tooltip }: {
-  kind: string; lines: { start: string; end: string }[]; sub: string; tooltip: ReactNode
+const employmentLabel = (type: 'full_time' | 'part_time') => (type === 'part_time' ? 'Yarı zamanlı' : 'Tam zamanlı')
+
+/** Vardiya hücresi: tür renk çubuğu + saat aralığı + alt satır. Taşmaz; ayrıntı ipucunda. */
+function ShiftCell({ kind, lines, sub, tooltip, locked }: {
+  kind: ShiftKind; lines: { start: string; end: string }[]; sub: string; tooltip: ReactNode; locked?: boolean
 }) {
-  const tone = toneOf(kind)
   return (
-    <Tip
-      content={tooltip}
-      className="flex min-h-[46px] min-w-0 flex-col justify-center px-2 py-1.5 text-left"
-      style={{ backgroundColor: tone.soft, color: tone.text }}
-    >
-      {lines.map((s, i) => (
-        <span key={i} className="block truncate text-[0.74rem] font-bold tabular-nums tracking-tight">{s.start}–{s.end}</span>
-      ))}
-      <span className="block truncate text-[0.66rem] font-medium opacity-85">{sub}</span>
+    <Tip content={tooltip} className="flex min-w-0 items-stretch gap-2 px-1 py-1 hover:bg-muted/60">
+      <KindBar kind={kind} />
+      <span className="flex min-w-0 flex-col">
+        {lines.map((s, i) => (
+          <span key={i} className="truncate text-xs font-medium tabular-nums">{s.start}–{s.end}</span>
+        ))}
+        <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+          {locked && <Lock className="size-3 shrink-0" aria-label="Değiştirilemez" />}
+          <span className="truncate">{sub}</span>
+        </span>
+      </span>
     </Tip>
   )
 }
 
-const Dash = () => <span className="text-sm text-ink-muted">—</span>
+const dayCellCls = 'px-1 py-1.5 whitespace-normal'
 
 // ─── Mevcut plan ──────────────────────────────────────────────
 
 function CurrentDayCell({ day }: { day: DaySummary | undefined }) {
-  if (!day) return <Dash />
-  if (day.isLeave) {
-    return (
-      <div className="flex min-h-[46px] items-center gap-1.5 rounded-[10px] bg-success-soft px-2 text-success">
-        <Plane className="size-3.5 shrink-0" />
-        <span className="text-xs font-semibold">İzinli</span>
-      </div>
-    )
-  }
-  if (day.shifts.length === 0) return <Dash />
+  if (!day || (!day.isLeave && day.shifts.length === 0)) return <div className="px-1"><Dash /></div>
+  if (day.isLeave) return <div className="px-1"><Badge tone="info">İzinli</Badge></div>
   const gross = day.shifts.reduce((s, x) => s + shiftDurationMins(x.start_time, x.end_time), 0)
   const first = day.shifts[0]
-  const kind = kindFromTimes(hhmm(first.start_time), hhmm(first.end_time))
+  const kind = kindOf(first.start_time, first.end_time)
   return (
-    <ShiftBox
+    <ShiftCell
       kind={kind}
       lines={day.shifts.map((s) => ({ start: hhmm(s.start_time), end: hhmm(s.end_time) }))}
-      sub={`${formatMins(day.totalMins)} net`}
-      tooltip={`Brüt ${formatMins(gross)} · Mola ${formatMins(gross - day.totalMins)} · Net ${formatMins(day.totalMins)}`}
+      sub={`${fmtDuration(day.totalMins)} net`}
+      tooltip={`${SHIFT_KIND_LABELS[kind]} · Brüt ${fmtDuration(gross)} · Mola ${fmtDuration(gross - day.totalMins)} · Net ${fmtDuration(day.totalMins)}`}
     />
   )
 }
 
-function ViolationBadge({ violations }: { violations: WorkingTimeViolation[] }) {
+function ViolationCell({ violations }: { violations: WorkingTimeViolation[] }) {
   if (violations.length === 0) return <Dash />
   const isError = violations.some((v) => v.severity === 'error')
   return (
     <Tip content={violations.map((v) => `• ${v.message}`).join('\n')} className="inline-flex">
-      <span className={cn('inline-flex items-center gap-1 text-[0.8rem] font-bold', isError ? 'text-danger' : 'text-warning')}>
+      <span className={cn('inline-flex items-center gap-1 font-medium tabular-nums', isError ? 'text-destructive' : 'text-warning')}>
         <TriangleAlert className="size-4" aria-label="İhlal" />
         {violations.length}
       </span>
@@ -204,37 +165,33 @@ export function CurrentPlanTable({ weekDays, summaries, maxWeeklyWorkHours }: {
   return (
     <TableFrame weekDays={weekDays} totalLabel="Toplam" lastLabel="İhlal">
       {summaries.map((s) => {
-        const hasError = s.violations.some((v) => v.severity === 'error')
-        const hasWarn = s.violations.some((v) => v.severity === 'warning')
-        const rowTone: RowTone = hasError ? 'danger' : hasWarn ? 'warning' : null
         const maxH = s.employment_type === 'part_time' ? PART_TIME_RULES.maxWeeklyHours : maxWeeklyWorkHours
         const isOver = s.totalWeeklyMins > maxH * 60
+        const daysOver = s.weeklyWorkDays > PART_TIME_RULES.maxWeeklyDays
         return (
-          <TableRow key={s.employeeId} className={cn('hover:bg-transparent', rowTone && ROW_BG[rowTone])}>
-            <NameCell name={s.employeeName} rowTone={rowTone} sub={<>
-              <EmploymentBadge type={s.employment_type} />
-              {s.employment_type === 'part_time' && (
-                <span className={cn('text-[0.66rem]', s.weeklyWorkDays > PART_TIME_RULES.maxWeeklyDays ? 'text-danger' : 'text-ink-secondary')}>
-                  {s.weeklyWorkDays}/{PART_TIME_RULES.maxWeeklyDays} gün
-                </span>
-              )}
-            </>} />
+          <TableRow key={s.employeeId} className="hover:bg-transparent">
+            <NameCell
+              name={s.employeeName}
+              sub={s.employment_type === 'part_time'
+                ? <>{employmentLabel(s.employment_type)} · <span className={cn(daysOver && 'text-destructive')}>{s.weeklyWorkDays}/{PART_TIME_RULES.maxWeeklyDays} gün</span></>
+                : employmentLabel(s.employment_type)}
+            />
             {weekDays.map((d) => (
-              <TableCell key={d} className="px-0.5 py-1.5 text-center whitespace-normal"><CurrentDayCell day={s.days[d]} /></TableCell>
+              <TableCell key={d} className={dayCellCls}><CurrentDayCell day={s.days[d]} /></TableCell>
             ))}
-            <TableCell className="px-1 text-center">
-              <p className={cn('text-[0.82rem] font-bold', isOver ? 'text-danger' : s.totalWeeklyMins > 0 ? 'text-ink' : 'text-ink-muted')}>
-                {formatMins(s.totalWeeklyMins)}
-              </p>
-              <p className="text-[0.64rem] text-ink-secondary">/ {maxH}s</p>
+            <TableCell className="px-2 text-right">
+              <div className={cn('font-medium tabular-nums', isOver ? 'text-destructive' : s.totalWeeklyMins === 0 && 'text-muted-foreground')}>
+                {fmtDuration(s.totalWeeklyMins)}
+              </div>
+              <div className="text-xs text-muted-foreground tabular-nums">/ {maxH}s</div>
             </TableCell>
-            <TableCell className="px-1 text-center"><ViolationBadge violations={s.violations} /></TableCell>
+            <TableCell className="pr-4 pl-2 text-right"><ViolationCell violations={s.violations} /></TableCell>
           </TableRow>
         )
       })}
       {summaries.length === 0 && (
         <TableRow className="hover:bg-transparent">
-          <TableCell colSpan={weekDays.length + 3} className="py-8 text-center text-sm text-ink-secondary">
+          <TableCell colSpan={weekDays.length + 3} className="py-10 text-center text-muted-foreground">
             Bu hafta için vardiya planı bulunamadı.
           </TableCell>
         </TableRow>
@@ -246,17 +203,19 @@ export function CurrentPlanTable({ weekDays, summaries, maxWeeklyWorkHours }: {
 // ─── Taslak ───────────────────────────────────────────────────
 
 function DraftDayCell({ assign }: { assign: DraftAssignment | undefined }) {
-  if (!assign) return <Dash />
+  if (!assign) return <div className="px-1"><Dash /></div>
   const gross = shiftDurationMins(assign.start_time, assign.end_time)
   const net = netWorkMins(assign.start_time, assign.end_time)
   const label = SHIFT_KIND_LABELS[assign.shift_kind] ?? 'Vardiya'
   return (
-    <ShiftBox
+    <ShiftCell
       kind={assign.shift_kind}
       lines={[{ start: hhmm(assign.start_time), end: hhmm(assign.end_time) }]}
-      sub={`${label} · ${formatMins(net)}`}
+      sub={assign.overtime ? 'Fazla mesai' : `${fmtDuration(net)} net`}
+      locked={assign.worked}
       tooltip={[
-        `Brüt ${formatMins(gross)} · Mola ${formatMins(gross - net)} · Net ${formatMins(net)}`,
+        `${label}${assign.worked ? ' · değiştirilemez' : ''}`,
+        `Brüt ${fmtDuration(gross)} · Mola ${fmtDuration(gross - net)} · Net ${fmtDuration(net)}`,
         assign.reason ?? '',
       ].filter(Boolean).join('\n')}
     />
@@ -276,28 +235,24 @@ export function DraftPlanTable({ draft, weekDays }: { draft: PlannerResult; week
         for (const a of stat.assignments) byDate[a.work_date] = a
         const targetH = stat.employment_type === 'part_time' ? PART_TIME_RULES.maxWeeklyHours : 45
         const pct = Math.min(100, Math.round((stat.totalMins / (targetH * 60)) * 100))
-        const color = pct >= 95 ? C.success : pct >= 80 ? C.brand : pct >= 60 ? C.warning : C.inkMuted
         return (
           <TableRow key={stat.employeeId} className="hover:bg-transparent">
-            <NameCell name={stat.employeeName} rowTone={null} sub={<>
-              <EmploymentBadge type={stat.employment_type} />
-              <span className="text-[0.66rem] text-ink-secondary">{stat.workDays} gün</span>
-            </>} />
+            <NameCell name={stat.employeeName} sub={`${employmentLabel(stat.employment_type)} · ${stat.workDays} gün`} />
             {weekDays.map((d) => (
-              <TableCell key={d} className="px-0.5 py-1.5 text-center whitespace-normal"><DraftDayCell assign={byDate[d]} /></TableCell>
+              <TableCell key={d} className={dayCellCls}><DraftDayCell assign={byDate[d]} /></TableCell>
             ))}
-            <TableCell className="px-1 text-center">
-              <Tip content={`Hedef: ${targetH}s`}>
-                <p className="text-[0.82rem] font-bold" style={{ color }}>{formatMins(stat.totalMins)}</p>
-                <p className="text-[0.64rem] text-ink-secondary">%{pct}</p>
+            <TableCell className="px-2 text-right">
+              <Tip content={`Hedef ${targetH}s · %${pct}`} className="ml-auto flex w-14 flex-col items-end gap-1">
+                <span className="font-medium tabular-nums">{fmtDuration(stat.totalMins)}</span>
+                <Progress value={pct} aria-label={`Hedefin %${pct}'i`} className="h-1" />
               </Tip>
             </TableCell>
-            <TableCell className="px-1 text-center">
+            <TableCell className="pr-4 pl-2 text-right">
               <Tip content={`Açılış: ${stat.openingCount} · Kapanış: ${stat.closingCount} · Full: ${stat.fullCount}`} className="inline-block">
-                <span className="text-[0.78rem] font-bold">
-                  <span style={{ color: SHIFT_KIND_COLORS.opening }}>{stat.openingCount}</span>
-                  <span className="text-ink-muted"> / </span>
-                  <span style={{ color: SHIFT_KIND_COLORS.closing }}>{stat.closingCount}</span>
+                <span className="text-sm font-medium tabular-nums">
+                  <span style={{ color: toneOf('opening').text }}>{stat.openingCount}</span>
+                  <span className="text-muted-foreground"> / </span>
+                  <span style={{ color: toneOf('closing').text }}>{stat.closingCount}</span>
                 </span>
               </Tip>
             </TableCell>
