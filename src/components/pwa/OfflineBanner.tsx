@@ -8,11 +8,10 @@
  * gösterip kaybolur.
  */
 import { useEffect, useState } from 'react'
-import { Alert, Box, Fade } from '@mui/material'
-import WifiOffIcon from '@mui/icons-material/WifiOff'
-import WifiIcon from '@mui/icons-material/Wifi'
+import { Wifi, WifiOff } from 'lucide-react'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { BOTTOM_NAV_OVERLAY_OFFSET } from '@/components/layout/MobileBottomNav'
+import { cn } from '@/lib/utils'
 
 /** "Bağlantı geri geldi" mesajının ekranda kalma süresi */
 export const BACK_ONLINE_MS = 3000
@@ -36,34 +35,31 @@ export function OfflineBanner() {
 
   const visible = !online || showBackOnline
 
+  if (!visible) return null
+
   return (
-    <Fade in={visible} unmountOnExit>
-      <Box
-        role="status"
-        aria-live="polite"
-        sx={{
-          position: 'fixed',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          bottom: { xs: `calc(${BOTTOM_NAV_OVERLAY_OFFSET}px + env(safe-area-inset-bottom))`, md: 16 },
-          zIndex: (theme) => theme.zIndex.snackbar,
-          width: 'max-content',
-          maxWidth: 'calc(100vw - 32px)',
-          pointerEvents: 'none',
-        }}
-      >
-        {online ? (
-          <Alert severity="success" icon={<WifiIcon fontSize="small" />} variant="filled"
-            sx={{ py: 0, borderRadius: 2, boxShadow: 3 }}>
-            Bağlantı geri geldi
-          </Alert>
-        ) : (
-          <Alert severity="warning" icon={<WifiOffIcon fontSize="small" />} variant="filled"
-            sx={{ py: 0, borderRadius: 2, boxShadow: 3 }}>
-            Bağlantı yok — bazı işlemler kullanılamaz
-          </Alert>
-        )}
-      </Box>
-    </Fade>
+    <div
+      role="status"
+      aria-live="polite"
+      className={cn(
+        'pointer-events-none fixed left-1/2 z-[1400] flex w-max max-w-[calc(100vw-32px)] -translate-x-1/2 items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium text-white shadow-[0_8px_24px_rgb(43_33_27/0.18)]',
+        'bottom-[calc(var(--overlay-offset)+env(safe-area-inset-bottom))] md:bottom-4',
+        'animate-in fade-in-0 duration-200 [&_svg]:size-4 [&_svg]:shrink-0',
+        online ? 'bg-success-fill' : 'bg-ink'
+      )}
+      style={{ '--overlay-offset': `${BOTTOM_NAV_OVERLAY_OFFSET}px` } as React.CSSProperties}
+    >
+      {online ? (
+        <>
+          <Wifi aria-hidden />
+          Bağlantı geri geldi
+        </>
+      ) : (
+        <>
+          <WifiOff aria-hidden className="text-warning-soft" />
+          Bağlantı yok — bazı işlemler kullanılamaz
+        </>
+      )}
+    </div>
   )
 }

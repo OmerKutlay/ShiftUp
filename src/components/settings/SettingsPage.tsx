@@ -5,40 +5,40 @@
  * teşhisi (Mağaza Müdürü+).
  */
 import { useState } from 'react'
-import { Box, Tab, Tabs } from '@mui/material'
 import { PageHeader } from '@/components/common'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { StoreLocationPage } from './StoreLocationPage'
 import { HolidaysPanel } from './HolidaysPanel'
 import { AuditLogPanel } from './AuditLogPanel'
 import { PushPermissionCard } from '@/components/pwa/PushPermissionCard'
 import { PushDiagnosticsPanel } from '@/components/pwa/PushDiagnosticsPanel'
 
+type SettingsTab = 'location' | 'holidays' | 'audit' | 'notifications'
+
 export function SettingsPage() {
-  const [tab, setTab] = useState(0)
+  const [tab, setTab] = useState<SettingsTab>('location')
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, color: 'text.primary' }}>
+    <div className="p-4 text-ink md:p-6">
       <PageHeader title="Ayarlar" subtitle="Mağaza konumu, resmi tatiller, denetim kaydı ve bildirimler" />
-      <Tabs
-        value={tab}
-        onChange={(_, v: number) => setTab(v)}
-        variant="scrollable"
-        allowScrollButtonsMobile
-        sx={{ mb: 2.5, borderBottom: '1px solid', borderColor: 'divider' }}
-      >
-        <Tab label="Mağaza Konumu" />
-        <Tab label="Resmi Tatiller" />
-        <Tab label="Denetim Kaydı" />
-        <Tab label="Bildirimler" />
+      <Tabs value={tab} onValueChange={(v) => setTab(v as SettingsTab)} className="gap-5">
+        <TabsList>
+          <TabsTrigger value="location">Mağaza konumu</TabsTrigger>
+          <TabsTrigger value="holidays">Resmi tatiller</TabsTrigger>
+          <TabsTrigger value="audit">Denetim kaydı</TabsTrigger>
+          <TabsTrigger value="notifications">Bildirimler</TabsTrigger>
+        </TabsList>
+        {/* Yalnızca açık sekme bağlanır: paneller kendi verisini bağlandığında yükler */}
+        <TabsContent value="location"><StoreLocationPage embedded /></TabsContent>
+        <TabsContent value="holidays"><HolidaysPanel /></TabsContent>
+        <TabsContent value="audit"><AuditLogPanel /></TabsContent>
+        <TabsContent value="notifications">
+          {/* PushPermissionCard kendi alt boşluğunu taşır */}
+          <div className="max-w-[640px]">
+            <PushPermissionCard />
+            <PushDiagnosticsPanel />
+          </div>
+        </TabsContent>
       </Tabs>
-      {tab === 0 && <StoreLocationPage embedded />}
-      {tab === 1 && <HolidaysPanel />}
-      {tab === 2 && <AuditLogPanel />}
-      {tab === 3 && (
-        <Box sx={{ maxWidth: 640 }}>
-          <PushPermissionCard />
-          <PushDiagnosticsPanel />
-        </Box>
-      )}
-    </Box>
+    </div>
   )
 }

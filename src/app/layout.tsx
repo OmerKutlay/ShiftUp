@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from 'next'
 import { Figtree } from 'next/font/google'
-import { AppRouterCacheProvider } from '@mui/material-nextjs/v16-appRouter'
 import { Providers } from './providers'
 import './globals.css'
 
@@ -48,10 +47,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           paddingBottom: 'env(safe-area-inset-bottom)',
         }}
       >
-        <AppRouterCacheProvider>
-          {/* Service Worker kaydı ve güncelleme uyarısı: PwaLayer → ServiceWorkerUpdater */}
-          <Providers>{children}</Providers>
-        </AppRouterCacheProvider>
+        {/* Service Worker kaydı ve güncelleme uyarısı: PwaLayer → ServiceWorkerUpdater */}
+        <Providers>{children}</Providers>
       </body>
     </html>
   )

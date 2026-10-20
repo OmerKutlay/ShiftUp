@@ -19,23 +19,13 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
-import {
-  Box,
-  Card,
-  CardContent,
-  TextField,
-  Button,
-  Typography,
-  Alert,
-  CircularProgress,
-  InputAdornment,
-  Chip,
-} from '@mui/material'
-import EmailIcon from '@mui/icons-material/Email'
-import LockIcon from '@mui/icons-material/Lock'
-import ArrowBackIcon from '@mui/icons-material/ArrowBack'
-import BugReportIcon from '@mui/icons-material/BugReport'
-import { C, tint } from '@/lib/palette'
+import { AlertCircle, ArrowLeft, Bug, Info, Loader2, Mail } from 'lucide-react'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { BrandMark } from '@/components/common/BrandMark'
 
 type Step = 'email' | 'otp'
@@ -216,166 +206,132 @@ export function LoginForm({ authMode }: Props) {
 
   // ─── Render ──────────────────────────────────────────────
   return (
-    <Box
-      sx={{
-        minHeight: '100dvh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        bgcolor: 'background.default',
-        p: 2,
-      }}
-    >
-      <Card
-        sx={{
-          width: '100%',
-          maxWidth: 400,
-          bgcolor: tint(C.canvas, 0.98),
-          border: '1px solid',
-          borderColor: 'divider',
-          borderRadius: 3,
-        }}
-      >
-        <CardContent sx={{ p: { xs: 2.5, sm: 4 } }}>
-          {/* Logo + dev badge */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, mb: 1 }}>
-            <BrandMark size={36} />
-            <Typography variant="h5" fontWeight={700} color="text.primary">
-              ShiftUp
-            </Typography>
-            {isDevMode && (
-              <Chip
-                icon={<BugReportIcon sx={{ fontSize: '14px !important' }} />}
-                label="DEV"
-                size="small"
-                color="warning"
-                variant="outlined"
-                sx={{ height: 20, fontSize: '0.65rem' }}
-              />
-            )}
-          </Box>
+    <div className="flex min-h-dvh items-center justify-center bg-background p-4">
+      <Card className="w-full max-w-sm py-0">
+        <CardContent className="flex flex-col gap-6 p-6 sm:p-8">
+          {/* Logo + dev rozeti */}
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-2.5">
+              <BrandMark size={36} />
+              <h1 className="text-2xl font-bold text-ink">ShiftUp</h1>
+              {isDevMode && (
+                <Badge tone="warning" className="ml-auto">
+                  <Bug aria-hidden />
+                  DEV
+                </Badge>
+              )}
+            </div>
+            <p className="text-sm text-ink-secondary">
+              {state.step === 'email'
+                ? 'Email adresinizi girerek devam edin.'
+                : isDevMode
+                ? 'Development kodu girin (varsayılan: 12345).'
+                : 'Email adresinize gönderilen 6 haneli kodu girin.'}
+            </p>
+          </div>
 
-          <Typography variant="body2" color="text.secondary" mb={3}>
-            {state.step === 'email'
-              ? 'Email adresinizi girerek devam edin.'
-              : isDevMode
-              ? 'Development kodu girin (varsayılan: 12345).'
-              : 'Email adresinize gönderilen 6 haneli kodu girin.'}
-          </Typography>
-
-          {state.error && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {state.error}
-            </Alert>
-          )}
-          {state.info && (
-            <Alert severity="info" sx={{ mb: 2 }}>
-              {state.info}
-            </Alert>
+          {(state.error || state.info) && (
+            <div className="flex flex-col gap-2">
+              {state.error && (
+                <Alert tone="danger">
+                  <AlertCircle />
+                  <AlertDescription className="text-ink">{state.error}</AlertDescription>
+                </Alert>
+              )}
+              {state.info && (
+                <Alert tone="info" role="status">
+                  <Info />
+                  <AlertDescription className="text-ink">{state.info}</AlertDescription>
+                </Alert>
+              )}
+            </div>
           )}
 
           {/* Adım 1: Email */}
           {state.step === 'email' && (
-            <Box component="form" onSubmit={handleEmailSubmit} noValidate>
-              <TextField
-                label="Email"
-                type="email"
-                value={state.email}
-                onChange={(e) => setPartial({ email: e.target.value, error: null })}
-                fullWidth
-                autoFocus
-                autoComplete="email"
-                disabled={state.loading}
-                slotProps={{
-                  input: {
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <EmailIcon sx={{ color: 'text.secondary', fontSize: 18 }} />
-                      </InputAdornment>
-                    ),
-                  },
-                }}
-                sx={{ mb: 2 }}
-              />
-              <Button
-                type="submit"
-                variant="contained"
-                fullWidth
-                disabled={state.loading}
-                sx={{ py: 1.25, fontWeight: 700 }}
-              >
-                {state.loading ? <CircularProgress size={20} color="inherit" /> : 'Devam Et'}
+            <form onSubmit={handleEmailSubmit} noValidate className="flex flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="login-email">Email</Label>
+                <div className="relative">
+                  <Mail
+                    aria-hidden
+                    className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-muted"
+                  />
+                  <Input
+                    id="login-email"
+                    type="email"
+                    value={state.email}
+                    onChange={(e) => setPartial({ email: e.target.value, error: null })}
+                    autoFocus
+                    autoComplete="email"
+                    placeholder="ad.soyad@ornek.com"
+                    disabled={state.loading}
+                    aria-invalid={state.error ? true : undefined}
+                    className="h-11 pl-9"
+                  />
+                </div>
+              </div>
+              <Button type="submit" size="lg" className="w-full" disabled={state.loading}>
+                {state.loading ? <Loader2 className="size-5 animate-spin" aria-label="Yükleniyor" /> : 'Devam Et'}
               </Button>
-            </Box>
+            </form>
           )}
 
           {/* Adım 2: OTP */}
           {state.step === 'otp' && (
-            <Box component="form" onSubmit={handleOtpSubmit} noValidate>
-              <TextField
-                label={isDevMode ? 'Development Kodu' : 'Giriş Kodu'}
-                type="text"
-                inputMode="numeric"
-                value={state.otp}
-                onChange={(e) => {
-                  const v = e.target.value.replace(/\D/g, '').slice(0, 6)
-                  setPartial({ otp: v, error: null })
-                }}
-                fullWidth
-                autoFocus
-                autoComplete="one-time-code"
-                disabled={state.loading}
-                inputProps={{
-                  maxLength: 6,
-                  style: { letterSpacing: 8, fontSize: '1.4rem' },
-                }}
-                slotProps={{
-                  input: {
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <LockIcon sx={{ color: 'text.secondary', fontSize: 18 }} />
-                      </InputAdornment>
-                    ),
-                  },
-                }}
-                sx={{ mb: 2 }}
-              />
-              <Button
-                type="submit"
-                variant="contained"
-                fullWidth
-                disabled={state.loading}
-                sx={{ py: 1.25, fontWeight: 700, mb: 1.5 }}
-              >
-                {state.loading ? <CircularProgress size={20} color="inherit" /> : 'Giriş Yap'}
+            <form onSubmit={handleOtpSubmit} noValidate className="flex flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="login-otp">{isDevMode ? 'Development Kodu' : 'Giriş Kodu'}</Label>
+                <Input
+                  id="login-otp"
+                  type="text"
+                  inputMode="numeric"
+                  value={state.otp}
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/\D/g, '').slice(0, 6)
+                    setPartial({ otp: v, error: null })
+                  }}
+                  autoFocus
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  disabled={state.loading}
+                  aria-invalid={state.error ? true : undefined}
+                  // pl: tracking son hanenin sağına da boşluk ekler — rakamlar ortada dursun
+                  className="h-14 pl-[calc(0.75rem+0.5em)] text-center font-mono text-2xl font-semibold tracking-[0.5em] md:text-2xl"
+                />
+              </div>
+              <Button type="submit" size="lg" className="w-full" disabled={state.loading}>
+                {state.loading ? <Loader2 className="size-5 animate-spin" aria-label="Yükleniyor" /> : 'Giriş Yap'}
               </Button>
-              {!isDevMode && (
+              <div className="flex flex-col gap-1">
+                {!isDevMode && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="w-full text-primary"
+                    disabled={state.loading || cooldown > 0}
+                    onClick={() => handleEmailSubmit()}
+                  >
+                    {cooldown > 0 ? `Kodu tekrar gönder (${cooldown} sn)` : 'Kodu tekrar gönder'}
+                  </Button>
+                )}
                 <Button
-                  variant="text"
-                  size="small"
-                  fullWidth
-                  disabled={state.loading || cooldown > 0}
-                  onClick={() => handleEmailSubmit()}
-                  sx={{ mb: 0.5 }}
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-ink-secondary"
+                  disabled={state.loading}
+                  onClick={() => setPartial({ step: 'email', otp: '', error: null, info: null })}
                 >
-                  {cooldown > 0 ? `Kodu tekrar gönder (${cooldown} sn)` : 'Kodu tekrar gönder'}
+                  <ArrowLeft />
+                  Email adresini değiştir
                 </Button>
-              )}
-              <Button
-                startIcon={<ArrowBackIcon />}
-                variant="text"
-                size="small"
-                fullWidth
-                disabled={state.loading}
-                onClick={() => setPartial({ step: 'email', otp: '', error: null, info: null })}
-                sx={{ color: 'text.secondary' }}
-              >
-                Email adresini değiştir
-              </Button>
-            </Box>
+              </div>
+            </form>
           )}
         </CardContent>
       </Card>
-    </Box>
+    </div>
   )
 }

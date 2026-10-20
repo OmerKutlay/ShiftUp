@@ -9,27 +9,21 @@
 import { useState } from 'react'
 import useSWR from 'swr'
 import {
-  Box, Typography, Chip, CircularProgress, Alert,
-  IconButton, Tooltip, Stack, Button, Tabs, Tab, Divider,
-} from '@mui/material'
-import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
-import ChevronRightIcon from '@mui/icons-material/ChevronRight'
-import TodayIcon from '@mui/icons-material/Today'
-import WarningAmberIcon from '@mui/icons-material/WarningAmber'
-import WorkOutlineIcon from '@mui/icons-material/WorkOutline'
-import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh'
-import RefreshIcon from '@mui/icons-material/Refresh'
-import CheckCircleIcon from '@mui/icons-material/CheckCircle'
-import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
+  AlertCircle, CalendarCheck, CheckCircle2, Info, Loader2, RefreshCw, TriangleAlert, WandSparkles,
+} from 'lucide-react'
 import { format, addWeeks, subWeeks, startOfWeek } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import type { EmployeeWeekSummary } from '@/lib/workingTimeService'
 import type { OpenShift } from '@/types/workforce'
 import type { PlannerResult, PlanWarning } from '@/lib/workforcePlanner'
-import { ScheduleGridSkeleton, useConfirm } from '@/components/common'
+import { PeriodStepper, ScheduleGridSkeleton, StatCard, StatGrid, useConfirm } from '@/components/common'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { CurrentPlanTable, DraftPlanTable } from './WorkforcePlanTables'
 import { apiFetch, ApiError } from '@/lib/api/http'
-import { C, tint } from '@/lib/palette'
+import { C } from '@/lib/palette'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -42,6 +36,9 @@ interface PlanningResponse {
   openShiftsThisWeek: OpenShift[]
 }
 
+type PlanTab = 'current' | 'draft'
+
+const HARD_VIOLATION_HINT = 'Kritik kural ihlalleri var. Önce "Yeniden Oluştur" ile planı düzeltin.'
 
 // ─── Plan uyarı listesi ───────────────────────────────────────────────────────
 
@@ -50,21 +47,44 @@ function WarningList({ warnings }: { warnings: PlanWarning[] }) {
   const errors  = warnings.filter((w) => w.level === 'error')
   const infos   = warnings.filter((w) => w.level !== 'error')
   return (
-    <Stack spacing={0.75} sx={{ mt: 1.5 }}>
+    <div className="flex flex-col gap-2">
       {errors.map((w, i) => (
-        <Alert key={i} severity="error" icon={<WarningAmberIcon fontSize="small" />}
-          sx={{ py: 0.25, fontSize: '0.75rem', '& .MuiAlert-message': { py: 0.5 } }}>
-          {w.message}
+        <Alert key={i} tone="danger" className="py-2.5">
+          <TriangleAlert />
+          <AlertDescription className="text-[0.8rem] text-ink">{w.message}</AlertDescription>
         </Alert>
       ))}
       {infos.map((w, i) => (
-        <Alert key={i} severity={w.level === 'warning' ? 'warning' : 'info'}
-          icon={<InfoOutlinedIcon fontSize="small" />}
-          sx={{ py: 0.25, fontSize: '0.75rem', '& .MuiAlert-message': { py: 0.5 } }}>
-          {w.message}
+        <Alert key={i} tone={w.level === 'warning' ? 'warning' : 'info'} className="py-2.5">
+          {w.level === 'warning' ? <TriangleAlert /> : <Info />}
+          <AlertDescription className="text-[0.8rem] text-ink">{w.message}</AlertDescription>
         </Alert>
       ))}
-    </Stack>
+    </div>
+  )
+}
+
+/** "Onayla ve aktar" — kritik ihlal varken devre dışı; nedeni ipucunda */
+function ApplyButton({ draft, loading, onApply }: { draft: PlannerResult; loading: boolean; onApply: () => void }) {
+  const button = (
+    <Button
+      className="bg-success text-white hover:bg-success/90"
+      onClick={onApply}
+      disabled={loading || draft.hasHardViolation}
+    >
+      {loading ? <Loader2 className="animate-spin" /> : <CheckCircle2 />}
+      {loading ? 'Aktarılıyor…' : 'Onayla ve Haftalık Plana Aktar'}
+    </Button>
+  )
+  if (!draft.hasHardViolation) return button
+  return (
+    <Tooltip>
+      {/* Devre dışı buton olay almaz — ipucu sarmalayıcıya bağlanır */}
+      <TooltipTrigger asChild>
+        <span tabIndex={0} className="inline-flex rounded-[10px]">{button}</span>
+      </TooltipTrigger>
+      <TooltipContent>{HARD_VIOLATION_HINT}</TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -73,7 +93,7 @@ function WarningList({ warnings }: { warnings: PlanWarning[] }) {
 export function WorkforcePlanningPanel() {
   const confirm = useConfirm()
   const [weekRef, setWeekRef] = useState<Date>(() => startOfWeek(new Date(), { weekStartsOn: 1 }))
-  const [activeTab, setActiveTab] = useState(0)
+  const [activeTab, setActiveTab] = useState<PlanTab>('current')
   // Skeleton yalnızca bu hafta ilk kez yüklenirken; sayfaya geri dönüşte plan ekranda kalır
   const weekKey = format(weekRef, 'yyyy-MM-dd')
 
@@ -110,7 +130,7 @@ export function WorkforcePlanningPanel() {
       })
       if (!res.ok) { const j = await res.json() as { error?: string }; setGenError(j.error ?? 'Hata.'); return }
       setDraft(await res.json() as PlannerResult)
-      setActiveTab(1)
+      setActiveTab('draft')
     } catch { setGenError('Bağlantı hatası.') }
     finally  { setGenLoading(false) }
   }
@@ -167,7 +187,7 @@ export function WorkforcePlanningPanel() {
       setApplyResult(result)
       if (result.created > 0 || result.replaced > 0) {
         void planQ.mutate()
-        setActiveTab(0)
+        setActiveTab('current')
       }
     } catch { setGenError('Uygulama sırasında bağlantı hatası.') }
     finally  { setApplyLoading(false) }
@@ -180,6 +200,7 @@ export function WorkforcePlanningPanel() {
     setDraft(null)
     setGenError(null)
     setApplyResult(null)
+    setActiveTab('current')
   }
   const prevWeek = () => changeWeek(subWeeks(weekRef, 1))
   const nextWeek = () => changeWeek(addWeeks(weekRef, 1))
@@ -190,110 +211,85 @@ export function WorkforcePlanningPanel() {
     : format(weekRef, "'Hafta' d MMM", { locale: tr })
 
   const draftWeekDays = draft?.weekDays ?? planData?.weekDays ?? []
+  const draftErrors = draft?.warnings.filter((w) => w.level === 'error').length ?? 0
+  const draftInfos = draft?.warnings.filter((w) => w.level === 'info').length ?? 0
+  const violationCount = planData?.summaries.reduce((n, s) => n + s.violations.length, 0) ?? 0
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <Box>
+    <div>
       {/* Hafta navigasyonu */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, flexWrap: 'wrap' }}>
-        <IconButton size="small" onClick={prevWeek} aria-label="Önceki hafta" sx={{ color: 'text.secondary' }}>
-          <ChevronLeftIcon />
-        </IconButton>
-        <Typography variant="body2" fontWeight={600} sx={{ minWidth: 200, textAlign: 'center' }}>
-          {weekLabel}
-        </Typography>
-        <IconButton size="small" onClick={nextWeek} aria-label="Sonraki hafta" sx={{ color: 'text.secondary' }}>
-          <ChevronRightIcon />
-        </IconButton>
-        <Tooltip title="Bu hafta">
-          <IconButton size="small" onClick={thisWeek} aria-label="Bu hafta" sx={{ color: 'text.secondary' }}>
-            <TodayIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <PeriodStepper
+          label={weekLabel}
+          onPrev={prevWeek}
+          onNext={nextWeek}
+          prevLabel="Önceki hafta"
+          nextLabel="Sonraki hafta"
+          minLabelWidth={168}
+        />
+        <Button variant="ghost" size="icon" onClick={thisWeek} aria-label="Bu hafta" title="Bu hafta" className="text-ink-secondary">
+          <CalendarCheck />
+        </Button>
 
-        <Box sx={{ ml: 'auto', display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
           {/* Taslak oluştur / yeniden oluştur */}
-          <Button
-            size="small"
-            variant="outlined"
-            startIcon={genLoading ? <CircularProgress size={14} color="inherit" /> : <AutoFixHighIcon fontSize="small" />}
-            onClick={() => void generate()}
-            disabled={genLoading || applyLoading}
-            sx={{ fontSize: '0.75rem', borderColor: 'primary.main', color: 'primary.main' }}
-          >
+          <Button variant="outline" onClick={() => void generate()} disabled={genLoading || applyLoading}>
+            {genLoading ? <Loader2 className="animate-spin" /> : <WandSparkles />}
             {draft ? 'Yeniden Oluştur' : 'Haftalık Plan Oluştur'}
           </Button>
 
           {/* Onayla ve aktar */}
           {draft && !applyResult && (
-            <Tooltip
-              title={draft.hasHardViolation ? 'Kritik kural ihlalleri var. Önce "Yeniden Oluştur" ile planı düzeltin.' : ''}
-              arrow
-            >
-              <span>
-                <Button
-                  size="small"
-                  variant="contained"
-                  color="success"
-                  startIcon={applyLoading ? <CircularProgress size={14} color="inherit" /> : <CheckCircleIcon fontSize="small" />}
-                  onClick={() => void applyDraft()}
-                  disabled={applyLoading || draft.hasHardViolation}
-                >
-                  {applyLoading ? 'Aktarılıyor…' : 'Onayla ve Haftalık Plana Aktar'}
-                </Button>
-              </span>
-            </Tooltip>
+            <ApplyButton draft={draft} loading={applyLoading} onApply={() => void applyDraft()} />
           )}
-        </Box>
-      </Box>
+        </div>
+      </div>
 
       {/* Hata mesajları */}
-      {genError && <Alert severity="error" sx={{ mb: 1.5 }}>{genError}</Alert>}
+      {genError && (
+        <Alert tone="danger" className="mb-3">
+          <AlertCircle />
+          <AlertDescription className="text-ink">{genError}</AlertDescription>
+        </Alert>
+      )}
 
       {/* Onay sonucu */}
       {applyResult && (
-        <Alert
-          severity={applyResult.errors.length > 0 ? 'warning' : 'success'}
-          sx={{ mb: 1.5, fontSize: '0.8rem' }}
-        >
-          {applyResult.created} atama oluşturuldu
-          {applyResult.replaced > 0 && `, eski plandan ${applyResult.replaced} vardiya kaldırıldı`}
-          {applyResult.skipped > 0 && `, giriş/çıkış veya izin kaydı olan ${applyResult.skipped} vardiya korundu`}
-          {!!applyResult.restDays && `, ${applyResult.restDays} gün haftalık tatil olarak işaretlendi`}.
-          {applyResult.errors.length > 0 && (
-            <Box component="ul" sx={{ m: 0, pl: 2 }}>
-              {applyResult.errors.map((e, i) => <li key={i}>{e}</li>)}
-            </Box>
-          )}
+        <Alert tone={applyResult.errors.length > 0 ? 'warning' : 'success'} className="mb-3">
+          {applyResult.errors.length > 0 ? <TriangleAlert /> : <CheckCircle2 />}
+          <AlertDescription className="block text-ink">
+            {applyResult.created} atama oluşturuldu
+            {applyResult.replaced > 0 && `, eski plandan ${applyResult.replaced} vardiya kaldırıldı`}
+            {applyResult.skipped > 0 && `, giriş/çıkış veya izin kaydı olan ${applyResult.skipped} vardiya korundu`}
+            {!!applyResult.restDays && `, ${applyResult.restDays} gün haftalık tatil olarak işaretlendi`}.
+            {applyResult.errors.length > 0 && (
+              <ul className="mt-1 list-disc pl-4">
+                {applyResult.errors.map((e, i) => <li key={i}>{e}</li>)}
+              </ul>
+            )}
+          </AlertDescription>
         </Alert>
       )}
 
       {/* Sekme */}
-      <Tabs
-        value={activeTab}
-        onChange={(_, v: number) => setActiveTab(v)}
-        sx={{ mb: 2, minHeight: 36, '& .MuiTab-root': { minHeight: 36, fontSize: '0.78rem', py: 0.75 } }}
-      >
-        <Tab label="Mevcut Plan" />
-        <Tab
-          label={
-            draft
-              ? <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <span>Taslak</span>
-                  {draft.hasHardViolation && (
-                    <WarningAmberIcon sx={{ fontSize: 14, color: C.danger }} />
-                  )}
-                </Box>
-              : 'Taslak'
-          }
-          disabled={!draft}
-        />
-      </Tabs>
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as PlanTab)}>
+        <TabsList>
+          <TabsTrigger value="current">Mevcut plan</TabsTrigger>
+          <TabsTrigger value="draft" disabled={!draft}>
+            Taslak
+            {draft?.hasHardViolation && <TriangleAlert className="size-3.5 text-danger" aria-label="Kritik ihlal" />}
+          </TabsTrigger>
+        </TabsList>
 
-      {/* ── SEKMESİ 0: Mevcut Plan ── */}
-      {activeTab === 0 && (
-        <>
-          {planError && <Alert severity={planError.includes('yetki') ? 'warning' : 'error'} sx={{ mb: 2 }}>{planError}</Alert>}
+        {/* ── SEKMESİ 0: Mevcut Plan ── */}
+        <TabsContent value="current">
+          {planError && (
+            <Alert tone={planError.includes('yetki') ? 'warning' : 'danger'} className="mb-4">
+              <AlertCircle />
+              <AlertDescription className="text-ink">{planError}</AlertDescription>
+            </Alert>
+          )}
 
           {isFirstLoad && (
             <ScheduleGridSkeleton rows={6} />
@@ -301,26 +297,26 @@ export function WorkforcePlanningPanel() {
 
           {!isFirstLoad && planData && (
             <>
-              <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
-                {[
-                  `${planData.summaries.length} çalışan`,
-                  `Min. dinlenme: ${planData.config.minRestHours}s`,
-                  `Haftalık maks: ${planData.config.maxWeeklyWorkHours}s`,
-                ].map((label) => (
-                  <Chip key={label} label={label} size="small" variant="outlined"
-                    sx={{ fontSize: '0.68rem', color: 'text.secondary', borderColor: 'divider' }} />
-                ))}
-                {planData.openShiftsThisWeek.length > 0 && (
-                  <Chip size="small" icon={<WorkOutlineIcon sx={{ fontSize: '12px !important' }} />}
-                    label={`${planData.openShiftsThisWeek.length} açık vardiya`}
-                    sx={{ fontSize: '0.7rem', bgcolor: tint(C.warning, 0.1), color: C.warning }} />
-                )}
-                {planData.summaries.some((s) => s.violations.length > 0) && (
-                  <Chip size="small" icon={<WarningAmberIcon sx={{ fontSize: '12px !important' }} />}
-                    label={`${planData.summaries.reduce((n, s) => n + s.violations.length, 0)} ihlal`}
-                    color="error" variant="outlined" sx={{ fontSize: '0.7rem' }} />
-                )}
-              </Box>
+              <StatGrid min={140}>
+                <StatCard label="Çalışan" value={planData.summaries.length} />
+                <StatCard
+                  label="Dinlenme / haftalık maks."
+                  value={`${planData.config.minRestHours}s / ${planData.config.maxWeeklyWorkHours}s`}
+                  note="İş Kanunu sınırları"
+                />
+                <StatCard
+                  label="Açık vardiya"
+                  value={planData.openShiftsThisWeek.length}
+                  valueColor={planData.openShiftsThisWeek.length > 0 ? C.warning : undefined}
+                  note="bu hafta"
+                />
+                <StatCard
+                  label="İhlal"
+                  value={violationCount}
+                  valueColor={violationCount > 0 ? C.danger : C.success}
+                  note={violationCount > 0 ? 'ayrıntı tabloda' : 'her şey yolunda'}
+                />
+              </StatGrid>
 
               <CurrentPlanTable
                 weekDays={planData.weekDays}
@@ -329,76 +325,53 @@ export function WorkforcePlanningPanel() {
               />
             </>
           )}
-        </>
-      )}
+        </TabsContent>
 
-      {/* ── SEKMESİ 1: Taslak Plan ── */}
-      {activeTab === 1 && draft && (
-        <>
-          {/* Durum banner */}
-          <Alert
-            severity={draft.hasHardViolation ? 'error' : 'success'}
-            sx={{ mb: 1.5, fontSize: '0.8rem' }}
-            icon={draft.hasHardViolation ? <WarningAmberIcon fontSize="small" /> : <CheckCircleIcon fontSize="small" />}
-          >
-            {draft.hasHardViolation
-              ? `Plan geçersiz: ${draft.warnings.filter((w) => w.level === 'error').length} kritik kural ihlali var. Aşağıdaki hataları gidermeden plan onaylanamaz.`
-              : 'Taslak plan geçerli. İnceleyip onaylayabilirsiniz.'}
-          </Alert>
+        {/* ── SEKMESİ 1: Taslak Plan ── */}
+        {draft && (
+          <TabsContent value="draft" className="flex flex-col gap-4">
+            {/* Durum banner */}
+            <Alert tone={draft.hasHardViolation ? 'danger' : 'success'}>
+              {draft.hasHardViolation ? <TriangleAlert /> : <CheckCircle2 />}
+              <AlertDescription className="text-ink">
+                {draft.hasHardViolation
+                  ? `Plan geçersiz: ${draftErrors} kritik kural ihlali var. Aşağıdaki hataları gidermeden plan onaylanamaz.`
+                  : 'Taslak plan geçerli. İnceleyip onaylayabilirsiniz.'}
+              </AlertDescription>
+            </Alert>
 
-          {/* Özet istatistikler */}
-          <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
-            <Chip size="small" label={`${draft.assignments.length} atama`}
-              sx={{ fontSize: '0.7rem', bgcolor: tint(C.brand, 0.1), color: 'primary.main' }} />
-            <Chip size="small"
-              label={`${draft.warnings.filter((w) => w.level === 'error').length} kritik uyarı`}
-              color={draft.warnings.some((w) => w.level === 'error') ? 'error' : 'default'}
-              variant="outlined" sx={{ fontSize: '0.7rem' }} />
-            <Chip size="small"
-              label={`${draft.warnings.filter((w) => w.level === 'info').length} bilgi`}
-              variant="outlined" sx={{ fontSize: '0.7rem', color: 'text.secondary', borderColor: 'divider' }} />
-          </Box>
+            {/* Özet istatistikler */}
+            <StatGrid min={140} className="mb-0 md:mb-0">
+              <StatCard label="Atama" value={draft.assignments.length} />
+              <StatCard label="Kritik uyarı" value={draftErrors} valueColor={draftErrors > 0 ? C.danger : C.success} />
+              <StatCard label="Bilgi" value={draftInfos} />
+            </StatGrid>
 
-          {/* Uyarı listesi */}
-          <WarningList warnings={draft.warnings} />
+            {/* Uyarı listesi */}
+            <WarningList warnings={draft.warnings} />
 
-          <Divider sx={{ my: 1.5, borderColor: 'divider' }} />
+            {/* Taslak tablo */}
+            <DraftPlanTable draft={draft} weekDays={draftWeekDays} />
 
-          {/* Taslak tablo */}
-          <DraftPlanTable draft={draft} weekDays={draftWeekDays} />
-
-          {/* Onay butonu (tablo altında da) */}
-          {!applyResult && (
-            <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
-              {draft.hasHardViolation && (
-                <Typography variant="caption" sx={{ color: C.danger, fontSize: '0.72rem', mr: 'auto' }}>
-                  ⚠ Kritik ihlaller giderilmeden plan onaylanamaz.
-                </Typography>
-              )}
-              <Button variant="outlined" size="small"
-                startIcon={<RefreshIcon fontSize="small" />}
-                onClick={() => void generate()} disabled={genLoading}
-                sx={{ fontSize: '0.75rem' }}>
-                Yeniden Oluştur
-              </Button>
-              <Tooltip
-                title={draft.hasHardViolation ? 'Kritik kural ihlalleri var. Önce "Yeniden Oluştur" ile planı düzeltin.' : ''}
-                arrow
-              >
-                <span>
-                  <Button variant="contained" color="success" size="small"
-                    startIcon={applyLoading ? <CircularProgress size={14} color="inherit" /> : <CheckCircleIcon fontSize="small" />}
-                    onClick={() => void applyDraft()}
-                    disabled={applyLoading || draft.hasHardViolation}
-                    sx={{ fontSize: '0.75rem' }}>
-                    {applyLoading ? 'Aktarılıyor…' : 'Onayla ve Haftalık Plana Aktar'}
-                  </Button>
-                </span>
-              </Tooltip>
-            </Box>
-          )}
-        </>
-      )}
-    </Box>
+            {/* Onay butonu (tablo altında da) */}
+            {!applyResult && (
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {draft.hasHardViolation && (
+                  <p className="mr-auto flex items-center gap-1.5 text-xs font-medium text-danger">
+                    <TriangleAlert className="size-3.5" />
+                    Kritik ihlaller giderilmeden plan onaylanamaz.
+                  </p>
+                )}
+                <Button variant="outline" onClick={() => void generate()} disabled={genLoading}>
+                  <RefreshCw />
+                  Yeniden Oluştur
+                </Button>
+                <ApplyButton draft={draft} loading={applyLoading} onApply={() => void applyDraft()} />
+              </div>
+            )}
+          </TabsContent>
+        )}
+      </Tabs>
+    </div>
   )
 }
