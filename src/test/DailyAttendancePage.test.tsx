@@ -84,8 +84,8 @@ describe('DailyAttendancePage — sayfa yükleme (Senaryo 10)', () => {
     renderPage()
 
     await waitFor(() => {
-      expect(screen.getByText('Ahmet Kaya')).toBeInTheDocument()
-      expect(screen.getByText('Kasiyer')).toBeInTheDocument()
+      // Ad KPI ipucunda da geçebilir (ör. "Gelmedi: Ahmet Kaya"); tablo satırını doğrula
+      expect(screen.getByRole('cell', { name: /Ahmet Kaya/ })).toHaveTextContent('Kasiyer')
     })
   })
 
@@ -117,7 +117,7 @@ describe('DailyAttendancePage — salt okunur (giriş/mola/çıkış yalnızca Q
 
     renderPage()
 
-    await screen.findByText('Ahmet Kaya')
+    await screen.findByRole('cell', { name: /Ahmet Kaya/ })
     for (const name of [/giriş yap/i, /molaya çık/i, /moladan dön/i, /çıkış yap/i]) {
       expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
     }
@@ -131,9 +131,12 @@ describe('DailyAttendancePage — salt okunur (giriş/mola/çıkış yalnızca Q
     renderPage()
 
     await waitFor(() => {
-      // 'Çalışıyor' hem istatistik kartında hem durum çipinde görünür
+      // 'Çalışıyor' hem istatistik kartında hem durum rozetinde görünür
       expect(screen.getAllByText('Çalışıyor').length).toBeGreaterThanOrEqual(2)
-      expect(screen.getByText(/Giriş:/)).toBeInTheDocument()
+      // QR ile okutulan giriş saati (06:00Z → 09:00 TR) hem Giriş sütununda hem zaman çizelgesinde
+      expect(screen.getByRole('columnheader', { name: 'Giriş' })).toBeInTheDocument()
+      expect(screen.getByText('09:00')).toBeInTheDocument()
+      expect(screen.getByRole('img', { name: /giriş 09:00/ })).toBeInTheDocument()
     })
   })
 })

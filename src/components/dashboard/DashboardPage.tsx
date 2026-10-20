@@ -1,20 +1,38 @@
 'use client'
 
+/**
+ * DashboardPage — Operasyon › Genel bakış.
+ *
+ * Selamlama + 4 KPI → saatlik kadro grafiği ve onay bekleyen izinler → bugünkü kadro (DataTable;
+ * mobilde Item kartları). Ayrıntılı takip Günlük operasyon sayfasındadır.
+ */
+import Link from 'next/link'
 import useSWR from 'swr'
-import { useLastUpdated } from '@/hooks/useLastUpdated'
-import { AlertCircle, Loader2, RefreshCw } from 'lucide-react'
-import { formatDateTurkish, formatDayNameTurkish, formatDateRangeTr } from '@/lib/dateUtils'
-import { LEAVE_TYPE_LABELS } from '@/types/leave'
 import {
-  PageHeader, StatCardsSkeleton, ListSkeleton, PersonAvatar, SectionCard, SectionRow, EmptyRow,
-  StatCard, StatGrid, StatusBadge, type BadgeTone,
-} from '@/components/common'
-import { shiftKindOf } from '@/components/schedule/scheduleHelpers'
+  ArrowRight, CalendarClock, CalendarX2, ChevronRight, Inbox, RefreshCw, TriangleAlert, UserCheck, UserX,
+} from 'lucide-react'
+
+import { useLastUpdated } from '@/hooks/useLastUpdated'
+import { formatDateRangeTr, formatDateTurkish, formatDayNameTurkish } from '@/lib/dateUtils'
+import { LEAVE_TYPE_LABELS } from '@/types/leave'
 import { useAuth } from '@/context/AuthContext'
-import { C, SHIFT_KIND_TONES } from '@/lib/palette'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import {
+  DataTable, Page, PageHeader, PersonAvatar, StatCard, StatCards, StatusBadge, TableSkeleton,
+  type BadgeTone, type ColumnDef,
+} from '@/components/common'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
+import {
+  Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemSeparator, ItemTitle,
+} from '@/components/ui/item'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Spinner } from '@/components/ui/spinner'
+import { ShiftTime } from '@/components/daily-attendance/ShiftTime'
+import { clock, formatDelay, lateMinutes, shiftWindow, turkeyDate, useNow } from '@/components/daily-attendance/attendanceTime'
+import { StaffingChart } from './StaffingChart'
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -55,20 +73,120 @@ interface DashboardData {
   pending_leaves: PendingLeave[]
 }
 
-// ─── Constants ───────────────────────────────────────────────
+// ─── Durum ───────────────────────────────────────────────────
 
-const ATTENDANCE_STATUS_CONFIG: Record<string, { label: string; tone: BadgeTone }> = {
-  shift_waiting: { label: 'Bekleniyor', tone: 'neutral' },
-  working: { label: 'Çalışıyor', tone: 'success' },
-  on_break: { label: 'Molada', tone: 'warning' },
-  working_after_break: { label: 'Çalışıyor', tone: 'success' },
-  clocked_out: { label: 'Çıkış yaptı', tone: 'plum' },
+/**
+ * Kadro satırının durumu. Bu uç izin bilgisini taşımadığından giriş okutulmamış başlamış
+ * vardiya "Gelmedi" değil, tarafsız "Giriş yok" olarak gösterilir.
+ */
+function rosterStatus(r: RosterEntry, now: number): { label: string; tone: BadgeTone; order: number } {
+  switch (r.attendance_status) {
+    case 'working':
+    case 'working_after_break':
+      return { label: 'Çalışıyor', tone: 'success', order: 2 }
+    case 'on_break':
+      return { label: 'Molada', tone: 'warning', order: 1 }
+    case 'clocked_out':
+      return { label: 'Çıkış yaptı', tone: 'plum', order: 4 }
+  }
+  const win = shiftWindow(turkeyDate(now), r.start_time, r.end_time)
+  return now < win.start
+    ? { label: 'Başlamadı', tone: 'neutral', order: 3 }
+    : { label: 'Giriş yok', tone: 'warning', order: 0 }
 }
 
-// ─── Main Page ────────────────────────────────────────────────
+const sentence = (s: string) => s.charAt(0) + s.slice(1).toLocaleLowerCase('tr-TR')
+
+function leaveTypeLabel(type: string): string {
+  const label = LEAVE_TYPE_LABELS[type as keyof typeof LEAVE_TYPE_LABELS]
+  return label ? sentence(label) : type
+}
+
+const MONTHS = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara']
+
+/** Kısa aralık: "25 Eki", "23–26 Kas", "30 Eki – 2 Kas" (yıl farklıysa tam biçim) */
+function shortRange(start: string, end: string): string {
+  if (start.slice(0, 4) !== end.slice(0, 4)) return formatDateRangeTr(start, end)
+  const d = (s: string) => Number(s.slice(8, 10))
+  const m = (s: string) => MONTHS[Number(s.slice(5, 7)) - 1]
+  if (start === end) return `${d(start)} ${m(start)}`
+  if (start.slice(0, 7) === end.slice(0, 7)) return `${d(start)}–${d(end)} ${m(end)}`
+  return `${d(start)} ${m(start)} – ${d(end)} ${m(end)}`
+}
+
+function dayCount(start: string, end: string): number {
+  return Math.round((new Date(`${end}T00:00:00Z`).getTime() - new Date(`${start}T00:00:00Z`).getTime()) / 86_400_000) + 1
+}
+
+// ─── Onay bekleyenler ────────────────────────────────────────
+
+function PendingLeavesCard({ leaves, total }: { leaves: PendingLeave[]; total: number }) {
+  return (
+    <Card className="h-full gap-0 py-0 shadow-xs">
+      <CardHeader className="py-5">
+        <CardTitle className="flex items-center gap-2">
+          Onay bekleyenler
+          <Badge variant="secondary" className="tabular-nums">{total}</Badge>
+        </CardTitle>
+        <CardDescription>En eski izin talepleri</CardDescription>
+        <CardAction>
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/leave">Tümü <ArrowRight /></Link>
+          </Button>
+        </CardAction>
+      </CardHeader>
+      <CardContent className="px-0">
+        {leaves.length === 0 ? (
+          <Empty className="border-t py-10">
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><Inbox /></EmptyMedia>
+              <EmptyTitle>Bekleyen talep yok</EmptyTitle>
+              <EmptyDescription>Yeni izin talepleri burada görünür.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          <ItemGroup className="border-t">
+            {leaves.map((leave, i) => {
+              const emp = leave.employees as { full_name: string } | null
+              const days = dayCount(leave.start_date, leave.end_date)
+              return (
+                <div key={leave.id} role="listitem">
+                  {i > 0 && <ItemSeparator />}
+                  <Item asChild size="sm" className="rounded-none px-6">
+                    <Link href="/leave">
+                      <ItemMedia><PersonAvatar name={emp?.full_name ?? '?'} size={32} /></ItemMedia>
+                      <ItemContent className="min-w-0">
+                        <ItemTitle className="w-full truncate">{emp?.full_name ?? '—'}</ItemTitle>
+                        <ItemDescription className="truncate">
+                          {leaveTypeLabel(leave.leave_type)} · {shortRange(leave.start_date, leave.end_date)}
+                        </ItemDescription>
+                      </ItemContent>
+                      <ItemActions className="text-sm text-muted-foreground tabular-nums">
+                        {days} gün
+                        <ChevronRight className="size-4" />
+                      </ItemActions>
+                    </Link>
+                  </Item>
+                </div>
+              )
+            })}
+          </ItemGroup>
+        )}
+      </CardContent>
+      {total > leaves.length && (
+        <CardFooter className="mt-auto border-t py-3! text-sm text-muted-foreground">
+          {total - leaves.length} talep daha var
+        </CardFooter>
+      )}
+    </Card>
+  )
+}
+
+// ─── Sayfa ───────────────────────────────────────────────────
 
 export function DashboardPage() {
   const today = new Date()
+  const now = useNow()
   const { employee } = useAuth()
 
   const { data, error: loadError, isValidating: loading, mutate } = useSWR<DashboardData>('/api/dashboard')
@@ -80,126 +198,205 @@ export function DashboardPage() {
   const stats = data?.stats
   const roster = data?.today_roster ?? []
   const pendingLeaves = data?.pending_leaves ?? []
-  const hour = today.getHours()
+  // Sunucu (UTC) ve tarayıcı aynı selamlamayı üretsin: saat her zaman Türkiye saatinden
+  const hour = Number(clock(today.getTime()).slice(0, 2))
   const firstName = employee?.full_name.split(/\s+/)[0]
   const greeting = `${hour < 12 ? 'Günaydın' : hour < 18 ? 'İyi günler' : 'İyi akşamlar'}${firstName ? `, ${firstName}` : ''}`
 
+  const statuses = roster.map((r) => rosterStatus(r, now))
+  const notStarted = statuses.filter((s) => s.order === 3).length
+  const noClockIn = statuses.filter((s) => s.order === 0).length
+
+  const columns: ColumnDef<RosterEntry, unknown>[] = [
+    {
+      id: 'employee',
+      accessorKey: 'full_name',
+      header: 'Çalışan',
+      sortingFn: (a, b) => a.original.full_name.localeCompare(b.original.full_name, 'tr'),
+      cell: ({ row }) => (
+        <span className="flex min-w-0 items-center gap-2.5">
+          <PersonAvatar name={row.original.full_name} size={32} />
+          <span className="flex min-w-0 flex-col">
+            <span className="truncate font-medium">{row.original.full_name}</span>
+            <span className="truncate text-xs text-muted-foreground">{row.original.role_name}</span>
+          </span>
+        </span>
+      ),
+    },
+    {
+      id: 'shift',
+      accessorKey: 'start_time',
+      header: 'Vardiya',
+      cell: ({ row }) => <ShiftTime start={row.original.start_time} end={row.original.end_time} detail />,
+    },
+    {
+      id: 'in',
+      header: 'Giriş',
+      enableSorting: false,
+      cell: ({ row }) => {
+        const late = lateMinutes(row.original.clock_in_at, shiftWindow(turkeyDate(now), row.original.start_time, row.original.end_time))
+        return (
+          <span className="inline-flex items-baseline gap-2 tabular-nums">
+            {clock(row.original.clock_in_at)}
+            {late !== null && <span className="text-xs text-warning">{formatDelay(late)} geç</span>}
+          </span>
+        )
+      },
+    },
+    {
+      id: 'out',
+      header: 'Çıkış',
+      enableSorting: false,
+      meta: { className: 'tabular-nums' },
+      cell: ({ row }) => clock(row.original.clock_out_at),
+    },
+    {
+      id: 'status',
+      accessorFn: (r) => rosterStatus(r, now).order,
+      header: 'Durum',
+      meta: { className: 'w-32' },
+      cell: ({ row }) => {
+        const s = rosterStatus(row.original, now)
+        return <StatusBadge tone={s.tone} label={s.label} />
+      },
+    },
+  ]
+
+  const rosterItem = (r: RosterEntry) => {
+    const s = rosterStatus(r, now)
+    return (
+      <Item variant="outline" size="sm">
+        <ItemMedia><PersonAvatar name={r.full_name} size={32} /></ItemMedia>
+        <ItemContent className="min-w-0">
+          <ItemTitle className="w-full truncate">{r.full_name}</ItemTitle>
+          <ItemDescription className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <ShiftTime start={r.start_time} end={r.end_time} />
+            {r.clock_in_at && <span className="tabular-nums">{clock(r.clock_in_at)}–{r.clock_out_at ? clock(r.clock_out_at) : '…'}</span>}
+          </ItemDescription>
+        </ItemContent>
+        <ItemActions><StatusBadge tone={s.tone} label={s.label} /></ItemActions>
+      </Item>
+    )
+  }
+
   return (
-    <div className="p-4 md:p-6">
+    <Page>
       <PageHeader
         overline={greeting}
         title="Genel bakış"
-        subtitle={`${formatDayNameTurkish(today)}, ${formatDateTurkish(today)}`}
-        meta={lastRefreshed && `Son güncelleme: ${lastRefreshed.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`}
+        description={
+          <>
+            {formatDayNameTurkish(today)}, {formatDateTurkish(today)}
+            {lastRefreshed && (
+              <span className="tabular-nums"> · Son güncelleme {lastRefreshed.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</span>
+            )}
+          </>
+        }
         actions={
           <Button variant="outline" onClick={() => void load()} disabled={loading}>
-            {loading ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+            {loading ? <Spinner /> : <RefreshCw />}
             Yenile
           </Button>
         }
       />
 
       {error && (
-        <Alert tone="danger" className="mb-4">
-          <AlertCircle />
-          <AlertDescription className="flex flex-wrap items-center justify-between gap-2 text-ink">
+        <Alert variant="destructive">
+          <TriangleAlert />
+          <AlertTitle>Özet yüklenemedi</AlertTitle>
+          <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
             {error}
-            <Button variant="ghost" size="sm" onClick={() => void load()}>Tekrar Dene</Button>
+            <Button variant="outline" size="sm" onClick={() => void load()}>Tekrar dene</Button>
           </AlertDescription>
         </Alert>
       )}
 
-      {/* Özet */}
-      {loading && !data && <StatCardsSkeleton count={5} />}
+      {!data && !loadError && (
+        <>
+          <div className="grid grid-cols-2 gap-3 md:gap-4 @5xl/main:grid-cols-4">
+            {Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-[124px] rounded-xl" />)}
+          </div>
+          <div className="grid gap-4 md:gap-6 @5xl/main:grid-cols-3">
+            <Skeleton className="h-[340px] rounded-xl @5xl/main:col-span-2" />
+            <Skeleton className="h-[340px] rounded-xl" />
+          </div>
+          <TableSkeleton rows={6} columns={5} />
+        </>
+      )}
+
       {stats && (
-        <StatGrid min={140}>
-          <StatCard label="Bugün vardiyalı" value={stats.today_shifts} note={`${stats.active_employees} aktif çalışan`} href="/" />
-          <StatCard label="Şu an çalışıyor" value={stats.currently_working} valueColor={C.success} />
-          <StatCard label="Molada" value={stats.on_break} valueColor={stats.on_break ? C.warning : undefined} />
-          <StatCard label="Çıkış yaptı" value={stats.clocked_out} />
-          <StatCard
-            label="Gelmedi"
-            value={stats.no_show}
-            valueColor={stats.no_show ? C.danger : undefined}
-            note={stats.no_show ? 'günlük operasyondan takip edin' : 'herkes zamanında'}
-          />
-          <StatCard
-            label="İzin bekliyor"
-            value={stats.pending_leaves}
-            valueColor={stats.pending_leaves ? C.warning : undefined}
-            note={stats.pending_leaves ? 'onayınızı bekliyor' : 'bekleyen talep yok'}
-            href="/leave"
-          />
-        </StatGrid>
-      )}
+        <>
+          <StatCards>
+            <StatCard
+              icon={<CalendarClock />}
+              label="Bugün vardiyalı"
+              value={stats.today_shifts}
+              hint={`${stats.active_employees} aktif çalışan`}
+              href="/"
+            />
+            <StatCard
+              icon={<UserCheck />}
+              label="Şu an çalışıyor"
+              value={stats.currently_working}
+              hint={`${stats.on_break} molada · ${stats.clocked_out} çıkış yaptı`}
+              href="/"
+            />
+            <StatCard
+              icon={<UserX />}
+              label="Giriş yapılmadı"
+              value={stats.no_show}
+              valueClassName={noClockIn > 0 ? 'text-warning' : undefined}
+              hint={notStarted > 0
+                ? `${notStarted} vardiya henüz başlamadı`
+                : stats.no_show > 0 ? 'Günlük operasyondan takip edin' : 'Herkes giriş yaptı'}
+              href="/"
+            />
+            <StatCard
+              icon={<Inbox />}
+              label="Onay bekleyen izin"
+              value={stats.pending_leaves}
+              valueClassName={stats.pending_leaves > 0 ? 'text-warning' : undefined}
+              hint={stats.pending_leaves > 0 ? 'Onayınızı bekliyor' : 'Bekleyen talep yok'}
+              href="/leave"
+            />
+          </StatCards>
 
-      {loading && !data && (
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
-          <div>
-            <Skeleton className="mb-4 h-5 w-32" />
-            <ListSkeleton count={5} actions={1} dense />
+          <div className="grid gap-4 md:gap-6 @5xl/main:grid-cols-3">
+            <div className="flex min-w-0 flex-col @5xl/main:col-span-2">
+              <StaffingChart roster={roster} now={now} />
+            </div>
+            <PendingLeavesCard leaves={pendingLeaves} total={stats.pending_leaves} />
           </div>
-          <div>
-            <Skeleton className="mb-4 h-5 w-36" />
-            <ListSkeleton count={3} avatar={false} actions={1} dense />
-          </div>
-        </div>
-      )}
 
-      {/* İki sütun: bugünkü kadro + onay bekleyenler */}
-      {data && (
-        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
-          <SectionCard title="Bugünkü kadro" count={roster.length} action={{ label: 'Günlük operasyon →', href: '/' }}>
-            {roster.length === 0 ? (
-              <EmptyRow>Bugün için planlanmış vardiya yok.</EmptyRow>
-            ) : (
-              roster.map((entry) => {
-                const cfg = ATTENDANCE_STATUS_CONFIG[entry.attendance_status] ?? ATTENDANCE_STATUS_CONFIG.shift_waiting
-                const tone = SHIFT_KIND_TONES[shiftKindOf(undefined, entry.start_time, entry.end_time)]
-                return (
-                  <SectionRow key={entry.employee_id + entry.start_time}>
-                    <PersonAvatar name={entry.full_name} size={34} />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-bold">{entry.full_name}</p>
-                      <p className="truncate text-xs text-ink-secondary">{entry.role_name}</p>
-                    </div>
-                    <span
-                      className="hidden rounded-lg px-2 py-1 text-[0.78rem] font-bold tabular-nums sm:block"
-                      style={{ color: tone.text, backgroundColor: tone.soft }}
-                    >
-                      {entry.start_time.slice(0, 5)} – {entry.end_time.slice(0, 5)}
-                    </span>
-                    <StatusBadge tone={cfg.tone} label={cfg.label} className="min-w-[82px]" />
-                  </SectionRow>
-                )
-              })
-            )}
-          </SectionCard>
-
-          <SectionCard title="Onay bekleyenler" count={pendingLeaves.length} action={{ label: 'Tümü →', href: '/leave' }}>
-            {pendingLeaves.length === 0 ? (
-              <EmptyRow>Onay bekleyen talep yok.</EmptyRow>
-            ) : (
-              pendingLeaves.map((leave) => {
-                const emp = leave.employees as { full_name: string } | null
-                return (
-                  <SectionRow key={leave.id} href="/leave">
-                    <PersonAvatar name={emp?.full_name ?? '?'} size={34} />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-bold">{emp?.full_name ?? '—'}</p>
-                      <p className="truncate text-xs text-ink-secondary">{formatDateRangeTr(leave.start_date, leave.end_date)}</p>
-                    </div>
-                    <StatusBadge
-                      tone="warning"
-                      label={LEAVE_TYPE_LABELS[leave.leave_type as keyof typeof LEAVE_TYPE_LABELS] ?? leave.leave_type}
-                    />
-                  </SectionRow>
-                )
-              })
-            )}
-          </SectionCard>
-        </div>
+          <section className="flex min-w-0 flex-col gap-3" aria-labelledby="roster-title">
+            <div className="flex items-center justify-between gap-2">
+              <h2 id="roster-title" className="flex items-center gap-2 text-base font-semibold">
+                Bugünkü kadro
+                <Badge variant="secondary" className="tabular-nums">{roster.length}</Badge>
+              </h2>
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/">Günlük operasyon <ArrowRight /></Link>
+              </Button>
+            </div>
+            <DataTable
+              columns={columns}
+              data={roster}
+              pageSize={10}
+              getRowId={(r, i) => `${r.employee_id}-${r.start_time}-${i}`}
+              renderMobileItem={rosterItem}
+              empty={
+                <Empty className="py-12">
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon"><CalendarX2 /></EmptyMedia>
+                    <EmptyTitle>Bugün vardiya yok</EmptyTitle>
+                    <EmptyDescription>Bugün için planlanmış vardiya yok.</EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              }
+            />
+          </section>
+        </>
       )}
-    </div>
+    </Page>
   )
 }
