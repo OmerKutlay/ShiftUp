@@ -11,7 +11,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import type { CreateOpenShiftPayload } from '@/types/workforce'
-import { requireAuth, requireMinRole, ROLES } from '@/lib/auth'
+import { requireAuth, requireMinRole, ACCESS } from '@/lib/auth'
+import { accessLevelOf } from '@/lib/auth/roles'
 import { createNotifications } from '@/lib/notificationRepository'
 import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/apiErrors'
 import { isUuid, isValidDate, isValidTime } from '@/lib/validation'
@@ -52,7 +53,7 @@ export async function GET(req: NextRequest) {
 
 // ─── POST ────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
-  const auth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
+  const auth = await requireMinRole(req, ACCESS.MANAGER)
   if ('response' in auth) return auth.response
 
   try {
@@ -99,12 +100,11 @@ export async function POST(req: NextRequest) {
 
       const { data: employees } = await admin
         .from('employees')
-        .select('id, roles(name)')
+        .select('id, roles(access_level)')
         .eq('active', true)
 
       const targets = (employees ?? []).filter(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (emp) => ((emp as any).roles?.name ?? null) === ROLES.CALISAN
+        (emp) => accessLevelOf(emp.roles) === ACCESS.EMPLOYEE
       )
       await createNotifications(
         admin,
@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
 
 // ─── PATCH ───────────────────────────────────────────────────
 export async function PATCH(req: NextRequest) {
-  const auth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
+  const auth = await requireMinRole(req, ACCESS.MANAGER)
   if ('response' in auth) return auth.response
 
   try {

@@ -24,7 +24,7 @@ function makeShiftEntry(overrides: Partial<DailyShiftEntry> = {}): DailyShiftEnt
     employee: {
       id: 'emp-001',
       full_name: 'Ahmet Kaya',
-      role: 'Kasiyer',
+      roles: { name: 'Kasiyer' },
       role_id: null,
       active: true,
       created_at: '2026-09-28T00:00:00Z',

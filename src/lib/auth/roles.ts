@@ -1,29 +1,68 @@
 /**
- * roles.ts — Mevcut ShiftUp rol hiyerarşisi
+ * roles.ts — Sistem rolü modeli
  *
- * Veritabanındaki `roles` tablosundaki name değerleriyle birebir eşleşir.
- * Yeni rol eklenmeden önce DB'ye de eklenmeli.
+ * Her sistem rolü (roles tablosu) iki bilgiyi taşır; kod rol ADINA hiç bakmaz:
+ *   access_level   → yetki seviyesi (bu dosya)
+ *   planning_group → vardiya planlayıcısındaki görev; null = planlanmaz
  *
- * Hiyerarşi (yüksek → düşük yetki):
- *   Yönetici > Mağaza Müdürü > Müdür Yardımcısı > Çalışan
+ * Yetki hiyerarşisi (yüksek → düşük):
+ *   Admin > Müdür > Yönetici > Çalışan   (Kiosk hiyerarşi dışı: yalnızca kiosk ekranı)
+ *
+ * Yeni bir rol (ör. "Şef Kasiyer") yalnızca DB'ye bu iki alanla eklenir; kod değişmez.
  */
 
-export const ROLES = {
-  YONETICI: 'Yönetici',
-  MAGAZA_MUDURU: 'Mağaza Müdürü',
-  MUDUR_YARDIMCISI: 'Müdür Yardımcısı',
-  CALISAN: 'Çalışan',
+export const ACCESS = {
+  ADMIN: 'admin',
+  STORE_MANAGER: 'store_manager',
+  MANAGER: 'manager',
+  EMPLOYEE: 'employee',
   /** Kiosk cihaz hesabı — hiyerarşi dışında; yalnızca kiosk ekranını açabilir */
-  KIOSK: 'Kiosk',
+  KIOSK: 'kiosk',
 } as const
 
-export type RoleName = (typeof ROLES)[keyof typeof ROLES]
+export type AccessLevel = (typeof ACCESS)[keyof typeof ACCESS]
+
+export const ACCESS_LABELS: Record<AccessLevel, string> = {
+  admin: 'Admin',
+  store_manager: 'Müdür',
+  manager: 'Yönetici',
+  employee: 'Çalışan',
+  kiosk: 'Kiosk',
+}
+
+/** Planlayıcıdaki görev — DB CHECK constraint ile senkron */
+export const PLANNING_GROUPS = [
+  'store_manager', 'assistant_manager', 'floor_lead', 'visual', 'stock', 'cashier', 'sales',
+] as const
+
+export type PlanningGroup = (typeof PLANNING_GROUPS)[number]
+
+export const PLANNING_GROUP_LABELS: Record<PlanningGroup, string> = {
+  store_manager: 'Mağaza müdürü',
+  assistant_manager: 'Müdür yardımcısı',
+  floor_lead: 'Reyon sorumlusu',
+  visual: 'Görsel (08:00 sabit)',
+  stock: 'Depo (08:00 sabit)',
+  cashier: 'Kasiyer',
+  sales: 'Satış danışmanı',
+}
+
+/** Açılış/kapanışta "yönetici bulunmalı" kuralını karşılayan görevler */
+export const SHIFT_LEAD_GROUPS: readonly PlanningGroup[] = ['store_manager', 'assistant_manager', 'floor_lead']
+
+export function isPlanningGroup(v: unknown): v is PlanningGroup {
+  return typeof v === 'string' && (PLANNING_GROUPS as readonly string[]).includes(v)
+}
+
+export function isAccessLevel(v: unknown): v is AccessLevel {
+  return typeof v === 'string' && (Object.values(ACCESS) as string[]).includes(v)
+}
 
 /** roles tablosundaki sabit Kiosk satırı (20261013100000_kiosk_role_and_signing_keys.sql) */
 export const KIOSK_ROLE_ID = '00000000-0000-0000-0000-000000000005'
 
-export function isKioskRole(roleName: string | null | undefined): boolean {
-  return roleName === ROLES.KIOSK
+export function isKioskRole(level: AccessLevel | null | undefined): boolean {
+  return level === ACCESS.KIOSK
 }
 
 /**
@@ -32,71 +71,72 @@ export function isKioskRole(roleName: string | null | undefined): boolean {
  */
 export const NOT_KIOSK_FILTER = `role_id.is.null,role_id.neq.${KIOSK_ROLE_ID}`
 
-/**
- * Rol hiyerarşisi — yüksek index = daha fazla yetki
- * Bir rolün kendi seviyesini veya altını yapabileceği işlemler için kullanılır.
- */
-const ROLE_HIERARCHY: RoleName[] = [
-  ROLES.CALISAN,
-  ROLES.MUDUR_YARDIMCISI,
-  ROLES.MAGAZA_MUDURU,
-  ROLES.YONETICI,
+/** Yetki hiyerarşisi — yüksek index = daha fazla yetki */
+const ACCESS_HIERARCHY: AccessLevel[] = [
+  ACCESS.EMPLOYEE,
+  ACCESS.MANAGER,
+  ACCESS.STORE_MANAGER,
+  ACCESS.ADMIN,
 ]
 
 /**
- * Verilen rol, hedef rolden büyük veya eşit yetkiye sahip mi?
- * Örn: roleAtLeast('Mağaza Müdürü', 'Müdür Yardımcısı') → true
+ * Verilen yetki seviyesi, hedef seviyeden büyük veya eşit mi?
+ * Örn: roleAtLeast('store_manager', 'manager') → true
  */
-export function roleAtLeast(roleName: string, minRole: RoleName): boolean {
-  const roleIdx = ROLE_HIERARCHY.indexOf(roleName as RoleName)
-  const minIdx = ROLE_HIERARCHY.indexOf(minRole)
-  if (roleIdx === -1) return false // Tanımlanmamış rol
-  return roleIdx >= minIdx
+export function roleAtLeast(level: AccessLevel | null | undefined, minLevel: AccessLevel): boolean {
+  const idx = roleRank(level)
+  if (idx === -1) return false // Tanımlanmamış / kiosk
+  return idx >= ACCESS_HIERARCHY.indexOf(minLevel)
 }
 
-/** Rolün hiyerarşideki sırası (bilinmeyen rol / null → -1) */
-export function roleRank(roleName: string | null | undefined): number {
-  return roleName ? ROLE_HIERARCHY.indexOf(roleName as RoleName) : -1
+/** Yetki seviyesinin hiyerarşideki sırası (bilinmeyen / kiosk / null → -1) */
+export function roleRank(level: AccessLevel | null | undefined): number {
+  return level ? ACCESS_HIERARCHY.indexOf(level) : -1
 }
 
 /**
- * actor, hedef rolündeki bir çalışanı yönetebilir mi (düzenleme/silme/rol atama)?
- * Yönetici herkesi yönetebilir; diğerleri yalnızca kendinden düşük rolleri.
+ * actor, hedef yetki seviyesindeki bir çalışanı yönetebilir mi (düzenleme/silme/rol atama)?
+ * Admin herkesi yönetebilir; diğerleri yalnızca kendinden düşük seviyeleri.
  */
 export function canManageRole(
-  actorRole: string | null | undefined,
-  targetRole: string | null | undefined
+  actorLevel: AccessLevel | null | undefined,
+  targetLevel: AccessLevel | null | undefined
 ): boolean {
-  if (actorRole === ROLES.YONETICI) return true
-  const actor = roleRank(actorRole)
+  if (actorLevel === ACCESS.ADMIN) return true
+  const actor = roleRank(actorLevel)
   if (actor < 0) return false
-  return roleRank(targetRole) < actor
+  return roleRank(targetLevel) < actor
 }
 
-/**
- * Yönetimsel işlemler için minimum gerekli rol grupları.
- * API route'larında requireRole() parametresi olarak kullanılır.
- */
-export const MANAGER_ROLES: RoleName[] = [
-  ROLES.YONETICI,
-  ROLES.MAGAZA_MUDURU,
-  ROLES.MUDUR_YARDIMCISI,
+/** Yönetimsel işlemler (Yönetici ve üstü) */
+export const MANAGER_ROLES: AccessLevel[] = [
+  ACCESS.ADMIN,
+  ACCESS.STORE_MANAGER,
+  ACCESS.MANAGER,
 ]
 
-export const ADMIN_ROLES: RoleName[] = [
-  ROLES.YONETICI,
-  ROLES.MAGAZA_MUDURU,
+/** Mağaza ayarları (Müdür ve üstü) */
+export const ADMIN_ROLES: AccessLevel[] = [
+  ACCESS.ADMIN,
+  ACCESS.STORE_MANAGER,
 ]
 
 /**
- * Verilen rol adı izin listesinde var mı?
+ * Verilen yetki seviyesi izin listesinde var mı?
  * Client-side ve server-side'da kullanılabilir — saf fonksiyon.
  * API güvenliği için requireRole() kullan; bu sadece UI kararları için.
  */
 export function hasRole(
-  employeeRoleName: string | null | undefined,
-  allowedRoles: RoleName[]
+  level: AccessLevel | null | undefined,
+  allowed: AccessLevel[]
 ): boolean {
-  if (!employeeRoleName) return false
-  return allowedRoles.some((r) => r === employeeRoleName)
+  if (!level) return false
+  return allowed.includes(level)
+}
+
+/** Supabase join'inden ({ access_level } | [{ access_level }] | null) yetki seviyesini çıkarır */
+export function accessLevelOf(roles: unknown): AccessLevel | null {
+  const r = Array.isArray(roles) ? roles[0] : roles
+  const level = (r as { access_level?: unknown } | null | undefined)?.access_level
+  return isAccessLevel(level) ? level : null
 }

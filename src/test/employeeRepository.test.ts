@@ -28,6 +28,9 @@ function makeRole(overrides: Partial<Role> = {}): Role {
     id: 'role-001',
     name: 'Çalışan',
     description: 'Standart çalışan',
+    access_level: 'employee',
+    planning_group: null,
+    sort_order: 40,
     created_at: '2026-09-28T00:00:00Z',
     ...overrides,
   }
@@ -38,7 +41,6 @@ function makeEmployee(overrides: Partial<EmployeeWithRole> = {}): EmployeeWithRo
     id: 'emp-001',
     full_name: 'Ahmet Kaya',
     email: null,
-    role: 'Kasiyer',
     role_id: 'role-001',
     active: true,
     employment_type: 'full_time',
@@ -142,8 +144,7 @@ describe('employeeRepository — createEmployee', () => {
     const result = await createEmployee({
       full_name: 'Ahmet Kaya',
       email: 'ahmet.kaya@shiftup.test',
-      role: 'Kasiyer',
-      role_id: 'role-001',
+        role_id: 'role-001',
       active: true,
       employment_type: 'full_time',
     })
@@ -159,7 +160,7 @@ describe('employeeRepository — createEmployee', () => {
       single: vi.fn().mockResolvedValue({ data: null, error: { message: 'unique ihlali' } }),
     })
     await expect(
-      createEmployee({ full_name: 'X', email: null, role: 'Y', role_id: null, active: true, employment_type: 'full_time' })
+      createEmployee({ full_name: 'X', email: null, role_id: null, active: true, employment_type: 'full_time' })
     ).rejects.toThrow('Çalışan oluşturulamadı')
   })
 })

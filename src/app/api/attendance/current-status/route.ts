@@ -41,7 +41,7 @@ async function getCurrentStatus(req: NextRequest, trace: RequestTrace): Promise<
   const queryEmployeeId = req.nextUrl.searchParams.get('employee_id')
   let employeeId = auth.employee.id
   if (queryEmployeeId && queryEmployeeId !== auth.employee.id) {
-    if (!hasRole(auth.employee.role_name, MANAGER_ROLES)) {
+    if (!hasRole(auth.employee.access_level, MANAGER_ROLES)) {
       return forbidden('Yalnızca kendi durumunuzu görüntüleyebilirsiniz.')
     }
     if (!isUuid(queryEmployeeId)) {

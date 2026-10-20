@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
     const status = req.nextUrl.searchParams.get('status')
     if (status && !VALID_STATUSES.includes(status)) return badRequest('Geçersiz durum filtresi.')
 
-    const isManager = hasRole(currentEmployee.role_name, MANAGER_ROLES)
+    const isManager = hasRole(currentEmployee.access_level, MANAGER_ROLES)
 
     const admin = createAdminClient()
     let query = admin

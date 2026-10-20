@@ -31,8 +31,11 @@ import * as repo from '@/lib/api/employees'
 function makeRole(overrides: Partial<Role> = {}): Role {
   return {
     id: 'role-001',
-    name: 'Çalışan',
+    name: 'Kasiyer',
     description: null,
+    access_level: 'employee',
+    planning_group: null,
+    sort_order: 40,
     created_at: '2026-09-28T00:00:00Z',
     ...overrides,
   }
@@ -43,7 +46,6 @@ function makeEmployee(overrides: Partial<EmployeeWithRole> = {}): EmployeeWithRo
     id: 'emp-001',
     full_name: 'Ahmet Kaya',
     email: null,
-    role: 'Kasiyer',
     role_id: 'role-001',
     active: true,
     employment_type: 'full_time',
@@ -132,13 +134,14 @@ describe('EmployeesPage — yeni çalışan ekleme', () => {
     await userEvent.click(screen.getByRole('button', { name: /yeni çalışan/i }))
 
     await userEvent.type(screen.getByRole('textbox', { name: /ad soyad/i }), 'Yeni Kişi')
-    await userEvent.type(screen.getByRole('textbox', { name: /pozisyon/i }), 'Kasiyer')
+    await userEvent.click(screen.getByRole('combobox', { name: /sistem rolü/i }))
+    await userEvent.click(await screen.findByRole('option', { name: /kasiyer/i }))
 
     await userEvent.click(screen.getByRole('button', { name: /^ekle$/i }))
 
     await waitFor(() => {
       expect(repo.createEmployee).toHaveBeenCalledWith(
-        expect.objectContaining({ full_name: 'Yeni Kişi', role: 'Kasiyer' })
+        expect.objectContaining({ full_name: 'Yeni Kişi', role_id: 'role-001' })
       )
     })
   })

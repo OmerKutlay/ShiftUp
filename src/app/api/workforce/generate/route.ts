@@ -15,7 +15,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
-import { requireMinRole, ROLES } from '@/lib/auth'
+import { requireMinRole, ACCESS } from '@/lib/auth'
 import { turkeyToday, addDaysToDateString, dayOfWeekFromDateString } from '@/lib/dateUtils'
 import { getWeekDays } from '@/lib/scheduleUtils'
 import { isValidDate } from '@/lib/validation'
@@ -25,7 +25,7 @@ import type { PlannerEmployee, PlannerShiftTemplate, ShiftKind } from '@/lib/wor
 import type { DayOfWeek } from '@/types/workforce'
 import { isAutoWeeklyRest } from '@/types/leave'
 import { grossMins } from '@/lib/laborLaw'
-import { NOT_KIOSK_FILTER } from '@/lib/auth/roles'
+import { NOT_KIOSK_FILTER, isPlanningGroup, type PlanningGroup } from '@/lib/auth/roles'
 
 const DOW_MAP: Record<number, DayOfWeek> = {
   0: 'sunday', 1: 'monday', 2: 'tuesday', 3: 'wednesday',
@@ -33,7 +33,7 @@ const DOW_MAP: Record<number, DayOfWeek> = {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
+  const auth = await requireMinRole(req, ACCESS.MANAGER)
   if ('response' in auth) return auth.response
 
   try {
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
     const [empsRes, tmplsRes, availsRes, leavesRes, prevRes, weekRes, holsRes] = await Promise.all([
       admin
         .from('employees')
-        .select('id, full_name, role, employment_type, active, birth_date, roles ( name )')
+        .select('id, full_name, employment_type, active, birth_date, roles ( planning_group )')
         .eq('active', true)
         .or(NOT_KIOSK_FILTER)
         .order('full_name'),
@@ -92,6 +92,15 @@ export async function POST(req: NextRequest) {
       if (r.error) return serverError('POST /api/workforce/generate', r.error)
     }
 
+    const emps = empsRes.data ?? []
+    const planningGroupOf = (e: (typeof emps)[number]): PlanningGroup | null => {
+      const role = Array.isArray(e.roles) ? e.roles[0] : e.roles
+      const g = (role as { planning_group?: unknown } | null)?.planning_group
+      return isPlanningGroup(g) ? g : null
+    }
+    // Rolü planlamaya girmeyen çalışanlar (ör. Admin): elle yazılmış vardiyaları aktarımda silinmesin
+    const unplannedIds = new Set(emps.filter((e) => planningGroupOf(e) === null).map((e) => e.id as string))
+
     // Değiştirilemeyen vardiyalar: giriş/çıkış kaydı olanlar ve bugünden önceki günlerinkiler
     // (gelinmemiş geçmiş vardiya da devamsızlık kaydıdır; yeniden planlanmaz)
     const today = turkeyToday()
@@ -100,14 +109,17 @@ export async function POST(req: NextRequest) {
       .flatMap((s) => {
         const worked = Array.isArray(s.attendance_records) && s.attendance_records.length > 0
         const past = (s.work_date as string) < today
-        if (!worked && !past) return []
+        const unplanned = unplannedIds.has(s.employee_id as string)
+        if (!worked && !past && !unplanned) return []
         return [{
           employee_id:       s.employee_id as string,
           work_date:         s.work_date as string,
           start_time:        s.start_time as string,
           end_time:          s.end_time as string,
           shift_template_id: s.shift_template_id as string | null,
-          reason:            worked ? 'Giriş/çıkış kaydı var — mevcut vardiya korunuyor' : 'Geçmiş gün — mevcut vardiya korunuyor',
+          reason:            worked ? 'Giriş/çıkış kaydı var — mevcut vardiya korunuyor'
+            : past ? 'Geçmiş gün — mevcut vardiya korunuyor'
+            : 'Rolü otomatik plana girmiyor — elle yazılan vardiya korunuyor',
         }]
       })
 
@@ -183,14 +195,11 @@ export async function POST(req: NextRequest) {
       prevDayEnd.set(s.employee_id as string, Math.max(end, prevDayEnd.get(s.employee_id as string) ?? -Infinity))
     }
 
-    const emps = empsRes.data ?? []
     const plannerEmployees: PlannerEmployee[] = emps.map((e) => {
-      const rolesObj = Array.isArray(e.roles) ? e.roles[0] : e.roles
       return {
         id:              e.id as string,
         full_name:       e.full_name as string,
-        position:        e.role as string,
-        role_name:       (rolesObj as { name?: string } | null)?.name ?? 'Çalışan',
+        planning_group:  planningGroupOf(e),
         employment_type: (e.employment_type as 'full_time' | 'part_time') ?? 'full_time',
         availability:    availMap.get(e.id as string) ?? {},
         leaveDays:       leaveMap.get(e.id as string) ?? new Set(),

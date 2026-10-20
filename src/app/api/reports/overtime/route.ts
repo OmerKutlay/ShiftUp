@@ -5,7 +5,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
-import { requireMinRole, ROLES } from '@/lib/auth'
+import { requireMinRole, ACCESS } from '@/lib/auth'
 import { badRequest, serverError } from '@/lib/apiErrors'
 import { overtimeYearRange, summarizeOvertime, type OvertimeShift } from '@/lib/overtime'
 import type { AttendanceTimes } from '@/lib/attendanceDurations'
@@ -14,7 +14,7 @@ import { NOT_KIOSK_FILTER } from '@/lib/auth/roles'
 const PAGE = 1000
 
 export async function GET(req: NextRequest) {
-  const auth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
+  const auth = await requireMinRole(req, ACCESS.MANAGER)
   if ('response' in auth) return auth.response
 
   const year = Number(req.nextUrl.searchParams.get('year'))

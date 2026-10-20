@@ -112,19 +112,19 @@ BEGIN
   FROM employees e LEFT JOIN roles ro ON ro.id = e.role_id
   WHERE e.active
     AND e.role_id IS DISTINCT FROM '00000000-0000-0000-0000-000000000005'::uuid
-    AND COALESCE(ro.name, e.role) <> 'Kiosk'
+    AND COALESCE(ro.access_level, 'employee') <> 'kiosk'
     AND (v_mode = 'full' OR (
-      COALESCE(ro.name, e.role) = 'Yönetici'
+      ro.access_level = 'manager'
       AND NOT EXISTS (SELECT 1 FROM shift_assignments sa JOIN public._dummy_seed ds ON ds.tbl = 'shift_assignments' AND ds.id = sa.id::text
                       WHERE sa.employee_id = e.id)
     ));
   n_emp := COALESCE(array_length(emp_ids, 1), 0);
   IF n_emp < (CASE WHEN v_mode = 'full' THEN 4 ELSE 1 END) THEN RAISE EXCEPTION 'Yeterli çalışan yok (%).', n_emp; END IF;
 
-  SELECT array_agg(e.id ORDER BY CASE COALESCE(ro.name, e.role) WHEN 'Mağaza Müdürü' THEN 1 WHEN 'Yönetici' THEN 2 ELSE 3 END, e.created_at)
+  SELECT array_agg(e.id ORDER BY CASE ro.access_level WHEN 'store_manager' THEN 1 WHEN 'manager' THEN 2 ELSE 3 END, e.created_at)
     INTO mgr_ids
   FROM employees e LEFT JOIN roles ro ON ro.id = e.role_id
-  WHERE e.active AND COALESCE(ro.name, e.role) IN ('Yönetici', 'Mağaza Müdürü', 'Müdür Yardımcısı');
+  WHERE e.active AND ro.access_level IN ('manager', 'store_manager');
   IF mgr_ids IS NULL THEN RAISE EXCEPTION 'Yönetici rolünde çalışan yok.'; END IF;
   reviewer := mgr_ids[1];
 

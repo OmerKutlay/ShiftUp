@@ -25,8 +25,8 @@ export async function fetchDailyShifts(dateStr: string): Promise<DailyShiftEntry
       employees (
         id,
         full_name,
-        role,
         role_id,
+        roles ( name ),
         active,
         created_at,
         updated_at
