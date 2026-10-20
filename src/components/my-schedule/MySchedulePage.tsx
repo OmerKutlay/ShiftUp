@@ -326,10 +326,9 @@ export function MySchedulePage() {
 
   const pct = summary.plannedMins > 0 ? Math.min(100, (summary.workedMins / summary.plannedMins) * 100) : 0
 
-      <PageHeader
-        title="Çalışma Özetim"
-        subtitle={[profile.full_name, profileRoleName].filter(Boolean).join(' · ')}
-      />
+  return (
+    <div className="mx-auto max-w-[900px] p-4 md:p-6">
+      <PageHeader title="Çalışma özetim" subtitle={[profile.full_name, profileRoleName].filter(Boolean).join(' · ')} />
 
       {snapshotMonth && (
         <Alert tone="warning" className="mb-4">

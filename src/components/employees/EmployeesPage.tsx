@@ -158,7 +158,7 @@ export function EmployeesPage() {
           <Input
             type="search"
             aria-label="Çalışan ara"
-            placeholder="İsim veya pozisyon ara…"
+            placeholder="İsim veya rol ara…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
@@ -292,20 +292,15 @@ function EmployeeRow({
   return (
     <SectionRow className={cn('flex-wrap sm:flex-nowrap', !employee.active && 'opacity-60')}>
       <PersonAvatar name={employee.full_name} size={38} />
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Typography fontSize="0.875rem" fontWeight={700} noWrap>{employee.full_name}</Typography>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
-          <Typography fontSize="0.72rem" color="text.secondary" noWrap sx={{ flexShrink: 0 }}>{employee.roles?.name}</Typography>
-          {employee.email && (
-            <Typography fontSize="0.72rem" color="text.disabled" noWrap sx={{ display: { xs: 'none', sm: 'block' } }}>
-              · {employee.email}
-            </Typography>
-          )}
-        </Box>
-      </Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-bold">{employee.full_name}</p>
+        <div className="flex min-w-0 items-center gap-1.5 text-[0.72rem]">
+          <span className="shrink-0 truncate text-ink-secondary">{employee.roles?.name}</span>
+          {employee.email && <span className="hidden truncate text-ink-muted sm:block">· {employee.email}</span>}
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center justify-end gap-1.5">
         {employee.employment_type === 'part_time' && <StatusBadge tone="plum" label="Yarı zamanlı" />}
-
         <EmployeeStatusChip active={employee.active} />
       </div>
       <div className="flex items-center">
