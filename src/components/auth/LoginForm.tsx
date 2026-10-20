@@ -218,7 +218,7 @@ export function LoginForm({ authMode }: Props) {
       className={cn(
         'flex min-h-dvh flex-col items-center justify-center bg-muted/40 p-6 md:p-10',
         // Kabuksuz sayfa: iOS çentik / ana ekran çubuğu için güvenli alan kendi dolgumuzda
-        'pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))]'
+        'pt-[max(1.5rem,var(--app-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))]'
       )}
     >
       <div className="flex w-full max-w-sm flex-col gap-6">

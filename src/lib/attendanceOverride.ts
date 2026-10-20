@@ -17,7 +17,7 @@ export function validateOverrideState(s: OverrideState): string | null {
   const has = (v: string | null) => v !== null && v !== undefined
   switch (s.status) {
     case 'shift_waiting':
-      if (has(s.clock_in_at) || has(s.clock_out_at)) return '"Vardiya Bekleniyor" durumunda giriş/çıkış saati olamaz.'
+      if (has(s.clock_in_at) || has(s.clock_out_at)) return '"Vardiya bekleniyor" durumunda giriş/çıkış saati olamaz.'
       break
     case 'working':
       if (!has(s.clock_in_at)) return '"Çalışıyor" durumu için giriş saati gerekli.'
@@ -33,7 +33,7 @@ export function validateOverrideState(s: OverrideState): string | null {
       if (has(s.clock_out_at)) return 'Bu durumda çıkış saati olamaz.'
       break
     case 'clocked_out':
-      if (!has(s.clock_in_at) || !has(s.clock_out_at)) return '"Çıkış Yaptı" durumu için giriş ve çıkış saati gerekli.'
+      if (!has(s.clock_in_at) || !has(s.clock_out_at)) return '"Çıkış yaptı" durumu için giriş ve çıkış saati gerekli.'
       if (has(s.break_start_at) && !has(s.break_end_at)) return 'Çıkış yapılmış kayıtta açık mola olamaz.'
       break
   }

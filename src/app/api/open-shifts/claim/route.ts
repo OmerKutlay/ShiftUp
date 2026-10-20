@@ -21,6 +21,7 @@ import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/api
 import { isUuid } from '@/lib/validation'
 import { turkeyToday } from '@/lib/dateUtils'
 import type { DayOfWeek } from '@/types/workforce'
+import { matchesRoleNeeded } from '@/lib/openShiftEligibility'
 
 export async function POST(req: NextRequest) {
   const auth = await requireAuth(req)
@@ -44,12 +45,8 @@ export async function POST(req: NextRequest) {
     if (openShift.status !== 'open') return conflict('Bu vardiya artık açık değil.')
     if (openShift.work_date < turkeyToday()) return badRequest('Geçmiş tarihli vardiya üstlenilemez.')
 
-    if (openShift.role_needed) {
-      const needed = String(openShift.role_needed).toLocaleLowerCase('tr-TR').trim()
-      const mine = (currentEmployee.role_name ?? '').toLocaleLowerCase('tr-TR').trim()
-      if (needed && needed !== mine) {
-        return forbidden(`Bu vardiya "${openShift.role_needed}" rolü için açılmış.`)
-      }
+    if (!matchesRoleNeeded(openShift.role_needed, currentEmployee.role_name)) {
+      return forbidden(`Bu vardiya "${openShift.role_needed}" rolü için açılmış.`)
     }
 
     const rules = await checkAssignmentRules(admin, employeeId, openShift)

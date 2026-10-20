@@ -32,6 +32,7 @@ import { EmployeeAttendanceRow } from './EmployeeAttendanceRow'
 import { ShiftTime } from './ShiftTime'
 import { DAY_STATUS, clock, formatDelay, formatDuration, timelineRange, useNow, type DayStatus } from './attendanceTime'
 import { buildDailyRows, rowPoints, type DailyRow } from './dailyRows'
+import { useHydrated } from '@/hooks/useHydrated'
 
 // ─── Durum sekmeleri ─────────────────────────────────────────
 
@@ -58,6 +59,8 @@ function names(rows: DailyRow[]): string {
 
 export function DailyAttendancePage() {
   const today = new Date()
+  // Statik ön render'da bugünün tarihi / selamlama build anında sabitlenmesin
+  const hydrated = useHydrated()
   const now = useNow()
   const { data, error: loadError, isValidating: loading, mutate } = useSWR('attendance:daily', fetchDailyShifts)
   const entries = useMemo<DailyShiftEntry[]>(() => data?.entries ?? [], [data])
@@ -206,7 +209,7 @@ export function DailyAttendancePage() {
         title="Günlük operasyon"
         description={
           <>
-            {formatDayNameTurkish(today)}, {formatDateTurkish(today)}
+            {hydrated ? `${formatDayNameTurkish(today)}, ${formatDateTurkish(today)}` : '\u00a0'}
             {lastRefreshed && (
               <span className="tabular-nums"> · Son güncelleme {lastRefreshed.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</span>
             )}

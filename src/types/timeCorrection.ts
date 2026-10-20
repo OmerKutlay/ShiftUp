@@ -9,7 +9,7 @@ export const TIME_CORRECTION_STATUS_LABELS: Record<TimeCorrectionStatus, string>
   pending:  'Bekliyor',
   approved: 'Onaylandı',
   rejected: 'Reddedildi',
-  direct:   'Yönetici Girişi',
+  direct:   'Yönetici girişi',
 }
 
 /** Durum rozeti tonu (shadcn Badge) */
