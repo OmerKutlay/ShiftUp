@@ -10,7 +10,7 @@ describe('DateField', () => {
     renderWithProviders(<DateField label="Tarih" value="2026-10-16" onChange={onChange} />)
 
     const input = screen.getByLabelText('Tarih')
-    expect(input).toHaveValue('16 Ekim 2026, Cum')
+    expect(input).toHaveValue('16 Eki 2026, Cum')
 
     await userEvent.click(input)
     expect(screen.getByText('Ekim 2026')).toBeInTheDocument()

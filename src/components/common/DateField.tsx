@@ -303,7 +303,7 @@ function PickerField({
   const [open, setOpen] = useState(false)
   const selected = parseValue(value, mode)
   const display = selected
-    ? cap(format(selected, mode === 'date' ? 'd MMMM yyyy, EEE' : 'LLLL yyyy', { locale: tr }))
+    ? cap(format(selected, mode === 'date' ? 'd MMM yyyy, EEE' : 'LLLL yyyy', { locale: tr }))
     : ''
 
   const show = () => { if (!disabled) setOpen(true) }
