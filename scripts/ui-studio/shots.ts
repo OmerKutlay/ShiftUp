@@ -62,8 +62,9 @@ export const SHOTS: Shot[] = [
   { name: 'workforce-swap', path: '/workforce', personas: M, steps: [{ tab: /takas/i }] },
   { name: 'workforce-plan', path: '/workforce', personas: M, steps: [{ tab: /haftalık plan/i }] },
 
-  { name: 'reports-attendance', path: '/reports', personas: M, steps: [{ button: /rapor getir/i }] },
+  { name: 'reports-attendance', path: '/reports', personas: M },
   { name: 'reports-timesheet', path: '/reports', personas: M, steps: [{ tab: /puantaj/i }] },
+  { name: 'reports-timesheet-table', path: '/reports', personas: M, steps: [{ tab: /puantaj/i }, { button: /^tablo$/i }], devices: ['desktop'] },
   { name: 'reports-overtime', path: '/reports', personas: M, steps: [{ tab: /fazla çalışma/i }] },
 
   { name: 'settings-location', path: '/settings', personas: M },
