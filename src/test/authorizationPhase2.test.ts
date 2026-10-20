@@ -6,20 +6,20 @@
  * getCurrentEmployee mock'lanır — DB çağrısı yoktur.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { ROLES, MANAGER_ROLES, hasRole } from '@/lib/auth'
+import { ACCESS, MANAGER_ROLES, hasRole } from '@/lib/auth'
 
 // ─── hasRole — nav visibility ────────────────────────────────
 describe('hasRole — UI visibility', () => {
   it('Müdür Yardımcısı MANAGER_ROLES içinde', () => {
-    expect(hasRole(ROLES.MUDUR_YARDIMCISI, MANAGER_ROLES)).toBe(true)
+    expect(hasRole(ACCESS.MANAGER, MANAGER_ROLES)).toBe(true)
   })
 
   it('Çalışan MANAGER_ROLES içinde değil', () => {
-    expect(hasRole(ROLES.CALISAN, MANAGER_ROLES)).toBe(false)
+    expect(hasRole(ACCESS.EMPLOYEE, MANAGER_ROLES)).toBe(false)
   })
 
   it('Yönetici MANAGER_ROLES içinde', () => {
-    expect(hasRole(ROLES.YONETICI, MANAGER_ROLES)).toBe(true)
+    expect(hasRole(ACCESS.ADMIN, MANAGER_ROLES)).toBe(true)
   })
 })
 
@@ -47,7 +47,7 @@ describe('canAccessEmployee — self vs other', () => {
     vi.doMock('@/lib/auth/session', () => ({
       getCurrentEmployee: vi.fn().mockResolvedValue({
         id: 'emp-001', full_name: 'Test', email: null,
-        role: 'Kasiyer', role_id: null, role_name: ROLES.CALISAN, active: true,
+        role_id: null, access_level: ACCESS.EMPLOYEE, active: true,
       }),
     }))
     const { canAccessEmployee } = await import('@/lib/auth/authorization')
@@ -60,7 +60,7 @@ describe('canAccessEmployee — self vs other', () => {
     vi.doMock('@/lib/auth/session', () => ({
       getCurrentEmployee: vi.fn().mockResolvedValue({
         id: 'emp-001', full_name: 'Test', email: null,
-        role: 'Kasiyer', role_id: null, role_name: ROLES.CALISAN, active: true,
+        role_id: null, access_level: ACCESS.EMPLOYEE, active: true,
       }),
     }))
     const { canAccessEmployee } = await import('@/lib/auth/authorization')
@@ -74,7 +74,7 @@ describe('canAccessEmployee — self vs other', () => {
     vi.doMock('@/lib/auth/session', () => ({
       getCurrentEmployee: vi.fn().mockResolvedValue({
         id: 'emp-003', full_name: 'Müdür', email: null,
-        role: 'Mağaza Müdürü', role_id: null, role_name: ROLES.MAGAZA_MUDURU, active: true,
+        role_id: null, access_level: ACCESS.STORE_MANAGER, active: true,
       }),
     }))
     const { canAccessEmployee } = await import('@/lib/auth/authorization')
@@ -92,12 +92,12 @@ describe('requireMinRole — open shift management', () => {
     vi.doMock('@/lib/auth/session', () => ({
       getCurrentEmployee: vi.fn().mockResolvedValue({
         id: 'emp-001', full_name: 'Test', email: null,
-        role: 'Kasiyer', role_id: null, role_name: ROLES.CALISAN, active: true,
+        role_id: null, access_level: ACCESS.EMPLOYEE, active: true,
       }),
     }))
     const { requireMinRole } = await import('@/lib/auth/authorization')
     const req = { cookies: { get: vi.fn() } } as never
-    const result = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
+    const result = await requireMinRole(req, ACCESS.MANAGER)
     expect('response' in result).toBe(true)
     if ('response' in result) expect(result.response.status).toBe(403)
   })
@@ -106,12 +106,12 @@ describe('requireMinRole — open shift management', () => {
     vi.doMock('@/lib/auth/session', () => ({
       getCurrentEmployee: vi.fn().mockResolvedValue({
         id: 'emp-002', full_name: 'Müdür Yrd', email: null,
-        role: 'Müdür Yardımcısı', role_id: null, role_name: ROLES.MUDUR_YARDIMCISI, active: true,
+        role_id: null, access_level: ACCESS.MANAGER, active: true,
       }),
     }))
     const { requireMinRole } = await import('@/lib/auth/authorization')
     const req = { cookies: { get: vi.fn() } } as never
-    const result = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
+    const result = await requireMinRole(req, ACCESS.MANAGER)
     expect('employee' in result).toBe(true)
   })
 })

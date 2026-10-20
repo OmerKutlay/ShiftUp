@@ -76,14 +76,14 @@ export async function GET(req: NextRequest) {
     if (statusFilter && !VALID_STATUSES.includes(statusFilter)) return badRequest('Geçersiz durum filtresi.')
 
     const admin = createAdminClient()
-    const isManager = hasRole(currentEmployee.role_name, MANAGER_ROLES)
+    const isManager = hasRole(currentEmployee.access_level, MANAGER_ROLES)
 
     let query = admin
       .from('manual_time_correction_requests')
       .select(`
         id, employee_id, date, requested_start_time, requested_end_time, break_minutes,
         reason, status, reviewed_by, reviewed_at, reviewer_note, created_at, updated_at,
-        employee:employees!employee_id ( id, full_name, role ),
+        employee:employees!employee_id ( id, full_name, roles ( name ) ),
         reviewer:employees!reviewed_by ( id, full_name )
       `)
       .order('created_at', { ascending: false })
@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
 
     // ── B) Yönetici doğrudan giriş ──────────────────────────────
     if (body.direct === true) {
-      if (!hasRole(currentEmployee.role_name, MANAGER_ROLES)) {
+      if (!hasRole(currentEmployee.access_level, MANAGER_ROLES)) {
         return forbidden('Doğrudan mesai girişi yalnızca yöneticiler içindir.')
       }
       if (!isUuid(body.employee_id)) return badRequest('Çalışan seçiniz.')

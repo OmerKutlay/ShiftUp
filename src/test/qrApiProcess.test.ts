@@ -24,7 +24,7 @@ vi.mock('@/lib/auth', () => ({
   requireAuth: vi.fn().mockResolvedValue({
     employee: {
       id: 'emp-001', full_name: 'Ahmet Kaya', email: null,
-      role: 'Kasiyer', role_id: null, role_name: 'Çalışan', active: true,
+      role_id: null, access_level: 'employee', active: true,
     },
   }),
 }))

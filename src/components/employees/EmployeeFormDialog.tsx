@@ -1,10 +1,19 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { AlertCircle, Loader2, Mail, RefreshCw, X } from 'lucide-react'
+import {
+  Dialog, DialogTitle, DialogContent, DialogActions,
+  Button, TextField, FormControl, InputLabel, Select, MenuItem,
+  FormControlLabel, FormHelperText, Switch, Stack, CircularProgress, Alert,
+  SelectChangeEvent, InputAdornment, IconButton, Tooltip, Typography, Box,
+  ToggleButton, ToggleButtonGroup,
+} from '@mui/material'
+import AutorenewIcon from '@mui/icons-material/Autorenew'
+import EmailIcon from '@mui/icons-material/Email'
 import type { EmployeeWithRole, Role, CreateEmployeePayload, UpdateEmployeePayload, EmploymentType } from '@/types/employee'
 import { EMPLOYMENT_TYPE_LABELS } from '@/types/employee'
-import { DateField, SegmentedControl } from '@/components/common'
+import { ACCESS, ACCESS_LABELS } from '@/lib/auth/roles'
+import { DateField } from '@/components/common'
 import { format } from 'date-fns'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -29,7 +38,6 @@ interface Props {
 interface FormState {
   full_name: string
   email: string
-  role: string
   role_id: string
   active: boolean
   employment_type: EmploymentType
@@ -41,7 +49,6 @@ interface FormState {
 const EMPTY_FORM: FormState = {
   full_name: '',
   email: '',
-  role: '',
   role_id: '',
   active: true,
   employment_type: 'full_time',
@@ -54,7 +61,6 @@ function toFormState(emp: EmployeeWithRole): FormState {
   return {
     full_name: emp.full_name,
     email: emp.email ?? '',
-    role: emp.role,
     role_id: emp.role_id ?? '',
     active: emp.active,
     employment_type: emp.employment_type ?? 'full_time',
@@ -145,14 +151,20 @@ export function EmployeeFormDialog({ open, onClose, onSave, employee, roles, loa
     setErrors((err) => ({ ...err, email: undefined }))
   }
 
-  const handleRoleChange = (value: string) => {
-    setForm((f) => ({ ...f, role_id: value === NO_ROLE ? '' : value }))
+  // Rol listesi sort_order'a göre; Kiosk cihaz rolü yalnızca çalışan zaten Kiosk ise listelenir
+  const selectableRoles = [...roles]
+    .filter((r) => r.access_level !== ACCESS.KIOSK || r.id === form.role_id)
+    .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name, 'tr'))
+
+  const handleSelectChange = (e: SelectChangeEvent<string>) => {
+    setForm((f) => ({ ...f, role_id: e.target.value }))
+    setErrors((err) => ({ ...err, role_id: undefined }))
   }
 
   function validate(): boolean {
     const next: typeof errors = {}
     if (!form.full_name.trim()) next.full_name = 'Ad Soyad zorunludur.'
-    if (!form.role.trim()) next.role = 'Pozisyon zorunludur.'
+    if (!form.role_id) next.role_id = 'Sistem rolü zorunludur.'
     if (form.email && !isValidEmail(form.email)) next.email = 'Geçerli bir email adresi girin.'
     setErrors(next)
     return Object.keys(next).length === 0
@@ -165,8 +177,7 @@ export function EmployeeFormDialog({ open, onClose, onSave, employee, roles, loa
       const payload = {
         full_name: form.full_name.trim(),
         email: form.email.trim() || null,
-        role: form.role.trim(),
-        role_id: form.role_id || null,
+        role_id: form.role_id,
         active: form.active,
         employment_type: form.employment_type,
         hire_date: form.hire_date || null,
@@ -251,35 +262,26 @@ export function EmployeeFormDialog({ open, onClose, onSave, employee, roles, loa
             </div>
           </Field>
 
-          {/* Pozisyon */}
-          <Field id="emp-role" label="Pozisyon / Unvan" error={errors.role} helper="Görev tanımı (serbest metin)">
-            <Input
-              id="emp-role"
-              placeholder="Kasiyer, Reyon Görevlisi…"
-              value={form.role}
-              onChange={(e) => {
-                setForm((f) => ({ ...f, role: e.target.value }))
-                setErrors((err) => ({ ...err, role: undefined }))
-              }}
-              aria-invalid={!!errors.role || undefined}
-              aria-describedby="emp-role-msg"
-            />
-          </Field>
-
           {/* Sistem Rolü */}
-          <Field id="emp-system-role" label="Sistem rolü">
-            <Select value={form.role_id || NO_ROLE} onValueChange={handleRoleChange}>
-              <SelectTrigger id="emp-system-role" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NO_ROLE}><span className="text-ink-muted">Seçilmedi</span></SelectItem>
-                {roles.map((r) => (
-                  <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
-                ))}
-              </SelectContent>
+          <FormControl fullWidth required error={!!errors.role_id}>
+            <InputLabel id="role-select-label">Sistem Rolü</InputLabel>
+            <Select
+              labelId="role-select-label"
+              value={form.role_id}
+              label="Sistem Rolü"
+              onChange={handleSelectChange}
+            >
+              {selectableRoles.map((r) => (
+                <MenuItem key={r.id} value={r.id}>
+                  {r.name}
+                  <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                    — {ACCESS_LABELS[r.access_level]}
+                  </Typography>
+                </MenuItem>
+              ))}
             </Select>
-          </Field>
+            {errors.role_id && <FormHelperText>{errors.role_id}</FormHelperText>}
+          </FormControl>
 
           {/* Çalışma Tipi */}
           <div className="flex flex-col gap-1.5 sm:col-span-2">

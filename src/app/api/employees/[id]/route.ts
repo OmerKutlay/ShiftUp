@@ -11,7 +11,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
-import { requireMinRole, ROLES, canManageRole, forbidden } from '@/lib/auth'
+import { requireMinRole, ACCESS, accessLevelOf, canManageRole, forbidden } from '@/lib/auth'
 import { updateEmployee } from '@/lib/employeeRepository'
 import { validateEmployeeInput } from '@/lib/employeeValidation'
 import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/apiErrors'
@@ -24,17 +24,16 @@ async function loadTarget(id: string) {
   const admin = createAdminClient()
   const { data, error } = await admin
     .from('employees')
-    .select('id, full_name, email, active, auth_user_id, role_id, roles ( name )')
+    .select('id, full_name, email, active, auth_user_id, role_id, roles ( access_level )')
     .eq('id', id)
     .maybeSingle()
   if (error) throw error
   if (!data) return null
-  const roleName = (data.roles as unknown as { name: string } | null)?.name ?? null
-  return { ...data, role_name: roleName }
+  return { ...data, access_level: accessLevelOf(data.roles) }
 }
 
 export async function PATCH(req: NextRequest, { params }: Ctx) {
-  const auth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
+  const auth = await requireMinRole(req, ACCESS.MANAGER)
   if ('response' in auth) return auth.response
 
   const { id } = await params
@@ -48,10 +47,10 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     if (!target) return notFound('Çalışan bulunamadı.')
 
     const isSelf = id === auth.employee.id
-    if (!isSelf && !canManageRole(auth.employee.role_name, target.role_name)) {
+    if (!isSelf && !canManageRole(auth.employee.access_level, target.access_level)) {
       return forbidden('Bu çalışanı düzenleme yetkiniz yok.')
     }
-    // Kendi hesabında rol/aktiflik/e-posta değiştirilemez (ad/pozisyon serbest)
+    // Kendi hesabında rol/aktiflik/e-posta değiştirilemez (ad serbest)
     const normEmail = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim().toLowerCase() : null)
     if (
       isSelf &&
@@ -68,7 +67,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       delete body.email
     }
 
-    const result = await validateEmployeeInput(body, auth.employee.role_name, true)
+    const result = await validateEmployeeInput(body, auth.employee.access_level, true)
     if ('error' in result) return badRequest(result.error)
     if (Object.keys(result.payload).length === 0) return badRequest('Güncellenecek alan yok.')
 
@@ -113,7 +112,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 
 export async function DELETE(req: NextRequest, { params }: Ctx) {
   // Authorization: en az Mağaza Müdürü yetkisi gerekir
-  const auth = await requireMinRole(req, ROLES.MAGAZA_MUDURU)
+  const auth = await requireMinRole(req, ACCESS.STORE_MANAGER)
   if ('response' in auth) return auth.response
 
   try {
@@ -132,7 +131,7 @@ export async function DELETE(req: NextRequest, { params }: Ctx) {
     const employee = await loadTarget(id)
     if (!employee) return notFound('Çalışan bulunamadı.')
 
-    if (!canManageRole(auth.employee.role_name, employee.role_name)) {
+    if (!canManageRole(auth.employee.access_level, employee.access_level)) {
       return forbidden('Bu çalışanı silme yetkiniz yok.')
     }
 

@@ -34,7 +34,7 @@ export function AppShell({ children }: Props) {
   const [collapsed, setCollapsed] = useState(false)
   const pathname = usePathname()
   const { employee: authEmployee, signOut, status: authStatus } = useAuth()
-  const authRoleName = authEmployee?.roles?.name ?? authEmployee?.role_name ?? null
+  const authRoleName = authEmployee?.roles?.access_level ?? null
 
   // Oturum doğrulanamadıysa (ör. geçici sunucu hatası) kullanıcı içeride sıkışmasın: giriş ekranına çıkış
   // Tam sayfa geçişi: middleware oturumu yeniden değerlendirir (geçerliyse ana sayfaya döner)
@@ -44,22 +44,7 @@ export function AppShell({ children }: Props) {
 
   const narrow = collapsed && !isMobile
   const userName = authStatus === 'authenticated' && authEmployee ? authEmployee.full_name : null
-  const userRole = authEmployee?.roles?.name ?? authEmployee?.role ?? ''
-  // Yan menü alt başlığı: aktif mağazanın adı (yoksa genel etiket)
-  const { data: store } = useSWR(
-    authStatus === 'authenticated' ? '/api/store-location/name' : null,
-    (url: string) => apiFetch<{ name: string | null }>(url),
-    { revalidateOnFocus: false },
-  )
-
-  /** Daraltılmış menüde etiketin yerine ipucu */
-  const withTip = (label: string, node: React.ReactElement) =>
-    narrow ? (
-      <Tooltip>
-        <TooltipTrigger asChild>{node}</TooltipTrigger>
-        <TooltipContent side="right">{label}</TooltipContent>
-      </Tooltip>
-    ) : node
+  const userRole = authEmployee?.roles?.name ?? ''
 
   const drawerContent = (
     <div className="flex h-full flex-col bg-background">

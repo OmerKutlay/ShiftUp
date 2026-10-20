@@ -20,7 +20,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { validateShiftAssignment } from '@/lib/workingTimeService'
-import { hasRole, MANAGER_ROLES } from '@/lib/auth/roles'
+import { hasRole, MANAGER_ROLES, ACCESS } from '@/lib/auth/roles'
 import { TIME_CORRECTION_STATUS_LABELS } from '@/types/timeCorrection'
 import type { WorkingTimeConfig } from '@/lib/workingTimeConfig'
 import type { EmploymentType } from '@/types/employee'
@@ -86,11 +86,11 @@ describe('TC-3: Duplicate check logic', () => {
 // ─────────────────────────────────────────────────────────────
 describe('TC-4: Authorization — requireMinRole(MUDUR_YARDIMCISI)', () => {
   it('Çalışan rolü MANAGER_ROLES içinde değil', () => {
-    expect(hasRole('Çalışan', MANAGER_ROLES)).toBe(false)
+    expect(hasRole(ACCESS.EMPLOYEE, MANAGER_ROLES)).toBe(false)
   })
 
   it('Müdür Yardımcısı MANAGER_ROLES içinde', () => {
-    expect(hasRole('Müdür Yardımcısı', MANAGER_ROLES)).toBe(true)
+    expect(hasRole(ACCESS.MANAGER, MANAGER_ROLES)).toBe(true)
   })
 })
 

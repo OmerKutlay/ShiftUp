@@ -64,7 +64,7 @@ export async function buildTimesheetWorkbook(
     if (r.overtimeWithoutConsent) notes.push('Fazla çalışma onayı yok')
     const line = ws.addRow([
       safeText(r.employee.full_name),
-      safeText(r.employee.role),
+      safeText(r.employee.role_name),
       ...days.map((d) => r.days[d] ?? ''),
       r.workedDays,
       hours(r.workedMins),

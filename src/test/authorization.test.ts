@@ -5,45 +5,45 @@
  * hasRole(), roleAtLeast() saf fonksiyon — doğrudan test edilir.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { hasRole, roleAtLeast, ROLES, MANAGER_ROLES } from '@/lib/auth'
+import { hasRole, roleAtLeast, ACCESS, MANAGER_ROLES, type AccessLevel } from '@/lib/auth'
 
 // ─── roleAtLeast ──────────────────────────────────────────────
 describe('roleAtLeast', () => {
   it('Yönetici tüm rollerin üzerinde', () => {
-    expect(roleAtLeast(ROLES.YONETICI, ROLES.CALISAN)).toBe(true)
-    expect(roleAtLeast(ROLES.YONETICI, ROLES.MUDUR_YARDIMCISI)).toBe(true)
-    expect(roleAtLeast(ROLES.YONETICI, ROLES.MAGAZA_MUDURU)).toBe(true)
-    expect(roleAtLeast(ROLES.YONETICI, ROLES.YONETICI)).toBe(true)
+    expect(roleAtLeast(ACCESS.ADMIN, ACCESS.EMPLOYEE)).toBe(true)
+    expect(roleAtLeast(ACCESS.ADMIN, ACCESS.MANAGER)).toBe(true)
+    expect(roleAtLeast(ACCESS.ADMIN, ACCESS.STORE_MANAGER)).toBe(true)
+    expect(roleAtLeast(ACCESS.ADMIN, ACCESS.ADMIN)).toBe(true)
   })
 
   it('Çalışan yalnızca kendi seviyesinde', () => {
-    expect(roleAtLeast(ROLES.CALISAN, ROLES.CALISAN)).toBe(true)
-    expect(roleAtLeast(ROLES.CALISAN, ROLES.MUDUR_YARDIMCISI)).toBe(false)
-    expect(roleAtLeast(ROLES.CALISAN, ROLES.MAGAZA_MUDURU)).toBe(false)
-    expect(roleAtLeast(ROLES.CALISAN, ROLES.YONETICI)).toBe(false)
+    expect(roleAtLeast(ACCESS.EMPLOYEE, ACCESS.EMPLOYEE)).toBe(true)
+    expect(roleAtLeast(ACCESS.EMPLOYEE, ACCESS.MANAGER)).toBe(false)
+    expect(roleAtLeast(ACCESS.EMPLOYEE, ACCESS.STORE_MANAGER)).toBe(false)
+    expect(roleAtLeast(ACCESS.EMPLOYEE, ACCESS.ADMIN)).toBe(false)
   })
 
   it('Müdür Yardımcısı Çalışan seviyesinin üstünde', () => {
-    expect(roleAtLeast(ROLES.MUDUR_YARDIMCISI, ROLES.CALISAN)).toBe(true)
-    expect(roleAtLeast(ROLES.MUDUR_YARDIMCISI, ROLES.MUDUR_YARDIMCISI)).toBe(true)
-    expect(roleAtLeast(ROLES.MUDUR_YARDIMCISI, ROLES.MAGAZA_MUDURU)).toBe(false)
+    expect(roleAtLeast(ACCESS.MANAGER, ACCESS.EMPLOYEE)).toBe(true)
+    expect(roleAtLeast(ACCESS.MANAGER, ACCESS.MANAGER)).toBe(true)
+    expect(roleAtLeast(ACCESS.MANAGER, ACCESS.STORE_MANAGER)).toBe(false)
   })
 
-  it('Tanımlanmamış rol false döner', () => {
-    expect(roleAtLeast('BilinmeyenRol', ROLES.CALISAN)).toBe(false)
+  it('Tanımlanmamış yetki seviyesi false döner', () => {
+    expect(roleAtLeast('bilinmeyen' as AccessLevel, ACCESS.EMPLOYEE)).toBe(false)
   })
 })
 
 // ─── hasRole ─────────────────────────────────────────────────
 describe('hasRole', () => {
   it('Employee rolü izin listesinde varsa true', () => {
-    expect(hasRole(ROLES.MAGAZA_MUDURU, MANAGER_ROLES)).toBe(true)
-    expect(hasRole(ROLES.YONETICI, MANAGER_ROLES)).toBe(true)
-    expect(hasRole(ROLES.MUDUR_YARDIMCISI, MANAGER_ROLES)).toBe(true)
+    expect(hasRole(ACCESS.STORE_MANAGER, MANAGER_ROLES)).toBe(true)
+    expect(hasRole(ACCESS.ADMIN, MANAGER_ROLES)).toBe(true)
+    expect(hasRole(ACCESS.MANAGER, MANAGER_ROLES)).toBe(true)
   })
 
   it('Çalışan MANAGER_ROLES listesinde değil', () => {
-    expect(hasRole(ROLES.CALISAN, MANAGER_ROLES)).toBe(false)
+    expect(hasRole(ACCESS.EMPLOYEE, MANAGER_ROLES)).toBe(false)
   })
 
   it('null/undefined rol false döner', () => {
@@ -52,7 +52,7 @@ describe('hasRole', () => {
   })
 
   it('Boş izin listesi her zaman false', () => {
-    expect(hasRole(ROLES.YONETICI, [])).toBe(false)
+    expect(hasRole(ACCESS.ADMIN, [])).toBe(false)
   })
 })
 
@@ -85,9 +85,8 @@ describe('requireAuth + requireRole entegrasyon', () => {
         id: 'emp-001',
         full_name: 'Test',
         email: null,
-        role: 'Kasiyer',
         role_id: '00000000-0000-0000-0000-000000000004',
-        role_name: ROLES.CALISAN,
+        access_level: ACCESS.EMPLOYEE,
         active: true,
       }),
     }))
@@ -109,9 +108,8 @@ describe('requireAuth + requireRole entegrasyon', () => {
       id: 'emp-002',
       full_name: 'Müdür',
       email: 'mudur@test.com',
-      role: 'Mağaza Müdürü',
       role_id: '00000000-0000-0000-0000-000000000002',
-      role_name: ROLES.MAGAZA_MUDURU,
+      access_level: ACCESS.STORE_MANAGER,
       active: true,
     }
     vi.doMock('@/lib/auth/session', () => ({

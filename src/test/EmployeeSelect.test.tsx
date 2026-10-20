@@ -5,9 +5,9 @@ import { renderWithProviders } from './helpers/renderWithProviders'
 import { EmployeeSelect } from '@/components/common/EmployeeSelect'
 
 const employees = [
-  { id: '1', full_name: 'Ömer Kutlay', role: 'Kasiyer' },
-  { id: '2', full_name: 'Ayşe Yılmaz', role: 'Garson' },
-  { id: '3', full_name: 'Can Demir', role: 'Aşçı', active: false },
+  { id: '1', full_name: 'Ömer Kutlay', roles: { name: 'Kasiyer' } },
+  { id: '2', full_name: 'Ayşe Yılmaz', roles: { name: 'Garson' } },
+  { id: '3', full_name: 'Can Demir', roles: { name: 'Aşçı' }, active: false },
 ]
 
 describe('EmployeeSelect', () => {
@@ -24,7 +24,7 @@ describe('EmployeeSelect', () => {
     expect(onChange).toHaveBeenCalledWith('1')
   })
 
-  it('pozisyona göre de filtreler ve pasif çalışanı işaretler', async () => {
+  it('rol adına göre de filtreler ve pasif çalışanı işaretler', async () => {
     renderWithProviders(<EmployeeSelect employees={employees} value="" onChange={vi.fn()} label="Çalışan" />)
 
     await userEvent.type(screen.getByLabelText('Çalışan'), 'asci')

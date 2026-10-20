@@ -31,7 +31,7 @@ interface DashboardStats {
 interface RosterEntry {
   employee_id: string
   full_name: string
-  role: string
+  role_name: string
   start_time: string
   end_time: string
   attendance_status: string
@@ -159,13 +159,7 @@ export function DashboardPage() {
                 return (
                   <SectionRow key={entry.employee_id + entry.start_time}>
                     <PersonAvatar name={entry.full_name} size={34} />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-bold">{entry.full_name}</p>
-                      <p className="truncate text-xs text-ink-secondary">{entry.role}</p>
-                    </div>
-                    <span
-                      className="hidden rounded-lg px-2 py-1 text-[0.78rem] font-bold tabular-nums sm:block"
-                      style={{ color: tone.text, backgroundColor: tone.soft }}
+
                     >
                       {entry.start_time.slice(0, 5)} – {entry.end_time.slice(0, 5)}
                     </span>
@@ -181,7 +175,7 @@ export function DashboardPage() {
               <EmptyRow>Onay bekleyen talep yok.</EmptyRow>
             ) : (
               pendingLeaves.map((leave) => {
-                const emp = leave.employees as { full_name: string; role: string } | null
+                const emp = leave.employees as { full_name: string } | null
                 return (
                   <SectionRow key={leave.id} href="/leave">
                     <PersonAvatar name={emp?.full_name ?? '?'} size={34} />

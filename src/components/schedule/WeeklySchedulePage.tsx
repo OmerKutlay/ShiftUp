@@ -20,7 +20,7 @@ import { addWeeks, format, subWeeks } from 'date-fns'
 import { tr } from 'date-fns/locale'
 
 import {
-  getRoleSortOrder, JS_DAY_TO_KEY, EmployeeWeekStats, calcEmployeeStats, getAvailStatus,
+  compareRoles, JS_DAY_TO_KEY, EmployeeWeekStats, calcEmployeeStats, getAvailStatus,
   ROLE_GROUPS, roleGroupOf, fmtHoursTr, type RoleGroupKey,
 } from './scheduleHelpers'
 import { weeklyLimitMins } from './ScheduleCells'
@@ -95,7 +95,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     return m
   }, [assignments])
 
-  // Grid entries — role sıralamasına göre: Yöneticiler → Görsel Uzmanları → Kasiyerler → Satış Danışmanları → Depocular
+  // Grid entries — role sıralamasına göre: Müdür → Müdür yrd. → Reyon sorumlusu → Kasa → Satış → Görsel → Depo
   const scheduleEntries: WeeklyScheduleEntry[] = useMemo(() => {
     const entries = employees.map((emp) => ({
       employee: emp,
@@ -104,9 +104,8 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
       ),
     }))
     entries.sort((a, b) => {
-      const orderA = getRoleSortOrder(a.employee.role ?? '')
-      const orderB = getRoleSortOrder(b.employee.role ?? '')
-      if (orderA !== orderB) return orderA - orderB
+      const byRole = compareRoles(a.employee.roles, b.employee.roles)
+      if (byRole !== 0) return byRole
       // Aynı roldeyse isme göre alfabetik
       return (a.employee.full_name ?? '').localeCompare(b.employee.full_name ?? '', 'tr')
     })
@@ -263,10 +262,10 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
 
   // Rol filtresi (tablo ve gün görünümü)
   const [roleFilter, setRoleFilter] = useState<RoleGroupKey | 'all'>('all')
-  const presentGroups = ROLE_GROUPS.filter((g) => scheduleEntries.some((e) => roleGroupOf(e.employee.role ?? '') === g.key))
+  const presentGroups = ROLE_GROUPS.filter((g) => scheduleEntries.some((e) => roleGroupOf(e.employee.roles) === g.key))
   const visibleEntries = roleFilter === 'all'
     ? scheduleEntries
-    : scheduleEntries.filter((e) => roleGroupOf(e.employee.role ?? '') === roleFilter)
+    : scheduleEntries.filter((e) => roleGroupOf(e.employee.roles) === roleFilter)
 
   // Başlık özeti: kişi, vardiya, saat ve uyarı sayısı
   const summary = useMemo(() => {

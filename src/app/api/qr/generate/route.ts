@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { generateQrToken, QrTokenError } from '@/lib/qrTokenService'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { checkRateLimit } from '@/lib/rateLimiter'
-import { requireMinRole, ROLES } from '@/lib/auth'
+import { requireMinRole, ACCESS } from '@/lib/auth'
 import { readJson, serverError } from '@/lib/apiErrors'
 import { isUuid } from '@/lib/validation'
 import type { GenerateQrRequest } from '@/types/qr'
@@ -23,7 +23,7 @@ const RATE_LIMIT_WINDOW_MS = 60 * 1000
 const MAX_TTL_SECONDS = 60
 
 export async function POST(req: NextRequest) {
-  const auth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
+  const auth = await requireMinRole(req, ACCESS.MANAGER)
   if ('response' in auth) return auth.response
 
   try {

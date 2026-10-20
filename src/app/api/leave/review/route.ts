@@ -11,14 +11,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { createNotification } from '@/lib/notificationRepository'
-import { requireMinRole, ROLES, forbidden } from '@/lib/auth'
+import { requireMinRole, ACCESS, forbidden } from '@/lib/auth'
 import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/apiErrors'
 import { isUuid } from '@/lib/validation'
 import { removePlannedShiftsInRange } from '@/lib/leaveService'
 import { logAudit } from '@/lib/auditLog'
 
 export async function POST(req: NextRequest) {
-  const auth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
+  const auth = await requireMinRole(req, ACCESS.MANAGER)
   if ('response' in auth) return auth.response
 
   try {

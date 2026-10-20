@@ -4,15 +4,15 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
-import { ROLES, roleAtLeast, canManageRole } from '@/lib/auth'
+import { ACCESS, roleAtLeast, canManageRole } from '@/lib/auth'
 import { createFakeDb } from './helpers/fakeSupabase'
 
 const kioskEmployee = {
   id: 'kiosk-001', full_name: 'Giriş Kiosku', email: 'kiosk@example.com',
-  role: 'Kiosk', role_id: '00000000-0000-0000-0000-000000000005', role_name: ROLES.KIOSK, active: true,
+  role_id: '00000000-0000-0000-0000-000000000005', access_level: ACCESS.KIOSK, active: true,
 }
-const worker = { ...kioskEmployee, id: 'emp-001', full_name: 'Ahmet', role: 'Kasiyer', role_name: ROLES.CALISAN }
-const manager = { ...kioskEmployee, id: 'mgr-001', full_name: 'Ayşe', role: 'Müdür Yrd.', role_name: ROLES.MUDUR_YARDIMCISI }
+const worker = { ...kioskEmployee, id: 'emp-001', full_name: 'Ahmet', access_level: ACCESS.EMPLOYEE }
+const manager = { ...kioskEmployee, id: 'mgr-001', full_name: 'Ayşe', access_level: ACCESS.MANAGER }
 
 function mockSession(employee: unknown) {
   vi.doMock('@/lib/auth/session', () => ({ getCurrentEmployee: vi.fn().mockResolvedValue(employee) }))
@@ -22,13 +22,13 @@ const req = () => new NextRequest('http://localhost/api/kiosk/qr')
 
 describe('Kiosk rolü — hiyerarşi', () => {
   it('Kiosk hiçbir yönetici/çalışan seviyesini karşılamaz', () => {
-    expect(roleAtLeast(ROLES.KIOSK, ROLES.CALISAN)).toBe(false)
-    expect(roleAtLeast(ROLES.KIOSK, ROLES.MUDUR_YARDIMCISI)).toBe(false)
+    expect(roleAtLeast(ACCESS.KIOSK, ACCESS.EMPLOYEE)).toBe(false)
+    expect(roleAtLeast(ACCESS.KIOSK, ACCESS.MANAGER)).toBe(false)
   })
 
   it('Müdür Yardımcısı kiosk hesabını yönetebilir, kiosk kimseyi yönetemez', () => {
-    expect(canManageRole(ROLES.MUDUR_YARDIMCISI, ROLES.KIOSK)).toBe(true)
-    expect(canManageRole(ROLES.KIOSK, ROLES.CALISAN)).toBe(false)
+    expect(canManageRole(ACCESS.MANAGER, ACCESS.KIOSK)).toBe(true)
+    expect(canManageRole(ACCESS.KIOSK, ACCESS.EMPLOYEE)).toBe(false)
   })
 })
 
@@ -52,7 +52,7 @@ describe('requireAuth — kiosk hesabı', () => {
   it('requireMinRole kiosk\'u reddeder', async () => {
     mockSession(kioskEmployee)
     const { requireMinRole } = await import('@/lib/auth/authorization')
-    const result = await requireMinRole(req(), ROLES.CALISAN)
+    const result = await requireMinRole(req(), ACCESS.EMPLOYEE)
     expect('response' in result && result.response.status).toBe(403)
   })
 })

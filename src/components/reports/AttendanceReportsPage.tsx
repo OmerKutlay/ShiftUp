@@ -271,7 +271,7 @@ export function AttendanceReportsPage({ embedded = false }: { embedded?: boolean
     if (employeesLoaded) return
     try {
       const emps = await fetchEmployees()
-      setEmployees(emps.filter((e) => !isKioskRole(e.roles?.name)))
+      setEmployees(emps.filter((e) => !isKioskRole(e.roles?.access_level)))
       setEmployeesLoaded(true)
     } catch {
       // non-critical

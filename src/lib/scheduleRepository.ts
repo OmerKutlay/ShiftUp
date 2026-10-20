@@ -14,7 +14,7 @@ export { getWeekRange, getWeekDays, timesOverlap, shiftAbsoluteRange }
 const ASSIGNMENT_DETAIL_SELECT = `
   id, employee_id, shift_template_id, work_date, start_time, end_time, is_on_leave, created_at, updated_at,
   shift_templates ( id, name, start_time, end_time, description, active, created_at, updated_at ),
-  employees ( id, full_name, role, role_id, active, employment_type, created_at, updated_at, roles ( id, name, description, created_at ) )
+  employees ( id, full_name, role_id, active, employment_type, created_at, updated_at, roles ( id, name, description, access_level, planning_group, sort_order, created_at ) )
 `
 
 // ============================================================
