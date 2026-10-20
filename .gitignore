@@ -68,3 +68,6 @@ __test_*.json
 .push-keys.local
 push-setup.local.sql
 .claude/worktrees/
+
+# UI stüdyosu ekran görüntüleri
+scripts/ui-studio/out/

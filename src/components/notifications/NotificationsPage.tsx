@@ -93,7 +93,7 @@ export function NotificationsPage() {
     <div className="mx-auto w-full max-w-[720px] p-4 md:p-6">
       <PageHeader
         title="Bildirimler"
-        titleAdornment={unreadCount > 0 && <Badge tone="solid">{unreadCount} okunmamış</Badge>}
+        titleAdornment={unreadCount > 0 && <Badge>{unreadCount} okunmamış</Badge>}
         subtitle={
           authEmployee && (
             <span className="inline-flex items-center gap-1">

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from './helpers/renderWithProviders'
 import type { EmployeeWithRole, Role } from '@/types/employee'
@@ -159,7 +159,7 @@ describe('EmployeesPage — düzenleme', () => {
     await waitFor(() => screen.getByText('Ahmet Kaya'))
 
     const editBtn = screen.getByRole('button', { name: /düzenle/i })
-    await userEvent.click(editBtn)
+    fireEvent.click(editBtn)
 
     expect(screen.getByText('Çalışanı Düzenle')).toBeInTheDocument()
     // Mevcut veriler form'a yüklenmiş olmalı

@@ -7,7 +7,7 @@
  * yalnızca bu iki çağrıyı yanıtlar:
  *
  *   GET /auth/v1/user        Bearer e2e-<persona> → sabit kullanıcı
- *   GET /rest/v1/employees   auth_user_id=eq.<id> → { active, roles: { name } }
+ *   GET /rest/v1/employees   auth_user_id=eq.<id> → { active, roles: { access_level } }
  *
  * Diğer her şey 404 döner. Sayfaların /api/* verisi tarayıcıda route() ile taklit edilir.
  * Persona listesi e2e/support/fixtures.ts ile aynı olmalıdır.
@@ -17,8 +17,8 @@ import http from 'node:http'
 const port = Number(process.env.FAKE_SUPABASE_PORT ?? 54329)
 
 const PERSONAS = {
-  employee: { userId: '00000000-0000-4000-8000-0000000000e1', role: 'Çalışan' },
-  manager: { userId: '00000000-0000-4000-8000-0000000000e2', role: 'Mağaza Müdürü' },
+  employee: { userId: '00000000-0000-4000-8000-0000000000e1', accessLevel: 'employee' },
+  manager: { userId: '00000000-0000-4000-8000-0000000000e2', accessLevel: 'store_manager' },
 }
 
 function send(res, status, body) {
@@ -53,7 +53,7 @@ const server = http.createServer((req, res) => {
   if (req.method === 'GET' && url.pathname === '/rest/v1/employees') {
     const authUserId = (url.searchParams.get('auth_user_id') ?? '').replace(/^eq\./, '')
     const persona = Object.values(PERSONAS).find((p) => p.userId === authUserId)
-    const rows = persona ? [{ active: true, roles: { name: persona.role } }] : []
+    const rows = persona ? [{ active: true, roles: { access_level: persona.accessLevel } }] : []
     // maybeSingle() → Accept: application/vnd.pgrst.object+json
     if ((req.headers.accept ?? '').includes('vnd.pgrst.object')) {
       return rows[0] ? send(res, 200, rows[0]) : send(res, 406, { code: 'PGRST116', message: 'no rows' })

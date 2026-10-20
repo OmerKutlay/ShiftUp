@@ -1,10 +1,11 @@
 import type { Metadata, Viewport } from 'next'
-import { Figtree } from 'next/font/google'
+import { Geist, Geist_Mono } from 'next/font/google'
 import { Providers } from './providers'
 import './globals.css'
 
 // latin-ext: Türkçe karakterler (ı, ş, ğ, İ) fallback fonta düşmesin
-const figtree = Figtree({ subsets: ['latin', 'latin-ext'], display: 'swap', variable: '--font-figtree' })
+const geistSans = Geist({ subsets: ['latin', 'latin-ext'], display: 'swap', variable: '--font-geist-sans' })
+const geistMono = Geist_Mono({ subsets: ['latin', 'latin-ext'], display: 'swap', variable: '--font-geist-mono' })
 
 export const metadata: Metadata = {
   title: { default: 'ShiftUp — Mağaza Vardiya Yönetimi', template: '%s — ShiftUp' },
@@ -32,21 +33,15 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
-  themeColor: '#F5EFE6', // palette C.canvas
+  // Üst bar zemini (bg-background) ile aynı: opak durum çubuğu sayfayla bütün görünsün
+  themeColor: '#FFFFFF',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="tr">
-      {/* paddingTop/Bottom: iOS notch + home-indicator için safe-area inset */}
-      <body
-        className={`${figtree.className} ${figtree.variable}`}
-        style={{
-          margin: 0,
-          paddingTop: 'env(safe-area-inset-top)',
-          paddingBottom: 'env(safe-area-inset-bottom)',
-        }}
-      >
+      {/* Safe-area boşlukları kabukta: üst bar ve alt bar kendi zeminleriyle doldurur */}
+      <body className={`${geistSans.variable} ${geistMono.variable} font-sans`}>
         {/* Service Worker kaydı ve güncelleme uyarısı: PwaLayer → ServiceWorkerUpdater */}
         <Providers>{children}</Providers>
       </body>

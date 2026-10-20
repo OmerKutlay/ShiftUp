@@ -61,7 +61,7 @@ export function NotificationPanel({
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-bold">Bildirimler</h2>
           {unreadCount > 0 && (
-            <Badge tone="solid" className="h-[18px] min-w-[18px] rounded-full px-1.5 text-[0.68rem]">
+            <Badge className="h-5 min-w-5 rounded-full px-1.5 tabular-nums">
               {unreadCount}
             </Badge>
           )}

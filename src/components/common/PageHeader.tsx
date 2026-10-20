@@ -1,39 +1,43 @@
-'use client'
-
 /**
- * PageHeader — Tüm sayfalarda ortak başlık yapısı.
- *
- *   üst satır (ör. "Günaydın, Mehmet")
- *   Başlık                                   [aksiyonlar]
- *   alt başlık
- *   meta (ör. son güncelleme)
+ * PageHeader — sayfa başlığı: başlık + açıklama solda, eylemler sağda (DESIGN_GUIDE §4).
+ * Mobilde eylemler başlığın altına iner.
  */
+import { cn } from '@/lib/utils'
+
 interface PageHeaderProps {
-  /** Başlığın üstündeki küçük, soluk satır */
-  overline?: React.ReactNode
   title: React.ReactNode
+  /** Başlığın altındaki kısa açıklama */
+  description?: React.ReactNode
+  /** @deprecated description kullanın */
   subtitle?: React.ReactNode
-  /** Alt başlığın altındaki küçük, soluk satır */
-  meta?: React.ReactNode
-  /** Sağ üstte gösterilecek buton(lar) */
+  /** Başlığın üstünde küçük satır (yalnızca Bugün/Genel bakış selamlaması) */
+  overline?: React.ReactNode
+  /** Sağdaki düğmeler (birincil eylem varsayılan Button, diğerleri outline) */
   actions?: React.ReactNode
-  /** Başlığın yanında gösterilecek rozet vb. */
+  /** Başlığın yanında rozet vb. */
   titleAdornment?: React.ReactNode
+  /** Açıklamanın altında küçük bilgi satırı (ör. son güncelleme) */
+  meta?: React.ReactNode
+  className?: string
 }
 
-export function PageHeader({ overline, title, subtitle, meta, actions, titleAdornment }: PageHeaderProps) {
+export function PageHeader({
+  title, description, subtitle, overline, actions, titleAdornment, meta, className,
+}: PageHeaderProps) {
+  const desc = description ?? subtitle
   return (
-    <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
-      <div className="min-w-0">
-        {overline && <p className="mb-0.5 text-xs font-medium text-ink-secondary">{overline}</p>}
+    <header data-slot="page-header" className={cn('mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between md:mb-6', className)}>
+      <div className="min-w-0 space-y-1">
+        {overline && <p className="text-sm text-muted-foreground">{overline}</p>}
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-[1.6rem] font-bold leading-tight tracking-tight md:text-[1.85rem]">{title}</h1>
+          {/* Mobilde başlık üst barda görünür; burada yalnızca ekran okuyucular için */}
+          <h1 className="text-2xl font-semibold tracking-tight max-md:sr-only">{title}</h1>
           {titleAdornment}
         </div>
-        {subtitle && <div className="mt-1 text-sm text-ink-secondary">{subtitle}</div>}
-        {meta && <p className="mt-0.5 text-xs text-ink-muted">{meta}</p>}
+        {desc && <div className="text-sm text-muted-foreground">{desc}</div>}
+        {meta && <p className="text-xs text-muted-foreground">{meta}</p>}
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-2 self-start">{actions}</div>}
+      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </header>
   )
 }
