@@ -31,6 +31,9 @@ export interface NavItem {
   group: NavGroup
   /** Bu nav item yalnızca belirtilen rollere gösterilir. Undefined = herkese. */
   requiredRoles?: AccessLevel[]
+  /** Yönetici olmayanlara farklı ad / grup (aynı sayfanın çalışan görünümü) */
+  employeeLabel?: string
+  employeeGroup?: NavGroup
 }
 
 /** Masaüstü yan menüdeki öğeler (sıra = menü sırası) */
@@ -46,7 +49,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'Açık vardiyalar',    href: '/open-shifts',     icon: <BriefcaseBusiness />,          group: 'planlama' },
   { label: 'İzinler',            href: '/leave',           icon: <Plane />,   group: 'devam' },
   { label: 'Mesai düzeltme',     href: '/time-correction', icon: <FilePenLine />,      group: 'devam' },
-  { label: 'İş gücü',            href: '/workforce',       icon: <UsersRound />,        group: 'yonetim',   requiredRoles: MANAGER_ROLES },
+  { label: 'İş gücü',            href: '/workforce',       icon: <UsersRound />,        group: 'yonetim',   employeeLabel: 'Müsaitlik ve takas', employeeGroup: 'planlama' },
   { label: 'Raporlar',           href: '/reports',         icon: <ChartColumnBig />,      group: 'yonetim',   requiredRoles: MANAGER_ROLES },
   { label: 'Ayarlar',            href: '/settings',        icon: <Settings />,      group: 'yonetim',   requiredRoles: ADMIN_ROLES },
 ]
@@ -70,9 +73,16 @@ export function isManagerRole(accessLevel: AccessLevel | null | undefined): bool
   return hasRole(accessLevel, MANAGER_ROLES)
 }
 
-/** Rolün görebileceği öğeler */
+/** Rolün görebileceği öğeler (yönetici olmayanlara çalışan adı / grubu ile) */
 export function filterNavItems(items: NavItem[], accessLevel: AccessLevel | null | undefined): NavItem[] {
-  return items.filter((item) => !item.requiredRoles || hasRole(accessLevel, item.requiredRoles))
+  const manager = isManagerRole(accessLevel)
+  return items
+    .filter((item) => !item.requiredRoles || hasRole(accessLevel, item.requiredRoles))
+    .map((item) => (manager ? item : {
+      ...item,
+      label: item.employeeLabel ?? item.label,
+      group: item.employeeGroup ?? item.group,
+    }))
 }
 
 /** href pathname için aktif mi? '/' yalnızca birebir eşleşir, diğerleri önek (alt sayfalar dahil). */
@@ -129,8 +139,14 @@ export function groupNavItems(items: NavItem[]): Array<{ group: NavGroup; label:
 }
 
 /** Üst çubuk / breadcrumb için sayfa başlığı ve grup adı (en uzun eşleşen öğe) */
-export function pageMetaFor(pathname: string): { title: string; group: string | null } {
-  const items = [...NAV_ITEMS, NOTIFICATIONS_ITEM]
+export function pageMetaFor(
+  pathname: string,
+  accessLevel?: AccessLevel | null,
+): { title: string; group: string | null } {
+  // Rol bilinmiyorsa (oturum yükleniyor) yönetici adları kullanılır
+  const items = accessLevel === undefined
+    ? [...NAV_ITEMS, NOTIFICATIONS_ITEM]
+    : filterNavItems([...NAV_ITEMS, NOTIFICATIONS_ITEM], accessLevel)
   const match = items
     .filter((i) => isNavActive(pathname, i.href))
     .sort((a, b) => b.href.length - a.href.length)[0]

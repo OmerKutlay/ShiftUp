@@ -1,6 +1,8 @@
 'use client'
 /**
  * WorkforcePage — İş gücü: Müsaitlik, Açık vardiyalar, Vardiya takası, Haftalık plan (manager+).
+ * Çalışan aynı sayfayı "Müsaitlik ve takas" olarak görür: kendi müsaitliği, kendi takas talepleri ve
+ * açık vardiyalar; Haftalık plan sekmesi görünmez. Yetkiler API'lerde uygulanır.
  *
  * Sekme sayaçları panellerle aynı SWR anahtarlarını kullanır (istek bir kez atılır):
  *   Müsaitlik   kaydı olan çalışan sayısı (çalışan için kendi kayıt sayısı)
@@ -30,6 +32,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useLoadedKey } from '@/hooks/useLoadedKey'
 
 type WorkforceTab = 'availability' | 'open-shifts' | 'swap' | 'plan'
+
+/** Telefonda kısa, geniş ekranda uzun sekme adı; erişilebilir ad her zaman uzun ad */
+function TabLabel({ short, long }: { short: string; long: string }) {
+  return (
+    <>
+      <span className="sm:hidden" aria-hidden>{short}</span>
+      <span className="max-sm:hidden">{long}</span>
+    </>
+  )
+}
 
 function Count({ n }: { n: number | undefined }) {
   if (!n) return null
@@ -86,8 +98,10 @@ export function WorkforcePage() {
   return (
     <Page>
       <PageHeader
-        title="İş gücü"
-        description="Müsaitlik, açık vardiyalar, vardiya takasları ve haftalık plan"
+        title={isManager ? 'İş gücü' : 'Müsaitlik ve takas'}
+        description={isManager
+          ? 'Müsaitlik, açık vardiyalar, vardiya takasları ve haftalık plan'
+          : 'Çalışamayacağınız saatleri bildirin, vardiya takası isteyin veya açık vardiyaları üstlenin'}
       />
 
       {error && (
@@ -103,15 +117,17 @@ export function WorkforcePage() {
           <TabsTrigger value="availability" className="flex-none">
             <CalendarClock />Müsaitlik<Count n={availabilityCount} />
           </TabsTrigger>
-          <TabsTrigger value="open-shifts" className="flex-none">
-            <BriefcaseBusiness />Açık vardiyalar<Count n={openCount} />
+          <TabsTrigger value="open-shifts" className="flex-none" aria-label="Açık vardiyalar">
+            <BriefcaseBusiness /><TabLabel short="Açık" long="Açık vardiyalar" /><Count n={openCount} />
           </TabsTrigger>
-          <TabsTrigger value="swap" className="flex-none">
-            <ArrowLeftRight />Vardiya takası<Count n={swapActionCount} />
+          <TabsTrigger value="swap" className="flex-none" aria-label="Vardiya takası">
+            <ArrowLeftRight /><TabLabel short="Takas" long="Vardiya takası" /><Count n={swapActionCount} />
           </TabsTrigger>
           {/* Haftalık planlama yalnızca manager+ için görünür */}
           {isManager && (
-            <TabsTrigger value="plan" className="flex-none"><CalendarRange />Haftalık plan</TabsTrigger>
+            <TabsTrigger value="plan" className="flex-none" aria-label="Haftalık plan">
+              <CalendarRange /><TabLabel short="Plan" long="Haftalık plan" />
+            </TabsTrigger>
           )}
         </TabsList>
 

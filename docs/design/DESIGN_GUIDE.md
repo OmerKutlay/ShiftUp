@@ -71,6 +71,22 @@ Grafik serileri: `chart-1` marka, `chart-2` yeşil-mavi, `chart-3` mavi, `chart-
 - İçerik alt boşluğu = alt bar yüksekliği + safe-area.
 - Alt bardaki sekmeler role göre `navItems.getBottomTabs`'tan gelir; diğer sayfalar
   "Daha fazla" sayfasında `Item` listesi olarak gruplanır.
+- **iOS 26 ana ekran uygulaması (PWA) notları:**
+  - Durum çubuğu rengi sayfanın en üstündeki *opak, tam genişlikte, `position: fixed`* öğeden
+    örneklenir; uygun öğe yoksa iOS üst kenara kendi bulanıklığını çizer. Üst bar bu yüzden
+    sabit ve opaktır; `theme-color` üst bar zeminiyle aynıdır (`#FFFFFF`).
+  - `apple-mobile-web-app-status-bar-style` **`default`** kalır (`black-translucent` iOS 26'da
+    kaldırılamayan koyu bir perde çizer). Bu ayar kurulum anında okunur: değişirse uygulama
+    ana ekrandan silinip yeniden eklenmelidir.
+  - Görünüm alanı durum çubuğu kadar kısa hesaplanabildiği için (WebKit 301108)
+    `globals.css`'te standalone için `html { min-height: … }` düzeltmesi vardır; silmeyin.
+  - iOS 26+ üst kenara ~40pt'lik bir bulanıklık geçişi (scroll edge effect) çizer; sayfanın bunu
+    kapatabileceği bir ayar yoktur. Bu yüzden ekranın üstünden konumlanan her şey
+    `env(safe-area-inset-top)` yerine **`var(--app-top)`** kullanır: iOS 26+ ana ekran uygulamasında
+    bu değer bandı (`--edge-ramp`) içerir ve bant üst barın düz zeminiyle dolar. Stüdyoda
+    `STUDIO_EDGE_RAMP=2.5rem` ile görülebilir.
+  - `body`'de safe-area boşluğu yoktur: kabuk dışı sayfalar (giriş, kiosk) kendi
+    `var(--app-top)` / `env(safe-area-inset-*)` boşluklarını verir.
 
 ## 4. Sayfa iskeleti
 
@@ -134,6 +150,11 @@ shadcn `Alert`: kenarlıklı kart, ikon tonlu. `variant="destructive"` hata; bil
 shadcn **Empty**: `EmptyMedia variant="icon"`, `EmptyTitle`, `EmptyDescription`, gerekirse
 `EmptyContent` içinde birincil eylem. Kart içindeyse kenarlıksız.
 
+### Diyaloglar
+Masaüstünde ortalanmış `Dialog`; 600px altında aynı `Dialog` otomatik olarak alttan açılan sayfa
+(bottom sheet) olur — ayrı bir bileşen gerekmez. Uzun formlarda gövde kayar, `DialogFooter`
+altta kalır. Yıkıcı onaylar `AlertDialog` (ortalı) kalır.
+
 ### Formlar
 shadcn **Field**: `FieldGroup` > `Field` > `FieldLabel` + kontrol + `FieldDescription` /
 `FieldError`. İki sütunlu formlar `grid gap-4 sm:grid-cols-2`. Oluştur/düzenle **Dialog**
@@ -161,12 +182,19 @@ içinde `aspect-auto h-[250px]`. Renkler yalnızca `--chart-*`.
 - Boş değer `—`.
 - Düğme metni fiil: "Kaydet", "Onayla", "Dışa aktar".
 
+### Zamana bağlı metin
+Sayfalar statik olarak önceden render edilir: "şu an"a bağlı metinler (selamlama, bugünün
+tarihi, geri sayım) `useHydrated()` true olana kadar gösterilmez; aksi halde build anındaki
+değer sabitlenir ve hidrasyon uyuşmazlığı oluşur.
+
 ## 7. Erişilebilirlik
 
 - Her ikon-düğmede `aria-label` (veya `sr-only` metin).
 - Odak halkası shadcn varsayılanı (`ring-[3px] ring-ring/50`), kaldırılmaz.
 - Renk tek başına anlam taşımaz: durum rozetlerinde metin her zaman var.
 - Mobil dokunma hedefleri ≥ 44px.
+- Telefonda metin girişleri en az 16px (`text-base md:text-sm`); daha küçükse iOS odaklanınca
+  sayfayı yakınlaştırır.
 
 ## 8. Yeni sayfa kontrol listesi
 

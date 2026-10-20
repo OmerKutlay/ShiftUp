@@ -33,6 +33,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { ShiftTime } from '@/components/daily-attendance/ShiftTime'
 import { clock, formatDelay, lateMinutes, shiftWindow, turkeyDate, useNow } from '@/components/daily-attendance/attendanceTime'
 import { StaffingChart } from './StaffingChart'
+import { useHydrated } from '@/hooks/useHydrated'
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -186,6 +187,8 @@ function PendingLeavesCard({ leaves, total }: { leaves: PendingLeave[]; total: n
 
 export function DashboardPage() {
   const today = new Date()
+  // Statik ön render'da bugünün tarihi / selamlama build anında sabitlenmesin
+  const hydrated = useHydrated()
   const now = useNow()
   const { employee } = useAuth()
 
@@ -282,11 +285,11 @@ export function DashboardPage() {
   return (
     <Page>
       <PageHeader
-        overline={greeting}
+        overline={hydrated ? greeting : '\u00a0'}
         title="Genel bakış"
         description={
           <>
-            {formatDayNameTurkish(today)}, {formatDateTurkish(today)}
+            {hydrated ? `${formatDayNameTurkish(today)}, ${formatDateTurkish(today)}` : '\u00a0'}
             {lastRefreshed && (
               <span className="tabular-nums"> · Son güncelleme {lastRefreshed.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</span>
             )}
