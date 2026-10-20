@@ -1,23 +1,27 @@
 'use client'
 
 /**
- * AttendanceScanPage — Devam Takibi
+ * AttendanceScanPage — QR tara (devam takibi).
  *
  * İki aşamalı akış:
- *   1. Amaç Seçimi: Çalışanın mevcut durumuna göre uygun aksiyon butonları gösterilir.
+ *   1. Amaç seçimi: çalışanın mevcut durumuna göre uygun işlem düğmeleri gösterilir.
  *      Kullanıcı hangi amaçla QR okutacağını seçer.
- *   2. QR Tarama: Kiosk ekranındaki QR kodu okutulur. Seçilen amaç ile doğrulama yapılır.
+ *   2. QR tarama: kiosk ekranındaki QR kodu okutulur. Seçilen amaç ile doğrulama yapılır.
+ *
+ * Görünüm (telefon öncelikli, ekranı dolduran tek sütun): üstte kişi + durum kartı, ortada büyük
+ * saat ve bugünkü vardiya, altta (başparmak bölgesinde) büyük işlem düğmeleri. Tarama, konum,
+ * kayıt, sonuç ve hata aşamaları aynı yerde tek bir kartta gösterilir.
  *
  * Kurallar:
- *   - Molada iken "Çıkış Yap" seçeneği gösterilmez.
+ *   - Molada iken "Çıkış yap" seçeneği gösterilmez.
  *   - QR onaylandıktan sonra sonuç gösterilir, ardından amaç seçimine geri dönülür.
- *   - Çevrimdışıyken hiçbir işlem başlatılamaz: butonlar kapalı, kamera açılmaz. Devam kaydı
+ *   - Çevrimdışıyken hiçbir işlem başlatılamaz: düğmeler kapalı, kamera açılmaz. Devam kaydı
  *     yalnızca sunucuda (QR + konum) doğrulanır; istemcide kuyruğa alınmaz.
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import {
-  AlertCircle, CheckCircle2, ChevronLeft, Clock, Loader2, LocateFixed, MapPin, MapPinOff, RefreshCw, ScanLine, WifiOff,
+  CalendarOff, CircleAlert, CircleCheck, Clock, LocateFixed, MapPin, MapPinOff, RefreshCw, ScanLine, WifiOff, X,
 } from 'lucide-react'
 import type { QrActionType } from '@/types/qr'
 import { QR_ACTION_LABELS } from '@/types/qr'
@@ -26,10 +30,13 @@ import type { GpsCoordinates } from '@/types/location'
 import { useAuth } from '@/context/AuthContext'
 import { LOADING_LABEL } from '@/components/common/Skeletons'
 import { PersonAvatar } from '@/components/common/PersonAvatar'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
+import { StatusBadge } from '@/components/common/Cards'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Spinner } from '@/components/ui/spinner'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { cn } from '@/lib/utils'
 
@@ -37,7 +44,8 @@ import {
   CurrentStatusResponse, PageState, ATTENDANCE_STATUS_TR, STATUS_TONES, getButtons, getCurrentPosition,
   LocationError, PermissionHelp,
 } from './scanPageHelpers'
-import type { ActionButton, LocationErrorKind } from './scanPageHelpers'
+import type { LocationErrorKind } from './scanPageHelpers'
+import { useClock } from './useClock'
 
 // html5-qrcode yalnızca tarayıcıda çalışır; ssr:false ile sunucu paketine (Cloudflare Worker 3 MB sınırı) girmez
 const QrScanner = dynamic(() => import('./QrScanner').then((m) => m.QrScanner), { ssr: false })
@@ -45,34 +53,40 @@ const QrScanner = dynamic(() => import('./QrScanner').then((m) => m.QrScanner), 
 const OFFLINE_ACTION_MSG = 'İnternet bağlantısı yok. Giriş, çıkış ve mola kayıtları yalnızca çevrimiçiyken yapılabilir.'
 const NETWORK_ERROR_MSG = 'Sunucuya bağlanılamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.'
 
-/** Çevrimdışı uyarısı — işlem butonlarının yerine / üstünde gösterilir */
+/** Çevrimdışı uyarısı — işlem düğmelerinin yerine / üstünde gösterilir */
 function OfflineActionAlert() {
   return (
     <Alert tone="warning">
       <WifiOff />
-      <AlertDescription className="text-ink">{OFFLINE_ACTION_MSG}</AlertDescription>
+      <AlertTitle>Çevrimdışı</AlertTitle>
+      <AlertDescription>{OFFLINE_ACTION_MSG}</AlertDescription>
     </Alert>
   )
 }
 
-/** Aksiyon tonuna göre ikon zemini / rengi */
-const ACTION_TONE: Record<ActionButton['tone'], string> = {
-  brand: 'bg-brand-soft text-brand',
-  warning: 'bg-warning-soft text-warning',
-  danger: 'bg-danger-soft text-danger',
-}
+/**
+ * Sayfa gövdesi: mobilde üst ve alt bar arasını, masaüstünde başlık altını doldurur; işlem düğmeleri
+ * alta (başparmak bölgesine) iner.
+ */
+const SHELL = cn(
+  'mx-auto flex w-full max-w-md flex-col gap-4 p-4 md:py-6',
+  'min-h-[calc(100dvh-7rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] md:min-h-[calc(100dvh-4rem)]'
+)
 
-/** Durum ekranlarındaki büyük yuvarlak ikon */
-function StateIcon({ className, children }: { className: string; children: React.ReactNode }) {
+/** Aşama kartı (tarama dışındaki durumlar): kart içinde shadcn Empty */
+function StateCard({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <span className={cn('flex size-20 items-center justify-center rounded-full [&_svg]:size-9', className)}>{children}</span>
+    <Card className={cn('py-0 shadow-xs', className)}>
+      <Empty className="gap-5 p-6 md:p-8">{children}</Empty>
+    </Card>
   )
 }
 
-// ─── Ana Component ────────────────────────────────────────────
+// ─── Ana bileşen ─────────────────────────────────────────────
 
 export function AttendanceScanPage() {
   const { employee, status: authStatus } = useAuth()
+  const clock = useClock()
 
   const [pageState, setPageState] = useState<PageState>('loading_status')
   const [statusData, setStatusData] = useState<CurrentStatusResponse | null>(null)
@@ -87,7 +101,7 @@ export function AttendanceScanPage() {
 
   // ── Mevcut durumu çek ───────────────────────────────────────
   // silent: durum zaten yüklüyken (keep-alive ile sayfaya geri dönüş) skeleton göstermeden tazele.
-  // İşlem sonrası / tekrar dene çağrıları silent değildir — eski butonlarla yanlış işlem yapılmasın.
+  // İşlem sonrası / tekrar dene çağrıları silent değildir — eski düğmelerle yanlış işlem yapılmasın.
   const fetchCurrentStatus = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     if (silent) setPageState('select_action')
     else setPageState('loading_status')
@@ -139,7 +153,7 @@ export function AttendanceScanPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [online])
 
-  // ── Amaç seçildi → scanner ekranına geç ─────────────────────
+  // ── Amaç seçildi → tarayıcı ekranına geç ────────────────────
   const handleSelectAction = (action: QrActionType) => {
     if (!navigator.onLine) return
     setSelectedAction(action)
@@ -209,7 +223,7 @@ export function AttendanceScanPage() {
     [pageState, selectedAction, fetchCurrentStatus]
   )
 
-  // ── Geri — scanner'dan amaç seçimine dön ────────────────────
+  // ── Geri — tarayıcıdan amaç seçimine dön ────────────────────
   const handleBackToSelect = () => {
     setScannerActive(false)
     setSelectedAction(null)
@@ -227,7 +241,7 @@ export function AttendanceScanPage() {
     setResult(null)
     setLocationStatus(null)
     if (selectedAction) {
-      // Amaç zaten seçiliyse scanner'a geri dön
+      // Amaç zaten seçiliyse tarayıcıya geri dön
       setScannerActive(true)
       setPageState('scanning')
     } else {
@@ -235,15 +249,18 @@ export function AttendanceScanPage() {
     }
   }
 
-  // ─── Auth guard ──────────────────────────────────────────────
+  // ─── Oturum ──────────────────────────────────────────────────
   if (authStatus === 'loading') {
     return (
-      <div className="flex justify-center p-4 md:p-8">
-        <div role="status" aria-busy="true" aria-label={LOADING_LABEL} className="flex w-full max-w-md flex-col gap-3">
-          <Skeleton className="h-7 w-48" />
-          <Skeleton className="h-24 w-full rounded-2xl" />
-          <Skeleton className="h-20 w-full rounded-2xl" />
-          <Skeleton className="h-20 w-full rounded-2xl" />
+      <div className={SHELL}>
+        <div role="status" aria-busy="true" aria-label={LOADING_LABEL} className="flex flex-1 flex-col gap-4">
+          <Skeleton className="h-20 w-full rounded-xl" />
+          <div className="flex flex-1 flex-col items-center justify-center gap-2">
+            <Skeleton className="h-12 w-32" />
+            <Skeleton className="h-4 w-40" />
+          </div>
+          <Skeleton className="h-20 w-full rounded-xl" />
+          <Skeleton className="h-20 w-full rounded-xl" />
         </div>
       </div>
     )
@@ -251,12 +268,13 @@ export function AttendanceScanPage() {
 
   if (authStatus === 'unauthenticated' || !employee) {
     return (
-      <div className="mx-auto w-full max-w-md p-4 md:p-8">
+      <div className="mx-auto w-full max-w-md p-4 md:py-6">
         {/* Çevrimdışı açılışta oturum doğrulanamaz; bağlantı gelince oturum yeniden sorgulanır */}
         {!online ? <OfflineActionAlert /> : (
           <Alert tone="warning">
-            <AlertCircle />
-            <AlertDescription className="text-ink">Devam takibi için sisteme giriş yapmanız gerekiyor.</AlertDescription>
+            <CircleAlert />
+            <AlertTitle>Giriş gerekli</AlertTitle>
+            <AlertDescription>Devam takibi için sisteme giriş yapmanız gerekiyor.</AlertDescription>
           </Alert>
         )}
       </div>
@@ -269,6 +287,8 @@ export function AttendanceScanPage() {
   const statusLabel = ATTENDANCE_STATUS_TR[currentStatus ?? ''] ?? '—'
   const buttons = getButtons(currentStatus)
   const hasShift = statusData?.has_shift ?? false
+  // Birincil (dolu) düğme: sunucunun önerdiği işlem, yoksa ilk seçenek
+  const primaryAction = buttons.find((b) => b.action === statusData?.suggested_action)?.action ?? buttons[0]?.action
 
   const isLocationError =
     !!locationErrorKind ||
@@ -282,202 +302,249 @@ export function AttendanceScanPage() {
     (!locationErrorKind && isLocationError && !!errorMsg && errorMsg.toLowerCase().includes('izin'))
   const isLocationRetryable = locationErrorKind === 'timeout' || locationErrorKind === 'unavailable'
 
-  // ─── Render ──────────────────────────────────────────────────
   const scanning = pageState === 'scanning'
+  const shiftText = hasShift && statusData?.shift_start
+    ? `${statusData.shift_start.slice(0, 5)}–${statusData.shift_end?.slice(0, 5) ?? ''}`
+    : null
+
+  // ─── Render ──────────────────────────────────────────────────
   return (
-    <div className="mx-auto flex w-full max-w-md flex-col gap-4 p-4 md:py-8">
-      {/* Başlık */}
-      <header className="flex items-center gap-2">
-        {scanning && (
-          <Button variant="ghost" size="icon-sm" onClick={handleBackToSelect} aria-label="Geri" className="-ml-2">
-            <ChevronLeft className="size-5" />
-          </Button>
-        )}
-        <div className="min-w-0">
-          <p className="text-xs font-medium text-ink-secondary">{scanning ? 'Kiosk ekranındaki kodu okutun' : 'QR tara'}</p>
-          <h1 className="text-[1.6rem] font-bold leading-tight tracking-tight md:text-[1.85rem]">
-            {scanning ? 'QR kodu okutun' : 'Devam takibi'}
-          </h1>
-        </div>
+    <div className={SHELL}>
+      {/* Mobilde başlık üst barda; burada yalnızca ekran okuyucular için */}
+      <header className="max-md:sr-only">
+        <h1 className="text-2xl font-semibold tracking-tight">{scanning ? 'QR kodu okutun' : 'QR tara'}</h1>
+        <p className="text-sm text-muted-foreground">Kiosk ekranındaki kodu okutarak giriş, mola ve çıkış yapın</p>
       </header>
 
       {/* Kişi + mevcut durum */}
-      <section className="flex items-center gap-3 rounded-2xl border bg-card p-3.5">
-        <PersonAvatar name={employee.full_name} size={44} />
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-bold">{employee.full_name}</p>
-          <p className="flex items-center gap-1 truncate text-xs text-ink-secondary">
-            {hasShift && statusData?.shift_start ? (
-              <>
-                <Clock className="size-3.5" />
-                Vardiya {statusData.shift_start.slice(0, 5)} – {statusData.shift_end?.slice(0, 5)}
-              </>
-            ) : (
-              employee.roles?.name
-            )}
-          </p>
+      <Card className="gap-0 py-0 shadow-xs">
+        <div className="flex items-center gap-3 p-4">
+          <PersonAvatar name={employee.full_name} size={40} />
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-medium">{employee.full_name}</p>
+            <p className="truncate text-sm text-muted-foreground">{employee.roles?.name ?? 'Çalışan'}</p>
+          </div>
+          {currentStatus && pageState !== 'loading_status' && <StatusBadge tone={statusTone} label={statusLabel} />}
         </div>
-        {currentStatus && !scanning && <Badge tone={statusTone}>{statusLabel}</Badge>}
-      </section>
+      </Card>
 
       {/* ── DURUM YÜKLENİYOR ── */}
       {pageState === 'loading_status' && (
-        <div role="status" aria-busy="true" aria-label={LOADING_LABEL} className="flex flex-col gap-3">
-          <Skeleton className="h-4 w-40" />
-          <Skeleton className="h-20 w-full rounded-2xl" />
-          <Skeleton className="h-20 w-full rounded-2xl" />
+        <div role="status" aria-busy="true" aria-label={LOADING_LABEL} className="flex flex-1 flex-col gap-4">
+          <div className="flex flex-1 flex-col items-center justify-center gap-2">
+            <Skeleton className="h-12 w-32" />
+            <Skeleton className="h-4 w-40" />
+          </div>
+          <Skeleton className="h-20 w-full rounded-xl" />
+          <Skeleton className="h-20 w-full rounded-xl" />
         </div>
       )}
 
       {/* ── AMAÇ SEÇİMİ ── */}
       {pageState === 'select_action' && (
-        <section className="flex flex-col gap-3">
-          {!online && hasShift && buttons.length > 0 && <OfflineActionAlert />}
+        <>
+          {/* Saat ve bugünkü vardiya */}
+          <section aria-label="Şu an" className="flex flex-1 flex-col items-center justify-center gap-1 py-6 text-center">
+            <p className="text-5xl font-semibold tracking-tight tabular-nums" suppressHydrationWarning>
+              {clock?.time ?? '—'}
+            </p>
+            <p className="text-sm text-muted-foreground first-letter:uppercase">{clock?.date ?? ''}</p>
+            {shiftText && (
+              <p className="mt-3 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm tabular-nums">
+                <Clock className="size-3.5 text-muted-foreground" aria-hidden />
+                Vardiya {shiftText}
+              </p>
+            )}
+          </section>
 
           {!hasShift && (
-            <Alert tone="info">
-              <AlertCircle />
-              <AlertDescription className="text-ink">Bugün için tanımlı vardiya yok.</AlertDescription>
-            </Alert>
+            <StateCard>
+              <EmptyHeader>
+                <EmptyMedia variant="icon"><CalendarOff /></EmptyMedia>
+                <EmptyTitle>Bugün vardiyanız yok</EmptyTitle>
+                <EmptyDescription>Bugün için tanımlı vardiya yok. Plan değiştiyse yöneticinize danışın.</EmptyDescription>
+              </EmptyHeader>
+            </StateCard>
           )}
 
           {hasShift && currentStatus === 'clocked_out' && (
-            <div className="flex flex-col items-center gap-2 rounded-2xl border bg-card px-6 py-8 text-center">
-              <StateIcon className="bg-plum-soft text-plum"><CheckCircle2 /></StateIcon>
-              <p className="mt-1 font-bold">Vardiya tamamlandı</p>
-              <p className="text-sm text-ink-secondary">Bugünkü vardiyanız başarıyla tamamlandı. İyi çalışmalar!</p>
-            </div>
-          )}
-
-          {hasShift && currentStatus === 'on_break' && (
-            <Alert tone="warning">
-              <Clock />
-              <AlertDescription className="text-ink">Molada iken çıkış yapılamaz. Önce moladan dönün.</AlertDescription>
-            </Alert>
+            <StateCard>
+              <EmptyHeader>
+                <EmptyMedia variant="icon" className="bg-success/10 text-success"><CircleCheck /></EmptyMedia>
+                <EmptyTitle>Vardiya tamamlandı</EmptyTitle>
+                <EmptyDescription>Bugünkü vardiyanız başarıyla tamamlandı. İyi dinlenmeler!</EmptyDescription>
+              </EmptyHeader>
+            </StateCard>
           )}
 
           {hasShift && buttons.length > 0 && (
-            <>
-              <p className="px-1 pt-1 text-sm font-semibold text-ink-secondary">Ne yapmak istiyorsunuz?</p>
+            <section aria-labelledby="scan-actions-title" className="flex flex-col gap-3">
+              <h2 id="scan-actions-title" className="text-sm font-medium text-muted-foreground">Ne yapmak istiyorsunuz?</h2>
+
+              {!online && <OfflineActionAlert />}
+              {currentStatus === 'on_break' && (
+                <Alert>
+                  <Clock />
+                  <AlertDescription>Molada iken çıkış yapılamaz. Önce moladan dönün.</AlertDescription>
+                </Alert>
+              )}
+
               {buttons.map((btn) => {
                 const Icon = btn.icon
+                const primary = btn.action === primaryAction
                 return (
-                  <button
+                  <Button
                     key={btn.action}
                     type="button"
+                    variant={primary ? 'default' : 'outline'}
                     disabled={!online}
                     onClick={() => handleSelectAction(btn.action)}
-                    className="group flex w-full items-center gap-4 rounded-2xl border bg-card p-4 text-left transition-[border-color,box-shadow] outline-none hover:border-sand focus-visible:ring-[3px] focus-visible:ring-ring/50 active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+                    className="h-auto w-full justify-start gap-4 rounded-xl px-4 py-4 text-left whitespace-normal has-[>svg]:px-4"
                   >
-                    <span className={cn('flex size-12 shrink-0 items-center justify-center rounded-xl', ACTION_TONE[btn.tone])}>
-                      <Icon className="size-6" />
+                    <span
+                      aria-hidden
+                      className={cn(
+                        'flex size-10 shrink-0 items-center justify-center rounded-lg [&_svg]:size-5',
+                        primary ? 'bg-primary-foreground/15' : 'border bg-muted'
+                      )}
+                    >
+                      <Icon />
                     </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block font-bold">{btn.label}</span>
-                      <span className="block text-sm text-ink-secondary">{btn.description}</span>
+                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <span className="text-base font-semibold">{btn.label}</span>
+                      <span className={cn('text-sm font-normal', primary ? 'text-primary-foreground/80' : 'text-muted-foreground')}>
+                        {btn.description}
+                      </span>
                     </span>
-                    <ScanLine className="size-5 text-ink-muted transition-colors group-hover:text-primary" />
-                  </button>
+                    <ScanLine aria-hidden className={cn('size-5', primary ? 'opacity-80' : 'text-muted-foreground')} />
+                  </Button>
                 )
               })}
-            </>
+
+              <p className="flex items-center justify-center gap-1.5 pt-1 text-xs text-muted-foreground">
+                <MapPin className="size-3.5" aria-hidden />
+                QR okutulduktan sonra konumunuz doğrulanır
+              </p>
+            </section>
           )}
-        </section>
+        </>
       )}
 
       {/* ── QR TARAYICI ── */}
       {scanning && (
-        <section className="flex flex-col items-center gap-4 rounded-2xl border bg-card p-4">
-          {selectedAction && <Badge tone="brand" className="h-7 px-3 text-sm">{QR_ACTION_LABELS[selectedAction]}</Badge>}
+        <Card className="gap-4 py-4 shadow-xs">
+          <CardHeader className="px-4">
+            <CardTitle>{selectedAction ? QR_ACTION_LABELS[selectedAction] : 'QR tara'}</CardTitle>
+            <CardDescription>Kiosk ekranındaki QR kodu çerçeveye hizalayın</CardDescription>
+            <CardAction>
+              <Button variant="ghost" size="icon-sm" onClick={handleBackToSelect} aria-label="Geri" className="text-muted-foreground">
+                <X />
+              </Button>
+            </CardAction>
+          </CardHeader>
+          <CardContent className="flex flex-col items-center gap-4 px-4">
+            {/* Çevrimdışıyken kamera hiç açılmaz; bağlantı gelince tarayıcı kendiliğinden başlar */}
+            {online ? (
+              <QrScanner onScan={(data) => void handleScan(data)} onError={(e) => setErrorMsg(e)} active={scannerActive} />
+            ) : (
+              <OfflineActionAlert />
+            )}
 
-          {/* Çevrimdışıyken kamera hiç açılmaz; bağlantı gelince tarayıcı kendiliğinden başlar */}
-          {online ? (
-            <QrScanner onScan={(data) => void handleScan(data)} onError={(e) => setErrorMsg(e)} active={scannerActive} />
-          ) : (
-            <OfflineActionAlert />
-          )}
+            {online && errorMsg && (
+              <Alert variant="destructive">
+                <CircleAlert />
+                <AlertDescription>{errorMsg}</AlertDescription>
+              </Alert>
+            )}
 
-          {online && errorMsg && (
-            <Alert tone="danger">
-              <AlertCircle />
-              <AlertDescription className="text-ink">{errorMsg}</AlertDescription>
-            </Alert>
-          )}
-
-          <p className="flex items-center gap-1.5 text-xs text-ink-secondary">
-            <MapPin className="size-3.5 text-primary" />
-            QR tarandıktan sonra konum doğrulaması yapılır
-          </p>
-          <Button variant="ghost" size="sm" onClick={handleBackToSelect} className="text-ink-secondary">
-            <ChevronLeft /> Amacı değiştir
-          </Button>
-        </section>
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <MapPin className="size-3.5" aria-hidden />
+              QR tarandıktan sonra konum doğrulaması yapılır
+            </p>
+            <Button variant="outline" onClick={handleBackToSelect} className="w-full">
+              Amacı değiştir
+            </Button>
+          </CardContent>
+        </Card>
       )}
 
       {/* ── GPS ALINIYOR ── */}
       {pageState === 'getting_location' && (
-        <section className="flex flex-col items-center gap-2 rounded-2xl border bg-card px-6 py-8 text-center">
-          <StateIcon className="relative bg-brand-soft text-primary">
-            <LocateFixed />
-            <Loader2 aria-hidden className="absolute inset-0 !size-20 animate-spin text-primary/40" strokeWidth={1} />
-          </StateIcon>
-          <p className="mt-2 font-bold">Konum alınıyor</p>
-          <p className="text-sm text-ink-secondary">{locationStatus ?? 'Lütfen bekleyin…'}</p>
-          <p className="mt-2 rounded-xl bg-muted px-3 py-2 text-xs text-ink-secondary">
-            Konum izni penceresi açılırsa <strong className="text-ink">“İzin Ver”</strong> seçin
-          </p>
-        </section>
+        <StateCard className="my-auto">
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><LocateFixed /></EmptyMedia>
+            <EmptyTitle className="flex items-center gap-2"><Spinner />Konum alınıyor</EmptyTitle>
+            <EmptyDescription>{locationStatus ?? 'Lütfen bekleyin…'}</EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <p className="text-xs text-muted-foreground">
+              Konum izni penceresi açılırsa <strong className="font-medium text-foreground">“İzin Ver”</strong> seçin
+            </p>
+          </EmptyContent>
+        </StateCard>
       )}
 
       {/* ── İŞLENİYOR ── */}
       {pageState === 'processing' && (
-        <section className="flex flex-col items-center gap-3 rounded-2xl border bg-card px-6 py-10">
-          <Loader2 className="size-10 animate-spin text-primary" />
-          <p className="font-semibold">Kaydediliyor…</p>
-        </section>
+        <StateCard className="my-auto">
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><Spinner className="size-6" /></EmptyMedia>
+            <EmptyTitle>Kaydediliyor…</EmptyTitle>
+            <EmptyDescription>QR kodu ve konumunuz doğrulanıyor.</EmptyDescription>
+          </EmptyHeader>
+        </StateCard>
       )}
 
       {/* ── BAŞARILI ── */}
       {pageState === 'success' && result && (
-        <section className="flex flex-col items-center gap-2 rounded-2xl border bg-card px-6 py-8 text-center">
-          <StateIcon className="bg-success-soft text-success"><CheckCircle2 /></StateIcon>
-          <p className="mt-2 text-lg font-bold text-success">{result.message}</p>
-          <Badge tone={STATUS_TONES[result.new_status] ?? 'neutral'} className="h-7 px-3 text-sm">
-            {ATTENDANCE_STATUS_TR[result.new_status] ?? result.new_status}
-          </Badge>
-          <p className="flex items-center gap-1 text-xs text-ink-secondary">
-            <MapPin className="size-3.5 text-success" />
-            {QR_ACTION_LABELS[result.action_type]} — {result.timestamp}
-          </p>
-        </section>
+        <StateCard className="my-auto">
+          <EmptyHeader>
+            <EmptyMedia variant="icon" className="size-14 rounded-full bg-success/10 text-success [&_svg:not([class*='size-'])]:size-7">
+              <CircleCheck />
+            </EmptyMedia>
+            <EmptyTitle>{result.message}</EmptyTitle>
+            <EmptyDescription className="flex items-center justify-center gap-1.5">
+              <MapPin className="size-3.5" aria-hidden />
+              {QR_ACTION_LABELS[result.action_type]} — {result.timestamp}
+            </EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <StatusBadge
+              tone={STATUS_TONES[result.new_status] ?? 'neutral'}
+              label={ATTENDANCE_STATUS_TR[result.new_status] ?? result.new_status}
+            />
+          </EmptyContent>
+        </StateCard>
       )}
 
       {/* ── HATA ── */}
       {pageState === 'error' && (
-        <section className="flex flex-col items-center gap-3 rounded-2xl border bg-card px-5 py-7 text-center">
-          <StateIcon className="bg-danger-soft text-danger">{isLocationError ? <MapPinOff /> : <AlertCircle />}</StateIcon>
-          <p className="whitespace-pre-line font-bold text-danger">{errorMsg ?? 'İşlem başarısız.'}</p>
-
-          {showLocationPermissionHelp && <PermissionHelp kind="location" />}
-
-          {isLocationRetryable && (
-            <p className="text-xs text-ink-secondary">
-              Konum servislerinin açık olduğundan emin olun; açık alanda veya pencere kenarında tekrar deneyin.
-              QR kodunu yeniden okutmanız gerekir.
-            </p>
-          )}
-
-          {!online && <OfflineActionAlert />}
-
-          <div className="flex flex-wrap justify-center gap-2 pt-1">
-            <Button onClick={handleRetry} disabled={!online}>
-              <RefreshCw /> {isLocationError ? 'Tekrar Tara' : 'Tekrar Dene'}
-            </Button>
-            <Button variant="ghost" onClick={handleBackToSelect} className="text-ink-secondary">
-              <ChevronLeft /> Geri
-            </Button>
-          </div>
-        </section>
+        <StateCard className="my-auto">
+          <EmptyHeader>
+            <EmptyMedia variant="icon" className="bg-destructive/10 text-destructive">
+              {isLocationError ? <MapPinOff /> : <CircleAlert />}
+            </EmptyMedia>
+            <EmptyTitle className="whitespace-pre-line">{errorMsg ?? 'İşlem başarısız.'}</EmptyTitle>
+            {isLocationRetryable && (
+              <EmptyDescription>
+                Konum servislerinin açık olduğundan emin olun; açık alanda veya pencere kenarında tekrar deneyin.
+                QR kodunu yeniden okutmanız gerekir.
+              </EmptyDescription>
+            )}
+          </EmptyHeader>
+          <EmptyContent className="max-w-md gap-3">
+            {showLocationPermissionHelp && <PermissionHelp kind="location" />}
+            {!online && <OfflineActionAlert />}
+            <div className="grid w-full grid-cols-2 gap-2">
+              <Button variant="outline" onClick={handleBackToSelect}>
+                Geri
+              </Button>
+              <Button onClick={handleRetry} disabled={!online}>
+                <RefreshCw /> {isLocationError ? 'Tekrar tara' : 'Tekrar dene'}
+              </Button>
+            </div>
+          </EmptyContent>
+        </StateCard>
       )}
     </div>
   )

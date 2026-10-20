@@ -12,15 +12,23 @@
  * - Sayfa görünürken ekran kilidi (Screen Wake Lock) istenir; destek yoksa sessizce atlanır.
  *   "Tam ekran" butonu yalnızca Fullscreen API destekleniyorsa ve zaten tam ekran / kurulu
  *   uygulama değilse görünür.
+ *
+ * Görünüm: kabuksuz tam ekran (güvenli alan dolgusu kendinde). Üstte marka + mağaza adı ve eylemler;
+ * geniş ekranda solda canlı saat ve adımlar, sağda büyük QR kartı (bağlantı durumu rozetiyle);
+ * telefonda alt alta.
  */
 import { useState, useEffect, useRef, useSyncExternalStore } from 'react'
 import { useRouter } from 'next/navigation'
-import { AlertCircle, LayoutDashboard, Loader2, LogOut, Maximize, WifiOff } from 'lucide-react'
+import useSWR from 'swr'
+import { CircleAlert, LayoutDashboard, LogOut, Maximize, WifiOff } from 'lucide-react'
 import { QrCodeDisplay } from './QrCodeDisplay'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { useClock } from './useClock'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Progress } from '@/components/ui/progress'
+import { Card, CardContent, CardFooter } from '@/components/ui/card'
+import { Spinner } from '@/components/ui/spinner'
+import { apiFetch } from '@/lib/api/http'
 import { BrandMark } from '@/components/common/BrandMark'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
@@ -130,6 +138,11 @@ export function QrKioskPage() {
 
   useScreenWakeLock()
   const canEnterFullscreen = useCanEnterFullscreen()
+  const clock = useClock()
+  // Üst çubuktaki mağaza adı (yan menüyle aynı uç ve önbellek anahtarı)
+  const { data: store } = useSWR('/api/store-location/name', (url: string) => apiFetch<{ name: string | null }>(url), {
+    revalidateOnFocus: false,
+  })
 
   useEffect(() => {
     const supabase = getSupabaseBrowserClient()
@@ -208,92 +221,135 @@ export function QrKioskPage() {
     }
   }, [router])
 
+  const linkBadge = link === 'live' ? (
+    <Badge tone="success">Canlı</Badge>
+  ) : link === 'connecting' ? (
+    <Badge variant="outline">
+      <Spinner className="size-3" aria-hidden />
+      Bağlanıyor…
+    </Badge>
+  ) : (
+    <Badge variant="outline" className="text-destructive">
+      <WifiOff aria-hidden />
+      Bağlantı yok — yeniden deneniyor
+    </Badge>
+  )
+
   return (
-    <div className="relative flex min-h-dvh flex-col items-center justify-center bg-background px-4 py-16 text-ink md:p-8">
-      <div className="absolute top-3 right-3 flex gap-1">
-        {canEnterFullscreen && (
-          <Button variant="ghost" size="sm" onClick={enterFullscreen} className="text-ink-secondary">
-            <Maximize />
-            Tam ekran
-          </Button>
-        )}
-        {!isKiosk && (
-          <Button variant="ghost" size="sm" onClick={() => router.push('/')} className="text-ink-secondary">
-            <LayoutDashboard />
-            Panele dön
-          </Button>
-        )}
-        <Button variant="ghost" size="sm" onClick={() => void signOut()} className="text-ink-secondary">
-          <LogOut />
-          Çıkış
-        </Button>
-      </div>
-
-      <main className="flex w-full max-w-[420px] flex-col items-center gap-6 rounded-3xl border bg-card px-6 py-8 shadow-[0_1px_2px_rgb(43_33_27/0.04)] md:px-10 md:py-10">
-        <header className="flex flex-col items-center gap-3 text-center">
-          <div className="flex items-center gap-2">
-            <BrandMark size={28} />
-            <span className="text-sm font-bold text-ink">ShiftUp</span>
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Devam takibi</h1>
-            <p className="mt-1 text-sm text-ink-secondary">Telefonunuzda ShiftUp → QR Tara ile okutun</p>
-          </div>
-        </header>
-
-        {error && (
-          <Alert tone="danger">
-            <AlertCircle />
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-
-        {/* key: kod her değiştiğinde kutu kısa bir belirme animasyonuyla yeniden çizilir */}
-        <div
-          key={changeCount}
-          className={cn(
-            'flex w-full max-w-[280px] justify-center transition-opacity',
-            link === 'offline' && 'opacity-35',
-            changeCount > 0 && 'animate-in fade-in zoom-in-95 duration-300'
-          )}
-        >
-          <QrCodeDisplay data={qrData ?? ''} size={280} loading={!qrData} />
+    <div
+      className={cn(
+        'flex min-h-dvh flex-col bg-muted/40',
+        // Kabuksuz tam ekran: iOS çentik / ana ekran çubuğu için güvenli alan kendi dolgumuzda
+        'pt-[max(1rem,env(safe-area-inset-top))] pr-[max(1rem,env(safe-area-inset-right))] pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))]',
+        'md:pt-[max(1.5rem,env(safe-area-inset-top))] md:pr-[max(2rem,env(safe-area-inset-right))] md:pb-[max(1.5rem,env(safe-area-inset-bottom))] md:pl-[max(2rem,env(safe-area-inset-left))]'
+      )}
+    >
+      {/* Üst çubuk: marka + mağaza, sağda eylemler */}
+      <header className="flex items-center gap-3">
+        <BrandMark size={36} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-semibold leading-tight">ShiftUp</p>
+          <p className="truncate text-sm text-muted-foreground">{store?.name ?? 'QR kiosk'}</p>
         </div>
-
-        <div className="flex w-full max-w-[280px] flex-col items-center gap-3">
-          {/* İnce bağlantı çubuğu: canlıyken dolu, bağlanırken nabız, koptuğunda soluk kırmızı */}
-          <Progress
-            aria-label="Bağlantı durumu"
-            value={link === 'connecting' ? 40 : 100}
-            className={cn('h-1', link === 'connecting' && 'animate-pulse')}
-            indicatorClassName={cn(
-              link === 'live' && 'bg-success-fill',
-              link === 'connecting' && 'bg-ink-muted/40',
-              link === 'offline' && 'bg-danger/25'
-            )}
-          />
-          {link === 'live' ? (
-            <Badge tone="success">
-              <span className="size-1.5 rounded-full bg-success" aria-hidden />
-              Canlı
-            </Badge>
-          ) : link === 'connecting' ? (
-            <Badge tone="neutral">
-              <Loader2 className="animate-spin" aria-hidden />
-              Bağlanıyor…
-            </Badge>
-          ) : (
-            <Badge tone="danger">
-              <WifiOff aria-hidden />
-              Bağlantı yok — yeniden deneniyor
-            </Badge>
+        <div className="flex items-center gap-1 sm:gap-2">
+          {canEnterFullscreen && (
+            <Button variant="ghost" size="sm" onClick={enterFullscreen} aria-label="Tam ekran">
+              <Maximize />
+              <span className="max-sm:sr-only">Tam ekran</span>
+            </Button>
           )}
+          {!isKiosk && (
+            <Button variant="ghost" size="sm" onClick={() => router.push('/')} aria-label="Panele dön">
+              <LayoutDashboard />
+              <span className="max-sm:sr-only">Panele dön</span>
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={() => void signOut()} aria-label="Çıkış">
+            <LogOut />
+            <span className="max-sm:sr-only">Çıkış</span>
+          </Button>
         </div>
+      </header>
 
-        <p className="max-w-[280px] text-center text-xs leading-relaxed text-ink-muted">
-          Kod tek kullanımlıktır; biri okutup onaylandığında otomatik olarak yenisi gelir.
-          Okutmak için ShiftUp&apos;a giriş yapmış olmanız gerekir.
-        </p>
+      <main className="flex flex-1 items-center justify-center py-6 md:py-10">
+        <div className="grid w-full max-w-5xl items-center gap-6 md:gap-10 lg:grid-cols-[minmax(0,1fr)_auto] lg:gap-16">
+          {/* Saat + yönerge */}
+          <section className="flex flex-col items-center gap-1 text-center lg:items-start lg:text-left">
+            <p className="text-sm text-muted-foreground first-letter:uppercase" suppressHydrationWarning>
+              {clock?.date ?? ' '}
+            </p>
+            <p className="text-6xl font-semibold tracking-tight tabular-nums lg:text-8xl" suppressHydrationWarning>
+              {clock?.time ?? '—'}
+            </p>
+            <h1 className="mt-4 text-xl font-semibold tracking-tight md:text-2xl lg:mt-8">
+              Giriş, mola ve çıkış için QR&apos;ı okutun
+            </h1>
+            <ol className="mt-4 hidden flex-col gap-3 text-left md:flex">
+              {[
+                'Telefonunuzda ShiftUp\'ı açın',
+                'QR tara\'ya dokunup işleminizi seçin',
+                'Kamerayı bu ekrandaki koda tutun',
+              ].map((step, i) => (
+                <li key={step} className="flex items-center gap-3 text-muted-foreground">
+                  <span className="flex size-7 shrink-0 items-center justify-center rounded-full border bg-background text-sm font-medium text-foreground tabular-nums">
+                    {i + 1}
+                  </span>
+                  {step}
+                </li>
+              ))}
+            </ol>
+            <p className="text-sm text-muted-foreground md:hidden">Telefonunuzda ShiftUp → QR tara ile okutun</p>
+          </section>
+
+          {/* QR kartı */}
+          <Card className="mx-auto w-full max-w-sm gap-5 py-5 shadow-xs md:max-w-md md:py-6">
+            <CardContent className="flex flex-col items-center gap-5 px-5 md:px-6">
+              {error && (
+                <Alert variant="destructive">
+                  <CircleAlert />
+                  <AlertTitle>QR kodu alınamadı</AlertTitle>
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+
+              {/* key: kod her değiştiğinde kutu kısa bir belirme animasyonuyla yeniden çizilir */}
+              <div
+                key={changeCount}
+                className={cn(
+                  'flex w-full justify-center transition-opacity',
+                  link === 'offline' && qrData && 'opacity-35',
+                  changeCount > 0 && 'animate-in fade-in zoom-in-95 duration-300'
+                )}
+              >
+                {qrData ? (
+                  <QrCodeDisplay data={qrData} size={360} />
+                ) : (
+                  // İlk kod gelene kadar: bağlantı durumuna göre bekleme kutusu
+                  <div
+                    role="img"
+                    aria-label="QR kod oluşturuluyor"
+                    className="flex aspect-square w-full max-w-90 flex-col items-center justify-center gap-3 rounded-xl border border-dashed bg-muted/50 p-6 text-center"
+                  >
+                    {link === 'offline' ? <WifiOff className="size-6 text-muted-foreground" aria-hidden /> : <Spinner className="size-6 text-muted-foreground" />}
+                    <p className="text-sm font-medium">{link === 'offline' ? 'Bağlantı bekleniyor' : 'Kod hazırlanıyor…'}</p>
+                    <p className="max-w-56 text-xs text-muted-foreground">
+                      {link === 'offline' ? 'Bağlantı kurulunca QR kodu burada görünecek.' : 'Birkaç saniye içinde QR kodu görünecek.'}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex w-full items-center justify-between gap-3">
+                <span className="text-sm font-medium">Bağlantı</span>
+                {linkBadge}
+              </div>
+            </CardContent>
+            <CardFooter className="border-t px-5 text-sm text-muted-foreground md:px-6 [.border-t]:pt-5">
+              Kod tek kullanımlıktır; biri okutup onaylandığında otomatik olarak yenisi gelir.
+              Okutmak için ShiftUp&apos;a giriş yapmış olmanız gerekir.
+            </CardFooter>
+          </Card>
+        </div>
       </main>
     </div>
   )
