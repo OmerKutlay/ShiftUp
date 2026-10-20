@@ -12,10 +12,10 @@
  *   - Onaylı izin gününe atama veya 18 yaş altı gece/8 saat ihlali → 409 (aşılamaz)
  *   - Çalışma süresi / Md. 46 (haftanın 7 günü çalışma) ihlalleri → 422, acknowledge_violations=true ile aşılır
  *
- * Haftalık tatil: planda hiç vardiyası olmayan aktif çalışan başına TEK gün otomatik
- * weekly_rest atanır (haftanın son boş günü). Önceki aktarımdan kalan otomatik tatiller
- * yenileriyle değiştirilir; elle atanan tatiller ve diğer izinler korunur. Rolü planlamaya
- * girmeyen (ör. Admin) ve vardiyası olmayan çalışana tatil yazılmaz.
+ * Haftalık tatil: aktif çalışanın haftada vardiyası ve izni olmayan HER günü otomatik
+ * weekly_rest olarak işaretlenir (gün başına bir kayıt). Önceki aktarımdan kalan otomatik
+ * tatiller yenileriyle değiştirilir; elle atanan tatiller ve diğer izinler korunur, o günler
+ * atlanır. Rolü planlamaya girmeyen (ör. Admin) ve vardiyası olmayan çalışana tatil yazılmaz.
  *
  * Body: { assignments: DraftAssignment[], weekStart?: string, acknowledge_violations?: boolean }
  * Response: { created, replaced, skipped, restDays, warnings }
@@ -199,31 +199,29 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // ── Haftalık tatil: çalışan başına tek gün ─────────────────
+    // ── Haftalık tatil: vardiyası ve izni olmayan her gün ───────
     const reviewedAt = new Date().toISOString()
     const restRows = []
     for (const e of employees.filter((x) => x.active)) {
       // Planlanmayan rol (ör. Admin) vardiyası yoksa haftalık tatil kaydı da almaz
       if (!e.planned && !weekDays.some((day) => seen.has(`${e.id}::${day}`))) continue
       const empLeaves = blockingLeaves.filter((l) => l.employee_id === e.id)
-      const hasManualRest = empLeaves.some((l) => l.leave_type === 'weekly_rest')
-      if (hasManualRest) continue
       const freeDays = weekDays.filter((day) =>
         !seen.has(`${e.id}::${day}`) &&
         !empLeaves.some((l) => (l.start_date as string) <= day && (l.end_date as string) >= day)
       )
-      if (freeDays.length === 0) continue
-      const restDay = freeDays[freeDays.length - 1]
-      restRows.push({
-        employee_id: e.id,
-        leave_type:  'weekly_rest',
-        start_date:  restDay,
-        end_date:    restDay,
-        reason:      AUTO_WEEKLY_REST_REASON,
-        status:      'approved',
-        reviewed_at: reviewedAt,
-        reviewed_by: auth.employee.id,
-      })
+      for (const restDay of freeDays) {
+        restRows.push({
+          employee_id: e.id,
+          leave_type:  'weekly_rest',
+          start_date:  restDay,
+          end_date:    restDay,
+          reason:      AUTO_WEEKLY_REST_REASON,
+          status:      'approved',
+          reviewed_at: reviewedAt,
+          reviewed_by: auth.employee.id,
+        })
+      }
     }
 
     // Sıra önemli: uq_shift_employee_day (çalışan+gün tekil) ve leave_requests_no_overlap
