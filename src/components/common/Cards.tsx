@@ -97,12 +97,13 @@ export function StatCard({
         >
           {value}
         </CardTitle>
-        {badge && <CardAction>{badge}</CardAction>}
+        {/* Dar kartta (telefon) rozet etiketi sıkıştırmasın: yalnızca yeterli genişlikte */}
+        {badge && <CardAction className="hidden @[200px]/card:block">{badge}</CardAction>}
       </CardHeader>
       {(footer || sub) && (
         <CardFooter className="flex-col items-start gap-1 px-4 text-sm md:px-5">
           {footer && <div className="line-clamp-1 flex items-center gap-1.5 font-medium [&_svg]:size-4">{footer}</div>}
-          {sub && <div className="line-clamp-1 text-muted-foreground">{sub}</div>}
+          {sub && <div className="line-clamp-2 text-muted-foreground @[260px]/card:line-clamp-1">{sub}</div>}
         </CardFooter>
       )}
     </Card>

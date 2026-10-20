@@ -3,6 +3,7 @@
 import { Component, type ReactNode, type ErrorInfo } from 'react'
 import { AlertTriangle, RotateCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 
 interface Props {
   children: ReactNode
@@ -43,18 +44,22 @@ export class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <div role="alert" className="flex min-h-[60vh] items-center justify-center p-4 text-ink">
-          <div className="flex w-full max-w-sm flex-col items-center gap-3 rounded-2xl border bg-card px-6 py-8 text-center">
-            <span className="flex size-12 items-center justify-center rounded-full bg-danger-soft text-danger">
-              <AlertTriangle className="size-6" aria-hidden />
-            </span>
-            <h2 className="text-lg font-bold">{this.props.fallbackTitle ?? 'Bir şeyler ters gitti'}</h2>
-            <p className="text-sm text-ink-secondary [overflow-wrap:anywhere]">{this.state.errorMessage}</p>
-            <Button variant="outline" onClick={this.handleReset} className="mt-2">
-              <RotateCw />
-              Tekrar Dene
-            </Button>
-          </div>
+        <div role="alert" className="flex min-h-[60vh] items-center justify-center p-4">
+          <Empty className="max-w-sm">
+            <EmptyHeader>
+              <EmptyMedia variant="icon" className="bg-destructive/10 text-destructive">
+                <AlertTriangle aria-hidden />
+              </EmptyMedia>
+              <EmptyTitle>{this.props.fallbackTitle ?? 'Bir şeyler ters gitti'}</EmptyTitle>
+              <EmptyDescription className="[overflow-wrap:anywhere]">{this.state.errorMessage}</EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button variant="outline" onClick={this.handleReset}>
+                <RotateCw />
+                Tekrar dene
+              </Button>
+            </EmptyContent>
+          </Empty>
         </div>
       )
     }
