@@ -15,7 +15,16 @@ import { EMPLOYMENT_TYPE_LABELS } from '@/types/employee'
 import { ACCESS, ACCESS_LABELS } from '@/lib/auth/roles'
 import { DateField } from '@/components/common'
 import { format } from 'date-fns'
-import { C, tint } from '@/lib/palette'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
+import { cn } from '@/lib/utils'
 
 interface Props {
   open: boolean
@@ -80,6 +89,31 @@ function generateEmail(fullName: string): string {
   return normalized ? `${normalized}@shiftup.test` : ''
 }
 
+/** Radix Select boş değeri kabul etmez — "Seçilmedi" için yer tutucu */
+const NO_ROLE = '__none__'
+
+/** Etiket + alan + yardım/hata metni */
+function Field({ id, label, error, helper, className, children }: {
+  id: string
+  label: string
+  error?: string
+  helper?: React.ReactNode
+  className?: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className={cn('flex flex-col gap-1.5', className)}>
+      <Label htmlFor={id}>{label}</Label>
+      {children}
+      {error ? (
+        <p id={`${id}-msg`} className="text-xs text-danger">{error}</p>
+      ) : helper ? (
+        <p id={`${id}-msg`} className="text-xs text-ink-muted">{helper}</p>
+      ) : null}
+    </div>
+  )
+}
+
 function isValidEmail(email: string): boolean {
   if (email === '') return true  // boş bırakılabilir
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
@@ -137,7 +171,7 @@ export function EmployeeFormDialog({ open, onClose, onSave, employee, roles, loa
   }
 
   const handleSubmit = async () => {
-    if (!validate()) return
+    if (loading || !validate()) return
     setSubmitError(null)
     try {
       const payload = {
@@ -157,73 +191,76 @@ export function EmployeeFormDialog({ open, onClose, onSave, employee, roles, loa
   }
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle sx={{ fontWeight: 700 }}>
-        {isEdit ? 'Çalışanı Düzenle' : 'Yeni Çalışan Ekle'}
-      </DialogTitle>
+    <Dialog open={open} onOpenChange={(next) => { if (!next) onClose() }}>
+      <DialogContent className="sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>{isEdit ? 'Çalışanı Düzenle' : 'Yeni Çalışan Ekle'}</DialogTitle>
+          <DialogDescription>
+            {isEdit ? 'Çalışanın bilgilerini güncelleyin.' : 'Kişisel bilgileri ve çalışma tipini girin.'}
+          </DialogDescription>
+        </DialogHeader>
 
-      <DialogContent>
-        <Stack spacing={2.5} sx={{ mt: 1 }}>
+        <div className="grid gap-4 sm:grid-cols-2">
           {submitError && (
-            <Alert severity="error" onClose={() => setSubmitError(null)}>{submitError}</Alert>
+            <Alert tone="danger" className="pr-10 sm:col-span-2">
+              <AlertCircle />
+              <AlertDescription className="text-ink">{submitError}</AlertDescription>
+              <button
+                type="button"
+                aria-label="Kapat"
+                onClick={() => setSubmitError(null)}
+                className="absolute top-2 right-2 flex size-7 items-center justify-center rounded-lg text-ink-secondary hover:bg-card/60"
+              >
+                <X className="size-4" />
+              </button>
+            </Alert>
           )}
 
           {/* Ad Soyad */}
-          <TextField
-            label="Ad Soyad"
-            value={form.full_name}
-            onChange={handleNameChange}
-            error={!!errors.full_name}
-            helperText={errors.full_name}
-            fullWidth
-            autoFocus
-            inputProps={{ 'aria-label': 'Ad Soyad' }}
-          />
+          <Field id="emp-full-name" label="Ad Soyad" error={errors.full_name} className="sm:col-span-2">
+            <Input
+              id="emp-full-name"
+              value={form.full_name}
+              onChange={handleNameChange}
+              aria-invalid={!!errors.full_name || undefined}
+              aria-describedby={errors.full_name ? 'emp-full-name-msg' : undefined}
+              autoFocus
+            />
+          </Field>
 
           {/* Email */}
-          <TextField
+          <Field
+            id="emp-email"
             label="E-posta"
-            type="email"
-            value={form.email}
-            onChange={handleEmailChange}
-            error={!!errors.email}
-            helperText={
-              errors.email ?? (
-                <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <Typography component="span" variant="caption" color="text.disabled">
-                    Sisteme giriş için kullanılır.
-                    {!isEdit && form.full_name && ' İsimden otomatik önerildi.'}
-                  </Typography>
-                </Box>
-              )
-            }
-            fullWidth
-            inputProps={{ 'aria-label': 'E-posta' }}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <EmailIcon sx={{ fontSize: 17, color: 'text.secondary' }} />
-                </InputAdornment>
-              ),
-              endAdornment: (
-                <InputAdornment position="end">
-                  <Tooltip title="İsimden email üret">
-                    <span>
-                      <IconButton
-                        size="small"
-                        onClick={regenerateEmail}
-                        disabled={!form.full_name.trim()}
-                        sx={{ color: 'text.secondary' }}
-                        aria-label="Email üret"
-                      >
-                        <AutorenewIcon fontSize="small" />
-                      </IconButton>
-                    </span>
-                  </Tooltip>
-                </InputAdornment>
-              ),
-            }}
-          />
+            error={errors.email}
+            helper={<>Sisteme giriş için kullanılır.{!isEdit && form.full_name && ' İsimden otomatik önerildi.'}</>}
+            className="sm:col-span-2"
+          >
+            <div className="relative">
+              <Mail aria-hidden className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-secondary" />
+              <Input
+                id="emp-email"
+                type="email"
+                value={form.email}
+                onChange={handleEmailChange}
+                aria-invalid={!!errors.email || undefined}
+                aria-describedby="emp-email-msg"
+                className="pr-11 pl-9"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={regenerateEmail}
+                disabled={!form.full_name.trim()}
+                aria-label="Email üret"
+                title="İsimden email üret"
+                className="absolute top-1/2 right-0.5 -translate-y-1/2 text-ink-secondary"
+              >
+                <RefreshCw />
+              </Button>
+            </div>
+          </Field>
 
           {/* Sistem Rolü */}
           <FormControl fullWidth required error={!!errors.role_id}>
@@ -247,65 +284,41 @@ export function EmployeeFormDialog({ open, onClose, onSave, employee, roles, loa
           </FormControl>
 
           {/* Çalışma Tipi */}
-          <Box>
-            <Typography variant="caption" color="text.secondary" fontWeight={600} display="block" mb={0.75}>
-              Çalışma Tipi
-            </Typography>
-            <ToggleButtonGroup
-              exclusive
+          <div className="flex flex-col gap-1.5 sm:col-span-2">
+            <span className="text-sm font-semibold">Çalışma tipi</span>
+            <SegmentedControl<EmploymentType>
+              aria-label="Çalışma tipi"
               value={form.employment_type}
-              onChange={(_, val: EmploymentType | null) => {
-                if (val) setForm((f) => ({ ...f, employment_type: val }))
-              }}
-              size="small"
+              onChange={(val) => setForm((f) => ({ ...f, employment_type: val }))}
+              options={(Object.keys(EMPLOYMENT_TYPE_LABELS) as EmploymentType[]).map((key) => ({
+                value: key,
+                label: EMPLOYMENT_TYPE_LABELS[key],
+              }))}
               fullWidth
-            >
-              {(Object.keys(EMPLOYMENT_TYPE_LABELS) as EmploymentType[]).map((key) => (
-                <ToggleButton
-                  key={key}
-                  value={key}
-                  sx={{
-                    fontSize: '0.8rem',
-                    '&.Mui-selected': {
-                      bgcolor: key === 'full_time' ? tint(C.brand, 0.18) : tint(C.plum, 0.18),
-                      color: key === 'full_time' ? 'primary.main' : 'secondary.main',
-                      '&:hover': {
-                        bgcolor: key === 'full_time' ? tint(C.brand, 0.28) : tint(C.plum, 0.28),
-                      },
-                    },
-                  }}
-                >
-                  {EMPLOYMENT_TYPE_LABELS[key]}
-                </ToggleButton>
-              ))}
-            </ToggleButtonGroup>
+            />
             {form.employment_type === 'part_time' && (
-              <Typography variant="caption" color="text.disabled" display="block" mt={0.75}>
-                Yarı zamanlı: haftada en fazla 4 gün ve 30 saat
-              </Typography>
+              <p className="text-xs text-ink-muted">Yarı zamanlı: haftada en fazla 4 gün ve 30 saat</p>
             )}
-          </Box>
+          </div>
 
           {/* Özlük tarihleri — yıllık izin hakkı ve fazla çalışma onayı */}
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
-            <DateField
-              label="İşe Giriş Tarihi"
-              value={form.hire_date}
-              onChange={(v) => setForm((f) => ({ ...f, hire_date: v }))}
-              helperText="Yıllık izin hakkı bu tarihe göre hesaplanır"
-              clearable
-              fullWidth
-            />
-            <DateField
-              label="Doğum Tarihi"
-              value={form.birth_date}
-              onChange={(v) => setForm((f) => ({ ...f, birth_date: v }))}
-              max={format(new Date(), 'yyyy-MM-dd')}
-              helperText="18 yaş altı / 50 yaş üstü en az 20 gün izin"
-              clearable
-              fullWidth
-            />
-          </Box>
+          <DateField
+            label="İşe Giriş Tarihi"
+            value={form.hire_date}
+            onChange={(v) => setForm((f) => ({ ...f, hire_date: v }))}
+            helperText="Yıllık izin hakkı bu tarihe göre hesaplanır"
+            clearable
+            fullWidth
+          />
+          <DateField
+            label="Doğum Tarihi"
+            value={form.birth_date}
+            onChange={(v) => setForm((f) => ({ ...f, birth_date: v }))}
+            max={format(new Date(), 'yyyy-MM-dd')}
+            helperText="18 yaş altı / 50 yaş üstü en az 20 gün izin"
+            clearable
+            fullWidth
+          />
           <DateField
             label="Fazla Çalışma Onay Tarihi"
             value={form.overtime_consent_at}
@@ -313,36 +326,31 @@ export function EmployeeFormDialog({ open, onClose, onSave, employee, roles, loa
             helperText="Çalışanın fazla çalışmaya yazılı onay verdiği tarih (İş K. Md. 41). Boşsa onay yok sayılır."
             clearable
             fullWidth
+            className="sm:col-span-2"
           />
 
           {/* Aktif/Pasif — sadece düzenleme modunda */}
           {isEdit && (
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={form.active}
-                  onChange={(e) => setForm((f) => ({ ...f, active: e.target.checked }))}
-                  color="success"
-                />
-              }
-              label={form.active ? 'Aktif' : 'Pasif'}
-            />
+            <div className="flex items-center gap-3 sm:col-span-2">
+              <Switch
+                id="emp-active"
+                checked={form.active}
+                onCheckedChange={(checked) => setForm((f) => ({ ...f, active: checked }))}
+                className="data-[state=checked]:bg-success"
+              />
+              <Label htmlFor="emp-active">{form.active ? 'Aktif' : 'Pasif'}</Label>
+            </div>
           )}
-        </Stack>
-      </DialogContent>
+        </div>
 
-      <DialogActions sx={{ px: 3, pb: 2.5 }}>
-        <Button onClick={onClose} disabled={loading} color="inherit">İptal</Button>
-        <Button
-          onClick={handleSubmit}
-          disabled={loading}
-          variant="contained"
-          color="primary"
-          startIcon={loading ? <CircularProgress size={16} color="inherit" /> : null}
-        >
-          {isEdit ? 'Kaydet' : 'Ekle'}
-        </Button>
-      </DialogActions>
+        <DialogFooter>
+          <Button type="button" variant="ghost" onClick={onClose} disabled={loading}>İptal</Button>
+          <Button type="button" onClick={() => handleSubmit()} disabled={loading}>
+            {loading && <Loader2 className="animate-spin" />}
+            {isEdit ? 'Kaydet' : 'Ekle'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
     </Dialog>
   )
 }

@@ -13,22 +13,9 @@
  */
 import { useState, useSyncExternalStore } from 'react'
 import { usePathname } from 'next/navigation'
-import {
-  Box,
-  Button,
-  IconButton,
-  Paper,
-  Slide,
-  Stack,
-  Typography,
-  useMediaQuery,
-  useTheme,
-} from '@mui/material'
-import AddToHomeScreenIcon from '@mui/icons-material/AddToHomeScreen'
-import CloseIcon from '@mui/icons-material/Close'
-import IosShareIcon from '@mui/icons-material/IosShare'
+import { Share, Download } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
-import { BOTTOM_NAV_OVERLAY_OFFSET } from '@/components/layout/MobileBottomNav'
+import { Button } from '@/components/ui/button'
 import {
   isInstallPromptHiddenPath,
   isIosSafari,
@@ -38,13 +25,13 @@ import {
   useInstallPromptEvent,
   useIsStandalone,
 } from '@/lib/pwa/install'
-import { C } from '@/lib/palette'
+import { BottomPromptCard } from './BottomPromptCard'
+import { useIsNarrow } from './useIsNarrow'
 
 const noopSubscribe = () => () => {}
 
 export function InstallPrompt() {
-  const theme = useTheme()
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
+  const isMobile = useIsNarrow()
   const pathname = usePathname()
   const { status } = useAuth()
   const isStandalone = useIsStandalone()
@@ -80,95 +67,58 @@ export function InstallPrompt() {
     if (outcome === 'dismissed') dismiss()
   }
 
+  if (!open) return null
+
   return (
-    <Slide direction="up" in={open} mountOnEnter unmountOnExit>
-      <Paper
-        role="dialog"
-        aria-labelledby="install-prompt-title"
-        elevation={8}
-        sx={{
-          position: 'fixed',
-          left: 'calc(12px + env(safe-area-inset-left))',
-          right: 'calc(12px + env(safe-area-inset-right))',
-          // Mobil alt navigasyonun üstünde kalsın
-          bottom: `calc(${BOTTOM_NAV_OVERLAY_OFFSET}px + env(safe-area-inset-bottom))`,
-          zIndex: theme.zIndex.snackbar - 1,
-          p: 2,
-          bgcolor: C.surface,
-          border: '1px solid',
-          borderColor: 'divider',
-        }}
-      >
-        <Stack direction="row" spacing={1.5} alignItems="flex-start">
-          <Box
-            component="img"
-            src="/icon-192.png"
-            alt=""
-            sx={{ width: 40, height: 40, borderRadius: 2, flexShrink: 0 }}
-          />
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography id="install-prompt-title" variant="subtitle2">
-              ShiftUp&apos;ı ana ekrana ekle
-            </Typography>
-            {variant === 'android' ? (
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                Tek dokunuşla açılır, tam ekran çalışır ve bildirimleri kaçırmazsınız.
-              </Typography>
-            ) : (
-              <>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                  iPhone&apos;da bildirim alabilmek için ShiftUp&apos;ın ana ekrana eklenmesi
-                  gerekir.
-                </Typography>
-                <Box component="ol" sx={{ m: 0, mt: 1, pl: 2.5, typography: 'body2' }}>
-                  <li>
-                    Alttaki{' '}
-                    <Box component="span" sx={{ whiteSpace: 'nowrap', fontWeight: 600 }}>
-                      Paylaş{' '}
-                      <IosShareIcon
-                        fontSize="inherit"
-                        sx={{ verticalAlign: 'text-bottom' }}
-                        aria-hidden
-                      />
-                    </Box>{' '}
-                    simgesine dokunun
-                  </li>
-                  <li>
-                    <Box component="span" sx={{ fontWeight: 600 }}>
-                      &quot;Ana Ekrana Ekle&quot;
-                    </Box>{' '}
-                    seçeneğini seçin
-                  </li>
-                </Box>
-              </>
-            )}
-          </Box>
-          <IconButton size="small" aria-label="Kapat" onClick={dismiss} sx={{ mt: -0.5, mr: -0.5 }}>
-            <CloseIcon fontSize="small" />
-          </IconButton>
-        </Stack>
-        <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ mt: 1.5 }}>
-          {variant === 'android' ? (
-            <>
-              <Button size="small" color="inherit" onClick={dismiss}>
-                Şimdi değil
-              </Button>
-              <Button
-                size="small"
-                variant="contained"
-                startIcon={<AddToHomeScreenIcon />}
-                onClick={handleInstall}
-              >
-                Yükle
-              </Button>
-            </>
-          ) : (
-            <Button size="small" variant="outlined" onClick={dismiss}>
-              Anladım
+    <BottomPromptCard
+      titleId="install-prompt-title"
+      title={<>ShiftUp&apos;ı ana ekrana ekle</>}
+      onClose={dismiss}
+      media={
+        // eslint-disable-next-line @next/next/no-img-element -- statik simge, optimizasyon gerekmez
+        <img src="/icon-192.png" alt="" className="size-10 rounded-xl" />
+      }
+      actions={
+        variant === 'android' ? (
+          <>
+            <Button size="sm" variant="ghost" onClick={dismiss}>
+              Şimdi değil
             </Button>
-          )}
-        </Stack>
-      </Paper>
-    </Slide>
+            <Button size="sm" onClick={handleInstall}>
+              <Download />
+              Yükle
+            </Button>
+          </>
+        ) : (
+          <Button size="sm" variant="outline" onClick={dismiss}>
+            Anladım
+          </Button>
+        )
+      }
+    >
+      {variant === 'android' ? (
+        <p className="mt-1 text-sm text-ink-secondary">
+          Tek dokunuşla açılır, tam ekran çalışır ve bildirimleri kaçırmazsınız.
+        </p>
+      ) : (
+        <>
+          <p className="mt-1 text-sm text-ink-secondary">
+            iPhone&apos;da bildirim alabilmek için ShiftUp&apos;ın ana ekrana eklenmesi gerekir.
+          </p>
+          <ol className="mt-2 list-decimal space-y-0.5 pl-5 text-sm text-ink">
+            <li>
+              Alttaki{' '}
+              <span className="font-semibold whitespace-nowrap">
+                Paylaş <Share className="inline size-3.5 align-[-2px]" aria-hidden />
+              </span>{' '}
+              simgesine dokunun
+            </li>
+            <li>
+              <span className="font-semibold">&quot;Ana Ekrana Ekle&quot;</span> seçeneğini seçin
+            </li>
+          </ol>
+        </>
+      )}
+    </BottomPromptCard>
   )
 }

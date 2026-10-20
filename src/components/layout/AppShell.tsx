@@ -4,7 +4,7 @@ import { useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-
+import { ChevronsLeft, LogIn, LogOut, PanelLeftOpen } from 'lucide-react'
 
 import { ErrorBoundary } from './ErrorBoundary'
 import { MobileBottomNav, BOTTOM_NAV_SPACE } from './MobileBottomNav'
@@ -130,6 +130,21 @@ export function AppShell({ children }: Props) {
             <TooltipContent side={narrow ? 'right' : 'top'}>Çıkış Yap</TooltipContent>
           </Tooltip>
         )}
+        {authStatus === 'unauthenticated' && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button asChild variant="ghost" size="icon-sm" className="text-ink-secondary hover:text-primary">
+                <a href={loginHref} aria-label="Giriş Yap">
+                  <LogIn />
+                </a>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side={narrow ? 'right' : 'top'}>Giriş Yap</TooltipContent>
+          </Tooltip>
+        )}
+      </div>
+    </div>
+  )
 
   return (
     <div className="flex min-h-dvh bg-background">
@@ -147,7 +162,14 @@ export function AppShell({ children }: Props) {
           {authStatus === 'authenticated' && authEmployee && (
             <NotificationBell employeeId={authEmployee.id} collapsed />
           )}
-
+          {authStatus === 'unauthenticated' && (
+            <Button asChild variant="ghost" size="icon-sm" className="text-ink-secondary">
+              <a href={loginHref} aria-label="Giriş Yap">
+                <LogIn />
+              </a>
+            </Button>
+          )}
+        </header>
       )}
 
       {/* Masaüstü yan menü */}

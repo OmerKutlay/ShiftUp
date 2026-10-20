@@ -13,25 +13,13 @@
  */
 import { useState } from 'react'
 import { usePathname } from 'next/navigation'
-import {
-  Box,
-  Button,
-  CircularProgress,
-  IconButton,
-  Paper,
-  Slide,
-  Stack,
-  Typography,
-  useMediaQuery,
-  useTheme,
-} from '@mui/material'
-import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive'
-import CloseIcon from '@mui/icons-material/Close'
+import { BellRing, Loader2 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
-import { C, tint } from '@/lib/palette'
-import { BOTTOM_NAV_OVERLAY_OFFSET } from '@/components/layout/MobileBottomNav'
+import { Button } from '@/components/ui/button'
 import { usePushSubscription } from '@/hooks/usePushSubscription'
 import { isDismissedRecently, isInstallPromptHiddenPath, useIsStandalone } from '@/lib/pwa/install'
+import { BottomPromptCard } from './BottomPromptCard'
+import { useIsNarrow } from './useIsNarrow'
 
 const DISMISS_KEY = 'shiftup.pushPrompt.dismissedAt'
 const DISMISS_INTERVAL_MS = 3 * 24 * 60 * 60 * 1000
@@ -53,8 +41,7 @@ function markDismissed(): void {
 }
 
 export function PushPrompt() {
-  const theme = useTheme()
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
+  const isMobile = useIsNarrow()
   const pathname = usePathname()
   const { status } = useAuth()
   const isStandalone = useIsStandalone()
@@ -81,65 +68,37 @@ export function PushPrompt() {
 }
 
 function PushPromptCard({ onDismiss }: { onDismiss: () => void }) {
-  const theme = useTheme()
   const { status, busy, error, enable } = usePushSubscription()
   const open = status === 'default' || (busy && status !== 'subscribed')
+  if (!open) return null
 
   return (
-    <Slide direction="up" in={open} mountOnEnter unmountOnExit>
-      <Paper
-        role="dialog"
-        aria-labelledby="push-prompt-title"
-        elevation={8}
-        sx={{
-          position: 'fixed',
-          left: 'calc(12px + env(safe-area-inset-left))',
-          right: 'calc(12px + env(safe-area-inset-right))',
-          // Mobil alt navigasyonun üstünde kalsın
-          bottom: `calc(${BOTTOM_NAV_OVERLAY_OFFSET}px + env(safe-area-inset-bottom))`,
-          maxWidth: 480,
-          mx: 'auto',
-          zIndex: theme.zIndex.snackbar - 1,
-          p: 2,
-          bgcolor: 'background.paper',
-          border: '1px solid',
-          borderColor: 'divider',
-          borderRadius: '16px',
-          boxShadow: `0 8px 24px ${tint(C.ink, 0.12)}`,
-        }}
-      >
-        <Stack direction="row" spacing={1.5} alignItems="flex-start">
-          <Box sx={{ color: 'primary.main', display: 'flex', mt: 0.25 }}>
-            <NotificationsActiveIcon />
-          </Box>
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography id="push-prompt-title" variant="subtitle2">
-              Bildirimleri aç
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-              {error ??
-                'İzin talepleri, onaylar ve vardiya hatırlatmaları uygulama kapalıyken de telefonunuza gelsin.'}
-            </Typography>
-          </Box>
-          <IconButton size="small" aria-label="Kapat" onClick={onDismiss} sx={{ mt: -0.5, mr: -0.5 }}>
-            <CloseIcon fontSize="small" />
-          </IconButton>
-        </Stack>
-        <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ mt: 1.5 }}>
-          <Button size="small" color="inherit" onClick={onDismiss} disabled={busy}>
+    <BottomPromptCard
+      titleId="push-prompt-title"
+      title="Bildirimleri aç"
+      className="max-w-[480px]"
+      onClose={onDismiss}
+      media={
+        <span aria-hidden className="flex size-10 items-center justify-center rounded-xl bg-brand-soft text-brand [&_svg]:size-5">
+          <BellRing />
+        </span>
+      }
+      actions={
+        <>
+          <Button size="sm" variant="ghost" onClick={onDismiss} disabled={busy}>
             Şimdi değil
           </Button>
-          <Button
-            size="small"
-            variant="contained"
-            onClick={() => void enable()}
-            disabled={busy}
-            startIcon={busy ? <CircularProgress size={14} color="inherit" /> : undefined}
-          >
+          <Button size="sm" onClick={() => void enable()} disabled={busy}>
+            {busy && <Loader2 className="animate-spin" />}
             Aç
           </Button>
-        </Stack>
-      </Paper>
-    </Slide>
+        </>
+      }
+    >
+      <p className="mt-1 text-sm text-ink-secondary">
+        {error ??
+          'İzin talepleri, onaylar ve vardiya hatırlatmaları uygulama kapalıyken de telefonunuza gelsin.'}
+      </p>
+    </BottomPromptCard>
   )
 }

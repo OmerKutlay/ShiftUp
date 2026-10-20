@@ -2,66 +2,25 @@
 
 /**
  * NotificationPanel — FAZ 10
- * Bildirim listesi dropdown paneli.
+ * Bildirim listesi açılır paneli (NotificationBell'in Popover'ı içinde render edilir).
  */
-import {
-  Box,
-  Typography,
-  Popover,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemButton,
-  Button,
-  Divider,
-  Chip,
-  useMediaQuery,
-  useTheme,
-} from '@mui/material'
-import NotificationsIcon from '@mui/icons-material/Notifications'
-import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
-import AccessTimeIcon from '@mui/icons-material/AccessTime'
-import EventAvailableIcon from '@mui/icons-material/EventAvailable'
-import EventBusyIcon from '@mui/icons-material/EventBusy'
-import WarningAmberIcon from '@mui/icons-material/WarningAmber'
-import BuildIcon from '@mui/icons-material/Build'
-import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive'
+import { BellOff } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { formatDistanceToNow } from 'date-fns'
 import { tr } from 'date-fns/locale'
-import type { Notification, NotificationType } from '@/types/notification'
+import type { Notification } from '@/types/notification'
 import { ListSkeleton } from '@/components/common'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { PopoverContent } from '@/components/ui/popover'
 import { humanizeIsoDates } from '@/lib/dateUtils'
 import { notificationLink } from '@/lib/notificationLinks'
-import { C, tint } from '@/lib/palette'
-
-// ─── Type icon + renk eşlemesi ─────────────────────────────────
-const TYPE_META: Record<
-  NotificationType,
-  { icon: React.ReactNode; color: string; label: string }
-> = {
-  shift_reminder:     { icon: <AccessTimeIcon fontSize="small" />,       color: C.brand, label: 'Vardiya' },
-  leave_submitted:    { icon: <EventAvailableIcon fontSize="small" />,   color: C.info, label: 'İzin Talebi' },
-  leave_approved:     { icon: <CheckCircleOutlineIcon fontSize="small" />, color: C.success, label: 'Onaylandı' },
-  leave_rejected:     { icon: <EventBusyIcon fontSize="small" />,         color: C.danger, label: 'Reddedildi' },
-  attendance_override:{ icon: <BuildIcon fontSize="small" />,             color: C.warning, label: 'Düzeltme' },
-  open_shift_available:{ icon: <EventAvailableIcon fontSize="small" />,  color: C.plum, label: 'Açık Vardiya' },
-  time_correction_submitted: { icon: <AccessTimeIcon fontSize="small" />,  color: C.info, label: 'Mesai Talebi' },
-  time_correction_approved:  { icon: <CheckCircleOutlineIcon fontSize="small" />, color: C.success, label: 'Mesai Onaylandı' },
-  time_correction_rejected:  { icon: <EventBusyIcon fontSize="small" />,   color: C.danger, label: 'Mesai Reddedildi' },
-  shift_swap_submitted:      { icon: <AccessTimeIcon fontSize="small" />,  color: C.info, label: 'Takas Talebi' },
-  shift_swap_approved:       { icon: <CheckCircleOutlineIcon fontSize="small" />, color: C.success, label: 'Takas Onaylandı' },
-  shift_swap_rejected:       { icon: <EventBusyIcon fontSize="small" />,   color: C.danger, label: 'Takas Reddedildi' },
-  open_shift_claimed:        { icon: <EventAvailableIcon fontSize="small" />, color: C.plum, label: 'Açık Vardiya Alındı' },
-  attendance_late_clock_in:  { icon: <WarningAmberIcon fontSize="small" />, color: C.warning, label: 'Geç Giriş' },
-  attendance_late_clock_out: { icon: <WarningAmberIcon fontSize="small" />, color: C.warning, label: 'Geç Çıkış' },
-  attendance_missed_clock_in:  { icon: <WarningAmberIcon fontSize="small" />, color: C.danger, label: 'Giriş Yok' },
-  attendance_missed_clock_out: { icon: <WarningAmberIcon fontSize="small" />, color: C.danger, label: 'Çıkış Yok' },
-  push_test:                 { icon: <NotificationsActiveIcon fontSize="small" />, color: C.brand, label: 'Test' },
-}
+import { cn } from '@/lib/utils'
+import { ICON_TONE_CLASS, notificationMeta } from './notificationMeta'
 
 interface Props {
-  anchorEl: HTMLElement | null
+  /** Masaüstünde yan menünün sağına, telefonda zilin altına açılır */
+  side: 'right' | 'bottom'
   onClose: () => void
   notifications: Notification[]
   unreadCount: number
@@ -71,7 +30,7 @@ interface Props {
 }
 
 export function NotificationPanel({
-  anchorEl,
+  side,
   onClose,
   notifications,
   unreadCount,
@@ -80,9 +39,6 @@ export function NotificationPanel({
   onMarkAllAsRead,
 }: Props) {
   const router = useRouter()
-  const open = Boolean(anchorEl)
-  // Telefonda zil üst çubuğun sağında: panel zilin altına, sağa hizalı açılsın (üstünü kapatmasın)
-  const isMobile = useMediaQuery(useTheme().breakpoints.down('md'))
 
   const handleItemClick = (n: Notification) => {
     if (!n.is_read) onMarkAsRead(n.id)
@@ -91,209 +47,114 @@ export function NotificationPanel({
     router.push(notificationLink(n.type))
   }
 
-  const handleMarkAll = () => {
-    onMarkAllAsRead()
-  }
-
   return (
-    <Popover
-      open={open}
-      anchorEl={anchorEl}
-      onClose={onClose}
-      anchorOrigin={isMobile ? { vertical: 'bottom', horizontal: 'right' } : { vertical: 'top', horizontal: 'right' }}
-      transformOrigin={isMobile ? { vertical: 'top', horizontal: 'right' } : { vertical: 'top', horizontal: 'left' }}
-      slotProps={{
-        paper: {
-          sx: {
-            width: { xs: 'calc(100vw - 32px)', sm: 340 },
-            maxHeight: 480,
-            display: 'flex',
-            flexDirection: 'column',
-            bgcolor: tint(C.canvas, 0.98),
-            border: '1px solid',
-            borderColor: 'divider',
-            borderRadius: 2,
-            boxShadow: `0 8px 32px ${tint(C.ink, 0.15)}`,
-          },
-        },
-      }}
+    <PopoverContent
+      side={side}
+      align="end"
+      sideOffset={8}
+      collisionPadding={16}
+      aria-label="Bildirimler"
+      className="flex max-h-[min(480px,var(--radix-popover-content-available-height))] w-[calc(100vw-32px)] flex-col overflow-hidden p-0 sm:w-[340px]"
     >
-      {/* Header */}
-      <Box
-        sx={{
-          px: 2,
-          py: 1.5,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          borderBottom: '1px solid',
-          borderColor: 'divider',
-          flexShrink: 0,
-        }}
-      >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <NotificationsIcon sx={{ color: 'primary.main', fontSize: 20 }} />
-          <Typography variant="subtitle2" fontWeight={700}>
-            Bildirimler
-          </Typography>
+      {/* Başlık */}
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-2.5">
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-bold">Bildirimler</h2>
           {unreadCount > 0 && (
-            <Chip
-              label={unreadCount}
-              size="small"
-              sx={{
-                bgcolor: 'primary.main',
-                color: C.white,
-                fontWeight: 700,
-                height: 18,
-                fontSize: '0.7rem',
-                '& .MuiChip-label': { px: 0.75 },
-              }}
-            />
+            <Badge tone="solid" className="h-[18px] min-w-[18px] rounded-full px-1.5 text-[0.68rem]">
+              {unreadCount}
+            </Badge>
           )}
-        </Box>
+        </div>
         {unreadCount > 0 && (
           <Button
-            size="small"
-            onClick={handleMarkAll}
-            sx={{ fontSize: '0.75rem', color: 'text.secondary' }}
+            variant="ghost"
+            size="sm"
+            onClick={onMarkAllAsRead}
+            className="-mr-2 h-8 px-2 text-xs font-medium text-ink-secondary"
           >
             Tümünü okundu işaretle
           </Button>
         )}
-      </Box>
+      </div>
 
       {/* Liste */}
-      <Box sx={{ flex: 1, overflowY: 'auto' }}>
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {loading && notifications.length === 0 ? (
           <ListSkeleton count={4} variant="plain" actions={0} dense />
         ) : notifications.length === 0 ? (
-          <Box sx={{ py: 4, textAlign: 'center' }}>
-            <WarningAmberIcon sx={{ color: 'text.secondary', opacity: 0.4, fontSize: 32, mb: 1 }} />
-            <Typography variant="body2" color="text.secondary">
-              Henüz bildirim yok
-            </Typography>
-          </Box>
+          <div className="flex flex-col items-center px-4 py-8 text-center">
+            <BellOff className="mb-2 size-7 text-ink-muted" aria-hidden />
+            <p className="text-sm text-ink-secondary">Henüz bildirim yok</p>
+          </div>
         ) : (
-          <List disablePadding>
-            {notifications.map((n, idx) => {
-              const meta = TYPE_META[n.type]
+          <ul className="divide-y">
+            {notifications.map((n) => {
+              const meta = notificationMeta(n.type)
+              const Icon = meta.Icon
               const timeAgo = formatDistanceToNow(new Date(n.created_at), {
                 addSuffix: true,
                 locale: tr,
               })
 
               return (
-                <Box key={n.id}>
-                  <ListItem disablePadding>
-                    <ListItemButton
-                      onClick={() => handleItemClick(n)}
-                      sx={{
-                        px: 2,
-                        py: 1.25,
-                        alignItems: 'flex-start',
-                        gap: 1.5,
-                        bgcolor: n.is_read ? 'transparent' : tint(C.brand, 0.06),
-                        '&:hover': {
-                          bgcolor: n.is_read
-                            ? tint(C.ink, 0.04)
-                            : tint(C.brand, 0.1),
-                        },
-                      }}
+                <li key={n.id}>
+                  <button
+                    type="button"
+                    onClick={() => handleItemClick(n)}
+                    className={cn(
+                      'flex w-full items-start gap-3 px-4 py-3 text-left transition-colors outline-none focus-visible:bg-muted',
+                      n.is_read ? 'hover:bg-muted/70' : 'bg-brand-soft/45 hover:bg-brand-soft/70'
+                    )}
+                  >
+                    <span
+                      aria-hidden
+                      className={cn('mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-[10px] [&_svg]:size-4', ICON_TONE_CLASS[meta.tone])}
                     >
-                      {/* Type icon */}
-                      <Box
-                        sx={{
-                          flexShrink: 0,
-                          mt: 0.25,
-                          color: meta.color,
-                          display: 'flex',
-                          alignItems: 'center',
-                        }}
-                      >
-                        {meta.icon}
-                      </Box>
+                      <Icon />
+                    </span>
 
-                      {/* Content */}
-                      <ListItemText
-                        primary={
-                          <Typography
-                            variant="body2"
-                            fontWeight={n.is_read ? 400 : 600}
-                            color="text.primary"
-                            sx={{ lineHeight: 1.4 }}
-                          >
-                            {n.title}
-                          </Typography>
-                        }
-                        secondary={
-                          <Box component="span" sx={{ display: 'block' }}>
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                              component="span"
-                              sx={{ display: 'block', lineHeight: 1.5, mt: 0.25 }}
-                            >
-                              {humanizeIsoDates(n.message)}
-                            </Typography>
-                            <Typography
-                              variant="caption"
-                              component="span"
-                              sx={{ color: 'text.secondary', opacity: 0.6, display: 'block', mt: 0.25 }}
-                            >
-                              {timeAgo}
-                            </Typography>
-                          </Box>
-                        }
-                        disableTypography
-                      />
+                    <span className="min-w-0 flex-1">
+                      <span className={cn('block text-sm leading-snug text-ink', n.is_read ? 'font-medium' : 'font-semibold')}>
+                        {n.title}
+                      </span>
+                      <span className="mt-0.5 block text-xs leading-normal text-ink-secondary">
+                        {humanizeIsoDates(n.message)}
+                      </span>
+                      <span className="mt-1 flex items-center gap-1.5 text-[0.7rem] text-ink-muted">
+                        <span>{meta.short}</span>
+                        <span aria-hidden>·</span>
+                        <span>{timeAgo}</span>
+                      </span>
+                    </span>
 
-                      {/* Unread dot */}
-                      {!n.is_read && (
-                        <Box
-                          sx={{
-                            flexShrink: 0,
-                            width: 8,
-                            height: 8,
-                            borderRadius: '50%',
-                            bgcolor: 'primary.main',
-                            mt: 0.75,
-                          }}
-                        />
-                      )}
-                    </ListItemButton>
-                  </ListItem>
-                  {idx < notifications.length - 1 && (
-                    <Divider sx={{ borderColor: 'divider', opacity: 0.5 }} />
-                  )}
-                </Box>
+                    {!n.is_read && (
+                      <span className="mt-1.5 size-2 shrink-0 rounded-full bg-primary">
+                        <span className="sr-only">Yeni</span>
+                      </span>
+                    )}
+                  </button>
+                </li>
               )
             })}
-          </List>
+          </ul>
         )}
-      </Box>
+      </div>
 
-      {/* Footer — tüm bildirimlere git */}
-      <Box
-        sx={{
-          borderTop: '1px solid',
-          borderColor: 'divider',
-          px: 2,
-          py: 1,
-          flexShrink: 0,
-        }}
-      >
+      {/* Alt bilgi — tüm bildirimlere git */}
+      <div className="shrink-0 border-t p-1.5">
         <Button
-          fullWidth
-          size="small"
+          variant="ghost"
+          size="sm"
+          className="w-full text-[0.8rem] text-primary"
           onClick={() => {
             onClose()
             router.push('/notifications')
           }}
-          sx={{ color: 'primary.main', fontWeight: 600, fontSize: '0.78rem' }}
         >
           Tüm bildirimleri gör
         </Button>
-      </Box>
-    </Popover>
+      </div>
+    </PopoverContent>
   )
 }
