@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest'
 import { calcEmployeeStats, shiftNetMins } from '@/components/schedule/scheduleHelpers'
 import { workedMinutes } from '@/components/daily-attendance/attendanceTime'
-import { deductedBreakMinutes, isEarlyExit, roundWorkedMinutes } from '@/lib/attendanceDurations'
+import { deductedBreakMinutes, isEarlyExit, roundWorkedMinutes, workedMinutes as shiftWorkedMinutes } from '@/lib/attendanceDurations'
 import type { AttendanceRecord } from '@/types/attendance'
 import type { ShiftAssignmentWithDetails } from '@/types/schedule'
 
@@ -64,7 +64,20 @@ describe('mola kuralı ve yuvarlama', () => {
     expect(isEarlyExit({ ...base, clock_out_at: '2026-10-05T14:46:00Z' }, shift)).toBe(false) // 17:46
     expect(isEarlyExit({ ...base, clock_out_at: '2026-10-05T14:45:00Z' }, shift)).toBe(true)  // 17:45
     expect(deductedBreakMinutes({ ...base, clock_out_at: '2026-10-05T14:46:00Z' }, shift)).toBe(60)
-    expect(deductedBreakMinutes({ ...base, clock_out_at: '2026-10-05T14:45:00Z' }, shift)).toBe(0)
+  })
+
+  it('mola okutmamak erken çıkana avantaj sağlamaz', () => {
+    const shift = { work_date: '2026-10-05', start_time: '09:00', end_time: '18:00' }
+    const base = { clock_in_at: '2026-10-05T06:00:00Z', break_start_at: null, break_end_at: null, completed_break_minutes: 0 }
+    // Vardiyayı tamamlayan: 9s − 60dk = 8s
+    expect(shiftWorkedMinutes({ ...base, clock_out_at: '2026-10-05T15:00:00Z' }, shift)).toBe(8 * 60)
+    // 17:30'da molasız çıkan: 8s 30dk − 60dk = 7s 30dk
+    expect(shiftWorkedMinutes({ ...base, clock_out_at: '2026-10-05T14:30:00Z' }, shift)).toBe(7 * 60 + 30)
+    // 4 saate kadar kalandan mola düşülmez: 13:00 çıkış → 4s
+    expect(shiftWorkedMinutes({ ...base, clock_out_at: '2026-10-05T10:00:00Z' }, shift)).toBe(4 * 60)
+    // 12 saatlik vardiyadan 1 saat erken çıkan tamamlayandan fazla yazdıramaz
+    const long = { work_date: '2026-10-05', start_time: '09:00', end_time: '21:00' }
+    expect(shiftWorkedMinutes({ ...base, clock_out_at: '2026-10-05T17:00:00Z' }, long)).toBeLessThan(12 * 60 - 120)
   })
 
   it('gece yarısını geçen vardiyada bitiş ertesi gündür', () => {

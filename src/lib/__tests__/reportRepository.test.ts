@@ -93,14 +93,16 @@ describe('mapReportRow', () => {
   })
 
   it('molaya çıkıp erken çıkanın süresi fiilene göre hesaplanır', () => {
-    // 09:00–15:12, 40 dk mola → 5s 32dk → 5s 30dk
-    const row = clockedOut({
-      break_start_at: '2026-10-01T09:00:00Z',
-      break_end_at: '2026-10-01T09:40:00Z',
-      clock_out_at: '2026-10-01T12:12:00Z',
-    })
-    expect(row.break_minutes).toBe(40)
-    expect(row.worked_minutes).toBe(5 * 60 + 30)
+    // 09:00–15:12 (6s 12dk kaldı): bu süre için planlanan mola 60 dk
+    const out = '2026-10-01T12:12:00Z'
+    // 70 dk mola okuttu → 5s 2dk → 5s
+    const longBreak = clockedOut({ break_start_at: '2026-10-01T09:00:00Z', break_end_at: '2026-10-01T10:10:00Z', clock_out_at: out })
+    expect(longBreak.break_minutes).toBe(70)
+    expect(longBreak.worked_minutes).toBe(5 * 60)
+    // 40 dk mola okuttu → kalınan süreye göre 60 dk düşülür → 5s 12dk → 5s
+    const shortBreak = clockedOut({ break_start_at: '2026-10-01T09:00:00Z', break_end_at: '2026-10-01T09:40:00Z', clock_out_at: out })
+    expect(shortBreak.break_minutes).toBe(60)
+    expect(shortBreak.worked_minutes).toBe(5 * 60)
   })
 
   it('planlanandan kısa mola yapan çalışandan planlanan mola düşülür', () => {

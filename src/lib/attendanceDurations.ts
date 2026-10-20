@@ -8,13 +8,16 @@
  *   - Vardiyayı tamamladı, mola okutmadı      → planlanan mola düşülür (mola yapmış sayılır)
  *   - Vardiyayı tamamladı, mola okuttu        → planlanan mola ile fiili toplam moladan büyüğü düşülür
  *                                               (molasını uzatanın aşan dakikaları da düşer)
- *   - Erken çıktı, mola okutmadı              → mola düşülmez
- *   - Erken çıktı, mola okuttu                → fiili mola düşülür (fiilene göre)
+ *   - Erken çıktı                             → fiilene göre: kalınan süreye göre planlanan mola
+ *                                               (vardiya şablonlarıyla aynı tablo) ile fiili moladan büyüğü;
+ *                                               EARLY_EXIT_NO_BREAK_MAX_MINS'e kadar kalan için yalnızca fiili mola
+ *                                               (molasız erken gönderilenden mola düşülmez)
  * Erken çıkış: planlanan bitişten en az EARLY_EXIT_TOLERANCE_MINS dk önce çıkış.
+ * Erken çıkan, vardiyayı tamamlayandan fazla süre yazdıramaz (mola okutmamak avantaj sağlamaz).
  *
  * Net çalışma tam veya buçuklu saate yuvarlanır (en yakın 30 dk; tam 15 dk aşağı): 7s 46dk → 8s, 7s 45dk → 7s 30dk.
  */
-import { plannedBreakMins } from '@/lib/workingTimeService'
+import { netWorkMins, plannedBreakForGrossMins, plannedBreakMins } from '@/lib/workingTimeService'
 
 export interface AttendanceTimes {
   clock_in_at: string | null
@@ -33,6 +36,8 @@ export interface PlannedShift {
 
 /** Bu dakikadan az erken çıkış tam vardiya sayılır (çıkış yuvarlama toleransıyla aynı) */
 export const EARLY_EXIT_TOLERANCE_MINS = 15
+/** Erken çıkışta bu süreye (dk) kadar kalandan planlanan mola düşülmez — yalnızca okuttuğu mola */
+export const EARLY_EXIT_NO_BREAK_MAX_MINS = 4 * 60
 /** Net çalışmanın yuvarlandığı adım (dk) */
 export const WORKED_ROUNDING_MINS = 30
 
@@ -77,7 +82,11 @@ export function isEarlyExit(rec: AttendanceTimes, shift: PlannedShift): boolean 
 export function deductedBreakMinutes(rec: AttendanceTimes, shift?: PlannedShift | null): number {
   const actual = totalBreakMinutes(rec)
   if (!shift) return actual
-  if (isEarlyExit(rec, shift)) return actual
+  if (isEarlyExit(rec, shift)) {
+    const gross = diffMinutes(rec.clock_in_at, rec.clock_out_at) ?? 0
+    const planned = gross <= EARLY_EXIT_NO_BREAK_MAX_MINS ? 0 : plannedBreakForGrossMins(gross)
+    return Math.max(planned, actual)
+  }
   return Math.max(plannedBreakMins(shift.start_time, shift.end_time), actual)
 }
 
@@ -95,5 +104,8 @@ export function workedMinutes(rec: AttendanceTimes, shift?: PlannedShift | null)
   if (!rec.clock_in_at || !rec.clock_out_at) return null
   const total = diffMinutes(rec.clock_in_at, rec.clock_out_at) ?? 0
   const net = Math.max(0, total - deductedBreakMinutes(rec, shift))
-  return shift ? roundWorkedMinutes(net) : net
+  if (!shift) return net
+  // Erken çıkan, vardiyayı tamamlasaydı yazılacak süreyi aşamaz
+  const capped = isEarlyExit(rec, shift) ? Math.min(net, netWorkMins(shift.start_time, shift.end_time)) : net
+  return roundWorkedMinutes(capped)
 }
