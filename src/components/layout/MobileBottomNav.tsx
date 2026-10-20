@@ -34,7 +34,7 @@ export function MobileBottomNav() {
   return (
     <nav
       aria-label="Alt menü"
-      className="fixed inset-x-0 bottom-0 z-40 border-t bg-background pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] select-none [-webkit-touch-callout:none]"
+      className="fixed inset-x-0 bottom-0 z-40 border-t bg-background pr-[env(safe-area-inset-right)] pb-(--safe-bottom) pl-[env(safe-area-inset-left)] select-none [-webkit-touch-callout:none]"
     >
       <div className="grid grid-cols-5" style={{ height: BOTTOM_NAV_HEIGHT }}>
         {tabs.map((tab) => (

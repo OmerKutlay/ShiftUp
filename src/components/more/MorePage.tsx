@@ -15,6 +15,7 @@ import {
   Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemSeparator, ItemTitle,
 } from '@/components/ui/item'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ViewportDiagnostics } from '@/components/pwa/ViewportDiagnostics'
 
 export function MorePage() {
   const { employee, status, signOut } = useAuth()
@@ -93,6 +94,9 @@ export function MorePage() {
           </a>
         </Button>
       )}
+
+      {/* Yalnızca ana ekran uygulamasında: cihazdaki görünüm alanı ölçümleri (destek için) */}
+      <ViewportDiagnostics />
     </Page>
   )
 }

@@ -37,7 +37,7 @@ export function BottomPromptCard({ titleId, title, media, children, actions, onC
         className
       )}
       // Mobil alt navigasyonun üstünde kalsın
-      style={{ bottom: `calc(${BOTTOM_NAV_OVERLAY_OFFSET}px + env(safe-area-inset-bottom))` }}
+      style={{ bottom: `calc(${BOTTOM_NAV_OVERLAY_OFFSET}px + var(--safe-bottom))` }}
     >
       <div className="flex items-start gap-3">
         <div className="flex shrink-0">{media}</div>
