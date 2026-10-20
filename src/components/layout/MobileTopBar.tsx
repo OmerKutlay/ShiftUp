@@ -23,7 +23,7 @@ export const MOBILE_TOP_BAR_HEIGHT = 56
 export function MobileTopBar() {
   const pathname = usePathname()
   const { employee, status } = useAuth()
-  const meta = pageMetaFor(pathname)
+  const meta = pageMetaFor(pathname, status === 'loading' ? undefined : employee?.roles?.access_level ?? null)
 
   return (
     <header

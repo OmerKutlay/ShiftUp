@@ -95,6 +95,11 @@ describe('getMoreItems / filterNavItems', () => {
     expect(items).not.toContain('/notifications')
     expect(items).not.toContain('/')
   })
+  it('çalışan İş gücü sayfasını "Müsaitlik ve takas" adıyla Planlama grubunda görür', () => {
+    const item = getMoreItems(ACCESS.EMPLOYEE).find((i) => i.href === '/workforce')
+    expect(item).toMatchObject({ label: 'Müsaitlik ve takas', group: 'planlama' })
+    expect(filterNavItems(NAV_ITEMS, ACCESS.MANAGER).find((i) => i.href === '/workforce')?.label).toBe('İş gücü')
+  })
   it('Mağaza Müdürü Ayarlar dahil tüm menüyü görür', () => {
     expect(filterNavItems(NAV_ITEMS, ACCESS.STORE_MANAGER)).toHaveLength(NAV_ITEMS.length)
     expect(hrefs(getMoreItems(ACCESS.STORE_MANAGER))).toContain('/settings')
