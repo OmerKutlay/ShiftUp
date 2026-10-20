@@ -116,6 +116,24 @@ test.describe('Çalışan alt menüsü', () => {
   })
 })
 
+test.describe('Çalışan: Günlük operasyon', () => {
+  test.use({ role: 'Çalışan' })
+
+  test('Daha fazla › Operasyon altından /daily açılır; ana sayfa Vardiyam kalır', async ({ page, unmockedApiCalls }) => {
+    await page.goto('/')
+    await expect(page).toHaveURL(/\/my-schedule$/)
+
+    await page.goto('/more')
+    const main = page.getByRole('main')
+    await expect(main.getByRole('heading', { name: 'Operasyon' })).toBeVisible()
+    await main.getByRole('link', { name: 'Günlük operasyon' }).click()
+    await expect(page).toHaveURL(/\/daily$/)
+    await expect(page.getByText('Bugün vardiya yok')).toBeVisible()
+    await expect(bottomNav(page).getByRole('link', { name: 'Daha fazla' })).toHaveAttribute('aria-current', 'page')
+    expect(unmockedApiCalls).toEqual([])
+  })
+})
+
 test.describe('Yönetici alt menüsü', () => {
   test.use({ role: 'Mağaza Müdürü' })
 
@@ -139,12 +157,12 @@ test.describe('Yönetici alt menüsü', () => {
     await page.goto('/more')
     const main = page.getByRole('main')
     await expect(main.getByText('Mehmet Müdür')).toBeVisible()
-    for (const label of ['Genel bakış', 'Çalışanlar', 'Raporlar', 'Ayarlar', 'QR Kiosk', 'İzinler']) {
+    // Günlük operasyon "Bugün" sekmesi olsa da Operasyon grubunda adıyla da listelenir
+    for (const label of ['Genel bakış', 'Günlük operasyon', 'Çalışanlar', 'Raporlar', 'Ayarlar', 'QR Kiosk', 'İzinler']) {
       await expect(main.getByRole('link', { name: label })).toBeVisible()
     }
     // Alt menüdekiler tekrar edilmez
     await expect(main.getByRole('link', { name: 'Bildirimler' })).toHaveCount(0)
-    await expect(main.getByRole('link', { name: 'Günlük operasyon' })).toHaveCount(0)
     await expect(main.getByRole('button', { name: 'Çıkış Yap' })).toBeVisible()
   })
 })

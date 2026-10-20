@@ -231,7 +231,7 @@ taşıyordu; tablo, boş durum, form alanı ve geri bildirim kalıpları sayfada
 
 | Rota | Bileşen | Bulgu → hedef |
 |---|---|---|
-| `/` Günlük operasyon | daily-attendance/* | Uzun satır listesi, renkli "Giriş/Mola" etiketleri → KPI + durum filtresiyle `DataTable`, zaman çizelgesi hücresi |
+| `/` Günlük operasyon (çalışan: `/daily`) | daily-attendance/* | Uzun satır listesi, renkli "Giriş/Mola" etiketleri → KPI + durum filtresiyle `DataTable`, zaman çizelgesi hücresi |
 | `/dashboard` Genel bakış | dashboard/DashboardPage | 6 sıkışık KPI, iki liste → 4 KPI + saatlik kadro grafiği + kadro tablosu + onay bekleyenler `Item` listesi |
 | `/employees` | employees/* | Gruplu satır listesi → arama/filtreli `DataTable`, satır menüsü, form `Field` |
 | `/shift-templates` | shift-templates/* | Kart listesi → `DataTable` (tür rengi, süre, durum), form `Field` |

@@ -60,7 +60,10 @@ function isPublicPath(pathname: string): boolean {
   return false
 }
 
-/** Sayfa için gereken en düşük rol (yoksa null). '/' Günlük Operasyon yönetici sayfasıdır. */
+/**
+ * Sayfa için gereken en düşük rol (yoksa null). '/' yöneticinin ana sayfasıdır (Günlük operasyon);
+ * çalışan aynı sayfayı /daily'de görür, '/' onu ana sayfası Vardiyam'a yönlendirir.
+ */
 function requiredRole(pathname: string): AccessLevel | null {
   if (pathname === '/') return ACCESS.MANAGER
   for (const [prefix, role] of PAGE_MIN_ROLE) {
