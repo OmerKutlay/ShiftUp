@@ -1,48 +1,66 @@
 'use client'
 /**
- * ShiftSwapPanel — FAZ 11
- * Vardiya takas talepleri listesi + yeni talep oluşturma + onay/red.
+ * ShiftSwapPanel — vardiya takas talepleri: liste (talep eden → karşı taraf), yeni talep, onay/red.
  *
- * Takas bir taleptir: çalışan kendi vardiyası için talep açar, vardiyalar
- * ancak bir yöneticinin (Müdür Yardımcısı+) onayıyla değişir.
+ * Takas bir taleptir: çalışan kendi vardiyası için talep açar, önce karşı taraf kabul eder,
+ * vardiyalar ancak bir yöneticinin (Müdür Yardımcısı+) onayıyla değişir.
  * Çalışan kendi bekleyen talebini iptal edebilir.
  */
-import { useState, useEffect, useCallback } from 'react'
-import { AlertCircle, ArrowLeftRight, ArrowRight, Check, Info, Loader2, Plus, TriangleAlert, X } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import useSWR from 'swr'
+import { ArrowLeftRight, ArrowRight, Check, Info, Plus, TriangleAlert, X } from 'lucide-react'
+import { toast } from 'sonner'
+import { format } from 'date-fns'
 import type { ShiftSwapRequest, CreateSwapRequestPayload } from '@/types/workforce'
 import type { ShiftAssignmentWithDetails } from '@/types/schedule'
 import type { EmployeeWithRole } from '@/types/employee'
-import { EmptyRow, ListSkeleton, PersonAvatar, StatusBadge } from '@/components/common'
-import type { BadgeTone } from '@/components/common'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
-  AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
-  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+  DataTable, PersonAvatar, StatusBadge, TableSkeleton, useConfirm, type BadgeTone, type ColumnDef,
+} from '@/components/common'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
+import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field'
+import { Item, ItemContent, ItemFooter } from '@/components/ui/item'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Spinner } from '@/components/ui/spinner'
 import { Textarea } from '@/components/ui/textarea'
-import { format } from 'date-fns'
-import { tr } from 'date-fns/locale'
-import { useLoadedKey } from '@/hooks/useLoadedKey'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { cn } from '@/lib/utils'
+import { SHIFT_KIND_LABELS, SWAPS_KEY, ShiftChip, fetchSwaps, fmtDay, hhmm, kindOf, relativeDay } from './workforceShared'
 
 const STATUS_META: Record<string, { label: string; tone: BadgeTone }> = {
   awaiting_target: { label: 'Karşı taraf bekleniyor', tone: 'info' },
-  pending:   { label: 'Yönetici onayı bekliyor', tone: 'warning' },
-  approved:  { label: 'Onaylandı',     tone: 'success' },
-  rejected:  { label: 'Reddedildi',    tone: 'danger' },
-  cancelled: { label: 'İptal',         tone: 'neutral' },
+  pending: { label: 'Yönetici onayı bekliyor', tone: 'warning' },
+  approved: { label: 'Onaylandı', tone: 'success' },
+  rejected: { label: 'Reddedildi', tone: 'danger' },
+  cancelled: { label: 'İptal edildi', tone: 'neutral' },
+}
+
+type StatusFilter = 'all' | 'pending' | 'approved' | 'rejected' | 'cancelled'
+const FILTER_LABELS: Record<StatusFilter, string> = {
+  all: 'Tüm talepler',
+  pending: 'Bekleyenler',
+  approved: 'Onaylananlar',
+  rejected: 'Reddedilenler',
+  cancelled: 'İptal edilenler',
 }
 
 /** Radix Select boş değer kabul etmez — "karşılık vardiya yok" seçeneği için yer tutucu */
 const NO_TARGET_SHIFT = '__none__'
 
 type ReviewStatus = 'accepted' | 'declined' | 'approved' | 'rejected' | 'cancelled'
+
+const REVIEW_TOASTS: Record<ReviewStatus, string> = {
+  accepted: 'Teklif kabul edildi; yönetici onayı bekleniyor',
+  declined: 'Teklif reddedildi',
+  approved: 'Takas onaylandı; vardiyalar güncellendi',
+  rejected: 'Takas talebi reddedildi',
+  cancelled: 'Takas talebi iptal edildi',
+}
 
 interface Props {
   employees: EmployeeWithRole[]
@@ -51,50 +69,242 @@ interface Props {
   isManager: boolean
 }
 
-/** Takas kartındaki taraf: avatar + ad + vardiya */
-function SwapParty({ name, shift }: { name: string; shift: string }) {
+type ShiftLike = { work_date: string; start_time: string; end_time: string }
+
+/** Kullanıcının bu talepte yapabilecekleri — sayfa sekme sayacı da aynı kuralı kullanır */
+export function swapPermissions(swap: ShiftSwapRequest, currentEmployeeId: string | null, isManager: boolean) {
+  const isPending = swap.status === 'pending'
+  const awaitingTarget = isPending && !swap.target_accepted_at
+  const isParty = swap.requester_id === currentEmployeeId || swap.target_id === currentEmployeeId
+  return {
+    awaitingTarget,
+    // Önce hedef çalışan kabul eder; sonra tarafı olmayan bir yönetici onaylar/reddeder
+    canRespond: awaitingTarget && swap.target_id === currentEmployeeId,
+    canReview: isPending && !awaitingTarget && isManager && !isParty,
+    canCancel: isPending && swap.requester_id === currentEmployeeId,
+  }
+}
+
+// ─── Parçalar ────────────────────────────────────────────────
+
+/** Takasın bir tarafı: avatar + ad + vardiya çipi */
+function Party({ name, shift, emptyShift }: { name: string; shift: ShiftLike | null | undefined; emptyShift: string }) {
   return (
-    <div className="flex min-w-0 items-center gap-2">
+    <div className="flex min-w-0 items-center gap-2.5">
       <PersonAvatar name={name} size={32} />
-      <div className="min-w-0">
-        <p className="truncate text-sm font-bold" title={name}>{name}</p>
-        <p className="text-xs text-ink-secondary tabular-nums">{shift}</p>
+      <div className="flex min-w-0 flex-col items-start gap-1">
+        <span className="max-w-full truncate text-sm font-medium" title={name}>{name}</span>
+        {shift ? <ShiftChip shift={shift} /> : (
+          <span className="inline-flex h-6 items-center rounded-md border border-dashed px-2 text-xs text-muted-foreground">
+            {emptyShift}
+          </span>
+        )}
       </div>
     </div>
   )
 }
 
-export function ShiftSwapPanel({ employees, assignments, currentEmployeeId, isManager }: Props) {
-  const [swaps, setSwaps] = useState<ShiftSwapRequest[]>([])
-  const { isFirstLoad, markLoaded } = useLoadedKey()
-  const [error, setError] = useState<string | null>(null)
-  const [dialogOpen, setDialogOpen] = useState(false)
+/** Yön göstergesi: karşılıklı takas ⇄ / vardiya devri → */
+function Direction({ mutual }: { mutual: boolean }) {
+  const Icon = mutual ? ArrowLeftRight : ArrowRight
+  const label = mutual ? 'Karşılıklı takas' : 'Vardiya devri'
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          role="img"
+          aria-label={label}
+          tabIndex={0}
+          className="ml-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border bg-background text-muted-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 sm:ml-0"
+        >
+          <Icon className="size-3.5 max-sm:rotate-90" />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+type SwapView = Pick<ShiftSwapRequest, 'requester' | 'target' | 'requester_shift' | 'target_shift'>
+
+function SwapParties({ swap, className }: { swap: SwapView; className?: string }) {
+  return (
+    // Dar ekranda taraflar alt alta, ok aşağı bakar
+    <div className={cn('grid grid-cols-1 items-center gap-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-3', className)}>
+      <Party name={swap.requester?.full_name ?? '—'} shift={swap.requester_shift} emptyShift="—" />
+      <Direction mutual={!!swap.target_shift} />
+      {swap.target
+        ? <Party name={swap.target.full_name} shift={swap.target_shift} emptyShift="Karşılıksız devir" />
+        : <span className="text-sm text-muted-foreground">—</span>}
+    </div>
+  )
+}
+
+function Notes({ swap }: { swap: ShiftSwapRequest }) {
+  if (!swap.requester_note && !swap.reviewer_note) return <span className="text-muted-foreground">—</span>
+  return (
+    <div className="flex flex-col gap-1 [overflow-wrap:anywhere]">
+      {swap.requester_note && <p className="line-clamp-2 text-sm" title={swap.requester_note}>{swap.requester_note}</p>}
+      {swap.reviewer_note && (
+        <p className="line-clamp-2 text-xs text-muted-foreground" title={swap.reviewer_note}>
+          <span className="font-medium">Yönetici:</span> {swap.reviewer_note}
+        </p>
+      )}
+    </div>
+  )
+}
+
+// ─── Yeni takas talebi ───────────────────────────────────────
+
+function CreateSwapDialog({ open, onOpenChange, employees, assignments, currentEmployeeId, onCreate }: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  employees: EmployeeWithRole[]
+  assignments: ShiftAssignmentWithDetails[]
+  currentEmployeeId: string | null
+  onCreate: (form: Partial<CreateSwapRequestPayload>) => Promise<string | null>
+}) {
   const [form, setForm] = useState<Partial<CreateSwapRequestPayload>>({})
   const [saving, setSaving] = useState(false)
-  const [reviewingId, setReviewingId] = useState<string | null>(null)
-  const [rejecting, setRejecting] = useState<{ id: string; note: string } | null>(null)
-  // Çalışma süresi ihlali — yönetici açıkça onaylarsa tekrar gönderilir
-  const [ackPrompt, setAckPrompt] = useState<{ id: string; violations: string[] } | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    setError(null)
-    try {
-      const res = await fetch('/api/shift-swap')
-      const json = await res.json() as { swap_requests: ShiftSwapRequest[] }
-      setSwaps(json.swap_requests ?? [])
-    } catch { setError('Yüklenemedi.') }
-    finally { markLoaded() }
-  }, [markLoaded])
+  const today = format(new Date(), 'yyyy-MM-dd')
+  // Talep eden her zaman oturumdaki çalışandır; yalnızca bugün ve sonrasındaki vardiyalar takas edilebilir
+  const myShifts = assignments.filter((a) => a.employee_id === currentEmployeeId && a.work_date >= today)
+  const targetShifts = assignments.filter((a) => a.employee_id === form.target_id && a.work_date >= today)
+  const me = employees.find((e) => e.id === currentEmployeeId)
+  const target = employees.find((e) => e.id === form.target_id)
+  const myShift = myShifts.find((a) => a.id === form.requester_shift_id)
+  const targetShift = targetShifts.find((a) => a.id === form.target_shift_id)
 
-  useEffect(() => { void load() }, [load]) // eslint-disable-line react-hooks/set-state-in-effect
-
-  const closeDialog = () => { setDialogOpen(false); setForm({}) }
+  const close = () => { onOpenChange(false); setForm({}); setError(null) }
 
   const handleCreate = async () => {
     if (!form.requester_shift_id || !form.target_id) {
-      setError('Vardiyanızı ve takas yapılacak çalışanı seçmelisiniz.'); return
+      setError('Vardiyanızı ve takas yapılacak çalışanı seçmelisiniz.')
+      return
     }
     setSaving(true)
+    setError(null)
+    const err = await onCreate(form)
+    setSaving(false)
+    if (err) setError(err)
+    else setForm({})
+  }
+
+  const shiftOption = (a: ShiftAssignmentWithDetails) => {
+    const kind = kindOf(a.start_time, a.end_time)
+    return (
+      <span className="flex items-center gap-2">
+        <span className="tabular-nums">{fmtDay(a.work_date)} · {hhmm(a.start_time)}–{hhmm(a.end_time)}</span>
+        <span className="text-muted-foreground">{SHIFT_KIND_LABELS[kind]}</span>
+      </span>
+    )
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o && !saving) close() }}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Takas talebi oluştur</DialogTitle>
+          <DialogDescription>
+            Teklifiniz önce seçtiğiniz çalışana, o kabul ederse yönetici onayına gider. Onaylanana kadar vardiyanız değişmez.
+          </DialogDescription>
+        </DialogHeader>
+
+        <FieldGroup className="gap-5">
+          <Field data-disabled={myShifts.length === 0 || undefined}>
+            <FieldLabel htmlFor="swap-my-shift">Vardiyanız</FieldLabel>
+            <Select value={form.requester_shift_id ?? ''} disabled={myShifts.length === 0}
+              onValueChange={(v) => setForm((f) => ({ ...f, requester_shift_id: v }))}>
+              <SelectTrigger id="swap-my-shift" className="w-full"><SelectValue placeholder="Vardiya seçin" /></SelectTrigger>
+              <SelectContent>
+                {myShifts.map((a) => <SelectItem key={a.id} value={a.id}>{shiftOption(a)}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            {myShifts.length === 0 && <FieldDescription>Bu hafta takas edilebilecek vardiyanız yok.</FieldDescription>}
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="swap-target">Takas yapılacak çalışan</FieldLabel>
+            <Select value={form.target_id ?? ''}
+              onValueChange={(id) => setForm((f) => ({ ...f, target_id: id, target_shift_id: undefined }))}>
+              <SelectTrigger id="swap-target" className="w-full"><SelectValue placeholder="Çalışan seçin" /></SelectTrigger>
+              <SelectContent>
+                {employees.filter((e) => e.id !== currentEmployeeId).map((e) => (
+                  <SelectItem key={e.id} value={e.id}>{e.full_name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          {form.target_id && targetShifts.length > 0 && (
+            <Field>
+              <FieldLabel htmlFor="swap-target-shift">Karşılığında alınacak vardiya</FieldLabel>
+              <Select value={form.target_shift_id ?? NO_TARGET_SHIFT}
+                onValueChange={(v) => setForm((f) => ({ ...f, target_shift_id: v === NO_TARGET_SHIFT ? null : v }))}>
+                <SelectTrigger id="swap-target-shift" className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_TARGET_SHIFT}>Yok — vardiyamı devret</SelectItem>
+                  {targetShifts.map((a) => <SelectItem key={a.id} value={a.id}>{shiftOption(a)}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <FieldDescription>Boş bırakırsanız vardiyanız karşılıksız devredilir.</FieldDescription>
+            </Field>
+          )}
+          <Field>
+            <FieldLabel htmlFor="swap-note">Not <span className="font-normal text-muted-foreground">(isteğe bağlı)</span></FieldLabel>
+            <Textarea id="swap-note" rows={2} value={form.requester_note ?? ''} placeholder="Örn: Cuma akşamı ailevi bir programım var."
+              onChange={(e) => setForm((f) => ({ ...f, requester_note: e.target.value }))} />
+          </Field>
+
+          {myShift && target && (
+            <div className="flex flex-col gap-2 rounded-lg border bg-muted/50 p-3">
+              <p className="text-xs font-medium text-muted-foreground">Önizleme</p>
+              <SwapParties
+                swap={{
+                  requester: { id: currentEmployeeId ?? '', full_name: me?.full_name ?? 'Siz' },
+                  requester_shift: myShift,
+                  target: { id: target.id, full_name: target.full_name },
+                  target_shift: targetShift ?? null,
+                }}
+              />
+            </div>
+          )}
+
+          {error && (
+            <Alert variant="destructive">
+              <TriangleAlert />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+        </FieldGroup>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={close} disabled={saving}>Vazgeç</Button>
+          <Button onClick={() => void handleCreate()} disabled={saving || !form.requester_shift_id || !form.target_id}>
+            {saving && <Spinner />}
+            Onaya gönder
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ─── Panel ───────────────────────────────────────────────────
+
+export function ShiftSwapPanel({ employees, assignments, currentEmployeeId, isManager }: Props) {
+  const confirm = useConfirm()
+  const swapsQ = useSWR(SWAPS_KEY, fetchSwaps)
+  const swaps = useMemo(() => swapsQ.data?.swap_requests ?? [], [swapsQ.data])
+  const isFirstLoad = !swapsQ.data && !swapsQ.error
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [reviewing, setReviewing] = useState<{ id: string; status: ReviewStatus } | null>(null)
+  const [rejecting, setRejecting] = useState<{ id: string; note: string } | null>(null)
+
+  const visible = statusFilter === 'all' ? swaps : swaps.filter((s) => s.status === statusFilter)
+
+  const handleCreate = async (form: Partial<CreateSwapRequestPayload>): Promise<string | null> => {
     try {
       const res = await fetch('/api/shift-swap', {
         method: 'POST',
@@ -102,15 +312,18 @@ export function ShiftSwapPanel({ employees, assignments, currentEmployeeId, isMa
         body: JSON.stringify(form),
       })
       const json = await res.json() as { swap_request: ShiftSwapRequest; error?: string }
-      if (!res.ok) { setError(json.error ?? 'Hata.'); return }
-      closeDialog()
-      await load() // join'li (isimli) kaydı almak için
-    } catch { setError('Kaydedilemedi.') }
-    finally { setSaving(false) }
+      if (!res.ok) return json.error ?? 'Hata.'
+      setDialogOpen(false)
+      toast.success('Takas talebi gönderildi')
+      await swapsQ.mutate() // join'li (isimli) kaydı almak için
+      return null
+    } catch {
+      return 'Kaydedilemedi.'
+    }
   }
 
-  const handleReview = async (swapId: string, status: ReviewStatus, reviewerNote?: string, acknowledge = false) => {
-    setReviewingId(swapId)
+  const handleReview = async (swapId: string, status: ReviewStatus, reviewerNote?: string, acknowledge = false): Promise<void> => {
+    setReviewing({ id: swapId, status })
     try {
       const res = await fetch('/api/shift-swap/review', {
         method: 'POST',
@@ -121,238 +334,227 @@ export function ShiftSwapPanel({ employees, assignments, currentEmployeeId, isMa
       })
       const json = await res.json() as { swap_request: ShiftSwapRequest; error?: string; code?: string; violations?: string[] }
       if (!res.ok) {
+        // Çalışma süresi ihlali — yönetici açıkça onaylarsa tekrar gönderilir
         if (json.code === 'WORKING_TIME_VIOLATION') {
-          setAckPrompt({ id: swapId, violations: json.violations ?? [] })
+          setReviewing(null)
+          if (await confirm({
+            title: 'Çalışma süresi ihlali',
+            message: 'Bu takas aşağıdaki İş Kanunu kurallarını ihlal ediyor.',
+            items: json.violations ?? [],
+            footer: 'Yine de onaylamak istiyor musunuz?',
+            confirmText: 'İhlallere rağmen onayla',
+            cancelText: 'Vazgeç',
+          })) {
+            return handleReview(swapId, 'approved', undefined, true)
+          }
           return
         }
-        setError(json.error ?? 'Hata.')
+        toast.error(json.error ?? 'Hata.')
         return
       }
       // Yanıt join içermez — mevcut isim/vardiya bilgilerini koru
-      setSwaps((prev) => prev.map((s) => s.id === swapId ? { ...s, ...json.swap_request } : s))
-    } catch { setError('İşlem başarısız.') }
-    finally { setReviewingId(null) }
+      await swapsQ.mutate(
+        (d) => ({ swap_requests: (d?.swap_requests ?? []).map((s) => s.id === swapId ? { ...s, ...json.swap_request } : s) }),
+        { revalidate: false }
+      )
+      toast.success(REVIEW_TOASTS[status])
+    } catch {
+      toast.error('İşlem başarısız.')
+    } finally {
+      setReviewing((r) => (r?.id === swapId ? null : r))
+    }
   }
 
-  const today = format(new Date(), 'yyyy-MM-dd')
-  // Talep eden her zaman oturumdaki çalışandır; yalnızca bugün ve sonrasındaki vardiyalar takas edilebilir
-  const myShifts = assignments.filter((a) => a.employee_id === currentEmployeeId && a.work_date >= today)
-  const targetShifts = assignments.filter((a) => a.employee_id === form.target_id && a.work_date >= today)
+  // ── Satır eylemleri ──
+  const actions = (swap: ShiftSwapRequest) => {
+    const { canRespond, canReview, canCancel } = swapPermissions(swap, currentEmployeeId, isManager)
+    if (!canRespond && !canReview && !canCancel) return null
+    const busy = reviewing?.id === swap.id
+    const spin = (s: ReviewStatus) => busy && reviewing?.status === s
+    return (
+      <div className="flex items-center justify-end gap-2">
+        {canRespond && (
+          <>
+            <Button variant="outline" size="sm" onClick={() => void handleReview(swap.id, 'declined')} disabled={busy}>
+              {spin('declined') ? <Spinner /> : <X />}
+              Reddet
+            </Button>
+            <Button size="sm" onClick={() => void handleReview(swap.id, 'accepted')} disabled={busy}>
+              {spin('accepted') ? <Spinner /> : <Check />}
+              Kabul et
+            </Button>
+          </>
+        )}
+        {canReview && (
+          <>
+            <Button variant="outline" size="sm" onClick={() => setRejecting({ id: swap.id, note: '' })} disabled={busy}>
+              {spin('rejected') ? <Spinner /> : <X />}
+              Reddet
+            </Button>
+            <Button size="sm" onClick={() => void handleReview(swap.id, 'approved')} disabled={busy}>
+              {spin('approved') ? <Spinner /> : <Check />}
+              Onayla
+            </Button>
+          </>
+        )}
+        {canCancel && (
+          <Button variant="ghost" size="sm" onClick={() => void handleReview(swap.id, 'cancelled')} disabled={busy}>
+            {spin('cancelled') && <Spinner />}
+            İptal et
+          </Button>
+        )}
+      </div>
+    )
+  }
 
-  // Kart içi gösterim: "3 Kas Sal 12:00–20:00"
-  const fmtSwapShift = (sh: { work_date: string; start_time: string; end_time: string }) =>
-    `${format(new Date(sh.work_date), 'd MMM EEE', { locale: tr })} ${sh.start_time.slice(0,5)}–${sh.end_time.slice(0,5)}`
+  const statusOf = (swap: ShiftSwapRequest) => {
+    const { awaitingTarget } = swapPermissions(swap, currentEmployeeId, isManager)
+    return STATUS_META[awaitingTarget ? 'awaiting_target' : swap.status] ?? { label: swap.status, tone: 'neutral' as BadgeTone }
+  }
 
-  const fmtShift = (a: ShiftAssignmentWithDetails) =>
-    `${format(new Date(a.work_date), 'd MMM', { locale: tr })} ${a.start_time.slice(0,5)}-${a.end_time.slice(0,5)}`
+  const columns: ColumnDef<ShiftSwapRequest, unknown>[] = [
+    {
+      id: 'parties',
+      header: () => (
+        <span className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-3">
+          <span>Talep eden</span><span className="w-7" aria-hidden /><span>Karşı taraf</span>
+        </span>
+      ),
+      enableSorting: false,
+      meta: { className: 'w-[44%] min-w-[30rem] py-3', headerClassName: 'w-[44%]' },
+      cell: ({ row }) => <SwapParties swap={row.original} />,
+    },
+    {
+      id: 'note',
+      header: 'Not',
+      enableSorting: false,
+      meta: { className: 'min-w-48 whitespace-normal' },
+      cell: ({ row }) => <Notes swap={row.original} />,
+    },
+    {
+      id: 'status',
+      accessorFn: (s) => s.created_at,
+      header: 'Durum',
+      cell: ({ row }) => {
+        const meta = statusOf(row.original)
+        return (
+          <span className="flex flex-col items-start gap-1">
+            <StatusBadge tone={meta.tone} label={meta.label} />
+            <span className="text-xs text-muted-foreground">{relativeDay(format(new Date(row.original.created_at), 'yyyy-MM-dd'))} oluşturuldu</span>
+          </span>
+        )
+      },
+    },
+    {
+      id: 'actions',
+      header: () => <span className="sr-only">İşlemler</span>,
+      enableSorting: false,
+      meta: { align: 'right', className: 'py-0' },
+      cell: ({ row }) => actions(row.original),
+    },
+  ]
+
+  const mobileItem = (swap: ShiftSwapRequest) => {
+    const meta = statusOf(swap)
+    const act = actions(swap)
+    return (
+      <Item variant="outline" size="sm" className="flex-col items-stretch gap-3">
+        <ItemContent className="gap-3">
+          <div className="flex items-center justify-between gap-2">
+            <StatusBadge tone={meta.tone} label={meta.label} />
+            <span className="text-xs text-muted-foreground">{relativeDay(format(new Date(swap.created_at), 'yyyy-MM-dd'))}</span>
+          </div>
+          <SwapParties swap={swap} />
+          {(swap.requester_note || swap.reviewer_note) && <Notes swap={swap} />}
+        </ItemContent>
+        {act && <ItemFooter className="justify-end">{act}</ItemFooter>}
+      </Item>
+    )
+  }
+
+  const toolbar = (
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+      <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
+        <SelectTrigger className="sm:w-48" aria-label="Durum"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          {(Object.keys(FILTER_LABELS) as StatusFilter[]).map((k) => <SelectItem key={k} value={k}>{FILTER_LABELS[k]}</SelectItem>)}
+        </SelectContent>
+      </Select>
+      <p className="flex items-center gap-1.5 text-sm text-muted-foreground sm:ml-auto">
+        <Info className="size-4 shrink-0" />
+        Takas, karşı taraf kabul edip yönetici onayladığında uygulanır.
+      </p>
+      <Button onClick={() => setDialogOpen(true)} disabled={!currentEmployeeId}>
+        <Plus />
+        Takas talebi oluştur
+      </Button>
+    </div>
+  )
 
   return (
-    <div>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <p className="min-w-0 flex-1 basis-60 text-xs text-ink-secondary">
-          Takas, karşı taraf kabul edip bir yönetici onayladıktan sonra uygulanır. Diğer durumlarda vardiyalar değişmez.
-        </p>
-        <Button variant="outline" onClick={() => setDialogOpen(true)} disabled={!currentEmployeeId}>
-          <Plus />
-          Takas Talebi Oluştur
-        </Button>
-      </div>
-
-      {error && (
-        <Alert tone="danger" className="mb-3 pr-12">
-          <AlertCircle />
-          <AlertDescription className="text-ink">{error}</AlertDescription>
-          <Button
-            variant="ghost" size="icon-sm" aria-label="Kapat" onClick={() => setError(null)}
-            className="absolute top-1.5 right-1.5 text-ink-secondary"
-          >
-            <X />
-          </Button>
+    <div className="flex flex-col gap-4">
+      {swapsQ.error && (
+        <Alert variant="destructive">
+          <TriangleAlert />
+          <AlertTitle>Takas talepleri yüklenemedi</AlertTitle>
+          <AlertDescription>{swapsQ.error instanceof Error ? swapsQ.error.message : 'Bilinmeyen hata'}</AlertDescription>
         </Alert>
       )}
 
       {isFirstLoad ? (
-        <ListSkeleton count={3} lines={2} actions={2} dense />
-      ) : swaps.length === 0 ? (
-        <section className="rounded-2xl border bg-card">
-          <EmptyRow>Takas talebi bulunamadı.</EmptyRow>
-        </section>
-      ) : (
         <div className="flex flex-col gap-3">
-          {swaps.map((swap) => {
-            const isPending = swap.status === 'pending'
-            const awaitingTarget = isPending && !swap.target_accepted_at
-            const meta = STATUS_META[awaitingTarget ? 'awaiting_target' : swap.status]
-            const isParty = swap.requester_id === currentEmployeeId || swap.target_id === currentEmployeeId
-            // Önce hedef çalışan kabul eder; sonra tarafı olmayan bir yönetici onaylar/reddeder
-            const canRespond = awaitingTarget && swap.target_id === currentEmployeeId
-            const canReview = isPending && !awaitingTarget && isManager && !isParty
-            const canCancel = isPending && swap.requester_id === currentEmployeeId
-            const busy = reviewingId === swap.id
-            const PartyArrow = swap.target_shift ? ArrowLeftRight : ArrowRight
-            return (
-              <article key={swap.id} className="rounded-2xl border bg-card p-4">
-                {/* Taraflar: talep eden → / ↔ hedef */}
-                <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
-                  <SwapParty
-                    name={swap.requester?.full_name ?? '—'}
-                    shift={swap.requester_shift ? fmtSwapShift(swap.requester_shift) : '—'}
-                  />
-                  <PartyArrow
-                    className="size-4 text-ink-muted"
-                    aria-label={swap.target_shift ? 'karşılıklı takas' : 'vardiya devri'}
-                  />
-                  {swap.target ? (
-                    <SwapParty
-                      name={swap.target.full_name}
-                      shift={swap.target_shift ? fmtSwapShift(swap.target_shift) : 'vardiya devri'}
-                    />
-                  ) : <span className="text-sm text-ink-muted">—</span>}
-                </div>
-
-                {/* Notlar */}
-                {(swap.requester_note || swap.reviewer_note) && (
-                  <div className="mt-3 flex flex-col gap-0.5 rounded-xl bg-surface-muted px-3 py-2 text-xs text-ink-secondary [overflow-wrap:anywhere]">
-                    {swap.requester_note && <p>Not: {swap.requester_note}</p>}
-                    {swap.reviewer_note && <p>Yönetici notu: {swap.reviewer_note}</p>}
-                  </div>
-                )}
-
-                {/* Durum + aksiyonlar */}
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  {/* Dar ekranda rozet tek başına satırda, butonlar altında yan yana */}
-                  <div className="mr-auto basis-full sm:basis-auto">
-                    <StatusBadge tone={meta.tone} label={meta.label} />
-                  </div>
-                  {canRespond && (
-                    <>
-                      <Button variant="outline" size="sm" className="text-success"
-                        onClick={() => handleReview(swap.id, 'accepted')} disabled={busy}>
-                        <Check />
-                        Kabul Et
-                      </Button>
-                      <Button variant="outline" size="sm" className="text-danger"
-                        onClick={() => handleReview(swap.id, 'declined')} disabled={busy}>
-                        <X />
-                        Reddet
-                      </Button>
-                    </>
-                  )}
-                  {canReview && (
-                    <>
-                      <Button variant="outline" size="sm" className="text-success"
-                        onClick={() => handleReview(swap.id, 'approved')} disabled={busy}>
-                        <Check />
-                        Onayla
-                      </Button>
-                      <Button variant="outline" size="sm" className="text-danger"
-                        onClick={() => setRejecting({ id: swap.id, note: '' })} disabled={busy}>
-                        <X />
-                        Reddet
-                      </Button>
-                    </>
-                  )}
-                  {canCancel && (
-                    <Button variant="outline" size="sm"
-                      onClick={() => handleReview(swap.id, 'cancelled')} disabled={busy}>
-                      İptal Et
-                    </Button>
-                  )}
-                  {busy && <Loader2 className="size-4 animate-spin text-ink-muted" aria-label="İşleniyor" />}
-                </div>
-              </article>
-            )
-          })}
+          {toolbar}
+          <TableSkeleton rows={5} columns={4} />
         </div>
+      ) : (
+        <DataTable
+          columns={columns}
+          data={visible}
+          toolbar={toolbar}
+          getRowId={(s) => s.id}
+          renderMobileItem={mobileItem}
+          empty={
+            <Empty className="py-12">
+              <EmptyHeader>
+                <EmptyMedia variant="icon"><ArrowLeftRight /></EmptyMedia>
+                <EmptyTitle>Takas talebi yok</EmptyTitle>
+                <EmptyDescription>
+                  {swaps.length > 0
+                    ? 'Bu durumda takas talebi bulunamadı.'
+                    : 'Vardiyanızı bir iş arkadaşınızla değiştirmek için takas talebi oluşturun.'}
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          }
+        />
       )}
 
-      {/* Yeni takas talebi dialog */}
-      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) closeDialog() }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Takas Talebi Oluştur</DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col gap-4">
-            <Alert tone="info">
-              <Info />
-              <AlertDescription className="text-ink">
-                Teklifiniz önce seçtiğiniz çalışana, o kabul ederse yönetici onayına gider. Onaylanana kadar vardiyanız değişmez.
-              </AlertDescription>
-            </Alert>
-            {myShifts.length === 0 ? (
-              <p className="text-sm text-ink-secondary">Bu hafta takas edilebilecek vardiyanız yok.</p>
-            ) : (
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="swap-my-shift">Vardiyanız</Label>
-                <Select value={form.requester_shift_id ?? ''}
-                  onValueChange={(v) => setForm((f) => ({ ...f, requester_shift_id: v }))}>
-                  <SelectTrigger id="swap-my-shift" className="w-full"><SelectValue placeholder="Vardiya seçin" /></SelectTrigger>
-                  <SelectContent>
-                    {myShifts.map((a) => (
-                      <SelectItem key={a.id} value={a.id}>{fmtShift(a)}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            {/* MUI EmployeeSelect'in açılır listesi Radix Dialog içinde tıklanamıyor — shadcn Select */}
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="swap-target">Takas yapılacak çalışan</Label>
-              <Select value={form.target_id ?? ''}
-                onValueChange={(id) => setForm((f) => ({ ...f, target_id: id, target_shift_id: undefined }))}>
-                <SelectTrigger id="swap-target" className="w-full"><SelectValue placeholder="Çalışan seçin" /></SelectTrigger>
-                <SelectContent>
-                  {employees.filter((e) => e.id !== currentEmployeeId).map((e) => (
-                    <SelectItem key={e.id} value={e.id}>{e.full_name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {form.target_id && targetShifts.length > 0 && (
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="swap-target-shift">Karşılığında alınacak vardiya (isteğe bağlı)</Label>
-                <Select value={form.target_shift_id ?? NO_TARGET_SHIFT}
-                  onValueChange={(v) => setForm((f) => ({ ...f, target_shift_id: v === NO_TARGET_SHIFT ? null : v }))}>
-                  <SelectTrigger id="swap-target-shift" className="w-full"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NO_TARGET_SHIFT}>Yok — vardiyamı devret</SelectItem>
-                    {targetShifts.map((a) => (
-                      <SelectItem key={a.id} value={a.id}>{fmtShift(a)}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="swap-note">Not</Label>
-              <Input id="swap-note" value={form.requester_note ?? ''}
-                onChange={(e) => setForm((f) => ({ ...f, requester_note: e.target.value }))} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={closeDialog}>Vazgeç</Button>
-            <Button onClick={() => void handleCreate()}
-              disabled={saving || !form.requester_shift_id || !form.target_id}>
-              {saving ? <Loader2 className="animate-spin" aria-label="Gönderiliyor" /> : 'Onaya Gönder'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <CreateSwapDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        employees={employees}
+        assignments={assignments}
+        currentEmployeeId={currentEmployeeId}
+        onCreate={handleCreate}
+      />
 
-      {/* Red gerekçesi dialog */}
+      {/* Red gerekçesi */}
       <Dialog open={rejecting !== null} onOpenChange={(open) => { if (!open) setRejecting(null) }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Takas Talebini Reddet</DialogTitle>
+            <DialogTitle>Takas talebini reddet</DialogTitle>
+            <DialogDescription>Vardiyalar değişmez; talep reddedildi olarak kapanır.</DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="swap-reject-note">Gerekçe (isteğe bağlı)</Label>
-            <Textarea id="swap-reject-note" rows={2}
+          <Field>
+            <FieldLabel htmlFor="swap-reject-note">Gerekçe <span className="font-normal text-muted-foreground">(isteğe bağlı)</span></FieldLabel>
+            <Textarea id="swap-reject-note" rows={3}
               value={rejecting?.note ?? ''}
+              placeholder="Örn: Dinlenme süresi yetersiz kalıyor."
               onChange={(e) => setRejecting((r) => r && { ...r, note: e.target.value })} />
-          </div>
+            <FieldDescription>Gerekçe talep kaydında görünür.</FieldDescription>
+          </Field>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setRejecting(null)}>Vazgeç</Button>
+            <Button variant="outline" onClick={() => setRejecting(null)}>Vazgeç</Button>
             <Button variant="destructive"
               onClick={() => {
                 if (!rejecting) return
@@ -364,36 +566,6 @@ export function ShiftSwapPanel({ employees, assignments, currentEmployeeId, isMa
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Çalışma süresi ihlali onayı */}
-      <AlertDialog open={ackPrompt !== null} onOpenChange={(open) => { if (!open) setAckPrompt(null) }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Çalışma Süresi İhlali</AlertDialogTitle>
-            <AlertDialogDescription>
-              Bu takas aşağıdaki İş Kanunu kurallarını ihlal ediyor. Yine de onaylamak istiyor musunuz?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <Alert tone="warning">
-            <TriangleAlert />
-            <ul className="col-start-2 list-disc space-y-0.5 pl-4 text-sm text-ink">
-              {ackPrompt?.violations.map((v) => <li key={v}>{v}</li>)}
-            </ul>
-          </Alert>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Vazgeç</AlertDialogCancel>
-            <Button
-              className="bg-warning text-white hover:bg-warning/90"
-              onClick={() => {
-                if (!ackPrompt) return
-                void handleReview(ackPrompt.id, 'approved', undefined, true)
-                setAckPrompt(null)
-              }}>
-              İhlallere Rağmen Onayla
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   )
 }

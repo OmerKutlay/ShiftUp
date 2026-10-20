@@ -13,11 +13,12 @@
  *   - Molada iken "Çıkış Yap" seçeneği gösterilmez.
  *   - QR onaylandıktan sonra sonuç gösterilir, ardından amaç seçimine geri dönülür.
  */
-import { Coffee, LogIn, LogOut, Undo2, type LucideIcon } from 'lucide-react'
+import { Coffee, Info, LogIn, LogOut, Undo2, type LucideIcon } from 'lucide-react'
 import type { QrActionType } from '@/types/qr'
 import type { AttendanceStatus } from '@/types/attendance'
 import type { GpsCoordinates } from '@/types/location'
 import type { BadgeTone } from '@/components/ui/badge'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { detectPlatform, isStandaloneDisplay } from '@/lib/pwa/deviceInfo'
 
 // ─── Types ────────────────────────────────────────────────────
@@ -54,11 +55,11 @@ export type PageState =
 // ─── Sabitler ─────────────────────────────────────────────────
 
 export const ATTENDANCE_STATUS_TR: Record<string, string> = {
-  shift_waiting: 'Vardiya Bekleniyor',
+  shift_waiting: 'Vardiya bekleniyor',
   working: 'Çalışıyor',
   on_break: 'Molada',
   working_after_break: 'Çalışıyor',
-  clocked_out: 'Vardiya Tamamlandı',
+  clocked_out: 'Vardiya tamamlandı',
 }
 
 /** Durum rozeti tonu */
@@ -86,7 +87,7 @@ export function getButtons(status: AttendanceStatus | null): ActionButton[] {
       return [
         {
           action: 'clock_in',
-          label: 'Giriş Yap',
+          label: 'Giriş yap',
           description: 'Vardiyama başlamak istiyorum',
           icon: LogIn,
           tone: 'brand',
@@ -96,14 +97,14 @@ export function getButtons(status: AttendanceStatus | null): ActionButton[] {
       return [
         {
           action: 'break_start',
-          label: 'Molaya Çık',
+          label: 'Molaya çık',
           description: 'Mola vermek istiyorum',
           icon: Coffee,
           tone: 'warning',
         },
         {
           action: 'clock_out',
-          label: 'Çıkış Yap',
+          label: 'Çıkış yap',
           description: 'Vardiyamı tamamlamak istiyorum',
           icon: LogOut,
           tone: 'danger',
@@ -113,7 +114,7 @@ export function getButtons(status: AttendanceStatus | null): ActionButton[] {
       return [
         {
           action: 'break_end',
-          label: 'Moladan Dön',
+          label: 'Moladan dön',
           description: 'Molam bitti, işe dönüyorum',
           icon: Undo2,
           tone: 'brand',
@@ -124,14 +125,14 @@ export function getButtons(status: AttendanceStatus | null): ActionButton[] {
       return [
         {
           action: 'break_start',
-          label: 'Molaya Çık',
+          label: 'Molaya çık',
           description: 'Tekrar mola vermek istiyorum',
           icon: Coffee,
           tone: 'warning',
         },
         {
           action: 'clock_out',
-          label: 'Çıkış Yap',
+          label: 'Çıkış yap',
           description: 'Vardiyamı tamamlamak istiyorum',
           icon: LogOut,
           tone: 'danger',
@@ -217,13 +218,14 @@ export function permissionHelpSteps(
 export function PermissionHelp({ kind }: { kind: PermissionKind }) {
   const steps = permissionHelpSteps(kind)
   return (
-    <div className="w-full rounded-xl bg-danger-soft px-4 py-3 text-left">
-      <p className="mb-1 text-xs font-semibold text-ink">
-        {kind === 'camera' ? 'Kamera izni nasıl verilir?' : 'Konum izni nasıl verilir?'}
-      </p>
-      <ol className="list-decimal space-y-0.5 pl-5 text-xs text-ink-secondary">
-        {steps.map((step) => <li key={step}>{step}</li>)}
-      </ol>
-    </div>
+    <Alert className="text-left">
+      <Info />
+      <AlertTitle>{kind === 'camera' ? 'Kamera izni nasıl verilir?' : 'Konum izni nasıl verilir?'}</AlertTitle>
+      <AlertDescription>
+        <ol className="list-decimal space-y-1 pl-4">
+          {steps.map((step) => <li key={step}>{step}</li>)}
+        </ol>
+      </AlertDescription>
+    </Alert>
   )
 }

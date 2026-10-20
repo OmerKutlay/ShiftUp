@@ -1,7 +1,6 @@
 /**
  * timesheetSummary — aylık puantaj ekranının saf hesapları ve gün kodu görünümleri.
  */
-import { C } from '@/lib/palette'
 import { monthDays, type TimesheetCode, type TimesheetRow } from '@/lib/timesheet'
 
 /** 9000 dk → "150"; 5430 dk → "90,5" (Türkçe ondalık, binlik ayraçlı) */
@@ -75,32 +74,46 @@ export function codeCounts(row: TimesheetRow): Array<{ code: Exclude<TimesheetCo
 
 export const LEGEND_ORDER: Array<Exclude<TimesheetCode, ''>> = ['Ç', 'HT', 'Yİ', 'Rİ', 'Üİ', 'Mİ', 'D', 'RT', 'RTÇ', 'P']
 
+// ─── Gün kodu renkleri ───────────────────────────────────────
+// Tek kaynak: şerit, takvim, tablo ve lejant bu eşlemeleri kullanır. Değerler yalnızca tema
+// token'larından türetilir (globals.css); satır içi stil yalnızca gün kodu kutularında.
+
+/** Token rengini zeminle karıştır: mix('success', 50) → %50 yeşil */
+const mix = (token: string, pct: number) => `color-mix(in oklch, var(--${token}) ${pct}%, var(--background))`
+/** Metin rengi: tonun koyu hali (okunurluk için ön plan rengiyle karıştırılır) */
+const ink = (token: string) => `color-mix(in oklch, var(--${token}) 78%, var(--foreground))`
+
 /** Şeritteki kutu: dolgu rengi; planlı gün kesik çerçeveli boş kutu */
 export const STRIP_TONE: Record<TimesheetCode, { bg: string; border?: string; dashed?: boolean }> = {
-  'Ç': { bg: C.successFill },
-  'RTÇ': { bg: C.brand },
-  'HT': { bg: C.sand },
-  'RT': { bg: C.warningFill },
-  'Yİ': { bg: C.infoFill },
-  'Rİ': { bg: C.plumFill },
-  'Üİ': { bg: C.inkMuted },
-  'Mİ': { bg: C.plumSoft, border: C.plumFill },
-  'D': { bg: C.dangerFill },
-  'P': { bg: C.surface, border: C.sand, dashed: true },
-  '': { bg: C.surfaceAlt, border: C.border },
+  'Ç': { bg: mix('success', 55) },
+  'RTÇ': { bg: 'var(--primary)' },
+  'HT': { bg: mix('foreground', 14) },
+  'RT': { bg: mix('warning', 70) },
+  'Yİ': { bg: mix('info', 65) },
+  'Rİ': { bg: mix('plum', 60) },
+  'Üİ': { bg: mix('muted-foreground', 60) },
+  'Mİ': { bg: mix('plum', 18), border: mix('plum', 60) },
+  'D': { bg: 'var(--destructive)' },
+  // Planlı gün: "çalışacak" — çalıştı renginin açık hali (kesik çerçeve dar kutuda gürültü yapıyordu)
+  'P': { bg: mix('success', 16) },
+  '': { bg: mix('foreground', 5) },
 }
 
-/** Takvim hücresi: yumuşak zemin + metin rengi + boş (saatsiz) günlerde gösterilecek kısa etiket */
-export const CALENDAR_TONE: Record<TimesheetCode, { bg: string; fg: string; label: string; dashed?: boolean }> = {
-  'Ç': { bg: C.successSoft, fg: C.success, label: '' },
-  'RTÇ': { bg: C.dangerSoft, fg: C.brandDark, label: '' },
-  'HT': { bg: C.surfaceMuted, fg: C.inkSecondary, label: 'Tatil' },
-  'RT': { bg: C.warningSoft, fg: C.warning, label: 'R. tatil' },
-  'Yİ': { bg: C.infoSoft, fg: C.info, label: 'İzin' },
-  'Rİ': { bg: C.plumSoft, fg: C.plum, label: 'Rapor' },
-  'Üİ': { bg: C.neutralSoft, fg: C.neutral, label: 'Ücretsiz' },
-  'Mİ': { bg: C.plumSoft, fg: C.plum, label: 'Mazeret' },
-  'D': { bg: C.surface, fg: C.danger, label: 'Gelmedi' },
-  'P': { bg: C.surface, fg: C.inkMuted, label: '', dashed: true },
-  '': { bg: 'transparent', fg: C.inkMuted, label: '' },
+/** Takvim / tablo hücresi: yumuşak zemin + metin rengi + saatsiz günlerde gösterilecek kısa etiket */
+export const CALENDAR_TONE: Record<TimesheetCode, { bg: string; fg: string; label: string; border?: string; dashed?: boolean }> = {
+  'Ç': { bg: mix('success', 10), fg: ink('success'), label: '' },
+  'RTÇ': { bg: mix('primary', 12), fg: ink('primary'), label: '' },
+  'HT': { bg: 'var(--muted)', fg: 'var(--muted-foreground)', label: 'Tatil' },
+  'RT': { bg: mix('warning', 12), fg: ink('warning'), label: 'R. tatil' },
+  'Yİ': { bg: mix('info', 10), fg: ink('info'), label: 'İzin' },
+  'Rİ': { bg: mix('plum', 10), fg: ink('plum'), label: 'Rapor' },
+  'Üİ': { bg: 'var(--muted)', fg: 'var(--muted-foreground)', label: 'Ücr. izin' },
+  'Mİ': { bg: mix('plum', 10), fg: ink('plum'), label: 'Mazeret' },
+  'D': { bg: mix('destructive', 6), fg: 'var(--destructive)', label: 'Yok', border: mix('destructive', 45) },
+  'P': { bg: 'transparent', fg: 'var(--muted-foreground)', label: '', border: mix('foreground', 22), dashed: true },
+  '': { bg: 'transparent', fg: 'var(--muted-foreground)', label: '' },
 }
+
+/** Kutu çerçevesi (yoksa undefined) */
+export const toneBorder = (tone: { border?: string; dashed?: boolean }) =>
+  tone.border ? `1px ${tone.dashed ? 'dashed' : 'solid'} ${tone.border}` : undefined

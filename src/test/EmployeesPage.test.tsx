@@ -16,6 +16,13 @@ vi.mock('@/lib/api/employees', () => ({
   activateEmployee: vi.fn(),
 }))
 
+// jsdom'da yok; Radix RadioGroup / Switch (useSize) kullanıyor
+globalThis.ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
 // Mock Next.js router (AppShell bunu kullanıyor)
 vi.mock('next/navigation', () => ({
   usePathname: () => '/employees',
@@ -90,7 +97,7 @@ describe('EmployeesPage — listeleme', () => {
     })
   })
 
-  it('Aktif çalışan sayısı header\'da gösterilir', async () => {
+  it('Aktif çalışan sayısı KPI kartında gösterilir', async () => {
     vi.mocked(repo.fetchEmployees).mockResolvedValue([
       makeEmployee({ active: true }),
       makeEmployee({ id: 'emp-002', full_name: 'Ayşe Demir', active: false }),
@@ -100,7 +107,9 @@ describe('EmployeesPage — listeleme', () => {
     renderPage()
 
     await waitFor(() => {
-      expect(screen.getByText(/1 aktif çalışan/i)).toBeInTheDocument()
+      const card = screen.getByText('Aktif çalışan').closest('[data-slot="card"]')
+      expect(card).toHaveTextContent(/Aktif çalışan\s*1/)
+      expect(card).toHaveTextContent('1 pasif')
     })
   })
 })
@@ -117,7 +126,7 @@ describe('EmployeesPage — yeni çalışan ekleme', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /yeni çalışan/i })).toBeInTheDocument())
     await userEvent.click(screen.getByRole('button', { name: /yeni çalışan/i }))
 
-    expect(screen.getByText('Yeni Çalışan Ekle')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Çalışan ekle' })).toBeInTheDocument()
   })
 
   it('3. Form submit edilince createEmployee çağrılır', async () => {
@@ -150,7 +159,7 @@ describe('EmployeesPage — yeni çalışan ekleme', () => {
 describe('EmployeesPage — düzenleme', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('4. Düzenle butonuna tıklayınca dialog açılır ve mevcut data gelir', async () => {
+  it('4. Satır menüsünden Düzenle seçilince dialog açılır ve mevcut data gelir', async () => {
     vi.mocked(repo.fetchEmployees).mockResolvedValue([makeEmployee()])
     vi.mocked(repo.fetchRoles).mockResolvedValue([makeRole()])
 
@@ -158,10 +167,10 @@ describe('EmployeesPage — düzenleme', () => {
 
     await waitFor(() => screen.getByText('Ahmet Kaya'))
 
-    const editBtn = screen.getByRole('button', { name: /düzenle/i })
-    await userEvent.click(editBtn)
+    await userEvent.click(screen.getByRole('button', { name: /ahmet kaya işlemleri/i }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: /düzenle/i }))
 
-    expect(screen.getByText('Çalışanı Düzenle')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Çalışanı düzenle' })).toBeInTheDocument()
     // Mevcut veriler form'a yüklenmiş olmalı
     expect(screen.getByDisplayValue('Ahmet Kaya')).toBeInTheDocument()
   })

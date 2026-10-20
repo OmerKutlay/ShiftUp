@@ -51,22 +51,22 @@ describe('AttendanceScanPage — çevrimdışı', () => {
 
   it('çevrimdışıyken işlem butonları kapalı ve açıklama gösterilir; bağlantı gelince durum yenilenir', async () => {
     renderWithProviders(<AttendanceScanPage />)
-    const button = await screen.findByRole('button', { name: /Giriş Yap/ })
+    const button = await screen.findByRole('button', { name: /Giriş yap/ })
     expect(button).toBeEnabled()
 
     setOnline(false)
-    expect(screen.getByRole('button', { name: /Giriş Yap/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Giriş yap/ })).toBeDisabled()
     expect(screen.getByText(/İnternet bağlantısı yok/)).toBeInTheDocument()
 
     const callsBefore = vi.mocked(fetch).mock.calls.length
     setOnline(true)
-    expect(screen.getByRole('button', { name: /Giriş Yap/ })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /Giriş yap/ })).toBeEnabled()
     await waitFor(() => expect(vi.mocked(fetch).mock.calls.length).toBeGreaterThan(callsBefore))
   })
 
   it('tarama ekranında bağlantı koparsa kamera kapatılır', async () => {
     renderWithProviders(<AttendanceScanPage />)
-    const button = await screen.findByRole('button', { name: /Giriş Yap/ })
+    const button = await screen.findByRole('button', { name: /Giriş yap/ })
     act(() => button.click())
     expect(await screen.findByTestId('qr-scanner')).toBeInTheDocument()
 
@@ -81,7 +81,7 @@ describe('AttendanceScanPage — çevrimdışı', () => {
     renderWithProviders(<AttendanceScanPage />)
 
     expect(await screen.findByText(/Sunucuya bağlanılamadı/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Tekrar Dene/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Tekrar dene/ })).toBeDisabled()
   })
 })
 
