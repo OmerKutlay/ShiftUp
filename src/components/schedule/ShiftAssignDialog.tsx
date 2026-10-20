@@ -1,25 +1,36 @@
 'use client'
 
-import { useState, useCallback } from 'react'
-import { AlertCircle, CalendarOff, CheckCircle2, Clock, Loader2, Moon, Sofa, Trash2, TriangleAlert, X } from 'lucide-react'
+/**
+ * ShiftAssignDialog — hücreden vardiya atama / düzenleme (DESIGN_GUIDE §5 Formlar):
+ * "Şablondan" / "Özel saat" sekmeleri, şablonlar seçim kartı (RadioGroup + Field),
+ * müsaitlik uyarısı Alert, süre önizlemesi, altta kaldır / haftalık tatil + iptal / kaydet.
+ */
+import { useState } from 'react'
+import { CalendarOff, CircleAlert, CircleCheck, Clock, Moon, Sofa, Trash2, TriangleAlert } from 'lucide-react'
 import type { EmployeeWithRole } from '@/types/employee'
 import type { ShiftTemplate } from '@/types/shiftTemplate'
 import type { ShiftAssignmentWithDetails } from '@/types/schedule'
 import type { EmployeeAvailability } from '@/types/workforce'
-import { formatTime } from '@/types/shiftTemplate'
-import { shiftDurationMins } from '@/lib/workingTimeService'
-import { SHIFT_KIND_TONES } from '@/lib/palette'
-import { SegmentedControl } from '@/components/common'
+import { netWorkMins, shiftDurationMins } from '@/lib/workingTimeService'
+import { PersonAvatar } from '@/components/common'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
+import {
+  Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldTitle,
+} from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '@/components/ui/item'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Spinner } from '@/components/ui/spinner'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
-import { shiftKindOf } from './scheduleHelpers'
+import { fmtDuration, fmtRange, shiftKindOf } from './scheduleHelpers'
+import { ShiftKindBar } from './ScheduleCells'
 
 /** Dialog'dan dışarıya çıkan birleşik payload */
 export interface ShiftSavePayload {
@@ -43,21 +54,25 @@ interface Props {
   dayAvailability?: EmployeeAvailability[]
 }
 
-// ─── Müsaitlik uyarısı ────────────────────────────────────────
+type Mode = 'template' | 'custom'
+type FormError = { target: 'template' | 'start' | 'end' | 'form'; message: string }
+
+const toMins = (t: string) => { const [h, m] = t.slice(0, 5).split(':').map(Number); return h * 60 + m }
+
+// ─── Müsaitlik ────────────────────────────────────────────────
 function AvailabilityNotice({ records, shiftStart, shiftEnd }: {
   records: EmployeeAvailability[]
   shiftStart?: string
   shiftEnd?: string
 }) {
   if (records.length === 0) return null
-  const hasOff = records.some((r) => !r.is_available)
 
-  if (hasOff) {
+  if (records.some((r) => !r.is_available)) {
     return (
       <Alert tone="warning">
         <CalendarOff />
         <AlertTitle>Çalışan bu gün müsait değil</AlertTitle>
-        <AlertDescription>Off gün olarak işaretlenmiş; yine de atayabilirsiniz.</AlertDescription>
+        <AlertDescription>Gün kapalı olarak işaretlenmiş; yine de vardiya atayabilirsiniz.</AlertDescription>
       </Alert>
     )
   }
@@ -65,49 +80,32 @@ function AvailabilityNotice({ records, shiftStart, shiftEnd }: {
   const windows = records.filter((r) => r.is_available)
   let inWindow: boolean | null = null
   if (shiftStart && shiftEnd && windows.length > 0) {
-    const toMins = (t: string) => { const [h, m] = t.slice(0, 5).split(':').map(Number); return h * 60 + m }
-    const ss = toMins(shiftStart); const se = toMins(shiftEnd)
+    const ss = toMins(shiftStart)
+    const se = toMins(shiftEnd)
     inWindow = windows.some((w) => ss >= toMins(w.start_time) && se <= toMins(w.end_time))
   }
-
-  const windowBadges = (
-    <span className="flex flex-wrap items-center gap-1">
-      {windows.map((w, i) => (
-        <Badge key={i} tone="neutral" className="tabular-nums">
-          {w.start_time.slice(0, 5)}–{w.end_time.slice(0, 5)}
-        </Badge>
-      ))}
-    </span>
-  )
+  const windowText = windows.map((w) => fmtRange(w.start_time, w.end_time)).join(', ')
 
   if (inWindow === false) {
     return (
       <Alert tone="warning">
         <TriangleAlert />
-        <AlertTitle>Müsaitlik penceresi dışında</AlertTitle>
+        <AlertTitle>Müsaitlik penceresinin dışında</AlertTitle>
         <AlertDescription>
-          <span>Devam edebilirsiniz. Müsait olduğu saatler:</span>
-          {windowBadges}
+          <p>Müsait olduğu saatler: <span className="font-medium text-foreground tabular-nums">{windowText}</span>. Yine de kaydedebilirsiniz.</p>
         </AlertDescription>
       </Alert>
     )
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5 text-xs text-ink-secondary">
-      <span>Müsait:</span>
-      {windowBadges}
-      {inWindow === true && (
-        <span className="flex items-center gap-1 font-semibold text-success">
-          <CheckCircle2 aria-hidden className="size-3.5" />
-          Müsaitlik penceresinde
-        </span>
-      )}
-    </div>
+    <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+      {inWindow ? <CircleCheck aria-hidden className="size-4 text-success" /> : <Clock aria-hidden className="size-4" />}
+      {inWindow ? 'Müsaitlik penceresinde' : 'Müsait'}
+      <span className="font-medium text-foreground tabular-nums">· {windowText}</span>
+    </p>
   )
 }
-
-const fmtDur = (mins: number) => `${Math.floor(mins / 60)}s${mins % 60 > 0 ? ` ${mins % 60}dk` : ''}`
 
 // ─── Saat doğrulama ───────────────────────────────────────────
 function isValidTime(t: string): boolean {
@@ -128,254 +126,226 @@ export function ShiftAssignDialog({
   // Başlangıç değerleri mevcut atamadan gelir. Diyalog her hücre için ayrı `key` ile
   // açıldığından (bkz. WeeklySchedulePage) state yeniden başlatılır — effect ile senkron gerekmez.
   const existingTpl = existingAssignment?.shift_template_id ?? ''
-  const [mode, setMode] = useState<'template' | 'custom'>(existingAssignment && !existingTpl ? 'custom' : 'template')
+  const [mode, setMode] = useState<Mode>(existingAssignment && !existingTpl ? 'custom' : 'template')
   const [selectedTemplateId, setSelectedTemplateId] = useState(existingTpl)
   const [customStart, setCustomStart] = useState(existingAssignment?.start_time.slice(0, 5) ?? '09:00')
   const [customEnd, setCustomEnd] = useState(existingAssignment?.end_time.slice(0, 5) ?? '17:00')
-  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [error, setError] = useState<FormError | null>(null)
 
   // Şablon seçilince özel saat alanlarını da şablondan doldur (kolaylık)
-  const handleTemplateChange = useCallback((id: string) => {
+  const handleTemplateChange = (id: string) => {
     setSelectedTemplateId(id)
+    if (error?.target === 'template') setError(null)
     const tpl = templates.find((t) => t.id === id)
     if (tpl) {
       setCustomStart(tpl.start_time.slice(0, 5))
       setCustomEnd(tpl.end_time.slice(0, 5))
     }
-  }, [templates])
+  }
 
-  // Aktif saat (önizleme ve availability kontrolü için)
-  const activeStart = mode === 'template'
-    ? (templates.find((t) => t.id === selectedTemplateId)?.start_time.slice(0, 5) ?? customStart)
-    : customStart
-  const activeEnd = mode === 'template'
-    ? (templates.find((t) => t.id === selectedTemplateId)?.end_time.slice(0, 5) ?? customEnd)
-    : customEnd
+  // Aktif saat (önizleme ve müsaitlik kontrolü için)
+  const selectedTemplate = templates.find((t) => t.id === selectedTemplateId) ?? null
+  const activeStart = mode === 'template' ? (selectedTemplate?.start_time.slice(0, 5) ?? customStart) : customStart
+  const activeEnd = mode === 'template' ? (selectedTemplate?.end_time.slice(0, 5) ?? customEnd) : customEnd
+  const validRange = isValidTime(activeStart) && isValidTime(activeEnd) && activeStart !== activeEnd
+  const grossMins = validRange ? shiftDurationMins(activeStart, activeEnd) : 0
+  const netMins = validRange ? netWorkMins(activeStart, activeEnd) : 0
+  // Bitiş ≤ başlangıç → gece yarısını geçen vardiya
+  const isOvernight = validRange && toMins(activeEnd) <= toMins(activeStart)
+  const showPreview = validRange && grossMins > 0 && (mode === 'custom' || !!selectedTemplate)
 
-  const selectedTemplate = mode === 'template'
-    ? (templates.find((t) => t.id === selectedTemplateId) ?? null)
-    : null
-
-  const durationMins = isValidTime(activeStart) && isValidTime(activeEnd)
-    ? shiftDurationMins(activeStart, activeEnd)
-    : 0
-  const durationLabel = durationMins > 0 ? fmtDur(durationMins) : null
-
-  // Özel saatte bitiş < başlangıç (gece yarısını geçen)
-  const isOvernight = isValidTime(activeStart) && isValidTime(activeEnd) && (() => {
-    const [sh, sm] = activeStart.split(':').map(Number)
-    const [eh, em] = activeEnd.split(':').map(Number)
-    return eh * 60 + em <= sh * 60 + sm
-  })()
+  const fail = (target: FormError['target'], err: unknown, fallback: string) =>
+    setError({ target, message: err instanceof Error ? err.message : fallback })
 
   const handleSave = async () => {
-    setSubmitError(null)
+    setError(null)
 
     if (mode === 'template') {
-      if (!selectedTemplateId) {
-        setSubmitError('Lütfen bir vardiya şablonu seçin.')
-        return
-      }
+      if (!selectedTemplateId) { setError({ target: 'template', message: 'Bir vardiya şablonu seçin.' }); return }
       const tpl = templates.find((t) => t.id === selectedTemplateId)
-      if (!tpl) { setSubmitError('Şablon bulunamadı.'); return }
+      if (!tpl) { setError({ target: 'template', message: 'Şablon bulunamadı.' }); return }
       try {
         await onSave({
           templateId: selectedTemplateId,
           startTime: tpl.start_time.slice(0, 5),
           endTime: tpl.end_time.slice(0, 5),
         })
-      } catch (err) { setSubmitError(err instanceof Error ? err.message : 'Bir hata oluştu.') }
+      } catch (err) { fail('form', err, 'Bir hata oluştu.') }
       return
     }
 
     // Özel saat modu
-    if (!isValidTime(customStart)) { setSubmitError('Geçerli bir başlangıç saati girin (SS:DD).'); return }
-    if (!isValidTime(customEnd))   { setSubmitError('Geçerli bir bitiş saati girin (SS:DD).'); return }
-    if (customStart === customEnd) { setSubmitError('Başlangıç ve bitiş saati aynı olamaz.'); return }
+    if (!isValidTime(customStart)) { setError({ target: 'start', message: 'Geçerli bir başlangıç saati girin (SS:DD).' }); return }
+    if (!isValidTime(customEnd)) { setError({ target: 'end', message: 'Geçerli bir bitiş saati girin (SS:DD).' }); return }
+    if (customStart === customEnd) { setError({ target: 'end', message: 'Başlangıç ve bitiş saati aynı olamaz.' }); return }
 
     try {
       await onSave({ templateId: null, startTime: customStart, endTime: customEnd })
-    } catch (err) { setSubmitError(err instanceof Error ? err.message : 'Bir hata oluştu.') }
+    } catch (err) { fail('form', err, 'Bir hata oluştu.') }
   }
 
   const handleDelete = async () => {
     if (!onDelete) return
-    setSubmitError(null)
-    try { await onDelete() }
-    catch (err) { setSubmitError(err instanceof Error ? err.message : 'Silme hatası.') }
+    setError(null)
+    try { await onDelete() } catch (err) { fail('form', err, 'Vardiya kaldırılamadı.') }
+  }
+
+  const handleRestDay = async () => {
+    if (!onAssignRestDay) return
+    setError(null)
+    try { await onAssignRestDay() } catch (err) { fail('form', err, 'Tatil atanamadı.') }
   }
 
   const dateLabel = workDate
     ? new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long', weekday: 'long' })
         .format(new Date(workDate + 'T00:00:00'))
     : ''
-
-  const handleRestDay = async () => {
-    if (!onAssignRestDay) return
-    setSubmitError(null)
-    try { await onAssignRestDay() }
-    catch (err) { setSubmitError(err instanceof Error ? err.message : 'Tatil atanamadı.') }
-  }
+  const fieldErr = (target: FormError['target']) => (error?.target === target ? error.message : null)
 
   return (
-    <Dialog open={open} onOpenChange={(next) => { if (!next) onClose() }}>
-      <DialogContent className="sm:max-w-md">
+    <Dialog open={open} onOpenChange={(next) => { if (!next && !loading) onClose() }}>
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{isEdit ? 'Vardiyayı Düzenle' : 'Vardiya Ata'}</DialogTitle>
-          <DialogDescription>
-            <span className="font-semibold text-ink">{employee?.full_name}</span>
-            {dateLabel && <> · {dateLabel}</>}
+          <DialogTitle>{isEdit ? 'Vardiyayı düzenle' : 'Vardiya ata'}</DialogTitle>
+          <DialogDescription className="flex items-center justify-center gap-2 sm:justify-start">
+            {employee && <PersonAvatar name={employee.full_name} size={20} />}
+            <span><span className="font-medium text-foreground">{employee?.full_name}</span>{dateLabel && <> · {dateLabel}</>}</span>
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex min-w-0 flex-col gap-4">
-          {submitError && (
-            <Alert tone="danger" className="pr-10">
-              <AlertCircle />
-              <AlertDescription className="text-ink">{submitError}</AlertDescription>
-              <button
-                type="button"
-                aria-label="Kapat"
-                onClick={() => setSubmitError(null)}
-                className="absolute top-2 right-2 flex size-7 items-center justify-center rounded-lg text-ink-secondary hover:bg-card/60"
-              >
-                <X className="size-4" />
-              </button>
+          {error?.target === 'form' && (
+            <Alert variant="destructive">
+              <CircleAlert />
+              <AlertTitle>Kaydedilemedi</AlertTitle>
+              <AlertDescription>{error.message}</AlertDescription>
             </Alert>
           )}
 
-          {/* Müsaitlik */}
           {dayAvailability.length > 0 && (
             <AvailabilityNotice records={dayAvailability} shiftStart={activeStart} shiftEnd={activeEnd} />
           )}
 
-          {/* Mod seçimi */}
-          <SegmentedControl<'template' | 'custom'>
-            aria-label="Atama türü"
-            value={mode}
-            onChange={setMode}
-            options={[
-              { value: 'template', label: 'Şablon' },
-              { value: 'custom', label: 'Özel saat' },
-            ]}
-            fullWidth
-          />
+          <Tabs value={mode} onValueChange={(v) => { setMode(v as Mode); setError(null) }}>
+            <TabsList className="w-full">
+              <TabsTrigger value="template">Şablondan</TabsTrigger>
+              <TabsTrigger value="custom">Özel saat</TabsTrigger>
+            </TabsList>
 
-          {/* ── Şablon modu: türüne göre renkli seçilebilir kartlar ── */}
-          {mode === 'template' && (
-            templates.length === 0 ? (
-              <p className="rounded-xl bg-surface-muted px-3 py-2.5 text-sm text-ink-secondary">
-                Henüz vardiya şablonu yok. Özel saat ile atayabilirsiniz.
-              </p>
-            ) : (
-              <div role="radiogroup" aria-label="Vardiya şablonu" className="grid grid-cols-2 gap-2">
-                {templates.map((t) => {
-                  const tone = SHIFT_KIND_TONES[shiftKindOf(t.name, t.start_time, t.end_time)]
-                  const selected = t.id === selectedTemplateId
-                  const dur = shiftDurationMins(t.start_time.slice(0, 5), t.end_time.slice(0, 5))
-                  return (
-                    <button
-                      key={t.id}
-                      type="button"
-                      role="radio"
-                      aria-checked={selected}
-                      onClick={() => handleTemplateChange(t.id)}
-                      className={cn(
-                        'flex min-h-16 min-w-0 flex-col items-start gap-0.5 rounded-xl border-2 px-3 py-2.5 text-left transition-shadow outline-none',
-                        'focus-visible:ring-[3px] focus-visible:ring-ring/50',
-                        selected ? 'shadow-[0_2px_8px_rgb(43_33_27/0.10)]' : 'border-transparent hover:shadow-[0_1px_4px_rgb(43_33_27/0.08)]'
-                      )}
-                      style={{ backgroundColor: tone.soft, borderColor: selected ? tone.text : undefined }}
-                    >
-                      <span className="flex w-full items-center justify-between gap-2">
-                        <span className="truncate text-sm font-bold" style={{ color: tone.text }}>{t.name}</span>
-                        {selected && <CheckCircle2 aria-hidden className="size-4 shrink-0" style={{ color: tone.text }} />}
-                      </span>
-                      <span className="text-xs tabular-nums text-ink-secondary">
-                        {formatTime(t.start_time)} – {formatTime(t.end_time)} · {fmtDur(dur)}
-                      </span>
-                    </button>
-                  )
-                })}
-              </div>
-            )
-          )}
+            <TabsContent value="template" className="mt-2">
+              {templates.length === 0 ? (
+                <Empty className="border p-6 md:p-6">
+                  <EmptyHeader>
+                    <EmptyTitle>Vardiya şablonu yok</EmptyTitle>
+                    <EmptyDescription>Özel saat sekmesinden saat girerek atayabilirsiniz.</EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              ) : (
+                <Field data-invalid={!!fieldErr('template') || undefined}>
+                  <RadioGroup
+                    value={selectedTemplateId}
+                    onValueChange={handleTemplateChange}
+                    aria-label="Vardiya şablonu"
+                    className="-m-1 grid max-h-72 grid-cols-1 gap-2 overflow-y-auto p-1 sm:grid-cols-2"
+                  >
+                    {templates.map((t) => {
+                      const start = t.start_time.slice(0, 5)
+                      const end = t.end_time.slice(0, 5)
+                      return (
+                        <FieldLabel key={t.id} htmlFor={`tpl-${t.id}`} className="[&>*]:data-[slot=field]:p-3">
+                          <Field orientation="horizontal" className="gap-3">
+                            <ShiftKindBar kind={shiftKindOf(t.name, start, end)} className="h-8 self-center" />
+                            <FieldContent className="min-w-0 gap-0.5">
+                              <FieldTitle className="w-full truncate">{t.name}</FieldTitle>
+                              <FieldDescription className="text-xs tabular-nums">
+                                {fmtRange(start, end)} · {fmtDuration(shiftDurationMins(start, end))}
+                              </FieldDescription>
+                            </FieldContent>
+                            <RadioGroupItem value={t.id} id={`tpl-${t.id}`} className="self-center" />
+                          </Field>
+                        </FieldLabel>
+                      )
+                    })}
+                  </RadioGroup>
+                  {fieldErr('template') && <FieldError>{fieldErr('template')}</FieldError>}
+                </Field>
+              )}
+            </TabsContent>
 
-          {/* ── Özel saat modu ── */}
-          {mode === 'custom' && (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="assign-start">Başlangıç</Label>
-                <Input
-                  id="assign-start"
-                  type="time"
-                  step={300}
-                  value={customStart}
-                  onChange={(e) => setCustomStart(e.target.value)}
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="assign-end">Bitiş</Label>
-                <Input
-                  id="assign-end"
-                  type="time"
-                  step={300}
-                  value={customEnd}
-                  onChange={(e) => setCustomEnd(e.target.value)}
-                />
-              </div>
-            </div>
-          )}
+            <TabsContent value="custom" className="mt-2">
+              <FieldGroup className="grid grid-cols-2 gap-4">
+                <Field data-invalid={!!fieldErr('start') || undefined}>
+                  <FieldLabel htmlFor="assign-start">Başlangıç</FieldLabel>
+                  <Input
+                    id="assign-start"
+                    type="time"
+                    step={300}
+                    value={customStart}
+                    onChange={(e) => setCustomStart(e.target.value)}
+                    aria-invalid={!!fieldErr('start') || undefined}
+                  />
+                  {fieldErr('start') && <FieldError>{fieldErr('start')}</FieldError>}
+                </Field>
+                <Field data-invalid={!!fieldErr('end') || undefined}>
+                  <FieldLabel htmlFor="assign-end">Bitiş</FieldLabel>
+                  <Input
+                    id="assign-end"
+                    type="time"
+                    step={300}
+                    value={customEnd}
+                    onChange={(e) => setCustomEnd(e.target.value)}
+                    aria-invalid={!!fieldErr('end') || undefined}
+                  />
+                  {fieldErr('end') && <FieldError>{fieldErr('end')}</FieldError>}
+                </Field>
+                <FieldDescription className="col-span-2">
+                  Bitiş başlangıçtan önceyse vardiya gece yarısını geçer.
+                </FieldDescription>
+              </FieldGroup>
+            </TabsContent>
+          </Tabs>
 
-          {/* Önizleme — her iki modda da göster */}
-          {durationLabel && (
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-sm">
-              <span className="flex min-w-0 items-center gap-1.5 font-semibold tabular-nums text-ink">
-                <Clock aria-hidden className="size-4 text-ink-secondary" />
-                {activeStart} – {activeEnd}
-                {mode === 'custom' && selectedTemplate && (
-                  <span className="truncate font-normal text-ink-muted">(Şablon: {selectedTemplate.name})</span>
-                )}
-              </span>
-              <span className="flex items-center gap-1.5">
-                {isOvernight && (
-                  <Badge tone="plum"><Moon />gece geçen</Badge>
-                )}
-                <Badge tone="neutral">{durationLabel}</Badge>
-              </span>
-            </div>
+          {showPreview && (
+            <Item variant="muted" size="sm">
+              <ItemMedia variant="icon"><Clock /></ItemMedia>
+              <ItemContent className="min-w-0">
+                <ItemTitle className="tabular-nums">{fmtRange(activeStart, activeEnd)}</ItemTitle>
+                <ItemDescription className="tabular-nums">
+                  Brüt {fmtDuration(grossMins)} · mola {fmtDuration(grossMins - netMins)} · net {fmtDuration(netMins)}
+                </ItemDescription>
+              </ItemContent>
+              {isOvernight && (
+                <ItemActions>
+                  <Badge tone="plum"><Moon />Gece geçen</Badge>
+                </ItemActions>
+              )}
+            </Item>
           )}
         </div>
 
-        <DialogFooter className="sm:items-center sm:justify-between">
+        <DialogFooter className={cn((isEdit && onDelete) || (!isEdit && onAssignRestDay) ? 'sm:justify-between' : undefined)}>
           {isEdit && onDelete ? (
             <Button
               type="button"
               variant="ghost"
               onClick={handleDelete}
               disabled={loading}
-              className="text-danger hover:bg-danger-soft hover:text-danger"
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
             >
               <Trash2 />
-              Kaldır
+              Vardiyayı kaldır
             </Button>
           ) : !isEdit && onAssignRestDay ? (
-            /* Haftalık Tatil — yalnızca yeni atama (boş gün) */
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={handleRestDay}
-              disabled={loading}
-              className="text-plum hover:bg-plum-soft hover:text-plum"
-            >
+            /* Haftalık tatil — yalnızca yeni atama (boş gün) */
+            <Button type="button" variant="ghost" onClick={handleRestDay} disabled={loading}>
               <Sofa />
-              Haftalık Tatil
+              Haftalık tatil yap
             </Button>
-          ) : <span className="hidden sm:block" />}
+          ) : null}
           <div className="flex flex-col-reverse gap-2 sm:flex-row">
-            <Button type="button" variant="ghost" onClick={onClose} disabled={loading}>İptal</Button>
+            <Button type="button" variant="outline" onClick={onClose} disabled={loading}>İptal</Button>
             <Button type="button" onClick={handleSave} disabled={loading}>
-              {loading && <Loader2 className="animate-spin" />}
+              {loading && <Spinner />}
               {isEdit ? 'Güncelle' : 'Ata'}
             </Button>
           </div>
