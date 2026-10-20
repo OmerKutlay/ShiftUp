@@ -70,6 +70,59 @@
   --shift-open: oklch(0.769 0.188 70.08);
   --shift-mid: oklch(0.685 0.169 237.323);
   --shift-close: oklch(0.6 0.17 300);
+
+  color-scheme: light;
+}
+
+/*
+ * Koyu tema (shadcn stone dark + kiremit marka). `<html class="dark">` ile açılır; tercih ve
+ * sistem ayarı takibi: lib/theme.ts. Kartlar zeminden bir kademe açıktır.
+ */
+.dark {
+  --background: oklch(0.147 0.004 49.25);
+  --foreground: oklch(0.985 0.001 106.423);
+  --card: oklch(0.216 0.006 56.043);
+  --card-foreground: oklch(0.985 0.001 106.423);
+  --popover: oklch(0.216 0.006 56.043);
+  --popover-foreground: oklch(0.985 0.001 106.423);
+  --primary: oklch(0.646 0.152 40.5);
+  --primary-foreground: oklch(0.985 0.001 106.423);
+  --secondary: oklch(0.268 0.007 34.298);
+  --secondary-foreground: oklch(0.985 0.001 106.423);
+  --muted: oklch(0.268 0.007 34.298);
+  --muted-foreground: oklch(0.709 0.01 56.259);
+  --accent: oklch(0.268 0.007 34.298);
+  --accent-foreground: oklch(0.985 0.001 106.423);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.697 0.134 47.3);
+
+  --chart-1: oklch(0.646 0.152 40.5);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.623 0.214 259.815);
+  --chart-4: oklch(0.769 0.188 70.08);
+  --chart-5: oklch(0.65 0.17 305);
+
+  --sidebar: oklch(0.216 0.006 56.043);
+  --sidebar-foreground: oklch(0.985 0.001 106.423);
+  --sidebar-primary: oklch(0.646 0.152 40.5);
+  --sidebar-primary-foreground: oklch(0.985 0.001 106.423);
+  --sidebar-accent: oklch(0.268 0.007 34.298);
+  --sidebar-accent-foreground: oklch(0.985 0.001 106.423);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.697 0.134 47.3);
+
+  --success: oklch(0.696 0.17 162.48);
+  --warning: oklch(0.769 0.188 70.08);
+  --info: oklch(0.623 0.214 259.815);
+  --plum: oklch(0.65 0.17 305);
+
+  --shift-open: oklch(0.769 0.188 70.08);
+  --shift-mid: oklch(0.685 0.169 237.323);
+  --shift-close: oklch(0.65 0.17 300);
+
+  color-scheme: dark;
 }
 
 /* Kırılım noktaları: sm 600 · md 900 · lg 1200 · xl 1536 (useIsMobile md ile aynı) */
