@@ -2,11 +2,15 @@
 
 /**
  * NotificationBell — FAZ 10
- * Sidebar'a veya herhangi bir alana yerleştirilecek bildirim ikonu + badge.
+ * Sidebar'a veya herhangi bir alana yerleştirilecek bildirim ikonu + sayaç.
  */
 import { useState } from 'react'
-import { Badge, IconButton, Tooltip } from '@mui/material'
-import NotificationsIcon from '@mui/icons-material/Notifications'
+import { Bell } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Popover, PopoverTrigger } from '@/components/ui/popover'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { useIsMobile } from '@/hooks/useIsMobile'
+import { cn } from '@/lib/utils'
 import { NotificationPanel } from './NotificationPanel'
 import { useNotifications } from '@/hooks/useNotifications'
 
@@ -20,55 +24,53 @@ interface Props {
 }
 
 export function NotificationBell({ employeeId, collapsed = false }: Props) {
-  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null)
+  const [open, setOpen] = useState(false)
+  const isMobile = useIsMobile()
   const { notifications, unreadCount, loading, markAsRead, markAllAsRead } =
     useNotifications(employeeId, NOTIFICATION_POLL_MS)
 
-  const handleOpen = (e: React.MouseEvent<HTMLElement>) => {
-    setAnchorEl(e.currentTarget)
-  }
-  const handleClose = () => setAnchorEl(null)
+  const trigger = (
+    <PopoverTrigger asChild>
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label={`Bildirimler${unreadCount > 0 ? `, ${unreadCount} okunmamış` : ''}`}
+        className={cn('relative rounded-xl', unreadCount > 0 ? 'text-primary' : 'text-ink-secondary')}
+      >
+        <Bell className="size-5" />
+        {unreadCount > 0 && (
+          <span
+            aria-hidden
+            className="absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[0.62rem] leading-none font-bold text-white ring-2 ring-background"
+          >
+            {unreadCount > 99 ? '99+' : unreadCount}
+          </span>
+        )}
+      </Button>
+    </PopoverTrigger>
+  )
 
   return (
-    <>
-      <Tooltip title={collapsed ? 'Bildirimler' : ''} placement="right">
-        <IconButton
-          onClick={handleOpen}
-          size="small"
-          aria-label={`Bildirimler${unreadCount > 0 ? `, ${unreadCount} okunmamış` : ''}`}
-          sx={{
-            color: unreadCount > 0 ? 'primary.main' : 'text.secondary',
-            transition: 'color 0.2s',
-          }}
-        >
-          <Badge
-            badgeContent={unreadCount}
-            max={99}
-            color="error"
-            invisible={unreadCount === 0}
-            sx={{
-              '& .MuiBadge-badge': {
-                fontSize: '0.65rem',
-                minWidth: 16,
-                height: 16,
-                padding: '0 4px',
-              },
-            }}
-          >
-            <NotificationsIcon fontSize="small" />
-          </Badge>
-        </IconButton>
-      </Tooltip>
+    <Popover open={open} onOpenChange={setOpen}>
+      {collapsed && !isMobile ? (
+        <Tooltip>
+          <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+          <TooltipContent side="right">Bildirimler</TooltipContent>
+        </Tooltip>
+      ) : (
+        trigger
+      )}
 
       <NotificationPanel
-        anchorEl={anchorEl}
-        onClose={handleClose}
+        // Telefonda zil üst çubuğun sağında: panel zilin altına, sağa hizalı açılsın (üstünü kapatmasın)
+        side={isMobile ? 'bottom' : 'right'}
+        onClose={() => setOpen(false)}
         notifications={notifications}
         unreadCount={unreadCount}
         loading={loading}
         onMarkAsRead={markAsRead}
         onMarkAllAsRead={markAllAsRead}
       />
-    </>
+    </Popover>
   )
 }

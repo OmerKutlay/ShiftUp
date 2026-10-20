@@ -5,7 +5,7 @@ const isDev = process.env.NODE_ENV !== "production";
 
 /**
  * Content-Security-Policy — yalnızca kendi origin'i + Supabase.
- * MUI (emotion) satır içi <style>, Next.js satır içi hydration script'i ürettiği için
+ * Bileşenlerdeki satır içi style değerleri ve Next.js satır içi hydration script'i yüzünden
  * 'unsafe-inline' gerekir; harici script / bağlantı kaynakları yine de engellenir.
  */
 const csp = [

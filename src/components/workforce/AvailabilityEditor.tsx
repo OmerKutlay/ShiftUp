@@ -5,24 +5,26 @@
  * manager+ (veri girişi için) herhangi bir çalışanı seçebilir — API de aynı kuralı uygular.
  */
 import { useState, useEffect, useCallback } from 'react'
-import {
-  Box, Typography, Paper, Chip, Button, Stack,
-  CircularProgress, Alert, Select, MenuItem, TextField, FormControl,
-  InputLabel, Dialog, DialogTitle, DialogContent, DialogActions, Switch,
-  FormControlLabel,
-} from '@mui/material'
-import AddIcon from '@mui/icons-material/Add'
-import DeleteIcon from '@mui/icons-material/Delete'
-import CheckCircleIcon from '@mui/icons-material/CheckCircle'
-import BlockIcon from '@mui/icons-material/Block'
+import { AlertCircle, Ban, Check, Loader2, Plus, X } from 'lucide-react'
 import type { EmployeeAvailability, DayOfWeek } from '@/types/workforce'
 import { DAY_OF_WEEK_LABELS } from '@/types/workforce'
 import type { EmployeeWithRole } from '@/types/employee'
 import { DayBlocksSkeleton, EmployeeSelect } from '@/components/common'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { useLoadedKey } from '@/hooks/useLoadedKey'
-import { C, tint } from '@/lib/palette'
+import { cn } from '@/lib/utils'
 
 const DAYS: DayOfWeek[] = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']
+
+const EMPTY_FORM = { day_of_week: 'monday' as DayOfWeek, start_time: '09:00', end_time: '18:00', is_available: true, note: '' }
 
 interface Props {
   employees: EmployeeWithRole[]
@@ -36,7 +38,7 @@ export function AvailabilityEditor({ employees, currentEmployeeId, isManager }: 
   const { isFirstLoad, markLoaded } = useLoadedKey(selectedId)
   const [error, setError] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [form, setForm] = useState({ day_of_week: 'monday' as DayOfWeek, start_time: '09:00', end_time: '18:00', is_available: true, note: '' })
+  const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
 
   const load = useCallback(async () => {
@@ -75,6 +77,12 @@ export function AvailabilityEditor({ employees, currentEmployeeId, isManager }: 
     finally { setSaving(false) }
   }
 
+  // Satırdaki "+" gün seçili olarak, alttaki buton son seçimle açar
+  const openDialog = (day?: DayOfWeek) => {
+    if (day) setForm((f) => ({ ...f, day_of_week: day }))
+    setDialogOpen(true)
+  }
+
   // Günlere göre grupla
   const grouped = DAYS.map((day) => ({
     day,
@@ -82,114 +90,146 @@ export function AvailabilityEditor({ employees, currentEmployeeId, isManager }: 
   }))
 
   return (
-    <Box>
+    <div>
       {/* Çalışan seçici — yalnızca yöneticiler başkası adına veri girebilir */}
       {isManager ? (
-        <EmployeeSelect
-          employees={employees}
-          value={selectedId}
-          label="Çalışan"
-          onChange={setSelectedId}
-          sx={{ mb: 2, minWidth: 260, maxWidth: 360 }}
-        />
+        <div className="mb-4 w-full max-w-[360px]">
+          <EmployeeSelect
+            employees={employees}
+            value={selectedId}
+            label="Çalışan"
+            onChange={setSelectedId}
+            fullWidth
+          />
+        </div>
       ) : (
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        <p className="mb-4 text-sm text-ink-secondary">
           Haftalık müsaitliğinizi belirtin; vardiya planlanırken dikkate alınır.
-        </Typography>
+        </p>
       )}
 
-      {error && <Alert severity="error" sx={{ mb: 1 }} onClose={() => setError(null)}>{error}</Alert>}
+      {error && (
+        <Alert tone="danger" className="mb-3 pr-12">
+          <AlertCircle />
+          <AlertDescription className="text-ink">{error}</AlertDescription>
+          <Button
+            variant="ghost" size="icon-sm" aria-label="Kapat" onClick={() => setError(null)}
+            className="absolute top-1.5 right-1.5 text-ink-secondary"
+          >
+            <X />
+          </Button>
+        </Alert>
+      )}
 
       {isFirstLoad ? (
         <DayBlocksSkeleton count={7} />
       ) : (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <section className="overflow-hidden rounded-2xl border bg-card [&>*+*]:border-t">
           {grouped.map(({ day, items }) => (
-            <Paper key={day} sx={{ p: 1.5, bgcolor: C.surface, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: items.length > 0 ? 1 : 0 }}>
-                <Typography variant="body2" fontWeight={700} color={items.length > 0 ? 'text.primary' : 'text.secondary'}>
+            <div key={day} className="flex min-h-14 items-start gap-3 px-4 py-2.5">
+              <div className="flex min-h-9 w-24 shrink-0 items-center">
+                <span className={cn('text-sm font-bold', items.length === 0 && 'text-ink-secondary')}>
                   {DAY_OF_WEEK_LABELS[day]}
-                </Typography>
-                {items.length === 0 && (
-                  <Typography variant="caption" color="text.secondary">Kayıt yok</Typography>
-                )}
-              </Box>
-              <Stack direction="row" flexWrap="wrap" gap={0.75}>
+                </span>
+              </div>
+              <div className="flex min-h-9 min-w-0 flex-1 flex-wrap items-center gap-1.5">
+                {items.length === 0 && <span className="text-xs text-ink-muted">Kayıt yok</span>}
                 {items.map((item) => (
-                  <Chip
+                  <span
                     key={item.id}
-                    icon={item.is_available ? <CheckCircleIcon sx={{ fontSize: 14 }} /> : <BlockIcon sx={{ fontSize: 14 }} />}
-                    label={
-                      <Box component="span" sx={{ display: 'block' }}>
+                    className={cn(
+                      'inline-flex max-w-full items-center gap-1.5 rounded-[10px] py-1 pr-1 pl-2.5 text-xs font-semibold',
+                      item.is_available ? 'bg-success-soft text-success' : 'bg-danger-soft text-danger'
+                    )}
+                  >
+                    {item.is_available
+                      ? <Check className="size-3.5 shrink-0" aria-label="Müsait" />
+                      : <Ban className="size-3.5 shrink-0" aria-label="Müsait değil" />}
+                    <span className="min-w-0">
+                      <span className="block tabular-nums">
                         {item.start_time.slice(0,5)} – {item.end_time.slice(0,5)}
-                        {item.note && (
-                          <Box component="span" sx={{ display: 'block', fontWeight: 400, fontSize: '0.7rem', opacity: 0.85, whiteSpace: 'normal' }}>
-                            {item.note}
-                          </Box>
-                        )}
-                      </Box>
-                    }
-                    size="small"
-                    onDelete={() => handleDelete(item.id)}
-                    deleteIcon={<DeleteIcon />}
-                    sx={{
-                      bgcolor: item.is_available ? tint(C.brand, 0.12) : tint(C.danger, 0.12),
-                      color: item.is_available ? 'primary.main' : 'error.main',
-                      fontWeight: 600,
-                      height: 'auto',
-                      minHeight: 24,
-                      maxWidth: '100%',
-                      py: item.note ? 0.25 : 0,
-                      '& .MuiChip-label': { whiteSpace: 'normal' },
-                    }}
-                  />
+                      </span>
+                      {item.note && (
+                        <span className="block font-normal whitespace-normal opacity-85 [overflow-wrap:anywhere]">{item.note}</span>
+                      )}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void handleDelete(item.id)}
+                      aria-label={`${DAY_OF_WEEK_LABELS[day]} ${item.start_time.slice(0,5)}–${item.end_time.slice(0,5)} kaydını sil`}
+                      className="inline-flex size-6 shrink-0 items-center justify-center rounded-md opacity-70 transition-opacity outline-none hover:bg-black/5 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  </span>
                 ))}
-              </Stack>
-            </Paper>
+              </div>
+              <Button
+                variant="ghost" size="icon-sm"
+                onClick={() => openDialog(day)}
+                aria-label={`${DAY_OF_WEEK_LABELS[day]} için müsaitlik ekle`}
+                className="shrink-0 text-ink-secondary"
+              >
+                <Plus />
+              </Button>
+            </div>
           ))}
-        </Box>
+        </section>
       )}
 
-      <Button
-        startIcon={<AddIcon />}
-        variant="outlined"
-        size="small"
-        onClick={() => setDialogOpen(true)}
-        sx={{ mt: 2, borderColor: 'primary.main', color: 'primary.main' }}
-      >
+      <Button variant="outline" size="sm" onClick={() => openDialog()} className="mt-4">
+        <Plus />
         Müsaitlik Ekle
       </Button>
 
       {/* Ekleme dialog */}
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Müsaitlik Ekle</DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '12px !important' }}>
-          <FormControl fullWidth size="small">
-            <InputLabel>Gün</InputLabel>
-            <Select value={form.day_of_week} label="Gün" onChange={(e) => setForm((f) => ({ ...f, day_of_week: e.target.value as DayOfWeek }))}>
-              {DAYS.map((d) => <MenuItem key={d} value={d}>{DAY_OF_WEEK_LABELS[d]}</MenuItem>)}
-            </Select>
-          </FormControl>
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <TextField size="small" label="Başlangıç" type="time" value={form.start_time}
-              onChange={(e) => setForm((f) => ({ ...f, start_time: e.target.value }))} inputProps={{ step: 300 }} fullWidth />
-            <TextField size="small" label="Bitiş" type="time" value={form.end_time}
-              onChange={(e) => setForm((f) => ({ ...f, end_time: e.target.value }))} inputProps={{ step: 300 }} fullWidth />
-          </Box>
-          <FormControlLabel
-            control={<Switch checked={form.is_available} onChange={(e) => setForm((f) => ({ ...f, is_available: e.target.checked }))} color="primary" />}
-            label={form.is_available ? 'Müsait' : 'Müsait Değil'}
-          />
-          <TextField size="small" label="Not (isteğe bağlı)" value={form.note}
-            onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} fullWidth />
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Müsaitlik Ekle</DialogTitle>
+            <DialogDescription>Planlama bu saat aralığını dikkate alır.</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="avail-day">Gün</Label>
+              <Select value={form.day_of_week} onValueChange={(v) => setForm((f) => ({ ...f, day_of_week: v as DayOfWeek }))}>
+                <SelectTrigger id="avail-day" className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {DAYS.map((d) => <SelectItem key={d} value={d}>{DAY_OF_WEEK_LABELS[d]}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="avail-start">Başlangıç</Label>
+                <Input id="avail-start" type="time" step={300} value={form.start_time}
+                  onChange={(e) => setForm((f) => ({ ...f, start_time: e.target.value }))} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="avail-end">Bitiş</Label>
+                <Input id="avail-end" type="time" step={300} value={form.end_time}
+                  onChange={(e) => setForm((f) => ({ ...f, end_time: e.target.value }))} />
+              </div>
+            </div>
+            <div className="flex min-h-10 items-center gap-3">
+              <Switch id="avail-available" checked={form.is_available}
+                onCheckedChange={(checked) => setForm((f) => ({ ...f, is_available: checked }))} />
+              <Label htmlFor="avail-available">{form.is_available ? 'Müsait' : 'Müsait değil'}</Label>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="avail-note">Not (isteğe bağlı)</Label>
+              <Input id="avail-note" value={form.note}
+                onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDialogOpen(false)}>İptal</Button>
+            <Button onClick={() => void handleSave()} disabled={saving}>
+              {saving ? <Loader2 className="animate-spin" aria-label="Kaydediliyor" /> : 'Kaydet'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDialogOpen(false)} color="inherit">İptal</Button>
-          <Button onClick={handleSave} variant="contained" disabled={saving}>
-            {saving ? <CircularProgress size={18} /> : 'Kaydet'}
-          </Button>
-        </DialogActions>
       </Dialog>
-    </Box>
+    </div>
   )
 }
