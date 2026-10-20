@@ -7,6 +7,8 @@
  */
 
 const v = (name: string) => `var(--${name})`
+/** Token'ın zemine karışmış açık tonu (rozet / hücre zemini) */
+const soft = (name: string, pct: number) => `color-mix(in oklch, var(--${name}) ${pct}%, var(--background))`
 /** Rengin yarı saydam hali (CSS color-mix) */
 export function tint(color: string, a: number): string {
   return `color-mix(in oklch, ${color} ${Math.round(a * 100)}%, transparent)`
@@ -17,36 +19,36 @@ export const C = {
   surface: v('card'),
   surfaceAlt: v('muted'),
   surfaceMuted: v('secondary'),
-  sand: v('sand'),
+  sand: 'oklch(0.869 0.005 56.366)',
   border: v('border'),
 
   ink: v('foreground'),
   inkSecondary: v('muted-foreground'),
-  inkMuted: v('ink-muted'),
+  inkMuted: 'oklch(0.709 0.01 56.259)',
 
   brand: v('primary'),
-  brandDark: v('brand-dark'),
-  brandLight: v('brand-light'),
-  brandSoft: v('brand-soft'),
+  brandDark: 'oklch(0.508 0.135 40.2)',
+  brandLight: 'oklch(0.697 0.134 47.3)',
+  brandSoft: soft('primary', 10),
 
   success: v('success'),
-  successFill: v('success-fill'),
-  successSoft: v('success-soft'),
+  successFill: soft('success', 55),
+  successSoft: soft('success', 10),
   warning: v('warning'),
-  warningFill: v('warning-fill'),
-  warningSoft: v('warning-soft'),
+  warningFill: soft('warning', 70),
+  warningSoft: soft('warning', 12),
   danger: v('destructive'),
-  dangerFill: v('danger-fill'),
-  dangerSoft: v('danger-soft'),
+  dangerFill: v('destructive'),
+  dangerSoft: soft('destructive', 10),
   info: v('info'),
-  infoFill: v('info-fill'),
-  infoSoft: v('info-soft'),
+  infoFill: soft('info', 70),
+  infoSoft: soft('info', 10),
   plum: v('plum'),
-  plumFill: v('plum-fill'),
-  plumSoft: v('plum-soft'),
-  peach: v('peach'),
-  peachFill: v('peach-fill'),
-  peachSoft: v('peach-soft'),
+  plumFill: soft('plum', 60),
+  plumSoft: soft('plum', 10),
+  peach: v('shift-mid'),
+  peachFill: soft('shift-mid', 70),
+  peachSoft: soft('shift-mid', 12),
   neutral: v('muted-foreground'),
   neutralSoft: v('secondary'),
 
@@ -72,7 +74,7 @@ export const SHIFT_KIND_TONES = {
   mid: kind('shift-mid'),
   closing: kind('shift-close'),
   full: kind('info'),
-  custom: { soft: v('secondary'), text: v('muted-foreground'), fill: v('ink-muted') },
+  custom: { soft: v('secondary'), text: v('muted-foreground'), fill: 'oklch(0.709 0.01 56.259)' },
 } as const
 
 /** Kişi avatarları: nötr zemin + koyu baş harf (shadcn Avatar varsayılanı); renk ada göre sabit seçilir */

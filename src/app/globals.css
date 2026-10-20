@@ -53,6 +53,15 @@
   --info: oklch(0.546 0.245 262.881);
   --plum: oklch(0.55 0.16 305);
 
+  /*
+   * Üst kenar: ekranın üstünde içeriğin başlayabileceği yer.
+   * iOS 26+ ana ekran uygulaması üst kenara ~40pt'lik, sayfanın kapatamadığı bir bulanıklık
+   * geçişi (scroll edge effect) çizer; --edge-ramp bu bandı düz zeminle doldurup üst barın
+   * içeriğini altına indirir (aşağıdaki @supports). Diğer her yerde 0.
+   */
+  --edge-ramp: 0px;
+  --app-top: calc(env(safe-area-inset-top) + var(--edge-ramp));
+
   /* Vardiya türleri */
   --shift-open: oklch(0.769 0.188 70.08);
   --shift-mid: oklch(0.685 0.169 237.323);
@@ -117,6 +126,15 @@
   --color-shift-close: var(--shift-close);
 }
 
+/* iOS (-webkit-touch-callout) + Safari 26+ (anchor-name) + ana ekrandan açılmış uygulama */
+@supports (-webkit-touch-callout: none) and (anchor-name: --a) {
+  @media (display-mode: standalone) and (orientation: portrait), (display-mode: standalone) and (min-width: 768px) {
+    :root {
+      --edge-ramp: 2.5rem;
+    }
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -147,69 +165,3 @@
   }
 }
 
-/*
- * GEÇİŞ — eski token adları (canvas, ink, brand-soft, *-soft …) yeni temaya bağlıdır.
- * Sayfalar DESIGN_GUIDE'a taşındıkça kullanımları kalkar; sonra bu blok silinir.
- */
-:root {
-  --canvas: var(--muted);
-  --surface: var(--card);
-  --surface-alt: var(--muted);
-  --surface-muted: var(--secondary);
-  --sand: oklch(0.869 0.005 56.366);
-  --line: var(--border);
-  --ink: var(--foreground);
-  --ink-secondary: var(--muted-foreground);
-  --ink-muted: oklch(0.709 0.01 56.259);
-  --brand: var(--primary);
-  --brand-dark: oklch(0.508 0.135 40.2);
-  --brand-light: oklch(0.697 0.134 47.3);
-  --brand-soft: color-mix(in oklch, var(--primary) 10%, var(--background));
-  --danger: var(--destructive);
-  --peach: var(--shift-mid);
-  --neutral: var(--muted-foreground);
-  --neutral-soft: var(--secondary);
-  --success-soft: color-mix(in oklch, var(--success) 10%, var(--background));
-  --warning-soft: color-mix(in oklch, var(--warning) 12%, var(--background));
-  --danger-soft: color-mix(in oklch, var(--destructive) 10%, var(--background));
-  --info-soft: color-mix(in oklch, var(--info) 10%, var(--background));
-  --plum-soft: color-mix(in oklch, var(--plum) 10%, var(--background));
-  --peach-soft: color-mix(in oklch, var(--shift-mid) 12%, var(--background));
-  --success-fill: color-mix(in oklch, var(--success) 55%, var(--background));
-  --warning-fill: color-mix(in oklch, var(--warning) 70%, var(--background));
-  --danger-fill: var(--destructive);
-  --info-fill: color-mix(in oklch, var(--info) 70%, var(--background));
-  --plum-fill: color-mix(in oklch, var(--plum) 60%, var(--background));
-  --peach-fill: color-mix(in oklch, var(--shift-mid) 70%, var(--background));
-}
-
-@theme inline {
-  --color-canvas: var(--canvas);
-  --color-surface: var(--surface);
-  --color-surface-alt: var(--surface-alt);
-  --color-surface-muted: var(--surface-muted);
-  --color-sand: var(--sand);
-  --color-ink: var(--ink);
-  --color-ink-secondary: var(--ink-secondary);
-  --color-ink-muted: var(--ink-muted);
-  --color-brand: var(--brand);
-  --color-brand-dark: var(--brand-dark);
-  --color-brand-light: var(--brand-light);
-  --color-brand-soft: var(--brand-soft);
-  --color-danger: var(--danger);
-  --color-peach: var(--peach);
-  --color-neutral: var(--neutral);
-  --color-neutral-soft: var(--neutral-soft);
-  --color-success-soft: var(--success-soft);
-  --color-warning-soft: var(--warning-soft);
-  --color-danger-soft: var(--danger-soft);
-  --color-info-soft: var(--info-soft);
-  --color-plum-soft: var(--plum-soft);
-  --color-peach-soft: var(--peach-soft);
-  --color-success-fill: var(--success-fill);
-  --color-warning-fill: var(--warning-fill);
-  --color-danger-fill: var(--danger-fill);
-  --color-info-fill: var(--info-fill);
-  --color-plum-fill: var(--plum-fill);
-  --color-peach-fill: var(--peach-fill);
-}

@@ -19,8 +19,8 @@ export interface Role {
 export type EmploymentType = 'full_time' | 'part_time'
 
 export const EMPLOYMENT_TYPE_LABELS: Record<EmploymentType, string> = {
-  full_time: 'Tam Zamanlı',
-  part_time: 'Yarı Zamanlı',
+  full_time: 'Tam zamanlı',
+  part_time: 'Yarı zamanlı',
 }
 
 /** Part-time sabit kurallar — iş mantığı tek yerde */

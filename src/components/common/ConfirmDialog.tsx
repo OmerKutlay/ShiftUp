@@ -69,7 +69,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
               aria-hidden
               className={cn(
                 'flex size-9 shrink-0 items-center justify-center rounded-full',
-                isError ? 'bg-danger-soft text-danger' : 'bg-warning-soft text-warning'
+                isError ? 'bg-destructive/10 text-destructive' : 'bg-warning/10 text-warning'
               )}
             >
               <TriangleAlert className="size-5" />
@@ -87,17 +87,17 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
           {options?.items && options.items.length > 0 && (
             <ul
               className={cn(
-                'max-h-60 list-disc space-y-1 overflow-y-auto rounded-xl py-2.5 pr-3 pl-7 text-sm text-ink',
-                isError ? 'bg-danger-soft' : 'bg-warning-soft'
+                'max-h-60 list-disc space-y-1 overflow-y-auto rounded-lg border py-2.5 pr-3 pl-7 text-sm',
+                isError ? 'border-destructive/30 bg-destructive/5' : 'border-warning/30 bg-warning/5'
               )}
             >
               {options.items.map((item, i) => <li key={i}>{item}</li>)}
             </ul>
           )}
-          {options?.footer && <p className="text-sm text-ink-secondary">{options.footer}</p>}
+          {options?.footer && <p className="text-sm text-muted-foreground">{options.footer}</p>}
 
           <AlertDialogFooter>
-            <AlertDialogCancel className="border-transparent bg-transparent" onClick={() => close(false)}>
+            <AlertDialogCancel onClick={() => close(false)}>
               {options?.cancelText ?? 'İptal'}
             </AlertDialogCancel>
             <AlertDialogAction
@@ -105,7 +105,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
               className={buttonVariants({ variant: isError ? 'destructive' : 'default' })}
               onClick={() => close(true)}
             >
-              {options?.confirmText ?? 'Devam Et'}
+              {options?.confirmText ?? 'Devam et'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

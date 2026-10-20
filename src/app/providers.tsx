@@ -17,7 +17,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
           <AuthProvider>
             <AppShellWrapper>{children}</AppShellWrapper>
             <PwaLayer />
-            <Toaster position="top-center" richColors closeButton />
+            {/* Mobilde üst barın altında (iOS üst kenar bulanıklığına girmesin) */}
+            <Toaster
+              position="top-center"
+              richColors
+              closeButton
+              mobileOffset={{ top: 'calc(var(--app-top) + 64px)' }}
+            />
           </AuthProvider>
         </ConfirmProvider>
       </TooltipProvider>

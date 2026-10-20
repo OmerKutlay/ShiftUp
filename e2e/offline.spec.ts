@@ -51,8 +51,8 @@ test('QR Tara: çevrimdışıyken işlem butonları kapalı, bağlantı gelince 
 test('Çalışma Özetim: çevrimiçi ziyaretten sonra çevrimdışında anlık görüntü gösterilir', async ({ page, context }) => {
   await page.goto('/my-schedule')
   const main = page.getByRole('main')
-  await expect(main.getByText(/Plan: 09:00 – 17:00/).first()).toBeVisible()
-  const cardsOnline = await main.getByText(/Plan: 09:00 – 17:00/).count()
+  await expect(main.getByText('09:00–17:00', { exact: true }).filter({ visible: true }).first()).toBeVisible()
+  const cardsOnline = await main.getByText('09:00–17:00', { exact: true }).filter({ visible: true }).count()
   expect(cardsOnline).toBeGreaterThanOrEqual(28)
 
   // Anlık görüntü yazıldı (çalışan id'siyle anahtarlı)
@@ -61,11 +61,11 @@ test('Çalışma Özetim: çevrimiçi ziyaretten sonra çevrimdışında anlık 
 
   await context.setOffline(true)
   await expect(main.getByText(/Çevrimdışı — son güncelleme:/)).toBeVisible()
-  await expect(main.getByText(/Plan: 09:00 – 17:00/)).toHaveCount(cardsOnline)
+  await expect(main.getByText('09:00–17:00', { exact: true }).filter({ visible: true })).toHaveCount(cardsOnline)
   await expect(main.getByText('Ayşe Yılmaz · Kasiyer')).toBeVisible()
 
   // Kaydedilmemiş ay → açık uyarı (eski ayın verisi gösterilmez)
   await main.getByRole('button', { name: 'Önceki ay' }).click()
   await expect(main.getByText(/bu ay için kaydedilmiş veri yok/)).toBeVisible()
-  await expect(main.getByText(/Plan: 09:00 – 17:00/)).toHaveCount(0)
+  await expect(main.getByText('09:00–17:00', { exact: true }).filter({ visible: true })).toHaveCount(0)
 })

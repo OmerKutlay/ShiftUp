@@ -57,9 +57,9 @@ export const SHOTS: Shot[] = [
   { name: 'time-correction', path: '/time-correction', personas: ALL },
   { name: 'time-correction-mine', path: '/time-correction', personas: M, steps: [{ tab: /taleplerim|benim/i }] },
 
-  { name: 'workforce-availability', path: '/workforce', personas: M },
+  { name: 'workforce-availability', path: '/workforce', personas: ALL },
   { name: 'workforce-open-shifts', path: '/workforce', personas: M, steps: [{ tab: /açık vardiya/i }] },
-  { name: 'workforce-swap', path: '/workforce', personas: M, steps: [{ tab: /takas/i }] },
+  { name: 'workforce-swap', path: '/workforce', personas: ALL, steps: [{ tab: /takas/i }] },
   { name: 'workforce-plan', path: '/workforce', personas: M, steps: [{ tab: /haftalık plan/i }] },
 
   { name: 'reports-attendance', path: '/reports', personas: M },

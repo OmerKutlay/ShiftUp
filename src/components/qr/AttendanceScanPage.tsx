@@ -70,7 +70,7 @@ function OfflineActionAlert() {
  */
 const SHELL = cn(
   'mx-auto flex w-full max-w-md flex-col gap-4 p-4 md:py-6',
-  'min-h-[calc(100dvh-7rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] md:min-h-[calc(100dvh-4rem)]'
+  'min-h-[calc(100dvh-7rem-var(--app-top)-env(safe-area-inset-bottom))] md:min-h-[calc(100dvh-4rem)]'
 )
 
 /** Aşama kartı (tarama dışındaki durumlar): kart içinde shadcn Empty */
