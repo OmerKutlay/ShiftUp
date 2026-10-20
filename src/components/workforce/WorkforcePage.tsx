@@ -4,13 +4,7 @@
  * Availability, Açık Vardiyalar, Vardiya Takası, Haftalık Planlama (manager+)
  */
 import { useState, useEffect, useCallback } from 'react'
-import {
-  Box, Tabs, Tab, Alert,
-} from '@mui/material'
-import PeopleIcon from '@mui/icons-material/People'
-import WorkIcon from '@mui/icons-material/Work'
-import SwapHorizIcon from '@mui/icons-material/SwapHoriz'
-import CalendarViewWeekIcon from '@mui/icons-material/CalendarViewWeek'
+import { AlertCircle, ArrowLeftRight, Briefcase, CalendarRange, Users } from 'lucide-react'
 import { AvailabilityEditor } from './AvailabilityEditor'
 import { OpenShiftsPanel } from './OpenShiftsPanel'
 import { ShiftSwapPanel } from './ShiftSwapPanel'
@@ -22,10 +16,14 @@ import { fetchWeeklyAssignments } from '@/lib/api/schedule'
 import { useAuth } from '@/context/AuthContext'
 import { hasRole, MANAGER_ROLES } from '@/lib/auth/roles'
 import { PageHeader, ListSkeleton } from '@/components/common'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useLoadedKey } from '@/hooks/useLoadedKey'
 
+type WorkforceTab = 'availability' | 'open-shifts' | 'swap' | 'plan'
+
 export function WorkforcePage() {
-  const [tab, setTab] = useState(0)
+  const [tab, setTab] = useState<WorkforceTab>('availability')
   const [employees, setEmployees] = useState<EmployeeWithRole[]>([])
   const [assignments, setAssignments] = useState<ShiftAssignmentWithDetails[]>([])
   const { isFirstLoad, markLoaded } = useLoadedKey()
@@ -56,62 +54,60 @@ export function WorkforcePage() {
   useEffect(() => { void load() }, [load]) // eslint-disable-line react-hooks/set-state-in-effect
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 } }}>
+    <div className="p-4 md:p-6">
       <PageHeader
         title="İş gücü planlama"
         subtitle="Müsaitlik, açık vardiyalar ve vardiya takaslarını yönetin"
       />
 
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      {error && (
+        <Alert tone="danger" className="mb-4">
+          <AlertCircle />
+          <AlertDescription className="text-ink">{error}</AlertDescription>
+        </Alert>
+      )}
 
-      <Tabs
-        value={tab}
-        onChange={(_, v) => setTab(v as number)}
-        sx={{ mb: 3, borderBottom: '1px solid', borderColor: 'divider' }}
-      >
-        <Tab
-          icon={<PeopleIcon fontSize="small" />}
-          iconPosition="start"
-          label="Müsaitlik"
-          sx={{ fontSize: '0.82rem', minHeight: 44 }}
-        />
-        <Tab
-          icon={<WorkIcon fontSize="small" />}
-          iconPosition="start"
-          label="Açık Vardiyalar"
-          sx={{ fontSize: '0.82rem', minHeight: 44 }}
-        />
-        <Tab
-          icon={<SwapHorizIcon fontSize="small" />}
-          iconPosition="start"
-          label="Vardiya Takası"
-          sx={{ fontSize: '0.82rem', minHeight: 44 }}
-        />
-        {/* Haftalık Planlama yalnızca manager+ için görünür */}
+      <Tabs value={tab} onValueChange={(v) => setTab(v as WorkforceTab)} className="gap-5">
+        <TabsList>
+          <TabsTrigger value="availability"><Users className="size-4" />Müsaitlik</TabsTrigger>
+          <TabsTrigger value="open-shifts"><Briefcase className="size-4" />Açık vardiyalar</TabsTrigger>
+          <TabsTrigger value="swap"><ArrowLeftRight className="size-4" />Vardiya takası</TabsTrigger>
+          {/* Haftalık planlama yalnızca manager+ için görünür */}
+          {isManager && (
+            <TabsTrigger value="plan"><CalendarRange className="size-4" />Haftalık plan</TabsTrigger>
+          )}
+        </TabsList>
+
+        {/* Çalışan/vardiya verisi gelene kadar yalnızca bunlara bağımlı sekmeler skeleton gösterir */}
+        <TabsContent value="availability">
+          {isFirstLoad ? (
+            <ListSkeleton count={5} actions={1} />
+          ) : authEmployee && (
+            <AvailabilityEditor employees={employees} currentEmployeeId={authEmployee.id} isManager={isManager} />
+          )}
+        </TabsContent>
+        <TabsContent value="open-shifts">
+          <OpenShiftsPanel />
+        </TabsContent>
+        <TabsContent value="swap">
+          {isFirstLoad ? (
+            <ListSkeleton count={5} actions={1} />
+          ) : (
+            <ShiftSwapPanel
+              employees={employees}
+              assignments={assignments}
+              currentEmployeeId={authEmployee?.id ?? null}
+              isManager={isManager}
+            />
+          )}
+        </TabsContent>
+        {/* Planlama paneli yalnızca isManager=true iken render edilir */}
         {isManager && (
-          <Tab
-            icon={<CalendarViewWeekIcon fontSize="small" />}
-            iconPosition="start"
-            label="Haftalık Plan"
-            sx={{ fontSize: '0.82rem', minHeight: 44 }}
-          />
+          <TabsContent value="plan">
+            <WorkforcePlanningPanel />
+          </TabsContent>
         )}
       </Tabs>
-
-      {/* Çalışan/vardiya verisi gelene kadar yalnızca bunlara bağımlı sekmeler skeleton gösterir */}
-      {isFirstLoad && (tab === 0 || tab === 2) && <ListSkeleton count={5} actions={1} />}
-      {!isFirstLoad && tab === 0 && authEmployee && (
-        <AvailabilityEditor employees={employees} currentEmployeeId={authEmployee.id} isManager={isManager} />
-      )}
-      {tab === 1 && <OpenShiftsPanel />}
-      {!isFirstLoad && tab === 2 && <ShiftSwapPanel
-        employees={employees}
-        assignments={assignments}
-        currentEmployeeId={authEmployee?.id ?? null}
-        isManager={isManager}
-      />}
-      {/* Tab index 3 yalnızca isManager=true iken render edilir */}
-      {tab === 3 && isManager && <WorkforcePlanningPanel />}
-    </Box>
+    </div>
   )
 }

@@ -4,33 +4,31 @@
  *
  * 7 gün sütunu dar ekrana sıkıştırılınca hücre içerikleri komşu hücrelere taşıyordu; burada her
  * sütunun en az bir genişliği var, sığmazsa tablo yatay kayar ve çalışan sütunu sabit kalır.
- * Hücreler tek bakışta okunacak kadar sade: saat + net süre; ayrıntı ipucunda.
+ * Hücreler haftalık plan tablosundaki gibi vardiya türü renkli kutular: saat + net süre;
+ * ayrıntı ipucunda.
  */
-import type { ReactNode } from 'react'
-import {
-  Box, Chip, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography,
-} from '@mui/material'
-import type { SxProps, Theme } from '@mui/material'
-import WarningAmberIcon from '@mui/icons-material/WarningAmber'
-import EventBusyIcon from '@mui/icons-material/EventBusy'
+import type { CSSProperties, ReactNode } from 'react'
+import { Plane, TriangleAlert } from 'lucide-react'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import type { EmployeeWeekSummary, DaySummary, WorkingTimeViolation } from '@/lib/workingTimeService'
 import { shiftDurationMins, netWorkMins } from '@/lib/workingTimeService'
-import type { PlannerResult, DraftAssignment } from '@/lib/workforcePlanner'
+import type { PlannerResult, DraftAssignment, ShiftKind } from '@/lib/workforcePlanner'
+import { kindFromTimes } from '@/lib/workforcePlanner'
 import { PART_TIME_RULES } from '@/types/employee'
-import { C, SHIFT_KIND_TONES, tint } from '@/lib/palette'
+import { C, SHIFT_KIND_TONES } from '@/lib/palette'
+import { Badge } from '@/components/ui/badge'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { cn } from '@/lib/utils'
 
 // ─── Ölçüler ──────────────────────────────────────────────────
 
 const NAME_W = 132
-const DAY_W = 84
-const TOTAL_W = 72
-const LAST_W = 60
+const DAY_W = 100
+const TOTAL_W = 70
+const LAST_W = 56
 const TABLE_MIN_W = NAME_W + 7 * DAY_W + TOTAL_W + LAST_W
-/** Yarı saydam zemin üstünde sabit sütunun arkası görünmesin */
-const STICKY_BG = C.surface
-const HEAD_BG = C.surfaceAlt
 
 // ─── Yardımcılar ──────────────────────────────────────────────
 
@@ -55,94 +53,111 @@ const SHIFT_KIND_LABELS: Record<string, string> = {
   custom: 'Özel',
 }
 
-const headCell: SxProps<Theme> = {
-  color: 'text.secondary', fontSize: '0.72rem', fontWeight: 700, borderColor: 'divider',
-  bgcolor: HEAD_BG, py: 0.75, px: 0.5, lineHeight: 1.3,
+const toneOf = (kind: string) => SHIFT_KIND_TONES[kind as ShiftKind] ?? SHIFT_KIND_TONES.custom
+
+/** Satır vurgusu: sabit sütun yarı saydam olamaz (altından kayan hücreler görünür) → karta karıştırılmış opak ton */
+type RowTone = 'danger' | 'warning' | null
+const ROW_BG: Record<NonNullable<RowTone>, string> = {
+  danger: 'bg-[color-mix(in_srgb,var(--danger-soft)_45%,var(--card))]',
+  warning: 'bg-[color-mix(in_srgb,var(--warning-soft)_45%,var(--card))]',
 }
-const bodyCell: SxProps<Theme> = { borderColor: 'divider', py: 1, px: 0.5, verticalAlign: 'middle', overflow: 'hidden' }
-const stickyCell: SxProps<Theme> = { position: 'sticky', left: 0, zIndex: 1, bgcolor: STICKY_BG, borderRight: '1px solid', borderRightColor: 'divider' }
+
+const stickyCls = 'sticky left-0 z-[1] border-r bg-card'
+
+/** İpucu taşıyan, klavyeyle de odaklanabilen hücre içeriği */
+function Tip({ content, children, className, style }: {
+  content: ReactNode; children: ReactNode; className?: string; style?: CSSProperties
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div tabIndex={0} style={style} className={cn('cursor-default rounded-[10px] outline-none focus-visible:ring-2 focus-visible:ring-ring/50', className)}>
+          {children}
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="top">{content}</TooltipContent>
+    </Tooltip>
+  )
+}
 
 function TableFrame({ weekDays, totalLabel, lastLabel, children }: {
   weekDays: string[]; totalLabel: string; lastLabel: ReactNode; children: ReactNode
 }) {
   const todayStr = format(new Date(), 'yyyy-MM-dd')
   return (
-    <TableContainer component={Paper}
-      sx={{ bgcolor: tint(C.canvas, 0.8), border: '1px solid', borderColor: 'divider', borderRadius: 2, overflowX: 'auto' }}>
-      <Table size="small" sx={{ tableLayout: 'fixed', minWidth: TABLE_MIN_W }}>
+    <div className="overflow-hidden rounded-2xl border bg-card">
+      <Table className="table-fixed" style={{ minWidth: TABLE_MIN_W }}>
         <colgroup>
           <col style={{ width: NAME_W }} />
           {weekDays.map((d) => <col key={d} style={{ minWidth: DAY_W }} />)}
           <col style={{ width: TOTAL_W }} />
           <col style={{ width: LAST_W }} />
         </colgroup>
-        <TableHead>
-          <TableRow>
-            <TableCell sx={[headCell, stickyCell, { bgcolor: HEAD_BG, zIndex: 2, px: 1.5 }] as SxProps<Theme>}>Çalışan</TableCell>
+        <TableHeader>
+          <TableRow className="bg-surface-alt hover:bg-surface-alt">
+            <TableHead className={cn(stickyCls, 'z-[2] bg-surface-alt')}>Çalışan</TableHead>
             {weekDays.map((d) => {
               const isToday = d === todayStr
               const date = new Date(`${d}T00:00:00`)
               return (
-                <TableCell key={d} align="center" sx={[headCell, isToday && { color: 'primary.main', bgcolor: C.brandSoft }] as SxProps<Theme>}>
-                  <Box component="span" sx={{ display: 'block' }}>
+                <TableHead key={d} className={cn('h-auto px-1 py-2 text-center leading-tight', isToday && 'bg-brand-soft text-primary')}>
+                  <span className="block">
                     {format(date, 'EEE', { locale: tr }).replace(/^./, (c) => c.toLocaleUpperCase('tr-TR'))}
-                  </Box>
-                  <Box component="span" sx={{ display: 'block', fontWeight: 500, fontSize: '0.68rem', opacity: 0.8 }}>
+                  </span>
+                  <span className="block text-[0.68rem] font-medium opacity-80">
                     {format(date, 'd MMM', { locale: tr })}
-                  </Box>
-                </TableCell>
+                  </span>
+                </TableHead>
               )
             })}
-            <TableCell align="center" sx={[headCell, { color: 'primary.main' }] as SxProps<Theme>}>{totalLabel}</TableCell>
-            <TableCell align="center" sx={headCell}>{lastLabel}</TableCell>
+            <TableHead className="px-1 text-center">{totalLabel}</TableHead>
+            <TableHead className="px-1 text-center">{lastLabel}</TableHead>
           </TableRow>
-        </TableHead>
+        </TableHeader>
         <TableBody>{children}</TableBody>
       </Table>
-    </TableContainer>
+    </div>
   )
 }
 
-function EmploymentChip({ type }: { type: 'full_time' | 'part_time' }) {
+function EmploymentBadge({ type }: { type: 'full_time' | 'part_time' }) {
   const pt = type === 'part_time'
   return (
-    <Chip label={pt ? 'Yarı zamanlı' : 'Tam zamanlı'} size="small"
-      sx={{
-        height: 16, fontSize: '0.6rem', fontWeight: 700, '& .MuiChip-label': { px: 0.6 },
-        bgcolor: pt ? tint(C.plum, 0.15) : tint(C.brand, 0.12),
-        color: pt ? C.plum : 'primary.main',
-      }} />
+    <Badge tone={pt ? 'plum' : 'brand'} className="h-[18px] px-1.5 text-[0.62rem]">
+      {pt ? 'Yarı zamanlı' : 'Tam zamanlı'}
+    </Badge>
   )
 }
 
-function NameCell({ name, sub }: { name: string; sub: ReactNode }) {
+function NameCell({ name, sub, rowTone }: { name: string; sub: ReactNode; rowTone: RowTone }) {
   return (
-    <TableCell sx={[bodyCell, stickyCell, { px: 1.5 }] as SxProps<Theme>}>
-      <Typography fontSize="0.8rem" fontWeight={700} noWrap title={name}>{name}</Typography>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.4, flexWrap: 'wrap' }}>{sub}</Box>
+    <TableCell className={cn(stickyCls, rowTone && ROW_BG[rowTone], 'whitespace-normal')}>
+      <p className="truncate text-[0.82rem] font-bold" title={name}>{name}</p>
+      <div className="mt-1 flex flex-wrap items-center gap-1">{sub}</div>
     </TableCell>
   )
 }
 
-/** Hücre gövdesi: saat aralığı + net süre. Taşmaz; ayrıntı ipucunda. */
-function ShiftLines({ shifts, netMins, color, tooltip }: {
-  shifts: { start: string; end: string }[]; netMins: number; color: string; tooltip: ReactNode
+/** Vardiya kutusu: tür rengi zeminli; saat aralığı + alt satır. Taşmaz; ayrıntı ipucunda. */
+function ShiftBox({ kind, lines, sub, tooltip }: {
+  kind: string; lines: { start: string; end: string }[]; sub: string; tooltip: ReactNode
 }) {
+  const tone = toneOf(kind)
   return (
-    <Tooltip title={tooltip} arrow placement="top">
-      <Box sx={{ cursor: 'default', minWidth: 0 }}>
-        {shifts.map((s, i) => (
-          <Typography key={i} fontSize="0.75rem" fontWeight={600} sx={{ fontVariantNumeric: 'tabular-nums', lineHeight: 1.35 }}>
-            {s.start}–{s.end}
-          </Typography>
-        ))}
-        <Typography fontSize="0.68rem" fontWeight={700} sx={{ color, mt: 0.25 }}>{formatMins(netMins)} net</Typography>
-      </Box>
-    </Tooltip>
+    <Tip
+      content={tooltip}
+      className="flex min-h-[46px] min-w-0 flex-col justify-center px-2 py-1.5 text-left"
+      style={{ backgroundColor: tone.soft, color: tone.text }}
+    >
+      {lines.map((s, i) => (
+        <span key={i} className="block truncate text-[0.74rem] font-bold tabular-nums tracking-tight">{s.start}–{s.end}</span>
+      ))}
+      <span className="block truncate text-[0.66rem] font-medium opacity-85">{sub}</span>
+    </Tip>
   )
 }
 
-const Dash = () => <Typography fontSize="0.8rem" sx={{ color: C.neutral }}>—</Typography>
+const Dash = () => <span className="text-sm text-ink-muted">—</span>
 
 // ─── Mevcut plan ──────────────────────────────────────────────
 
@@ -150,34 +165,36 @@ function CurrentDayCell({ day }: { day: DaySummary | undefined }) {
   if (!day) return <Dash />
   if (day.isLeave) {
     return (
-      <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, color: C.warning }}>
-        <EventBusyIcon sx={{ fontSize: 14 }} />
-        <Typography fontSize="0.72rem" fontWeight={600}>İzinli</Typography>
-      </Box>
+      <div className="flex min-h-[46px] items-center gap-1.5 rounded-[10px] bg-success-soft px-2 text-success">
+        <Plane className="size-3.5 shrink-0" />
+        <span className="text-xs font-semibold">İzinli</span>
+      </div>
     )
   }
   if (day.shifts.length === 0) return <Dash />
   const gross = day.shifts.reduce((s, x) => s + shiftDurationMins(x.start_time, x.end_time), 0)
+  const first = day.shifts[0]
+  const kind = kindFromTimes(hhmm(first.start_time), hhmm(first.end_time))
   return (
-    <ShiftLines
-      shifts={day.shifts.map((s) => ({ start: hhmm(s.start_time), end: hhmm(s.end_time) }))}
-      netMins={day.totalMins}
-      color={C.brand}
+    <ShiftBox
+      kind={kind}
+      lines={day.shifts.map((s) => ({ start: hhmm(s.start_time), end: hhmm(s.end_time) }))}
+      sub={`${formatMins(day.totalMins)} net`}
       tooltip={`Brüt ${formatMins(gross)} · Mola ${formatMins(gross - day.totalMins)} · Net ${formatMins(day.totalMins)}`}
     />
   )
 }
 
 function ViolationBadge({ violations }: { violations: WorkingTimeViolation[] }) {
-  if (violations.length === 0) return <Typography fontSize="0.75rem" sx={{ color: 'text.disabled' }}>—</Typography>
-  const color = violations.some((v) => v.severity === 'error') ? C.danger : C.warning
+  if (violations.length === 0) return <Dash />
+  const isError = violations.some((v) => v.severity === 'error')
   return (
-    <Tooltip title={<Box sx={{ whiteSpace: 'pre-line', fontSize: '0.75rem' }}>{violations.map((v) => `• ${v.message}`).join('\n')}</Box>} arrow>
-      <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, cursor: 'default', color }}>
-        <WarningAmberIcon sx={{ fontSize: 15 }} />
-        <Typography fontSize="0.78rem" fontWeight={700}>{violations.length}</Typography>
-      </Box>
-    </Tooltip>
+    <Tip content={violations.map((v) => `• ${v.message}`).join('\n')} className="inline-flex">
+      <span className={cn('inline-flex items-center gap-1 text-[0.8rem] font-bold', isError ? 'text-danger' : 'text-warning')}>
+        <TriangleAlert className="size-4" aria-label="İhlal" />
+        {violations.length}
+      </span>
+    </Tip>
   )
 }
 
@@ -189,38 +206,35 @@ export function CurrentPlanTable({ weekDays, summaries, maxWeeklyWorkHours }: {
       {summaries.map((s) => {
         const hasError = s.violations.some((v) => v.severity === 'error')
         const hasWarn = s.violations.some((v) => v.severity === 'warning')
+        const rowTone: RowTone = hasError ? 'danger' : hasWarn ? 'warning' : null
         const maxH = s.employment_type === 'part_time' ? PART_TIME_RULES.maxWeeklyHours : maxWeeklyWorkHours
         const isOver = s.totalWeeklyMins > maxH * 60
         return (
-          <TableRow key={s.employeeId} sx={{
-            '&:last-child td': { borderBottom: 0 },
-            bgcolor: hasError ? tint(C.danger, 0.05) : hasWarn ? tint(C.warning, 0.05) : 'transparent',
-          }}>
-            <NameCell name={s.employeeName} sub={<>
-              <EmploymentChip type={s.employment_type} />
+          <TableRow key={s.employeeId} className={cn('hover:bg-transparent', rowTone && ROW_BG[rowTone])}>
+            <NameCell name={s.employeeName} rowTone={rowTone} sub={<>
+              <EmploymentBadge type={s.employment_type} />
               {s.employment_type === 'part_time' && (
-                <Typography fontSize="0.65rem" sx={{ color: s.weeklyWorkDays > PART_TIME_RULES.maxWeeklyDays ? C.danger : 'text.secondary' }}>
+                <span className={cn('text-[0.66rem]', s.weeklyWorkDays > PART_TIME_RULES.maxWeeklyDays ? 'text-danger' : 'text-ink-secondary')}>
                   {s.weeklyWorkDays}/{PART_TIME_RULES.maxWeeklyDays} gün
-                </Typography>
+                </span>
               )}
             </>} />
             {weekDays.map((d) => (
-              <TableCell key={d} align="center" sx={bodyCell}><CurrentDayCell day={s.days[d]} /></TableCell>
+              <TableCell key={d} className="px-0.5 py-1.5 text-center whitespace-normal"><CurrentDayCell day={s.days[d]} /></TableCell>
             ))}
-            <TableCell align="center" sx={bodyCell}>
-              <Typography fontSize="0.8rem" fontWeight={700}
-                sx={{ color: isOver ? C.danger : s.totalWeeklyMins > 0 ? 'primary.main' : 'text.disabled' }}>
+            <TableCell className="px-1 text-center">
+              <p className={cn('text-[0.82rem] font-bold', isOver ? 'text-danger' : s.totalWeeklyMins > 0 ? 'text-ink' : 'text-ink-muted')}>
                 {formatMins(s.totalWeeklyMins)}
-              </Typography>
-              <Typography fontSize="0.62rem" sx={{ color: 'text.secondary' }}>/ {maxH}s</Typography>
+              </p>
+              <p className="text-[0.64rem] text-ink-secondary">/ {maxH}s</p>
             </TableCell>
-            <TableCell align="center" sx={bodyCell}><ViolationBadge violations={s.violations} /></TableCell>
+            <TableCell className="px-1 text-center"><ViolationBadge violations={s.violations} /></TableCell>
           </TableRow>
         )
       })}
       {summaries.length === 0 && (
-        <TableRow>
-          <TableCell colSpan={weekDays.length + 3} sx={{ borderColor: 'divider', py: 4, color: 'text.secondary', fontSize: '0.82rem', textAlign: 'center' }}>
+        <TableRow className="hover:bg-transparent">
+          <TableCell colSpan={weekDays.length + 3} className="py-8 text-center text-sm text-ink-secondary">
             Bu hafta için vardiya planı bulunamadı.
           </TableCell>
         </TableRow>
@@ -233,29 +247,19 @@ export function CurrentPlanTable({ weekDays, summaries, maxWeeklyWorkHours }: {
 
 function DraftDayCell({ assign }: { assign: DraftAssignment | undefined }) {
   if (!assign) return <Dash />
-  const color = SHIFT_KIND_COLORS[assign.shift_kind] ?? C.neutral
   const gross = shiftDurationMins(assign.start_time, assign.end_time)
   const net = netWorkMins(assign.start_time, assign.end_time)
+  const label = SHIFT_KIND_LABELS[assign.shift_kind] ?? 'Vardiya'
   return (
-    <Box sx={{ minWidth: 0 }}>
-      <Box sx={{
-        display: 'inline-block', px: 0.75, borderRadius: 0.75, mb: 0.4, maxWidth: '100%',
-        bgcolor: `${color}22`, border: `1px solid ${color}55`,
-      }}>
-        <Typography fontSize="0.66rem" fontWeight={700} noWrap sx={{ color, lineHeight: '16px' }}>
-          {SHIFT_KIND_LABELS[assign.shift_kind] ?? 'Vardiya'}
-        </Typography>
-      </Box>
-      <ShiftLines
-        shifts={[{ start: hhmm(assign.start_time), end: hhmm(assign.end_time) }]}
-        netMins={net}
-        color={color}
-        tooltip={<Box sx={{ fontSize: '0.72rem' }}>
-          <Box>Brüt {formatMins(gross)} · Mola {formatMins(gross - net)} · Net {formatMins(net)}</Box>
-          {assign.reason && <Box sx={{ color: C.inkMuted, mt: 0.25 }}>{assign.reason}</Box>}
-        </Box>}
-      />
-    </Box>
+    <ShiftBox
+      kind={assign.shift_kind}
+      lines={[{ start: hhmm(assign.start_time), end: hhmm(assign.end_time) }]}
+      sub={`${label} · ${formatMins(net)}`}
+      tooltip={[
+        `Brüt ${formatMins(gross)} · Mola ${formatMins(gross - net)} · Net ${formatMins(net)}`,
+        assign.reason ?? '',
+      ].filter(Boolean).join('\n')}
+    />
   )
 }
 
@@ -265,7 +269,7 @@ export function DraftPlanTable({ draft, weekDays }: { draft: PlannerResult; week
     <TableFrame
       weekDays={weekDays}
       totalLabel="Toplam"
-      lastLabel={<Tooltip title="Açılış / Kapanış vardiyası sayısı" arrow><span>A / K</span></Tooltip>}
+      lastLabel={<Tip content="Açılış / Kapanış vardiyası sayısı" className="inline-block">A / K</Tip>}
     >
       {stats.map((stat) => {
         const byDate: Record<string, DraftAssignment> = {}
@@ -274,30 +278,28 @@ export function DraftPlanTable({ draft, weekDays }: { draft: PlannerResult; week
         const pct = Math.min(100, Math.round((stat.totalMins / (targetH * 60)) * 100))
         const color = pct >= 95 ? C.success : pct >= 80 ? C.brand : pct >= 60 ? C.warning : C.inkMuted
         return (
-          <TableRow key={stat.employeeId} sx={{ '&:last-child td': { borderBottom: 0 } }}>
-            <NameCell name={stat.employeeName} sub={<>
-              <EmploymentChip type={stat.employment_type} />
-              <Typography fontSize="0.65rem" sx={{ color: 'text.secondary' }}>{stat.workDays} gün</Typography>
+          <TableRow key={stat.employeeId} className="hover:bg-transparent">
+            <NameCell name={stat.employeeName} rowTone={null} sub={<>
+              <EmploymentBadge type={stat.employment_type} />
+              <span className="text-[0.66rem] text-ink-secondary">{stat.workDays} gün</span>
             </>} />
             {weekDays.map((d) => (
-              <TableCell key={d} align="center" sx={bodyCell}><DraftDayCell assign={byDate[d]} /></TableCell>
+              <TableCell key={d} className="px-0.5 py-1.5 text-center whitespace-normal"><DraftDayCell assign={byDate[d]} /></TableCell>
             ))}
-            <TableCell align="center" sx={bodyCell}>
-              <Tooltip title={`Hedef: ${targetH}s`} placement="top">
-                <Box>
-                  <Typography fontSize="0.8rem" fontWeight={700} sx={{ color }}>{formatMins(stat.totalMins)}</Typography>
-                  <Typography fontSize="0.62rem" sx={{ color: 'text.secondary' }}>%{pct}</Typography>
-                </Box>
-              </Tooltip>
+            <TableCell className="px-1 text-center">
+              <Tip content={`Hedef: ${targetH}s`}>
+                <p className="text-[0.82rem] font-bold" style={{ color }}>{formatMins(stat.totalMins)}</p>
+                <p className="text-[0.64rem] text-ink-secondary">%{pct}</p>
+              </Tip>
             </TableCell>
-            <TableCell align="center" sx={bodyCell}>
-              <Tooltip title={`Açılış: ${stat.openingCount} · Kapanış: ${stat.closingCount} · Full: ${stat.fullCount}`} placement="top">
-                <Typography fontSize="0.75rem" fontWeight={700} sx={{ cursor: 'default' }}>
-                  <Box component="span" sx={{ color: SHIFT_KIND_COLORS.opening }}>{stat.openingCount}</Box>
-                  <Box component="span" sx={{ color: 'text.disabled' }}> / </Box>
-                  <Box component="span" sx={{ color: SHIFT_KIND_COLORS.closing }}>{stat.closingCount}</Box>
-                </Typography>
-              </Tooltip>
+            <TableCell className="px-1 text-center">
+              <Tip content={`Açılış: ${stat.openingCount} · Kapanış: ${stat.closingCount} · Full: ${stat.fullCount}`} className="inline-block">
+                <span className="text-[0.78rem] font-bold">
+                  <span style={{ color: SHIFT_KIND_COLORS.opening }}>{stat.openingCount}</span>
+                  <span className="text-ink-muted"> / </span>
+                  <span style={{ color: SHIFT_KIND_COLORS.closing }}>{stat.closingCount}</span>
+                </span>
+              </Tip>
             </TableCell>
           </TableRow>
         )

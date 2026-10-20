@@ -4,20 +4,18 @@
 // penceresi yerine Türkçe, pazartesi başlangıçlı, klavyeyle kullanılabilen takvim.
 // Değerler native input'la aynı biçimde taşınır: tarih 'yyyy-MM-dd', ay 'yyyy-MM', boş = ''.
 
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { Box, Button, ButtonBase, IconButton, InputAdornment, Popover, TextField, Typography } from '@mui/material'
-import type { SxProps, Theme } from '@mui/material'
-import { alpha } from '@mui/material/styles'
-import CalendarMonthIcon from '@mui/icons-material/CalendarMonth'
-import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
-import ChevronRightIcon from '@mui/icons-material/ChevronRight'
-import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown'
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import {
   addDays, addMonths, addYears, endOfMonth, format, isSameDay, isSameMonth, parse,
   startOfMonth, startOfWeek,
 } from 'date-fns'
 import { tr } from 'date-fns/locale'
-import { C, tint } from '@/lib/palette'
+
+import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
+import { cn } from '@/lib/utils'
 
 type Mode = 'date' | 'month'
 type View = 'days' | 'months' | 'years'
@@ -32,6 +30,18 @@ function parseValue(value: string, mode: Mode): Date | null {
 }
 
 const cap = (s: string) => s.charAt(0).toLocaleUpperCase('tr-TR') + s.slice(1)
+
+/** Takvim hücresi (gün / ay / yıl) ortak görünümü */
+function cellClass(opts: { selected?: boolean; today?: boolean; muted?: boolean }) {
+  return cn(
+    'flex items-center justify-center rounded-[10px] border border-transparent text-sm font-medium transition-colors outline-none',
+    'focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-30',
+    opts.selected
+      ? 'bg-primary font-bold text-primary-foreground hover:bg-brand-dark'
+      : cn('hover:bg-accent', opts.muted ? 'text-ink-muted' : 'text-ink'),
+    opts.today && !opts.selected && 'border-primary/60'
+  )
+}
 
 // ------------------------------------------------------------------
 // Takvim paneli
@@ -53,6 +63,7 @@ function Calendar({ mode, selected, min, max, clearable, onPick, onClear }: Cale
   const [viewDate, setViewDate] = useState(() => startOfMonth(selected ?? today))
   const [focused, setFocused] = useState(() => selected ?? today)
   const gridRef = useRef<HTMLDivElement>(null)
+  const monthsRef = useRef<HTMLDivElement>(null)
   const yearsRef = useRef<HTMLDivElement>(null)
 
   // Aralık kontrolleri 'yyyy-MM-dd' metni üzerinden — sözlük sırası = tarih sırası
@@ -74,11 +85,18 @@ function Calendar({ mode, selected, min, max, clearable, onPick, onClear }: Cale
     gridRef.current?.querySelector<HTMLElement>(`[data-day="${format(focused, 'yyyy-MM-dd')}"]`)?.focus()
   }, [focused, view])
 
+  // Ay görünümünde seçili (yoksa ilk etkin) ayı odakla
+  useEffect(() => {
+    if (view !== 'months') return
+    const root = monthsRef.current
+    ;(root?.querySelector<HTMLElement>('[aria-pressed="true"]:not(:disabled)') ?? root?.querySelector<HTMLElement>('button:not(:disabled)'))?.focus()
+  }, [view])
+
   // Yıl listesinde seçili yılı görünür yap
   useEffect(() => {
     if (view !== 'years') return
     const el = yearsRef.current?.querySelector<HTMLElement>(`[data-year="${viewDate.getFullYear()}"]`)
-    el?.scrollIntoView({ block: 'center' })
+    el?.scrollIntoView?.({ block: 'center' })
     el?.focus()
   }, [view, viewDate])
 
@@ -119,89 +137,76 @@ function Calendar({ mode, selected, min, max, clearable, onPick, onClear }: Cale
       : view === 'months' ? format(viewDate, 'yyyy')
         : 'Yıl seçin'
 
-  const cellSx = (opts: { selected?: boolean; today?: boolean; muted?: boolean; disabled?: boolean }): SxProps<Theme> => (t) => ({
-    borderRadius: 2,
-    fontSize: '0.85rem',
-    fontWeight: opts.selected ? 700 : 500,
-    color: opts.selected ? t.palette.primary.contrastText : opts.muted ? 'text.disabled' : 'text.primary',
-    bgcolor: opts.selected ? 'primary.main' : 'transparent',
-    border: '1px solid',
-    borderColor: opts.today && !opts.selected ? alpha(t.palette.primary.main, 0.6) : 'transparent',
-    opacity: opts.disabled ? 0.3 : 1,
-    transition: 'background-color 120ms',
-    '&:hover': { bgcolor: opts.selected ? 'primary.light' : alpha(t.palette.primary.main, 0.12) },
-    '&.Mui-focusVisible': { outline: `2px solid ${t.palette.primary.light}`, outlineOffset: 1 },
-  })
-
   return (
-    <Box sx={{ width: 296, p: 1.5 }}>
+    <div className="w-[296px] max-w-full">
       {/* Başlık: ay/yıl + gezinme okları */}
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+      <div className="mb-2 flex items-center justify-between">
         <Button
-          size="small"
-          color="inherit"
-          endIcon={view !== 'years' ? <ArrowDropDownIcon /> : undefined}
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="px-2 text-[0.95rem] font-bold"
           onClick={() => setView(view === 'years' ? (mode === 'date' ? 'days' : 'months') : view === 'days' ? 'months' : 'years')}
-          sx={{ fontWeight: 700, fontSize: '0.95rem', px: 1 }}
           aria-label={view === 'years' ? 'Geri dön' : 'Ay veya yıl seç'}
         >
           {headerLabel}
+          {view !== 'years' && <ChevronDown className="size-4 text-ink-secondary" />}
         </Button>
         {view !== 'years' && (
-          <Box>
-            <IconButton size="small" onClick={() => shift(-1)} aria-label={view === 'days' ? 'Önceki ay' : 'Önceki yıl'}>
-              <ChevronLeftIcon fontSize="small" />
-            </IconButton>
-            <IconButton size="small" onClick={() => shift(1)} aria-label={view === 'days' ? 'Sonraki ay' : 'Sonraki yıl'}>
-              <ChevronRightIcon fontSize="small" />
-            </IconButton>
-          </Box>
+          <div className="flex">
+            <Button type="button" variant="ghost" size="icon-sm" onClick={() => shift(-1)}
+              aria-label={view === 'days' ? 'Önceki ay' : 'Önceki yıl'}>
+              <ChevronLeft />
+            </Button>
+            <Button type="button" variant="ghost" size="icon-sm" onClick={() => shift(1)}
+              aria-label={view === 'days' ? 'Sonraki ay' : 'Sonraki yıl'}>
+              <ChevronRight />
+            </Button>
+          </div>
         )}
-      </Box>
+      </div>
 
       {view === 'days' && (
         <>
-          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', mb: 0.5 }}>
+          <div className="mb-1 grid grid-cols-7" aria-hidden>
             {WEEKDAYS.map((w, i) => (
-              <Typography key={w} variant="caption" align="center"
-                sx={{ fontWeight: 700, color: i >= 5 ? 'text.disabled' : 'text.secondary', py: 0.5 }}>
+              <span key={w} className={cn('py-1 text-center text-xs font-bold', i >= 5 ? 'text-ink-muted' : 'text-ink-secondary')}>
                 {w}
-              </Typography>
+              </span>
             ))}
-          </Box>
-          <Box ref={gridRef} onKeyDown={onGridKeyDown}
-            sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 0.25 }}>
+          </div>
+          <div ref={gridRef} onKeyDown={onGridKeyDown} className="grid grid-cols-7 gap-0.5">
             {Array.from({ length: 42 }, (_, i) => addDays(startOfWeek(viewDate, { weekStartsOn: 1 }), i)).map((d) => {
-              const disabled = dayDisabled(d)
               const isSel = !!selected && isSameDay(d, selected)
               return (
-                <ButtonBase
+                <button
+                  type="button"
                   key={d.toISOString()}
                   data-day={format(d, 'yyyy-MM-dd')}
                   tabIndex={isSameDay(d, focused) ? 0 : -1}
-                  disabled={disabled}
+                  disabled={dayDisabled(d)}
                   onClick={() => onPick(d)}
                   aria-label={format(d, 'd MMMM yyyy, EEEE', { locale: tr })}
                   aria-pressed={isSel}
-                  sx={[{ height: 36 }, cellSx({ selected: isSel, today: isSameDay(d, today), muted: !isSameMonth(d, viewDate), disabled })] as SxProps<Theme>}
+                  className={cn('h-10', cellClass({ selected: isSel, today: isSameDay(d, today), muted: !isSameMonth(d, viewDate) }))}
                 >
                   {d.getDate()}
-                </ButtonBase>
+                </button>
               )
             })}
-          </Box>
+          </div>
         </>
       )}
 
       {view === 'months' && (
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0.75, py: 0.5 }}>
+        <div ref={monthsRef} className="grid grid-cols-3 gap-1.5 py-1">
           {Array.from({ length: 12 }, (_, m) => new Date(viewDate.getFullYear(), m, 1)).map((d) => {
-            const disabled = monthDisabled(d)
             const isSel = !!selected && isSameMonth(d, selected)
             return (
-              <ButtonBase
+              <button
+                type="button"
                 key={d.getMonth()}
-                disabled={disabled}
+                disabled={monthDisabled(d)}
                 aria-pressed={isSel}
                 onClick={() => {
                   if (mode === 'month') return onPick(d)
@@ -209,50 +214,53 @@ function Calendar({ mode, selected, min, max, clearable, onPick, onClear }: Cale
                   setFocused(selected && isSameMonth(d, selected) ? selected : d)
                   setView('days')
                 }}
-                sx={[{ height: 44 }, cellSx({ selected: isSel, today: isSameMonth(d, today), disabled })] as SxProps<Theme>}
+                className={cn('h-11', cellClass({ selected: isSel, today: isSameMonth(d, today) }))}
               >
                 {cap(format(d, 'LLL', { locale: tr }))}
-              </ButtonBase>
+              </button>
             )
           })}
-        </Box>
+        </div>
       )}
 
       {view === 'years' && (
-        <Box ref={yearsRef}
-          sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0.75, maxHeight: 248, overflowY: 'auto', py: 0.5, pr: 0.5 }}>
+        <div ref={yearsRef} className="grid max-h-62 grid-cols-4 gap-1.5 overflow-y-auto py-1 pr-1">
           {years.map((y) => {
             const isSel = !!selected && selected.getFullYear() === y
             return (
-              <ButtonBase
+              <button
+                type="button"
                 key={y}
                 data-year={y}
                 disabled={yearDisabled(y)}
                 aria-pressed={isSel}
                 onClick={() => { setViewDate(new Date(y, viewDate.getMonth(), 1)); setView('months') }}
-                sx={[{ height: 40 }, cellSx({ selected: isSel, today: y === today.getFullYear(), disabled: yearDisabled(y) })] as SxProps<Theme>}
+                className={cn('h-10', cellClass({ selected: isSel, today: y === today.getFullYear() }))}
               >
                 {y}
-              </ButtonBase>
+              </button>
             )
           })}
-        </Box>
+        </div>
       )}
 
       {/* Alt çubuk */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1.5, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
+      <div className="mt-3 flex items-center justify-between border-t pt-2">
         {clearable ? (
-          <Button size="small" color="inherit" onClick={onClear} sx={{ color: 'text.secondary' }}>Temizle</Button>
+          <Button type="button" variant="ghost" size="sm" className="text-ink-secondary" onClick={onClear}>Temizle</Button>
         ) : <span />}
         <Button
-          size="small"
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="text-primary"
           onClick={() => onPick(mode === 'date' ? today : startOfMonth(today))}
           disabled={mode === 'date' ? dayDisabled(today) : monthDisabled(today)}
         >
           {mode === 'date' ? 'Bugün' : 'Bu ay'}
         </Button>
-      </Box>
-    </Box>
+      </div>
+    </div>
   )
 }
 
@@ -269,6 +277,7 @@ interface DateFieldProps {
   min?: string
   max?: string
   clearable?: boolean
+  /** 'small' = h-10 (varsayılan), 'medium' = h-11 */
   size?: 'small' | 'medium'
   fullWidth?: boolean
   required?: boolean
@@ -276,77 +285,100 @@ interface DateFieldProps {
   error?: boolean
   helperText?: string
   placeholder?: string
-  sx?: SxProps<Theme>
+  /** Kapsayıcıya eklenecek sınıflar (genişlik, boşluk) */
+  className?: string
 }
 
-function PickerField({ mode, label, value, onChange, min, max, clearable = false, size, fullWidth, required, disabled, error, helperText, placeholder, sx }: DateFieldProps & { mode: Mode }) {
-  const [anchor, setAnchor] = useState<HTMLElement | null>(null)
+function PickerField({
+  mode, label, value, onChange, min, max, clearable = false, size = 'small', fullWidth, required, disabled, error,
+  helperText, placeholder, className,
+}: DateFieldProps & { mode: Mode }) {
+  const id = useId()
+  const inputId = `${id}-input`
+  const helperId = `${id}-helper`
+  const anchorRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [open, setOpen] = useState(false)
   const selected = parseValue(value, mode)
   const display = selected
     ? cap(format(selected, mode === 'date' ? 'd MMMM yyyy, EEE' : 'LLLL yyyy', { locale: tr }))
     : ''
 
-  const open = (el: HTMLElement) => { if (!disabled) setAnchor(el) }
-  const close = () => setAnchor(null)
+  const show = () => { if (!disabled) setOpen(true) }
+  const close = () => setOpen(false)
 
   return (
-    <>
-      <TextField
-        label={label}
-        value={display}
-        placeholder={placeholder ?? (mode === 'date' ? 'Tarih seçin' : 'Ay seçin')}
-        size={size}
-        fullWidth={fullWidth}
-        required={required}
-        disabled={disabled}
-        error={error}
-        helperText={helperText}
-        sx={sx}
-        onClick={(e) => open(e.currentTarget)}
-        onKeyDown={(e) => {
-          if (['Enter', ' ', 'ArrowDown'].includes(e.key)) {
-            e.preventDefault()
-            open(e.currentTarget)
-          }
-        }}
-        slotProps={{
-          inputLabel: { shrink: true },
-          htmlInput: { readOnly: true, 'aria-haspopup': 'dialog', style: { cursor: 'pointer', caretColor: 'transparent' } },
-          input: {
-            sx: { cursor: 'pointer' },
-            endAdornment: (
-              <InputAdornment position="end">
-                <CalendarMonthIcon fontSize="small" sx={{ color: anchor ? 'primary.main' : 'text.secondary' }} />
-              </InputAdornment>
-            ),
-          },
-        }}
-      />
-      <Popover
-        open={!!anchor}
-        anchorEl={anchor}
-        onClose={close}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
-        slotProps={{
-          paper: {
-            role: 'dialog',
-            'aria-label': label,
-            sx: { mt: 0.75, border: '1px solid', borderColor: 'divider', boxShadow: `0 12px 32px ${tint(C.ink, 0.14)}` },
-          },
-        }}
-      >
-        <Calendar
-          mode={mode}
-          selected={selected}
-          min={min}
-          max={max}
-          clearable={clearable}
-          onPick={(d) => { onChange(format(d, FMT[mode])); close() }}
-          onClear={() => { onChange(''); close() }}
-        />
+    <div className={cn('flex flex-col gap-1.5', fullWidth ? 'w-full' : 'w-full sm:w-auto', className)}>
+      <Label htmlFor={inputId}>
+        {label}
+        {required && <span aria-hidden className="-ml-1.5 text-danger">*</span>}
+      </Label>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverAnchor asChild>
+          <div
+            ref={anchorRef}
+            className={cn(
+              'relative flex w-full items-center rounded-[10px] border border-input bg-card transition-[color,box-shadow]',
+              'focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/40',
+              size === 'small' ? 'h-10' : 'h-11',
+              error && 'border-destructive',
+              disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+            )}
+            onClick={() => { if (!disabled) setOpen((o) => !o) }}
+          >
+            <input
+              ref={inputRef}
+              id={inputId}
+              role="combobox"
+              aria-controls={`${id}-calendar`}
+              readOnly
+              value={display}
+              placeholder={placeholder ?? (mode === 'date' ? 'Tarih seçin' : 'Ay seçin')}
+              required={required}
+              disabled={disabled}
+              aria-haspopup="dialog"
+              aria-expanded={open}
+              aria-invalid={error || undefined}
+              aria-describedby={helperText ? helperId : undefined}
+              onKeyDown={(e) => {
+                if (['Enter', ' ', 'ArrowDown'].includes(e.key)) {
+                  e.preventDefault()
+                  show()
+                }
+              }}
+              className="h-full min-w-0 flex-1 cursor-[inherit] bg-transparent pl-3 text-base caret-transparent outline-none placeholder:text-ink-muted md:text-sm"
+            />
+            <CalendarDays aria-hidden className={cn('mr-3 size-4 shrink-0', open ? 'text-primary' : 'text-ink-secondary')} />
+          </div>
+        </PopoverAnchor>
+        <PopoverContent
+          align="start"
+          id={`${id}-calendar`}
+          aria-label={label}
+          className="w-auto"
+          // Odak takvimdeki seçili güne gider (Calendar içindeki efekt)
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          onCloseAutoFocus={(e) => { e.preventDefault(); inputRef.current?.focus() }}
+          onInteractOutside={(e) => {
+            // Alanın kendisine tıklama kapat/aç geçişini onClick'e bıraksın
+            if (e.target instanceof Node && anchorRef.current?.contains(e.target)) e.preventDefault()
+          }}
+        >
+          <Calendar
+            mode={mode}
+            selected={selected}
+            min={min}
+            max={max}
+            clearable={clearable}
+            onPick={(d) => { onChange(format(d, FMT[mode])); close() }}
+            onClear={() => { onChange(''); close() }}
+          />
+        </PopoverContent>
       </Popover>
-    </>
+      {helperText && (
+        <p id={helperId} className={cn('text-xs', error ? 'text-danger' : 'text-ink-secondary')}>{helperText}</p>
+      )}
+    </div>
   )
 }
 

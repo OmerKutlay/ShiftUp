@@ -1,8 +1,8 @@
 'use client'
 
 import { Component, type ReactNode, type ErrorInfo } from 'react'
-import { Box, Typography, Button } from '@mui/material'
-import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
+import { AlertTriangle, RotateCw } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 
 interface Props {
   children: ReactNode
@@ -43,29 +43,19 @@ export class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <Box
-          sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            minHeight: '60vh',
-            p: 4,
-            gap: 2,
-            color: 'text.primary',
-          }}
-        >
-          <ErrorOutlineIcon sx={{ fontSize: 56, color: 'error.main', opacity: 0.7 }} />
-          <Typography variant="h6" fontWeight={700} textAlign="center">
-            {this.props.fallbackTitle ?? 'Bir şeyler ters gitti'}
-          </Typography>
-          <Typography variant="body2" color="text.secondary" textAlign="center" maxWidth={400}>
-            {this.state.errorMessage}
-          </Typography>
-          <Button variant="outlined" onClick={this.handleReset} sx={{ mt: 1 }}>
-            Tekrar Dene
-          </Button>
-        </Box>
+        <div role="alert" className="flex min-h-[60vh] items-center justify-center p-4 text-ink">
+          <div className="flex w-full max-w-sm flex-col items-center gap-3 rounded-2xl border bg-card px-6 py-8 text-center">
+            <span className="flex size-12 items-center justify-center rounded-full bg-danger-soft text-danger">
+              <AlertTriangle className="size-6" aria-hidden />
+            </span>
+            <h2 className="text-lg font-bold">{this.props.fallbackTitle ?? 'Bir şeyler ters gitti'}</h2>
+            <p className="text-sm text-ink-secondary [overflow-wrap:anywhere]">{this.state.errorMessage}</p>
+            <Button variant="outline" onClick={this.handleReset} className="mt-2">
+              <RotateCw />
+              Tekrar Dene
+            </Button>
+          </div>
+        </div>
       )
     }
 

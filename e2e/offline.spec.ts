@@ -17,7 +17,7 @@ test('çevrimdışı bandı görünür, bağlantı gelince "geri geldi" gösteri
   await expect(banner).toBeVisible()
 
   // Bant alt menünün üstünde durur (mobil)
-  const bannerBox = (await banner.locator('.MuiAlert-root').boundingBox())!
+  const bannerBox = (await banner.boundingBox())!
   const nav = page.getByRole('navigation', { name: 'Alt menü' })
   const navBox = (await nav.boundingBox())!
   const qrButtonBox = (await nav.getByRole('link', { name: 'QR Tara' }).locator('span').first().boundingBox())!

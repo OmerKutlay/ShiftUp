@@ -1,28 +1,6 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import {
-  Box,
-  Typography,
-  CircularProgress,
-  Alert,
-  Chip,
-  Fab,
-  Menu,
-  MenuItem,
-  Paper,
-  TextField,
-  useMediaQuery,
-  useTheme,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-} from '@mui/material'
-import EventBusyIcon from '@mui/icons-material/EventBusy'
-import DeleteIcon from '@mui/icons-material/Delete'
-import AddIcon from '@mui/icons-material/Add'
 import type { EmployeeWithRole } from '@/types/employee'
 import type { ShiftAssignmentWithDetails, WeeklyScheduleEntry } from '@/types/schedule'
 import type { EmployeeAvailability } from '@/types/workforce'
@@ -49,7 +27,19 @@ import { weeklyLimitMins } from './ScheduleCells'
 import { MobileDayBoard } from './MobileDayBoard'
 import { WeekGrid } from './WeekGrid'
 import { useAuth } from '@/context/AuthContext'
-import { C, SHIFT_KIND_TONES } from '@/lib/palette'
+import { SHIFT_KIND_TONES } from '@/lib/palette'
+import { useIsMobile } from '@/hooks/useIsMobile'
+import { AlertCircle, CalendarX2, Info, Loader2, Plus, Trash2 } from 'lucide-react'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Button } from '@/components/ui/button'
 
 // ─── Ana bileşen ──────────────────────────────────────────────
 interface WeeklySchedulePageProps {
@@ -59,8 +49,7 @@ interface WeeklySchedulePageProps {
 
 
 export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps) {
-  const theme = useTheme()
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'))
+  const isMobile = useIsMobile()
   const config = useMemo(() => getWorkingTimeConfig(), [])
   const confirm = useConfirm()
   const { employee: authEmployee } = useAuth()
@@ -177,7 +166,8 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     }
   }
 
-  const handleLeaveDelete = async () => {    if (!leaveDeleteDialog) return
+  const handleLeaveDelete = async () => {
+    if (!leaveDeleteDialog) return
     setLeaveDeleting(true)
     try {
       const res = await fetch(`/api/leave?id=${leaveDeleteDialog.leaveId}`, { method: 'DELETE' })
@@ -303,7 +293,6 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
   }, [scheduleEntries, statsMap, weekDays, approvedLeaveMap, restDayMap, availabilityMap, config])
 
   // "Vardiya ekle" menüsü: seçili gün boşta olanlar önce, vardiyası / izni olanlar altta ve açıklamalı
-  const [addMenuAnchor, setAddMenuAnchor] = useState<HTMLElement | null>(null)
   const addCandidates = useMemo(() => {
     const list = scheduleEntries.map((e) => {
       const key = `${e.employee.id}:${selectedDay}`
@@ -345,7 +334,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
   )
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, color: 'text.primary' }}>
+    <div className="p-4 text-ink md:p-6">
       <PageHeader
         overline={isMobile ? greeting : undefined}
         title="Haftalık plan"
@@ -355,14 +344,13 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
           </>
         ) : undefined}
         titleAdornment={hasData && summary.warnings > 0 && !isMobile ? (
-          <Chip size="small" label={`${summary.warnings} uyarı`} sx={{ bgcolor: C.dangerSoft, color: C.danger, fontWeight: 700, height: 22, alignSelf: 'center' }} />
+          <Badge tone="danger" className="self-center">{summary.warnings} uyarı</Badge>
         ) : undefined}
         actions={!isMobile ? (
           <>
             {viewToggle}
             {weekStepper}
-            <Button variant="outlined" color="inherit" disabled={isThisWeek} onClick={() => handleWeekChange(new Date())}
-              sx={{ minHeight: 40, borderColor: 'divider', bgcolor: 'background.paper' }}>
+            <Button variant="outline" disabled={isThisWeek} onClick={() => handleWeekChange(new Date())}>
               Bugün
             </Button>
           </>
@@ -370,41 +358,47 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
       />
 
       {isMobile && (
-        <Box sx={{ display: 'flex', gap: 1, mb: 2, alignItems: 'center', '& > :first-of-type': { flex: 1 } }}>
+        <div className="mb-4 flex items-center gap-2 [&>:first-child]:flex-1">
           {weekStepper}
           {hasData && viewToggle}
-        </Box>
+        </div>
       )}
 
       {hasData && !isMobile && (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+        <div className="mb-4 flex flex-wrap items-center gap-2">
           {presentGroups.length > 1 && (
-            <TextField
-              select
-              size="small"
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value as RoleGroupKey | 'all')}
-              slotProps={{ htmlInput: { 'aria-label': 'Rol filtresi' } }}
-              sx={{ minWidth: 150, '& .MuiInputBase-root': { height: 36, fontSize: '0.82rem' } }}
-            >
-              <MenuItem value="all">Tüm roller</MenuItem>
-              {presentGroups.map((g) => <MenuItem key={g.key} value={g.key}>{g.label}</MenuItem>)}
-            </TextField>
+            <Select value={roleFilter} onValueChange={(v) => setRoleFilter(v as RoleGroupKey | 'all')}>
+              <SelectTrigger size="sm" aria-label="Rol filtresi" className="min-w-[150px] text-[0.82rem]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tüm roller</SelectItem>
+                {presentGroups.map((g) => <SelectItem key={g.key} value={g.key}>{g.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
           )}
-          <Box sx={{ flex: 1 }} />
+          <div className="flex-1" />
           {view === 'week' && <ShiftKindLegend />}
-        </Box>
+        </div>
       )}
 
       {isFirstLoad && <ScheduleGridSkeleton rows={Math.min(Math.max(employees.length, 6), 12)} />}
-      {error && <Alert severity="error">{error}</Alert>}
+      {error && (
+        <Alert tone="danger">
+          <AlertCircle />
+          <AlertDescription className="text-ink">{error}</AlertDescription>
+        </Alert>
+      )}
       {!isFirstLoad && !error && scheduleEntries.length === 0 && (
-        <Alert severity="info">Aktif çalışan bulunamadı.</Alert>
+        <Alert tone="info">
+          <Info />
+          <AlertDescription className="text-ink">Aktif çalışan bulunamadı.</AlertDescription>
+        </Alert>
       )}
 
       {hasData && view === 'day' && (
         // Mobilde yüzen "Vardiya ekle" butonu son satırı örtmesin
-        <Box sx={{ maxWidth: isMobile ? undefined : 720, pb: isMobile && !readOnly ? 8 : 0 }}>
+        <div className={isMobile ? (readOnly ? undefined : 'pb-16') : 'max-w-[720px]'}>
           <MobileDayBoard
             entries={visibleEntries}
             weekDays={weekDays}
@@ -418,19 +412,19 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
             onCellClick={openAssignDialog}
             readOnly={readOnly}
           />
-        </Box>
+        </div>
       )}
 
       {hasData && view === 'week' && (
         isMobile ? (
-          <Paper variant="outlined" sx={{ borderRadius: '16px', p: 1 }}>
+          <div className="rounded-2xl border bg-card p-2">
             <WeekGrid
               compact
               entries={visibleEntries} weekDays={weekDays} todayStr={todayStr} holidayMap={holidayMap}
               statsMap={statsMap} approvedLeaveMap={approvedLeaveMap} restDayMap={restDayMap}
               availabilityMap={availabilityMap} config={config} onCellClick={openAssignDialog} readOnly={readOnly}
             />
-          </Paper>
+          </div>
         ) : (
           <WeekGrid
             entries={visibleEntries} weekDays={weekDays} todayStr={todayStr} holidayMap={holidayMap}
@@ -442,59 +436,40 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
 
       {/* Mobil gün görünümü: seçili güne vardiya ekle — önce o gün boşta olanlar */}
       {hasData && view === 'day' && isMobile && !readOnly && (
-        <>
-          <Fab
-            variant="extended"
-            color="primary"
-            onClick={(e) => setAddMenuAnchor(e.currentTarget)}
-            sx={{
-              position: 'fixed',
-              right: 'calc(16px + env(safe-area-inset-right))',
-              bottom: `calc(${BOTTOM_NAV_OVERLAY_OFFSET}px + env(safe-area-inset-bottom))`,
-              zIndex: theme.zIndex.speedDial,
-              gap: 0.75,
-            }}
-          >
-            <AddIcon fontSize="small" /> Vardiya ekle
-          </Fab>
-          <Menu
-            anchorEl={addMenuAnchor}
-            open={!!addMenuAnchor}
-            onClose={() => setAddMenuAnchor(null)}
-            anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
-            transformOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-            slotProps={{ paper: { sx: { maxHeight: '60dvh', minWidth: 240 } } }}
-          >
-            <Typography fontSize="0.75rem" color="text.secondary" sx={{ px: 2, pt: 0.5, pb: 1 }}>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              size="lg"
+              className="fixed right-[calc(16px+env(safe-area-inset-right))] z-[1050] rounded-full px-5 shadow-[0_8px_24px_rgb(194_83_45/0.35)]"
+              style={{ bottom: `calc(${BOTTOM_NAV_OVERLAY_OFFSET}px + env(safe-area-inset-bottom))` }}
+            >
+              <Plus /> Vardiya ekle
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="top" align="end" className="max-h-[60dvh] min-w-60 overflow-y-auto">
+            <DropdownMenuLabel>
               {format(new Date(`${selectedDay}T00:00:00`), 'd MMMM EEEE', { locale: tr })} için çalışan seçin
-            </Typography>
+            </DropdownMenuLabel>
             {addCandidates.map(({ emp, busy }) => (
-              <MenuItem
-                key={emp.id}
-                onClick={() => {
-                  setAddMenuAnchor(null)
-                  openAssignDialog(emp, selectedDay)
-                }}
-                sx={{ gap: 1.25 }}
-              >
+              <DropdownMenuItem key={emp.id} onSelect={() => openAssignDialog(emp, selectedDay)} className="gap-2.5">
                 <PersonAvatar name={emp.full_name} size={28} />
-                <Box sx={{ minWidth: 0, flex: 1 }}>
-                  <Typography fontSize="0.85rem" fontWeight={600} noWrap>{emp.full_name}</Typography>
-                  <Typography fontSize="0.7rem" color="text.secondary" noWrap>{busy ?? emp.role}</Typography>
-                </Box>
-              </MenuItem>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[0.85rem] font-semibold">{emp.full_name}</p>
+                  <p className="truncate text-[0.7rem] text-ink-secondary">{busy ?? emp.role}</p>
+                </div>
+              </DropdownMenuItem>
             ))}
-          </Menu>
-        </>
+          </DropdownMenuContent>
+        </DropdownMenu>
       )}
 
       {hasData && view === 'week' && isMobile && (
-        <Box sx={{ mt: 1.5 }}>
+        <div className="mt-3">
           <ShiftKindLegend />
-          <Typography fontSize="0.7rem" color="text.secondary" sx={{ mt: 1 }}>
+          <p className="mt-2 text-[0.7rem] text-ink-secondary">
             Kutudaki sayı başlangıç saati · kırmızı nokta: dinlenme / limit uyarısı
-          </Typography>
-        </Box>
+          </p>
+        </div>
       )}
 
       {/* Assign Dialog — sadece manager modunda */}
@@ -516,67 +491,58 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
       )}
 
       {/* İzin silme onay dialog'u */}
-      {!readOnly && (
-        <Dialog
-          open={!!leaveDeleteDialog}
-          onClose={() => setLeaveDeleteDialog(null)}
-          maxWidth="xs"
-          fullWidth
-        >
-          <DialogTitle sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
-            <EventBusyIcon sx={{ color: 'warning.main', fontSize: 20 }} />
-            {leaveDeleteDialog && restDayMap.has(`${leaveDeleteDialog.employee.id}:${leaveDeleteDialog.date}`)
-              ? 'Tatili Kaldır'
-              : 'İzni İptal Et'
-            }
-          </DialogTitle>
-          <DialogContent>
-            {leaveDeleteDialog && (
-              <Typography variant="body2" color="text.secondary">
-                {restDayMap.has(`${leaveDeleteDialog.employee.id}:${leaveDeleteDialog.date}`) ? (
-                  <>
-                    <strong>{leaveDeleteDialog.employee.full_name}</strong> adlı çalışanın{' '}
-                    <strong>
-                      {new Date(leaveDeleteDialog.date + 'T00:00:00').toLocaleDateString('tr-TR', {
-                        day: 'numeric', month: 'long', year: 'numeric',
-                      })}
-                    </strong>{' '}
-                    tarihindeki haftalık tatili kaldırılacak. Bu gün vardiya atanabilir hale gelecektir.
-                  </>
-                ) : (
-                  <>
-                    <strong>{leaveDeleteDialog.employee.full_name}</strong> adlı çalışanın{' '}
-                    <strong>
-                      {new Date(leaveDeleteDialog.date + 'T00:00:00').toLocaleDateString('tr-TR', {
-                        day: 'numeric', month: 'long', year: 'numeric',
-                      })}
-                    </strong>{' '}
-                    tarihini kapsayan onaylı izni silinecek.
-                    <Typography component="span" variant="body2" color="info.main" display="block" sx={{ mt: 1 }}>
-                      ℹ️ İzin tüm kapsamıyla (başlangıç–bitiş aralığı) silinir, yalnızca bu gün değil.
-                    </Typography>
-                  </>
-                )}
-              </Typography>
-            )}
-          </DialogContent>
-          <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
-            <Button onClick={() => setLeaveDeleteDialog(null)} disabled={leaveDeleting}>
-              Vazgeç
-            </Button>
-            <Button
-              variant="contained"
-              color="error"
-              startIcon={leaveDeleting ? <CircularProgress size={16} color="inherit" /> : <DeleteIcon />}
-              onClick={handleLeaveDelete}
-              disabled={leaveDeleting}
-            >
-              İzni Sil
-            </Button>
-          </DialogActions>
-        </Dialog>
-      )}
-    </Box>
+      {!readOnly && (() => {
+        const isRestDay = !!leaveDeleteDialog && restDayMap.has(`${leaveDeleteDialog.employee.id}:${leaveDeleteDialog.date}`)
+        const dateText = leaveDeleteDialog
+          ? new Date(leaveDeleteDialog.date + 'T00:00:00').toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })
+          : ''
+        return (
+          <AlertDialog
+            open={!!leaveDeleteDialog}
+            onOpenChange={(next) => { if (!next && !leaveDeleting) setLeaveDeleteDialog(null) }}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader className="flex-row items-start gap-3">
+                <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-full bg-warning-soft text-warning">
+                  <CalendarX2 className="size-5" />
+                </span>
+                <div className="flex min-w-0 flex-col gap-1.5 pt-1">
+                  <AlertDialogTitle>{isRestDay ? 'Tatili Kaldır' : 'İzni İptal Et'}</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {leaveDeleteDialog && (
+                      <>
+                        <strong className="text-ink">{leaveDeleteDialog.employee.full_name}</strong> adlı çalışanın{' '}
+                        <strong className="text-ink">{dateText}</strong>{' '}
+                        {isRestDay
+                          ? 'tarihindeki haftalık tatili kaldırılacak. Bu gün vardiya atanabilir hale gelecektir.'
+                          : 'tarihini kapsayan onaylı izni silinecek.'}
+                      </>
+                    )}
+                  </AlertDialogDescription>
+                </div>
+              </AlertDialogHeader>
+              {leaveDeleteDialog && !isRestDay && (
+                <Alert tone="info">
+                  <Info />
+                  <AlertDescription className="text-ink">
+                    İzin tüm kapsamıyla (başlangıç–bitiş aralığı) silinir, yalnızca bu gün değil.
+                  </AlertDescription>
+                </Alert>
+              )}
+              <AlertDialogFooter>
+                <Button type="button" variant="ghost" onClick={() => setLeaveDeleteDialog(null)} disabled={leaveDeleting}>
+                  Vazgeç
+                </Button>
+                <Button type="button" variant="destructive" onClick={handleLeaveDelete} disabled={leaveDeleting}>
+                  {leaveDeleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
+                  İzni Sil
+                </Button>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )
+      })()}
+    </div>
   )
 }
 
@@ -589,12 +555,12 @@ function ShiftKindLegend() {
     { label: 'Kapanış', tone: SHIFT_KIND_TONES.closing },
   ]
   return (
-    <Box sx={{ display: 'flex', gap: 0.75 }}>
+    <div className="flex gap-1.5">
       {items.map(({ label, tone }) => (
-        <Typography key={label} component="span" sx={{ fontSize: '0.7rem', fontWeight: 600, px: 1, py: 0.25, borderRadius: '6px', bgcolor: tone.soft, color: tone.text }}>
+        <span key={label} className="rounded-md px-2 py-0.5 text-[0.7rem] font-semibold" style={{ backgroundColor: tone.soft, color: tone.text }}>
           {label}
-        </Typography>
+        </span>
       ))}
-    </Box>
+    </div>
   )
 }

@@ -6,23 +6,61 @@
  */
 import { useState } from 'react'
 import useSWR from 'swr'
-import {
-  Alert, Box, Button, Checkbox, Chip, FormControlLabel, IconButton, Paper, Stack,
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Tooltip, Typography,
-  useMediaQuery, useTheme,
-} from '@mui/material'
-import AddIcon from '@mui/icons-material/Add'
-import DeleteIcon from '@mui/icons-material/Delete'
+import { Loader2, Plus, Trash2 } from 'lucide-react'
 import { apiFetch } from '@/lib/api/http'
 import type { PublicHoliday } from '@/types/holiday'
 import { turkeyToday } from '@/lib/dateUtils'
-import { DateField, TableSkeleton, useConfirm } from '@/components/common'
+import { DateField, EmptyRow, SectionCard, SectionRow, TableSkeleton, useConfirm } from '@/components/common'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { cn } from '@/lib/utils'
+import { SettingsAlert } from './SettingsAlert'
+
+const dayFmt = new Intl.DateTimeFormat('tr-TR', { day: 'numeric' })
+const monthFmt = new Intl.DateTimeFormat('tr-TR', { month: 'short' })
+const longFmt = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' })
+
+/** Tarih satırı: solda gün/ay kutusu, ad ve uzun tarih, tür rozeti, sil düğmesi */
+function HolidayRow({ holiday: h, past, onRemove }: { holiday: PublicHoliday; past: boolean; onRemove: () => void }) {
+  const d = new Date(`${h.date}T12:00:00`)
+  return (
+    <SectionRow className={cn(past && 'text-ink-secondary')}>
+      <span
+        className={cn(
+          'flex size-11 shrink-0 flex-col items-center justify-center rounded-xl leading-none',
+          past ? 'bg-surface-muted text-ink-muted' : 'bg-brand-soft text-brand-dark'
+        )}
+        aria-hidden
+      >
+        <span className="text-base font-bold tabular-nums">{dayFmt.format(d)}</span>
+        <span className="mt-0.5 text-[0.65rem] font-semibold">{monthFmt.format(d)}</span>
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className={cn('text-sm font-bold', !past && 'text-ink')}>{h.name}</p>
+        <p className="text-xs text-ink-secondary">{longFmt.format(d)}</p>
+      </div>
+      {h.half_day ? <Badge tone="info">Yarım gün</Badge> : <Badge tone="warning">Tam gün</Badge>}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button variant="ghost" size="icon" aria-label={`${h.name} sil`} onClick={onRemove} className="-mr-2 text-ink-secondary hover:text-danger">
+            <Trash2 />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Sil</TooltipContent>
+      </Tooltip>
+    </SectionRow>
+  )
+}
 
 export function HolidaysPanel() {
   const confirm = useConfirm()
-  const theme = useTheme()
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
-  const year = Number(turkeyToday().slice(0, 4))
+  const today = turkeyToday()
+  const year = Number(today.slice(0, 4))
   const [range] = useState({ from: `${year - 1}-01-01`, to: `${year + 1}-12-31` })
   const key = `/api/holidays?from=${range.from}&to=${range.to}`
   const { data, error, mutate, isLoading } = useSWR(key, (url: string) => apiFetch<{ holidays: PublicHoliday[] }>(url))
@@ -61,101 +99,58 @@ export function HolidaysPanel() {
   }
 
   return (
-    <Box>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+    <div className="flex flex-col gap-4">
+      <p className="max-w-3xl text-sm text-ink-secondary">
         Resmi tatiller planlamada işaretlenir, puantajda RT / RTÇ olarak görünür ve yıllık izinden sayılmaz.
         Dini bayram tarihlerini her yıl Diyanet takvimine göre kontrol edin. Arife günleri 13:00&apos;ten itibaren yarım gündür.
-      </Typography>
+      </p>
 
-      <Paper elevation={0} sx={{ p: 2, mb: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }}>
+      {/* Ekleme formu — aynı tarih varsa günceller */}
+      <Card className="p-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center">
           <DateField
             label="Tarih" size="small" value={form.date}
             onChange={(v) => setForm((f) => ({ ...f, date: v }))}
-            sx={{ minWidth: 210 }}
+            className="sm:min-w-[210px]"
           />
-          <TextField
-            label="Ad" size="small" value={form.name} sx={{ flex: 1 }}
+          <Label htmlFor="holiday-name" className="sr-only">Ad</Label>
+          <Input
+            id="holiday-name"
+            placeholder="Ad (ör. Cumhuriyet Bayramı)"
+            value={form.name}
+            className="md:flex-1"
             onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
           />
-          <FormControlLabel
-            control={<Checkbox checked={form.half_day} onChange={(e) => setForm((f) => ({ ...f, half_day: e.target.checked }))} />}
-            label="Yarım gün (arife)"
-          />
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => void save()} disabled={saving}>
+          <div className="flex min-h-10 items-center gap-2">
+            <Checkbox
+              id="holiday-half-day"
+              checked={form.half_day}
+              onCheckedChange={(v) => setForm((f) => ({ ...f, half_day: v === true }))}
+            />
+            <Label htmlFor="holiday-half-day" className="font-medium whitespace-nowrap">Yarım gün (arife)</Label>
+          </div>
+          <Button onClick={() => void save()} disabled={saving}>
+            {saving ? <Loader2 className="animate-spin" /> : <Plus />}
             Ekle / Güncelle
           </Button>
-        </Stack>
-      </Paper>
+        </div>
+      </Card>
 
       {(actionError || error) && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={actionError ? () => setActionError(null) : undefined}>
+        <SettingsAlert tone="danger" onClose={actionError ? () => setActionError(null) : undefined}>
           {actionError ?? (error instanceof Error ? error.message : 'Yüklenemedi.')}
-        </Alert>
+        </SettingsAlert>
       )}
       {isLoading && !data && <TableSkeleton rows={6} columns={3} />}
 
-      {data && isMobile && (
-        // Mobil: tablo yerine liste — ad üstte (sarar), tarih tek satırda altında
-        <Paper elevation={0} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
-          {data.holidays.map((h, i) => (
-            <Box
-              key={h.date}
-              sx={{
-                display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 1,
-                borderTop: i === 0 ? 'none' : '1px solid', borderColor: 'divider',
-              }}
-            >
-              <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography variant="body2" fontWeight={700}>{h.name}</Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
-                  {new Date(`${h.date}T12:00:00`).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric', weekday: 'short' })}
-                </Typography>
-              </Box>
-              {h.half_day ? <Chip size="small" label="Yarım gün" /> : <Chip size="small" label="Tam gün" color="warning" variant="outlined" />}
-              <IconButton aria-label={`${h.name} sil`} onClick={() => void remove(h.date)} sx={{ width: 36, height: 36 }}>
-                <DeleteIcon fontSize="small" />
-              </IconButton>
-            </Box>
+      {data && (
+        <SectionCard title="Resmi tatiller" count={data.holidays.length} subtitle={`${year - 1}–${year + 1}`}>
+          {data.holidays.map((h) => (
+            <HolidayRow key={h.date} holiday={h} past={h.date < today} onRemove={() => void remove(h.date)} />
           ))}
-          {data.holidays.length === 0 && (
-            <Typography variant="body2" sx={{ p: 1.5 }}>Kayıtlı resmi tatil yok.</Typography>
-          )}
-        </Paper>
+          {data.holidays.length === 0 && <EmptyRow>Kayıtlı resmi tatil yok.</EmptyRow>}
+        </SectionCard>
       )}
-      {data && !isMobile && (
-        <TableContainer component={Paper} elevation={0} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Tarih</TableCell>
-                <TableCell>Ad</TableCell>
-                <TableCell>Tür</TableCell>
-                <TableCell align="right" />
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {data.holidays.map((h) => (
-                <TableRow key={h.date} hover>
-                  <TableCell>{new Date(`${h.date}T12:00:00`).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'short' })}</TableCell>
-                  <TableCell>{h.name}</TableCell>
-                  <TableCell>{h.half_day ? <Chip size="small" label="Yarım gün" /> : <Chip size="small" label="Tam gün" color="warning" variant="outlined" />}</TableCell>
-                  <TableCell align="right">
-                    <Tooltip title="Sil">
-                      <IconButton size="small" aria-label={`${h.name} sil`} onClick={() => void remove(h.date)}>
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {data.holidays.length === 0 && (
-                <TableRow><TableCell colSpan={4}>Kayıtlı resmi tatil yok.</TableCell></TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      )}
-    </Box>
+    </div>
   )
 }
