@@ -397,20 +397,24 @@ export function AttendanceScanPage() {
                     variant={primary ? 'default' : 'secondary'}
                     disabled={!online}
                     onClick={() => handleSelectAction(btn.action)}
-                    className="h-auto w-full justify-start gap-4 rounded-xl px-4 py-4 text-left whitespace-normal has-[>svg]:px-4"
+                    className={cn(
+                      'h-auto w-full justify-start gap-4 rounded-xl px-4 py-4 text-left whitespace-normal has-[>svg]:px-4',
+                      // İkincil: marka renginin açık tonu (temadaki secondary neredeyse beyaz, outline'dan ayırt edilmiyor)
+                      !primary && 'border border-primary/25 bg-primary/10 text-primary hover:bg-primary/15'
+                    )}
                   >
                     <span
                       aria-hidden
                       className={cn(
                         'flex size-10 shrink-0 items-center justify-center rounded-lg [&_svg]:size-5',
-                        primary ? 'bg-primary-foreground/15' : 'bg-secondary-foreground/10'
+                        primary ? 'bg-primary-foreground/15' : 'bg-primary/15'
                       )}
                     >
                       <Icon />
                     </span>
                     <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                       <span className="text-base font-semibold">{btn.label}</span>
-                      <span className={cn('text-sm font-normal', primary ? 'text-primary-foreground/80' : 'text-secondary-foreground/80')}>
+                      <span className={cn('text-sm font-normal', primary ? 'text-primary-foreground/80' : 'text-primary/80')}>
                         {btn.description}
                       </span>
                     </span>
