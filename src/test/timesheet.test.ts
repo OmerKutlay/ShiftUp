@@ -122,12 +122,14 @@ describe('timesheet — fazla çalışma (Md. 41)', () => {
     expect(row.dayMins['2026-10-05']).toBe(8.5 * 60)
   })
 
-  it('molasını uzatan çalışanın aşan dakikaları çalışmadan düşer', () => {
-    // 09:00–18:00 vardiyanın planlanan molası 60 dk; 85 dk mola → 9s − 85dk
-    const [row] = buildTimesheet({
-      month: '2026-10', employees: [EMP], holidays: [], today: '2026-10-31', shifts: [worked('2026-10-05', '09:00', '18:00', 85)], leaves: [],
-    })
-    expect(row.dayMins['2026-10-05']).toBe(9 * 60 - 85)
+  it('molasını uzatan çalışanın aşan dakikaları çalışmadan düşer (buçuklu saate yuvarlanır)', () => {
+    // 09:00–18:00 vardiyanın planlanan molası 60 dk; 90 dk mola → 7s 30dk; 85 dk → 7s 35dk → 7s 30dk
+    const day = (breakMins: number) => buildTimesheet({
+      month: '2026-10', employees: [EMP], holidays: [], today: '2026-10-31', shifts: [worked('2026-10-05', '09:00', '18:00', breakMins)], leaves: [],
+    })[0].dayMins['2026-10-05']
+    expect(day(90)).toBe(7 * 60 + 30)
+    expect(day(85)).toBe(7 * 60 + 30)
+    expect(day(70)).toBe(8 * 60)   // 7s 50dk → 8s
   })
 
   it('onay tarihi varsa uyarı yok', () => {

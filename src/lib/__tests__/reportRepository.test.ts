@@ -73,7 +73,7 @@ describe('mapReportRow', () => {
   }, now)
 
   // 09:00–17:00 (8s brüt) vardiyanın planlanan molası 60 dk
-  it('molaları uzatan çalışanın aşan dakikaları net çalışmadan düşer', () => {
+  it('molaları uzatan çalışanın aşan dakikaları düşer, sonuç buçuklu saate yuvarlanır', () => {
     const row = clockedOut({
       break_start_at: '2026-10-01T11:00:00Z',
       break_end_at: '2026-10-01T11:25:00Z',
@@ -81,7 +81,26 @@ describe('mapReportRow', () => {
     })
     expect(row.record_id).toBe('r1')
     expect(row.break_minutes).toBe(75)
-    expect(row.worked_minutes).toBe(8 * 60 - 75)
+    // 8s − 75dk = 6s 45dk → 6s 30dk
+    expect(row.worked_minutes).toBe(6 * 60 + 30)
+  })
+
+  it('mola okutmadan erken çıkandan mola düşülmez', () => {
+    // 09:00 giriş, 12:00 çıkış (5 saat erken)
+    const row = clockedOut({ clock_out_at: '2026-10-01T09:00:00Z' })
+    expect(row.break_minutes).toBe(0)
+    expect(row.worked_minutes).toBe(3 * 60)
+  })
+
+  it('molaya çıkıp erken çıkanın süresi fiilene göre hesaplanır', () => {
+    // 09:00–15:12, 40 dk mola → 5s 32dk → 5s 30dk
+    const row = clockedOut({
+      break_start_at: '2026-10-01T09:00:00Z',
+      break_end_at: '2026-10-01T09:40:00Z',
+      clock_out_at: '2026-10-01T12:12:00Z',
+    })
+    expect(row.break_minutes).toBe(40)
+    expect(row.worked_minutes).toBe(5 * 60 + 30)
   })
 
   it('planlanandan kısa mola yapan çalışandan planlanan mola düşülür', () => {
@@ -135,7 +154,9 @@ describe('buildFieldPatch — çoklu mola', () => {
     })).toBe(9 * 60 - 45)
   })
 
-  it('planlanan mola ile fiili toplam moladan büyüğü düşülür', () => {
+  it('vardiyayı tamamlayandan planlanan mola ile fiili toplam moladan büyüğü düşülür', () => {
+    // 09:00–18:00 (TR) vardiya, planlanan mola 60 dk
+    const shift = { work_date: '2026-10-01', start_time: '09:00', end_time: '18:00' }
     const rec = {
       clock_in_at: '2026-10-01T06:00:00Z',
       break_start_at: '2026-10-01T12:00:00Z',
@@ -143,9 +164,9 @@ describe('buildFieldPatch — çoklu mola', () => {
       clock_out_at: '2026-10-01T15:00:00Z',
       completed_break_minutes: 30,
     }
-    expect(workedMinutes(rec, 60)).toBe(9 * 60 - 60)
-    expect(workedMinutes(rec, 30)).toBe(9 * 60 - 45)
-    expect(workedMinutes({ ...rec, break_start_at: null, break_end_at: null, completed_break_minutes: 0 }, 60)).toBe(9 * 60 - 60)
+    expect(workedMinutes(rec, shift)).toBe(9 * 60 - 60)
+    expect(workedMinutes({ ...rec, completed_break_minutes: 75 }, shift)).toBe(7 * 60 + 30) // 90 dk mola
+    expect(workedMinutes({ ...rec, break_start_at: null, break_end_at: null, completed_break_minutes: 0 }, shift)).toBe(9 * 60 - 60)
   })
 })
 
