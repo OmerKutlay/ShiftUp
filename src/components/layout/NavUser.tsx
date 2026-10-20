@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * NavUser — yan menünün altındaki kullanıcı düğmesi; açılır menüde bildirimler ve çıkış.
+ * NavUser — yan menünün altındaki kullanıcı düğmesi; açılır menüde bildirimler, tema ve çıkış.
  */
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -9,16 +9,20 @@ import { Bell, ChevronsUpDown, LogIn, LogOut } from 'lucide-react'
 
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel,
-  DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from '@/components/ui/sidebar'
 import { PersonAvatar } from '@/components/common/PersonAvatar'
+import { THEME_OPTIONS } from '@/components/common/ThemeSwitch'
 import { useAuth } from '@/context/AuthContext'
+import { useTheme } from '@/hooks/useTheme'
+import type { ThemePreference } from '@/lib/theme'
 
 export function NavUser() {
   const { isMobile } = useSidebar()
   const pathname = usePathname()
   const { employee, status, signOut } = useAuth()
+  const { preference, setPreference } = useTheme()
 
   if (status === 'unauthenticated' || !employee) {
     if (status === 'loading') return null
@@ -79,6 +83,16 @@ export function NavUser() {
                 </Link>
               </DropdownMenuItem>
             </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Tema</DropdownMenuLabel>
+            <DropdownMenuRadioGroup value={preference} onValueChange={(v) => setPreference(v as ThemePreference)}>
+              {THEME_OPTIONS.map((o) => (
+                <DropdownMenuRadioItem key={o.value} value={o.value} onSelect={(e) => e.preventDefault()}>
+                  {o.icon}
+                  {o.label}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={signOut}>
               <LogOut />
