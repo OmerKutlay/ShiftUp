@@ -61,6 +61,12 @@
    */
   --edge-ramp: 0px;
   --app-top: calc(env(safe-area-inset-top) + var(--edge-ramp));
+  /*
+   * Alt kenar (ev göstergesi) boşluğu. iOS ana ekran uygulaması cihaz ilk kez döndürülene kadar
+   * env(safe-area-inset-bottom) değerini şişkin bildirebiliyor; alt bar ekranın dibinden kopmuş
+   * gibi görünüyordu. Ev göstergesinin gerçek yüksekliği (34px) ile sınırlanır.
+   */
+  --safe-bottom: min(34px, env(safe-area-inset-bottom));
 
   /* Vardiya türleri */
   --shift-open: oklch(0.769 0.188 70.08);

@@ -41,7 +41,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           className="@container/main flex min-w-0 flex-1 flex-col"
           style={isMobile ? {
             paddingTop: `calc(${MOBILE_TOP_BAR_HEIGHT}px + var(--app-top))`,
-            paddingBottom: `calc(${BOTTOM_NAV_SPACE}px + env(safe-area-inset-bottom))`,
+            paddingBottom: `calc(${BOTTOM_NAV_SPACE}px + var(--safe-bottom))`,
           } : undefined}
         >
           {content}
