@@ -10,32 +10,55 @@
  */
 import { useState } from 'react'
 import useSWR from 'swr'
-import {
-  Box, Typography, Paper, Button, Chip, CircularProgress, Alert,
-  Dialog, DialogTitle, DialogContent, DialogActions, TextField,
-  Stack, FormControl, InputLabel, Select, MenuItem, Tooltip,
-} from '@mui/material'
-import AddIcon from '@mui/icons-material/Add'
-import WorkIcon from '@mui/icons-material/Work'
-import BlockIcon from '@mui/icons-material/Block'
+import { AlertCircle, Ban, CheckCircle2, Info, Loader2, Plus, X } from 'lucide-react'
 import type { OpenShift } from '@/types/workforce'
 import { useAuth } from '@/context/AuthContext'
 import { hasRole, MANAGER_ROLES } from '@/lib/auth/roles'
-import { DateField, ListSkeleton } from '@/components/common'
+import { EmptyRow, ListSkeleton, StatusBadge } from '@/components/common'
+import type { BadgeTone } from '@/components/common'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { shiftKindOf } from '@/components/schedule/scheduleHelpers'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { apiFetch } from '@/lib/api/http'
-import { C } from '@/lib/palette'
+import { SHIFT_KIND_TONES } from '@/lib/palette'
 
 const STATUS_LABELS: Record<string, string> = {
   open: 'Açık',
   filled: 'Dolduruldu',
   cancelled: 'İptal',
 }
-const STATUS_COLORS: Record<string, string> = {
-  open: C.brand,
-  filled: C.success,
-  cancelled: C.inkMuted,
+const STATUS_TONES: Record<string, BadgeTone> = {
+  open: 'brand',
+  filled: 'success',
+  cancelled: 'neutral',
+}
+
+const EMPTY_FORM = { work_date: '', start_time: '09:00', end_time: '18:00', role_needed: '', description: '' }
+
+/** Kapatılabilir durum bildirimi (hata / başarı) */
+function Notice({ tone, icon, children, onClose }: {
+  tone: 'danger' | 'success'; icon: React.ReactNode; children: React.ReactNode; onClose: () => void
+}) {
+  return (
+    <Alert tone={tone} className="mb-3 pr-12">
+      {icon}
+      <AlertDescription className="text-ink">{children}</AlertDescription>
+      <Button
+        variant="ghost" size="icon-sm" aria-label="Kapat" onClick={onClose}
+        className="absolute top-1.5 right-1.5 text-ink-secondary"
+      >
+        <X />
+      </Button>
+    </Alert>
+  )
 }
 
 export function OpenShiftsPanel() {
@@ -54,13 +77,7 @@ export function OpenShiftsPanel() {
   const shifts = shiftsQ.data?.open_shifts ?? []
   const isFirstLoad = !shiftsQ.data && !shiftsQ.error
   const error = actionError ?? (shiftsQ.error ? (shiftsQ.error instanceof Error ? shiftsQ.error.message : 'Yüklenemedi.') : null)
-  const [form, setForm] = useState({
-    work_date: '',
-    start_time: '09:00',
-    end_time: '18:00',
-    role_needed: '',
-    description: '',
-  })
+  const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [claimingId, setClaimingId] = useState<string | null>(null)
   const [cancellingId, setCancellingId] = useState<string | null>(null)
@@ -95,7 +112,7 @@ export function OpenShiftsPanel() {
         setShifts((prev) => [json.open_shift, ...prev])
       }
       setDialogOpen(false)
-      setForm({ work_date: '', start_time: '09:00', end_time: '18:00', role_needed: '', description: '' })
+      setForm(EMPTY_FORM)
     } catch {
       setError('Kaydedilemedi.')
     } finally {
@@ -149,245 +166,184 @@ export function OpenShiftsPanel() {
 
   // ─── Render ──────────────────────────────────────────────────
   return (
-    <Box>
+    <div>
       {/* Başlık satırı */}
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          mb: 2,
-          flexWrap: 'wrap',
-          gap: 1,
-        }}
-      >
-        <FormControl size="small" sx={{ minWidth: 130 }}>
-          <InputLabel>Durum</InputLabel>
-          <Select
-            value={statusFilter}
-            label="Durum"
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <MenuItem value="open">Açık</MenuItem>
-            <MenuItem value="filled">Dolduruldu</MenuItem>
-            <MenuItem value="cancelled">İptal</MenuItem>
-          </Select>
-        </FormControl>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger aria-label="Durum" className="min-w-[150px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="open">Açık</SelectItem>
+            <SelectItem value="filled">Dolduruldu</SelectItem>
+            <SelectItem value="cancelled">İptal</SelectItem>
+          </SelectContent>
+        </Select>
 
         {/* Oluştur butonu yalnızca yöneticilere görünür */}
         {isManager && (
-          <Button
-            startIcon={<AddIcon />}
-            variant="outlined"
-            size="small"
-            onClick={() => setDialogOpen(true)}
-            sx={{ borderColor: 'primary.main', color: 'primary.main' }}
-          >
+          <Button variant="outline" onClick={() => setDialogOpen(true)}>
+            <Plus />
             Açık Vardiya Oluştur
           </Button>
         )}
-      </Box>
+      </div>
 
       {/* Çalışan için bilgi notu */}
       {!isManager && statusFilter === 'open' && (
-        <Alert severity="info" sx={{ mb: 2, borderRadius: 1.5 }}>
-          Açık vardiyaları görerek kendi adınıza üstlenebilirsiniz.
-          <Box component="span" fontWeight={700}> Üstlen</Box> butonuna basmanız yeterli.
+        <Alert tone="info" className="mb-3">
+          <Info />
+          <AlertDescription className="block text-ink">
+            Açık vardiyaları görerek kendi adınıza üstlenebilirsiniz.
+            <span className="font-bold"> Üstlen</span> butonuna basmanız yeterli.
+          </AlertDescription>
         </Alert>
       )}
 
       {/* Başarı mesajı */}
       {claimSuccess && (
-        <Alert
-          severity="success"
-          sx={{ mb: 2 }}
-          onClose={() => setClaimSuccess(null)}
-        >
+        <Notice tone="success" icon={<CheckCircle2 />} onClose={() => setClaimSuccess(null)}>
           {claimSuccess}
-        </Alert>
+        </Notice>
       )}
 
       {/* Hata mesajı */}
       {error && (
-        <Alert severity="error" sx={{ mb: 1 }} onClose={() => setError(null)}>
+        <Notice tone="danger" icon={<AlertCircle />} onClose={() => setError(null)}>
           {error}
-        </Alert>
+        </Notice>
       )}
 
       {/* Liste */}
       {isFirstLoad ? (
         <ListSkeleton count={4} avatar={false} lines={2} actions={2} dense />
-      ) : shifts.length === 0 ? (
-        <Typography variant="body2" color="text.secondary">
-          {statusFilter === 'open'
-            ? 'Şu an açık vardiya bulunmuyor.'
-            : 'Bu durumda vardiya bulunamadı.'}
-        </Typography>
       ) : (
-        <Stack gap={1}>
-          {shifts.map((shift) => (
-            <Paper
-              key={shift.id}
-              sx={{
-                p: 1.5,
-                bgcolor: C.surface,
-                border: '1px solid',
-                borderColor: 'divider',
-                borderRadius: 2,
-              }}
-            >
-              <Box
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  flexWrap: 'wrap',
-                  gap: 1,
-                }}
-              >
-                {/* Sol: vardiya bilgisi */}
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <WorkIcon sx={{ color: STATUS_COLORS[shift.status], fontSize: 18 }} />
-                  <Box>
-                    <Typography variant="body2" fontWeight={700}>
+        <section className="overflow-hidden rounded-2xl border bg-card [&>*+*]:border-t">
+          {shifts.length === 0 ? (
+            <EmptyRow>
+              {statusFilter === 'open'
+                ? 'Şu an açık vardiya bulunmuyor.'
+                : 'Bu durumda vardiya bulunamadı.'}
+            </EmptyRow>
+          ) : shifts.map((shift) => {
+            const start = shift.start_time.slice(0, 5)
+            const end = shift.end_time.slice(0, 5)
+            const tone = SHIFT_KIND_TONES[shiftKindOf(undefined, start, end)]
+            const details = [shift.role_needed, shift.description].filter(Boolean).join(' · ')
+            return (
+              <div key={shift.id} className="flex flex-wrap items-center gap-x-3 gap-y-2.5 px-4 py-3">
+                {/* Sol: vardiya bilgisi — dar ekranda aksiyonlar alt satıra iner */}
+                <div className="flex min-w-[220px] flex-1 items-start gap-3">
+                  <span
+                    className="inline-flex h-7 shrink-0 items-center rounded-lg px-2 text-xs font-bold tabular-nums"
+                    style={{ backgroundColor: tone.soft, color: tone.text }}
+                  >
+                    {start} – {end}
+                  </span>
+                  <div className="min-w-0 pt-0.5">
+                    <p className="text-sm font-bold">
                       {format(new Date(shift.work_date), 'd MMMM yyyy', { locale: tr })}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {shift.start_time.slice(0, 5)} – {shift.end_time.slice(0, 5)}
-                      {shift.role_needed ? ` · ${shift.role_needed}` : ''}
-                      {shift.description ? ` · ${shift.description}` : ''}
-                    </Typography>
-                  </Box>
-                </Box>
+                    </p>
+                    {details && (
+                      <p className="text-xs text-ink-secondary [overflow-wrap:anywhere]">{details}</p>
+                    )}
+                  </div>
+                </div>
 
                 {/* Sağ: durum + aksiyon */}
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Chip
-                    label={STATUS_LABELS[shift.status]}
-                    size="small"
-                    sx={{
-                      bgcolor: `${STATUS_COLORS[shift.status]}22`,
-                      color: STATUS_COLORS[shift.status],
-                      fontWeight: 700,
-                      fontSize: '0.65rem',
-                    }}
-                  />
+                <div className="ml-auto flex shrink-0 items-center gap-2">
+                  <StatusBadge tone={STATUS_TONES[shift.status] ?? 'neutral'} label={STATUS_LABELS[shift.status]} />
 
                   {/* Açık vardiya — çalışan üstlenebilir, yönetici iptal edebilir */}
                   {shift.status === 'open' && !isManager && (
                     <Button
-                      size="small"
-                      variant="contained"
+                      variant="outline" size="sm"
                       onClick={() => void handleClaim(shift.id)}
                       disabled={claimingId === shift.id}
-                      sx={{ fontSize: '0.72rem', py: 0.25 }}
+                      className="text-primary"
                     >
-                      {claimingId === shift.id ? <CircularProgress size={14} /> : 'Üstlen'}
+                      {claimingId === shift.id ? <Loader2 className="animate-spin" aria-label="Üstleniliyor" /> : 'Üstlen'}
                     </Button>
                   )}
 
                   {shift.status === 'open' && isManager && (
-                    <Tooltip title="Vardiyayı iptal et">
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        color="error"
-                        onClick={() => void handleCancel(shift.id)}
-                        disabled={cancellingId === shift.id}
-                        startIcon={
-                          cancellingId === shift.id
-                            ? <CircularProgress size={12} />
-                            : <BlockIcon fontSize="small" />
-                        }
-                        sx={{ fontSize: '0.72rem', py: 0.25 }}
-                      >
-                        İptal
-                      </Button>
-                    </Tooltip>
+                    <Button
+                      variant="outline" size="sm"
+                      title="Vardiyayı iptal et"
+                      onClick={() => void handleCancel(shift.id)}
+                      disabled={cancellingId === shift.id}
+                      className="text-danger"
+                    >
+                      {cancellingId === shift.id ? <Loader2 className="animate-spin" /> : <Ban />}
+                      İptal
+                    </Button>
                   )}
 
                   {/* Dolduruldu — kimin üstlendiği */}
                   {shift.status === 'filled' && shift.filled_by_employee && (
-                    <Typography variant="caption" color="success.main" fontWeight={600}>
+                    <span className="text-xs font-semibold text-success">
                       {shift.filled_by_employee.full_name}
-                    </Typography>
+                    </span>
                   )}
-                </Box>
-              </Box>
-            </Paper>
-          ))}
-        </Stack>
+                </div>
+              </div>
+            )
+          })}
+        </section>
       )}
 
       {/* Açık vardiya oluşturma dialog'u — yalnızca yönetici */}
       {isManager && (
-        <Dialog
-          open={dialogOpen}
-          onClose={() => setDialogOpen(false)}
-          maxWidth="xs"
-          fullWidth
-        >
-          <DialogTitle>Açık Vardiya Oluştur</DialogTitle>
-          <DialogContent
-            sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '12px !important' }}
-          >
-            <Typography variant="caption" color="text.secondary">
-              Oluşturulan vardiya anonim olarak açık havuza eklenir.
-              İstekli çalışanlar kendi hesaplarından üstlenebilir.
-            </Typography>
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Açık Vardiya Oluştur</DialogTitle>
+              <DialogDescription>
+                Oluşturulan vardiya anonim olarak açık havuza eklenir.
+                İstekli çalışanlar kendi hesaplarından üstlenebilir.
+              </DialogDescription>
+            </DialogHeader>
 
-            <DateField
-              size="small"
-              label="Tarih"
-              value={form.work_date}
-              onChange={(v) => setForm((f) => ({ ...f, work_date: v }))}
-              fullWidth
-            />
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <TextField
-                size="small"
-                label="Başlangıç"
-                type="time"
-                value={form.start_time}
-                onChange={(e) => setForm((f) => ({ ...f, start_time: e.target.value }))}
-                inputProps={{ step: 300 }}
-                fullWidth
-              />
-              <TextField
-                size="small"
-                label="Bitiş"
-                type="time"
-                value={form.end_time}
-                onChange={(e) => setForm((f) => ({ ...f, end_time: e.target.value }))}
-                inputProps={{ step: 300 }}
-                fullWidth
-              />
-            </Box>
-            <TextField
-              size="small"
-              label="Gerekli Pozisyon (opsiyonel)"
-              value={form.role_needed}
-              onChange={(e) => setForm((f) => ({ ...f, role_needed: e.target.value }))}
-              fullWidth
-            />
-            <TextField
-              size="small"
-              label="Açıklama (opsiyonel)"
-              value={form.description}
-              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-              fullWidth
-            />
+            <div className="flex flex-col gap-4">
+              {/* MUI DateField'ın açılır takvimi Radix Dialog içinde tıklanamıyor — yerel tarih alanı */}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="os-date">Tarih</Label>
+                <Input id="os-date" type="date" required value={form.work_date}
+                  onChange={(e) => setForm((f) => ({ ...f, work_date: e.target.value }))} />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="os-start">Başlangıç</Label>
+                  <Input id="os-start" type="time" step={300} value={form.start_time}
+                    onChange={(e) => setForm((f) => ({ ...f, start_time: e.target.value }))} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="os-end">Bitiş</Label>
+                  <Input id="os-end" type="time" step={300} value={form.end_time}
+                    onChange={(e) => setForm((f) => ({ ...f, end_time: e.target.value }))} />
+                </div>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="os-role">Gerekli pozisyon (opsiyonel)</Label>
+                <Input id="os-role" value={form.role_needed}
+                  onChange={(e) => setForm((f) => ({ ...f, role_needed: e.target.value }))} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="os-desc">Açıklama (opsiyonel)</Label>
+                <Input id="os-desc" value={form.description}
+                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setDialogOpen(false)}>İptal</Button>
+              <Button onClick={() => void handleCreate()} disabled={saving}>
+                {saving ? <Loader2 className="animate-spin" aria-label="Kaydediliyor" /> : 'Oluştur'}
+              </Button>
+            </DialogFooter>
           </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setDialogOpen(false)} color="inherit">
-              İptal
-            </Button>
-            <Button onClick={() => void handleCreate()} variant="contained" disabled={saving}>
-              {saving ? <CircularProgress size={18} /> : 'Oluştur'}
-            </Button>
-          </DialogActions>
         </Dialog>
       )}
-    </Box>
+    </div>
   )
 }

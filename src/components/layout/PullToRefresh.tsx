@@ -15,8 +15,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSWRConfig } from 'swr'
-import { Box, CircularProgress } from '@mui/material'
-import { C, tint } from '@/lib/palette'
+import { RefreshCw } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 /** Yenilemeyi tetikleyen (sönümlenmiş) çekme mesafesi */
 export const PULL_THRESHOLD = 70
@@ -158,43 +158,32 @@ export function PullToRefresh({ children, disabled = false }: Props) {
   const progress = Math.min(100, (pull / PULL_THRESHOLD) * 100)
 
   return (
-    <Box ref={rootRef} sx={{ position: 'relative', minHeight: 'inherit' }}>
+    <div ref={rootRef} className="relative min-h-[inherit]">
       {visible && (
-        <Box
+        <div
           role="status"
           aria-live="polite"
           aria-label={refreshing ? 'Yenileniyor' : 'Yenilemek için bırakın'}
-          sx={{
-            position: 'absolute',
-            top: 0,
-            left: '50%',
-            zIndex: 2,
-            width: 40,
-            height: 40,
-            ml: '-20px',
-            borderRadius: '50%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            bgcolor: C.surface,
-            border: '1px solid',
-            borderColor: 'divider',
-            boxShadow: `0 4px 12px ${tint(C.ink, 0.1)}`,
-            transform: `translateY(${pull - 28}px)`,
-            transition: pull === 0 || refreshing ? 'transform 0.2s' : 'none',
-            pointerEvents: 'none',
-          }}
+          className={cn(
+            'pointer-events-none absolute top-0 left-1/2 z-[2] -ml-5 flex size-10 items-center justify-center',
+            'rounded-full border bg-white text-primary shadow-[0_4px_12px_rgb(43_33_27/0.1)]',
+            (pull === 0 || refreshing) && 'transition-transform duration-200'
+          )}
+          style={{ transform: `translateY(${pull - 28}px)` }}
         >
-          <CircularProgress
-            size={22}
-            thickness={5}
-            variant={refreshing ? 'indeterminate' : 'determinate'}
-            value={refreshing ? undefined : progress}
-            sx={{ opacity: refreshing || pull >= PULL_THRESHOLD ? 1 : 0.6 }}
+          {/* Çekerken ok çekme oranıyla döner; eşiği geçince tam renk, yenilerken sürekli döner */}
+          <RefreshCw
+            aria-hidden
+            className={cn(
+              'size-5 transition-opacity',
+              refreshing && 'animate-spin',
+              refreshing || pull >= PULL_THRESHOLD ? 'opacity-100' : 'opacity-60'
+            )}
+            style={refreshing ? undefined : { transform: `rotate(${progress * 2.7}deg)` }}
           />
-        </Box>
+        </div>
       )}
       {children}
-    </Box>
+    </div>
   )
 }

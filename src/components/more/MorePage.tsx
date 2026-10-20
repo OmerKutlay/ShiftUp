@@ -5,24 +5,13 @@
  * sayfalar (gruplu) ve çıkış. Liste navItems'tan gelir; rol filtresi yan menüyle aynıdır.
  */
 import Link from 'next/link'
-import {
-  Box,
-  Button,
-  List,
-  ListItemButton,
-  ListItemIcon,
-  ListItemText,
-  Paper,
-  Skeleton,
-  Typography,
-} from '@mui/material'
-import ChevronRightIcon from '@mui/icons-material/ChevronRight'
-import LogoutIcon from '@mui/icons-material/Logout'
-import LoginIcon from '@mui/icons-material/Login'
+import { ChevronRight, LogIn, LogOut } from 'lucide-react'
 
 import { useAuth } from '@/context/AuthContext'
 import { getMoreItems, groupNavItems } from '@/components/layout/navItems'
 import { PageHeader, PersonAvatar } from '@/components/common'
+import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 
 export function MorePage() {
   const { employee, status, signOut } = useAuth()
@@ -30,96 +19,75 @@ export function MorePage() {
   const groups = status === 'loading' ? [] : groupNavItems(getMoreItems(roleName))
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 640, mx: 'auto', color: 'text.primary' }}>
+    <div className="mx-auto w-full max-w-[640px] p-4 text-ink md:p-6">
       <PageHeader title="Daha fazla" />
+
       {/* Profil özeti */}
-      <Paper
-        variant="outlined"
-        sx={{ p: 2, mb: 3, display: 'flex', alignItems: 'center', gap: 2, borderColor: 'divider' }}
-      >
+      <div className="mb-6 flex items-center gap-3 rounded-2xl border bg-card p-4">
         {status === 'loading' ? (
           <>
-            <Skeleton variant="circular" width={48} height={48} />
-            <Box sx={{ flex: 1 }}>
-              <Skeleton width="60%" />
-              <Skeleton width="35%" />
-            </Box>
+            <Skeleton className="size-12 rounded-full" />
+            <div className="flex flex-1 flex-col gap-2">
+              <Skeleton className="h-4 w-3/5" />
+              <Skeleton className="h-3.5 w-1/3" />
+            </div>
           </>
         ) : (
           <>
             <PersonAvatar name={employee?.full_name ?? '?'} size={48} />
-            <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography variant="subtitle1" fontWeight={700} noWrap>
-                {employee?.full_name ?? 'Giriş yapılmadı'}
-              </Typography>
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-bold">{employee?.full_name ?? 'Giriş yapılmadı'}</p>
               {employee && (
-                <Typography variant="body2" color="text.secondary" noWrap>
-                  {employee.roles?.name ?? employee.role}
-                </Typography>
+                <p className="truncate text-sm text-ink-secondary">{employee.roles?.name ?? employee.role}</p>
               )}
-            </Box>
+            </div>
           </>
         )}
-      </Paper>
+      </div>
 
       {groups.map((g) => (
-        <Box component="section" key={g.group} aria-labelledby={`more-${g.group}`} sx={{ mb: 2.5 }}>
-          <Typography
-            id={`more-${g.group}`}
-            component="h2"
-            variant="overline"
-            color="text.secondary"
-            sx={{ display: 'block', px: 1, mb: 0.5, fontWeight: 600 }}
-          >
+        <section key={g.group} aria-labelledby={`more-${g.group}`} className="mb-5">
+          <h2 id={`more-${g.group}`} className="mb-1.5 px-1 text-xs font-semibold text-ink-secondary">
             {g.label}
-          </Typography>
-          <Paper variant="outlined" sx={{ borderColor: 'divider', overflow: 'hidden' }}>
-            <List disablePadding>
-              {g.items.map((item, i) => (
-                <ListItemButton
-                  key={item.href}
-                  component={Link}
+          </h2>
+          <ul className="divide-y overflow-hidden rounded-2xl border bg-card">
+            {g.items.map((item) => (
+              <li key={item.href}>
+                <Link
                   href={item.href}
                   prefetch={false}
-                  divider={i < g.items.length - 1}
-                  sx={{ minHeight: 52, userSelect: 'none', borderColor: 'divider' }}
+                  className="flex min-h-[52px] items-center gap-3 px-4 py-2.5 transition-colors outline-none select-none hover:bg-muted/70 focus-visible:bg-muted"
                 >
-                  <ListItemIcon sx={{ color: 'primary.main', minWidth: 40 }}>{item.icon}</ListItemIcon>
-                  <ListItemText
-                    primary={item.label}
-                    primaryTypographyProps={{ fontSize: '0.95rem', fontWeight: 500 }}
-                  />
-                  <ChevronRightIcon sx={{ color: 'text.disabled' }} />
-                </ListItemButton>
-              ))}
-            </List>
-          </Paper>
-        </Box>
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-[10px] bg-brand-soft text-brand [&_svg]:size-[18px]">
+                    {item.icon}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[0.95rem] font-medium">{item.label}</span>
+                  <ChevronRight className="size-4 shrink-0 text-ink-muted" aria-hidden />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
       ))}
 
       {status === 'authenticated' && (
         <Button
-          fullWidth
-          variant="outlined"
-          color="error"
-          startIcon={<LogoutIcon />}
+          variant="outline"
+          className="mt-1 w-full text-danger hover:bg-danger-soft hover:text-danger"
           onClick={() => void signOut()}
-          sx={{ mt: 1 }}
         >
+          <LogOut />
           Çıkış Yap
         </Button>
       )}
       {status === 'unauthenticated' && (
-        <Button
-          fullWidth
-          variant="contained"
-          startIcon={<LoginIcon />}
-          href="/login?next=%2Fmore"
-          sx={{ mt: 1 }}
-        >
-          Giriş Yap
+        <Button asChild className="mt-1 w-full">
+          <a href="/login?next=%2Fmore">
+            <LogIn />
+            Giriş Yap
+          </a>
         </Button>
       )}
-    </Box>
+    </div>
   )
 }

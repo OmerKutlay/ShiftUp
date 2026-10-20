@@ -1,17 +1,16 @@
 'use client'
 
-import { Box } from '@mui/material'
 import { OpenShiftsPanel } from './OpenShiftsPanel'
 import { PageHeader } from '@/components/common'
 
 export function OpenShiftsPage() {
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 800, mx: 'auto' }}>
+    <div className="mx-auto w-full max-w-[800px] p-4 md:p-6">
       <PageHeader
         title="Açık vardiyalar"
         subtitle="Boşta kalan vardiyaları görüntüleyin ve üstlenin"
       />
       <OpenShiftsPanel />
-    </Box>
+    </div>
   )
 }
