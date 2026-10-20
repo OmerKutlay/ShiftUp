@@ -83,9 +83,9 @@ export function isNavActive(pathname: string, href: string): boolean {
 
 /** Role göre mobil alt bar sekmeleri (5 adet, ortadaki QR Tara) */
 export function getBottomTabs(accessLevel: AccessLevel | null | undefined): BottomTab[] {
-  const scan: BottomTab = { label: 'QR Tara', href: SCAN_HREF, icon: <QrCodeScannerIcon /> }
-  const more: BottomTab = { label: 'Daha fazla', href: MORE_HREF, icon: <MoreHorizIcon /> }
-  const plan: BottomTab = { label: 'Plan', href: '/schedule', icon: <CalendarMonthIcon /> }
+  const scan: BottomTab = { label: 'QR Tara', href: SCAN_HREF, icon: <ScanLine /> }
+  const more: BottomTab = { label: 'Daha fazla', href: MORE_HREF, icon: <Menu /> }
+  const plan: BottomTab = { label: 'Plan', href: '/schedule', icon: <CalendarDays /> }
 
   if (isManagerRole(accessLevel)) {
     return [

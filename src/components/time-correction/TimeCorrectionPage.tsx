@@ -138,6 +138,7 @@ export function TimeCorrectionPage() {
   }
 
   const isManager = hasRole(employee.roles?.access_level ?? null, MANAGER_ROLES)
+  const mine = <MyRequests requests={requests} loading={isFirstLoad} />
 
   return (
     <div className="mx-auto w-full max-w-[720px] p-4 md:p-6">

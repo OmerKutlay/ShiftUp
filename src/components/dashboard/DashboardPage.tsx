@@ -159,7 +159,13 @@ export function DashboardPage() {
                 return (
                   <SectionRow key={entry.employee_id + entry.start_time}>
                     <PersonAvatar name={entry.full_name} size={34} />
-
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold">{entry.full_name}</p>
+                      <p className="truncate text-xs text-ink-secondary">{entry.role_name}</p>
+                    </div>
+                    <span
+                      className="hidden rounded-lg px-2 py-1 text-[0.78rem] font-bold tabular-nums sm:block"
+                      style={{ color: tone.text, backgroundColor: tone.soft }}
                     >
                       {entry.start_time.slice(0, 5)} – {entry.end_time.slice(0, 5)}
                     </span>

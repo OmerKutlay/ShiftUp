@@ -5,7 +5,8 @@ import { AttendanceStatusChip } from './AttendanceStatusChip'
 import { formatInTimeZone } from '@/lib/dateUtils'
 import { PersonAvatar, SectionRow } from '@/components/common'
 import { shiftKindOf } from '@/components/schedule/scheduleHelpers'
-
+import { SHIFT_KIND_TONES } from '@/lib/palette'
+import { roleNameOf } from '@/lib/roleJoin'
 
 interface Props {
   entry: DailyShiftEntry
@@ -23,7 +24,13 @@ export function EmployeeAttendanceRow({ entry }: Props) {
     <SectionRow className="flex-wrap gap-y-2">
       <div className="flex min-w-0 flex-[1_1_220px] items-center gap-2.5">
         <PersonAvatar name={employee.full_name} size={36} />
-
+        <div className="min-w-0">
+          <p className="truncate text-sm font-bold">{employee.full_name}</p>
+          <p className="truncate text-xs text-ink-secondary">{roleNameOf(employee)}</p>
+        </div>
+      </div>
+      <div className="flex min-w-0 flex-[2_1_320px] flex-wrap items-center gap-3">
+        <span className="rounded-lg px-2 py-1 text-[0.78rem] font-bold tabular-nums" style={{ color: tone.text, backgroundColor: tone.soft }}>
           {start} – {end}
         </span>
         <TimeInfo attendanceRecord={attendanceRecord} />

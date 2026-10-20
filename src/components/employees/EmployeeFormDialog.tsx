@@ -1,19 +1,11 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import {
-  Dialog, DialogTitle, DialogContent, DialogActions,
-  Button, TextField, FormControl, InputLabel, Select, MenuItem,
-  FormControlLabel, FormHelperText, Switch, Stack, CircularProgress, Alert,
-  SelectChangeEvent, InputAdornment, IconButton, Tooltip, Typography, Box,
-  ToggleButton, ToggleButtonGroup,
-} from '@mui/material'
-import AutorenewIcon from '@mui/icons-material/Autorenew'
-import EmailIcon from '@mui/icons-material/Email'
+import { AlertCircle, Loader2, Mail, RefreshCw, X } from 'lucide-react'
 import type { EmployeeWithRole, Role, CreateEmployeePayload, UpdateEmployeePayload, EmploymentType } from '@/types/employee'
 import { EMPLOYMENT_TYPE_LABELS } from '@/types/employee'
 import { ACCESS, ACCESS_LABELS } from '@/lib/auth/roles'
-import { DateField } from '@/components/common'
+import { DateField, SegmentedControl } from '@/components/common'
 import { format } from 'date-fns'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -89,9 +81,6 @@ function generateEmail(fullName: string): string {
   return normalized ? `${normalized}@shiftup.test` : ''
 }
 
-/** Radix Select boş değeri kabul etmez — "Seçilmedi" için yer tutucu */
-const NO_ROLE = '__none__'
-
 /** Etiket + alan + yardım/hata metni */
 function Field({ id, label, error, helper, className, children }: {
   id: string
@@ -156,8 +145,8 @@ export function EmployeeFormDialog({ open, onClose, onSave, employee, roles, loa
     .filter((r) => r.access_level !== ACCESS.KIOSK || r.id === form.role_id)
     .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name, 'tr'))
 
-  const handleSelectChange = (e: SelectChangeEvent<string>) => {
-    setForm((f) => ({ ...f, role_id: e.target.value }))
+  const handleRoleChange = (value: string) => {
+    setForm((f) => ({ ...f, role_id: value }))
     setErrors((err) => ({ ...err, role_id: undefined }))
   }
 
@@ -262,26 +251,27 @@ export function EmployeeFormDialog({ open, onClose, onSave, employee, roles, loa
             </div>
           </Field>
 
-          {/* Sistem Rolü */}
-          <FormControl fullWidth required error={!!errors.role_id}>
-            <InputLabel id="role-select-label">Sistem Rolü</InputLabel>
-            <Select
-              labelId="role-select-label"
-              value={form.role_id}
-              label="Sistem Rolü"
-              onChange={handleSelectChange}
-            >
-              {selectableRoles.map((r) => (
-                <MenuItem key={r.id} value={r.id}>
-                  {r.name}
-                  <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-                    — {ACCESS_LABELS[r.access_level]}
-                  </Typography>
-                </MenuItem>
-              ))}
+          {/* Sistem Rolü — yetki ve planlama grubu buradan gelir */}
+          <Field id="emp-system-role" label="Sistem rolü" error={errors.role_id} className="sm:col-span-2">
+            <Select value={form.role_id || undefined} onValueChange={handleRoleChange}>
+              <SelectTrigger
+                id="emp-system-role"
+                className="w-full"
+                aria-invalid={!!errors.role_id || undefined}
+                aria-describedby={errors.role_id ? 'emp-system-role-msg' : undefined}
+              >
+                <SelectValue placeholder="Rol seçin" />
+              </SelectTrigger>
+              <SelectContent>
+                {selectableRoles.map((r) => (
+                  <SelectItem key={r.id} value={r.id}>
+                    {r.name}
+                    <span className="text-ink-muted">— {ACCESS_LABELS[r.access_level]}</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
             </Select>
-            {errors.role_id && <FormHelperText>{errors.role_id}</FormHelperText>}
-          </FormControl>
+          </Field>
 
           {/* Çalışma Tipi */}
           <div className="flex flex-col gap-1.5 sm:col-span-2">
