@@ -45,6 +45,21 @@ export function AppShell({ children }: Props) {
   const narrow = collapsed && !isMobile
   const userName = authStatus === 'authenticated' && authEmployee ? authEmployee.full_name : null
   const userRole = authEmployee?.roles?.name ?? ''
+  // Yan menü alt başlığı: aktif mağazanın adı (yoksa genel etiket)
+  const { data: store } = useSWR(
+    authStatus === 'authenticated' ? '/api/store-location/name' : null,
+    (url: string) => apiFetch<{ name: string | null }>(url),
+    { revalidateOnFocus: false },
+  )
+
+  /** Daraltılmış menüde etiketin yerine ipucu */
+  const withTip = (label: string, node: React.ReactElement) =>
+    narrow ? (
+      <Tooltip>
+        <TooltipTrigger asChild>{node}</TooltipTrigger>
+        <TooltipContent side="right">{label}</TooltipContent>
+      </Tooltip>
+    ) : node
 
   const drawerContent = (
     <div className="flex h-full flex-col bg-background">

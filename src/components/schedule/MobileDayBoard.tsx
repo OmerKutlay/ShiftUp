@@ -247,16 +247,14 @@ export function MobileDayBoard({
                     <div className="min-w-0">
                       <p className="truncate text-[0.82rem] font-bold">
                         {shortName(r.emp.full_name)}
-                        {r.emp.employment_type === 'part_time' && (
-                          <Box component="span" sx={{ ml: 0.5, fontSize: '0.6rem', color: C.plum, fontWeight: 700 }}>PT</Box>
-                        )}
-                      </Typography>
-                      <Typography fontSize="0.68rem" color="text.secondary" noWrap>{r.emp.roles?.name}</Typography>
-                    </Box>
-                  </Box>
-                  <Box sx={{ minWidth: 0 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
-                      <Typography fontSize="0.8rem" fontWeight={700} color={warnColor ?? kindTone.text} sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                        {r.emp.employment_type === 'part_time' && <span className="ml-1 text-[0.6rem] font-bold text-plum">PT</span>}
+                      </p>
+                      <p className="truncate text-[0.68rem] text-ink-secondary">{r.emp.roles?.name}</p>
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="mb-1 flex items-center gap-1">
+                      <span className="text-[0.8rem] font-bold tabular-nums" style={{ color: warnColor ?? kindTone.text }}>
                         {formatTime(r.asgn.start_time)} – {formatTime(r.asgn.end_time)}
                       </span>
                       {warnColor && <TriangleAlert className="size-3.5" style={{ color: warnColor }} />}
