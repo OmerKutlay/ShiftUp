@@ -8,14 +8,12 @@
  * Durumlar: desteklenmiyor / iOS'ta ana ekrana ekleme gerekli / izin sorulmadı /
  * açık (abone) / izin verilmiş ama abone değil / reddedilmiş (ayarlardan açma yönergesi).
  */
-import { Alert, Box, Button, CircularProgress, Paper, Typography } from '@mui/material'
-import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive'
-import NotificationsOffIcon from '@mui/icons-material/NotificationsOff'
-import IosShareIcon from '@mui/icons-material/IosShare'
+import { BellOff, BellRing, Loader2, Share, TriangleAlert } from 'lucide-react'
 import { usePushSubscription, type PushStatus } from '@/hooks/usePushSubscription'
 import { isIos } from '@/lib/pwa/push'
-import { C, tint } from '@/lib/palette'
-
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 interface Props {
   /** Abonelik açıkken kartı tamamen gizle */
@@ -61,69 +59,55 @@ export function PushPermissionCard({ hideWhenSubscribed = false }: Props) {
 
   if (isOn && hideWhenSubscribed) return null
 
-  const icon =
-    status === 'ios-needs-install' ? (
-      <IosShareIcon />
-    ) : isOn || canEnable ? (
-      <NotificationsActiveIcon />
-    ) : (
-      <NotificationsOffIcon />
-    )
+  const Icon = status === 'ios-needs-install' ? Share : isOn || canEnable ? BellRing : BellOff
 
   return (
-    <Paper
-      sx={{
-        mb: 2,
-        p: 2,
-        display: 'flex',
-        alignItems: { xs: 'flex-start', sm: 'center' },
-        flexDirection: { xs: 'column', sm: 'row' },
-        gap: 1.5,
-        bgcolor: isOn ? tint(C.success, 0.08) : tint(C.brand, 0.08),
-        border: '1px solid',
-        borderColor: isOn ? tint(C.success, 0.3) : tint(C.brand, 0.3),
-        borderRadius: 2,
-      }}
-    >
-      <Box sx={{ display: 'flex', gap: 1.5, flex: 1, minWidth: 0 }}>
-        <Box sx={{ color: isOn ? 'success.main' : 'primary.main', display: 'flex', mt: 0.25 }}>{icon}</Box>
-        <Box sx={{ minWidth: 0 }}>
-          <Typography variant="subtitle2" fontWeight={700}>
+    <div className="mb-4 flex flex-col gap-3 rounded-2xl border bg-card p-4 sm:flex-row sm:items-center">
+      <div className="flex min-w-0 flex-1 gap-3">
+        <span
+          aria-hidden
+          className={cn(
+            'flex size-9 shrink-0 items-center justify-center rounded-xl [&_svg]:size-[18px]',
+            isOn ? 'bg-success-soft text-success' : 'bg-brand-soft text-brand'
+          )}
+        >
+          <Icon />
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm font-bold">
             {isOn ? 'Bildirimler açık' : 'Vardiya hatırlatmaları ve onaylar için bildirimleri aç'}
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
-            {statusText(status)}
-          </Typography>
+          </p>
+          <p className="mt-0.5 text-sm text-ink-secondary">{statusText(status)}</p>
           {error && (
-            <Alert severity="warning" sx={{ mt: 1, py: 0 }}>
-              {error}
+            <Alert tone="warning" className="mt-2 py-2">
+              <TriangleAlert />
+              <AlertDescription className="text-ink">{error}</AlertDescription>
             </Alert>
           )}
-        </Box>
-      </Box>
+        </div>
+      </div>
       {canEnable && (
         <Button
-          variant="contained"
-          size="small"
+          size="sm"
           onClick={() => void enable()}
           disabled={busy}
-          startIcon={busy ? <CircularProgress size={14} color="inherit" /> : undefined}
-          sx={{ flexShrink: 0, alignSelf: { xs: 'stretch', sm: 'center' } }}
+          className="shrink-0 self-stretch sm:self-center"
         >
+          {busy && <Loader2 className="animate-spin" />}
           Aç
         </Button>
       )}
       {isOn && (
         <Button
-          variant="text"
-          size="small"
+          variant="ghost"
+          size="sm"
           onClick={() => void disable()}
           disabled={busy}
-          sx={{ flexShrink: 0, color: 'text.secondary' }}
+          className="shrink-0 self-end text-ink-secondary sm:self-center"
         >
           Kapat
         </Button>
       )}
-    </Paper>
+    </div>
   )
 }

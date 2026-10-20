@@ -20,11 +20,6 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@emotion/react": "^11.13.3",
-    "@emotion/styled": "^11.13.0",
-    "@mui/icons-material": "^7.1.0",
-    "@mui/material": "^7.1.0",
-    "@mui/material-nextjs": "^9.4.0",
     "@opennextjs/cloudflare": "^1.20.10",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.49.0",

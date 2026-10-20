@@ -8,31 +8,39 @@
  * Çalışan kendi bekleyen talebini iptal edebilir.
  */
 import { useState, useEffect, useCallback } from 'react'
-import {
-  Box, Typography, Paper, Button, Chip, CircularProgress, Alert,
-  Dialog, DialogTitle, DialogContent, DialogActions, TextField,
-  Stack, Select, MenuItem, FormControl, InputLabel,
-} from '@mui/material'
-import SwapHorizIcon from '@mui/icons-material/SwapHoriz'
-import AddIcon from '@mui/icons-material/Add'
-import CheckIcon from '@mui/icons-material/Check'
-import CloseIcon from '@mui/icons-material/Close'
+import { AlertCircle, ArrowLeftRight, ArrowRight, Check, Info, Loader2, Plus, TriangleAlert, X } from 'lucide-react'
 import type { ShiftSwapRequest, CreateSwapRequestPayload } from '@/types/workforce'
 import type { ShiftAssignmentWithDetails } from '@/types/schedule'
 import type { EmployeeWithRole } from '@/types/employee'
-import { EmployeeSelect, ListSkeleton } from '@/components/common'
+import { EmptyRow, ListSkeleton, PersonAvatar, StatusBadge } from '@/components/common'
+import type { BadgeTone } from '@/components/common'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import {
+  AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { useLoadedKey } from '@/hooks/useLoadedKey'
-import { C } from '@/lib/palette'
 
-const STATUS_META: Record<string, { label: string; color: string }> = {
-  awaiting_target: { label: 'Karşı Taraf Bekleniyor', color: C.info },
-  pending:   { label: 'Yönetici Onayı Bekliyor', color: C.warning },
-  approved:  { label: 'Onaylandı',     color: C.success },
-  rejected:  { label: 'Reddedildi',    color: C.danger },
-  cancelled: { label: 'İptal',         color: C.inkMuted },
+const STATUS_META: Record<string, { label: string; tone: BadgeTone }> = {
+  awaiting_target: { label: 'Karşı taraf bekleniyor', tone: 'info' },
+  pending:   { label: 'Yönetici onayı bekliyor', tone: 'warning' },
+  approved:  { label: 'Onaylandı',     tone: 'success' },
+  rejected:  { label: 'Reddedildi',    tone: 'danger' },
+  cancelled: { label: 'İptal',         tone: 'neutral' },
 }
+
+/** Radix Select boş değer kabul etmez — "karşılık vardiya yok" seçeneği için yer tutucu */
+const NO_TARGET_SHIFT = '__none__'
 
 type ReviewStatus = 'accepted' | 'declined' | 'approved' | 'rejected' | 'cancelled'
 
@@ -41,6 +49,19 @@ interface Props {
   assignments: ShiftAssignmentWithDetails[]
   currentEmployeeId: string | null
   isManager: boolean
+}
+
+/** Takas kartındaki taraf: avatar + ad + vardiya */
+function SwapParty({ name, shift }: { name: string; shift: string }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <PersonAvatar name={name} size={32} />
+      <div className="min-w-0">
+        <p className="truncate text-sm font-bold" title={name}>{name}</p>
+        <p className="text-xs text-ink-secondary tabular-nums">{shift}</p>
+      </div>
+    </div>
+  )
 }
 
 export function ShiftSwapPanel({ employees, assignments, currentEmployeeId, isManager }: Props) {
@@ -126,26 +147,38 @@ export function ShiftSwapPanel({ employees, assignments, currentEmployeeId, isMa
     `${format(new Date(a.work_date), 'd MMM', { locale: tr })} ${a.start_time.slice(0,5)}-${a.end_time.slice(0,5)}`
 
   return (
-    <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, mb: 2, flexWrap: 'wrap' }}>
-        <Typography variant="caption" color="text.secondary">
+    <div>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="min-w-0 flex-1 basis-60 text-xs text-ink-secondary">
           Takas, karşı taraf kabul edip bir yönetici onayladıktan sonra uygulanır. Diğer durumlarda vardiyalar değişmez.
-        </Typography>
-        <Button startIcon={<AddIcon />} variant="outlined" size="small" onClick={() => setDialogOpen(true)}
-          disabled={!currentEmployeeId}
-          sx={{ borderColor: 'primary.main', color: 'primary.main' }}>
+        </p>
+        <Button variant="outline" onClick={() => setDialogOpen(true)} disabled={!currentEmployeeId}>
+          <Plus />
           Takas Talebi Oluştur
         </Button>
-      </Box>
+      </div>
 
-      {error && <Alert severity="error" sx={{ mb: 1 }} onClose={() => setError(null)}>{error}</Alert>}
+      {error && (
+        <Alert tone="danger" className="mb-3 pr-12">
+          <AlertCircle />
+          <AlertDescription className="text-ink">{error}</AlertDescription>
+          <Button
+            variant="ghost" size="icon-sm" aria-label="Kapat" onClick={() => setError(null)}
+            className="absolute top-1.5 right-1.5 text-ink-secondary"
+          >
+            <X />
+          </Button>
+        </Alert>
+      )}
 
       {isFirstLoad ? (
         <ListSkeleton count={3} lines={2} actions={2} dense />
       ) : swaps.length === 0 ? (
-        <Typography variant="body2" color="text.secondary">Takas talebi bulunamadı.</Typography>
+        <section className="rounded-2xl border bg-card">
+          <EmptyRow>Takas talebi bulunamadı.</EmptyRow>
+        </section>
       ) : (
-        <Stack gap={1}>
+        <div className="flex flex-col gap-3">
           {swaps.map((swap) => {
             const isPending = swap.status === 'pending'
             const awaitingTarget = isPending && !swap.target_accepted_at
@@ -155,181 +188,212 @@ export function ShiftSwapPanel({ employees, assignments, currentEmployeeId, isMa
             const canRespond = awaitingTarget && swap.target_id === currentEmployeeId
             const canReview = isPending && !awaitingTarget && isManager && !isParty
             const canCancel = isPending && swap.requester_id === currentEmployeeId
+            const busy = reviewingId === swap.id
+            const PartyArrow = swap.target_shift ? ArrowLeftRight : ArrowRight
             return (
-              <Paper key={swap.id} sx={{ p: 1.5, bgcolor: C.surface, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
-                {/* Satır 1: ikon + isimler | durum chip'i (sağ üstte sabit) */}
-                <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', alignItems: 'start', columnGap: 1 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, minWidth: 0 }}>
-                    <SwapHorizIcon sx={{ color: meta.color, fontSize: 18, mt: '2px', flexShrink: 0 }} />
-                    <Typography variant="body2" fontWeight={700} sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>
-                      {swap.requester?.full_name ?? '—'}
-                      {swap.target ? ` ↔ ${swap.target.full_name}` : ''}
-                    </Typography>
-                  </Box>
-                  <Chip label={meta.label} size="small"
-                    sx={{ bgcolor: `${meta.color}22`, color: meta.color, fontWeight: 700, fontSize: '0.65rem', maxWidth: '100%' }} />
-                </Box>
-                {/* Satır 2: vardiyalar + notlar */}
-                <Box sx={{ mt: 0.5, pl: '26px', minWidth: 0 }}>
-                  {swap.requester_shift && (
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                      {swap.requester?.full_name ?? 'Talep eden'}: {fmtSwapShift(swap.requester_shift)}
-                    </Typography>
-                  )}
-                  {swap.target && (
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                      {swap.target.full_name}: {swap.target_shift ? fmtSwapShift(swap.target_shift) : 'vardiya devri'}
-                    </Typography>
-                  )}
-                  {swap.requester_note && (
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', overflowWrap: 'anywhere' }}>Not: {swap.requester_note}</Typography>
-                  )}
-                  {swap.reviewer_note && (
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', overflowWrap: 'anywhere' }}>Yönetici notu: {swap.reviewer_note}</Typography>
-                  )}
-                </Box>
-                {(canRespond || canReview || canCancel) && (
-                  <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, mt: 1 }}>
-                    {canRespond && (
-                      <>
-                        <Button size="small" color="success" variant="outlined" startIcon={<CheckIcon />}
-                          onClick={() => handleReview(swap.id, 'accepted')}
-                          disabled={reviewingId === swap.id} sx={{ fontSize: '0.7rem', py: 0.25 }}>
-                          Kabul Et
-                        </Button>
-                        <Button size="small" color="error" variant="outlined" startIcon={<CloseIcon />}
-                          onClick={() => handleReview(swap.id, 'declined')}
-                          disabled={reviewingId === swap.id} sx={{ fontSize: '0.7rem', py: 0.25 }}>
-                          Reddet
-                        </Button>
-                      </>
-                    )}
-                    {canReview && (
-                      <>
-                        <Button size="small" color="success" variant="outlined" startIcon={<CheckIcon />}
-                          onClick={() => handleReview(swap.id, 'approved')}
-                          disabled={reviewingId === swap.id} sx={{ fontSize: '0.7rem', py: 0.25 }}>
-                          Onayla
-                        </Button>
-                        <Button size="small" color="error" variant="outlined" startIcon={<CloseIcon />}
-                          onClick={() => setRejecting({ id: swap.id, note: '' })}
-                          disabled={reviewingId === swap.id} sx={{ fontSize: '0.7rem', py: 0.25 }}>
-                          Reddet
-                        </Button>
-                      </>
-                    )}
-                    {canCancel && (
-                      <Button size="small" color="inherit" variant="outlined"
-                        onClick={() => handleReview(swap.id, 'cancelled')}
-                        disabled={reviewingId === swap.id} sx={{ fontSize: '0.7rem', py: 0.25 }}>
-                        İptal Et
-                      </Button>
-                    )}
-                  </Box>
+              <article key={swap.id} className="rounded-2xl border bg-card p-4">
+                {/* Taraflar: talep eden → / ↔ hedef */}
+                <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+                  <SwapParty
+                    name={swap.requester?.full_name ?? '—'}
+                    shift={swap.requester_shift ? fmtSwapShift(swap.requester_shift) : '—'}
+                  />
+                  <PartyArrow
+                    className="size-4 text-ink-muted"
+                    aria-label={swap.target_shift ? 'karşılıklı takas' : 'vardiya devri'}
+                  />
+                  {swap.target ? (
+                    <SwapParty
+                      name={swap.target.full_name}
+                      shift={swap.target_shift ? fmtSwapShift(swap.target_shift) : 'vardiya devri'}
+                    />
+                  ) : <span className="text-sm text-ink-muted">—</span>}
+                </div>
+
+                {/* Notlar */}
+                {(swap.requester_note || swap.reviewer_note) && (
+                  <div className="mt-3 flex flex-col gap-0.5 rounded-xl bg-surface-muted px-3 py-2 text-xs text-ink-secondary [overflow-wrap:anywhere]">
+                    {swap.requester_note && <p>Not: {swap.requester_note}</p>}
+                    {swap.reviewer_note && <p>Yönetici notu: {swap.reviewer_note}</p>}
+                  </div>
                 )}
-              </Paper>
+
+                {/* Durum + aksiyonlar */}
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {/* Dar ekranda rozet tek başına satırda, butonlar altında yan yana */}
+                  <div className="mr-auto basis-full sm:basis-auto">
+                    <StatusBadge tone={meta.tone} label={meta.label} />
+                  </div>
+                  {canRespond && (
+                    <>
+                      <Button variant="outline" size="sm" className="text-success"
+                        onClick={() => handleReview(swap.id, 'accepted')} disabled={busy}>
+                        <Check />
+                        Kabul Et
+                      </Button>
+                      <Button variant="outline" size="sm" className="text-danger"
+                        onClick={() => handleReview(swap.id, 'declined')} disabled={busy}>
+                        <X />
+                        Reddet
+                      </Button>
+                    </>
+                  )}
+                  {canReview && (
+                    <>
+                      <Button variant="outline" size="sm" className="text-success"
+                        onClick={() => handleReview(swap.id, 'approved')} disabled={busy}>
+                        <Check />
+                        Onayla
+                      </Button>
+                      <Button variant="outline" size="sm" className="text-danger"
+                        onClick={() => setRejecting({ id: swap.id, note: '' })} disabled={busy}>
+                        <X />
+                        Reddet
+                      </Button>
+                    </>
+                  )}
+                  {canCancel && (
+                    <Button variant="outline" size="sm"
+                      onClick={() => handleReview(swap.id, 'cancelled')} disabled={busy}>
+                      İptal Et
+                    </Button>
+                  )}
+                  {busy && <Loader2 className="size-4 animate-spin text-ink-muted" aria-label="İşleniyor" />}
+                </div>
+              </article>
             )
           })}
-        </Stack>
+        </div>
       )}
 
       {/* Yeni takas talebi dialog */}
-      <Dialog open={dialogOpen} onClose={closeDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>Takas Talebi Oluştur</DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '12px !important' }}>
-          <Alert severity="info" sx={{ py: 0 }}>
-            Teklifiniz önce seçtiğiniz çalışana, o kabul ederse yönetici onayına gider. Onaylanana kadar vardiyanız değişmez.
-          </Alert>
-          {myShifts.length === 0 ? (
-            <Typography variant="body2" color="text.secondary">Bu hafta takas edilebilecek vardiyanız yok.</Typography>
-          ) : (
-            <FormControl fullWidth size="small">
-              <InputLabel>Vardiyanız</InputLabel>
-              <Select value={form.requester_shift_id ?? ''} label="Vardiyanız"
-                onChange={(e) => setForm((f) => ({ ...f, requester_shift_id: e.target.value }))}>
-                {myShifts.map((a) => (
-                  <MenuItem key={a.id} value={a.id}>{fmtShift(a)}</MenuItem>
-                ))}
+      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) closeDialog() }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Takas Talebi Oluştur</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4">
+            <Alert tone="info">
+              <Info />
+              <AlertDescription className="text-ink">
+                Teklifiniz önce seçtiğiniz çalışana, o kabul ederse yönetici onayına gider. Onaylanana kadar vardiyanız değişmez.
+              </AlertDescription>
+            </Alert>
+            {myShifts.length === 0 ? (
+              <p className="text-sm text-ink-secondary">Bu hafta takas edilebilecek vardiyanız yok.</p>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="swap-my-shift">Vardiyanız</Label>
+                <Select value={form.requester_shift_id ?? ''}
+                  onValueChange={(v) => setForm((f) => ({ ...f, requester_shift_id: v }))}>
+                  <SelectTrigger id="swap-my-shift" className="w-full"><SelectValue placeholder="Vardiya seçin" /></SelectTrigger>
+                  <SelectContent>
+                    {myShifts.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>{fmtShift(a)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {/* MUI EmployeeSelect'in açılır listesi Radix Dialog içinde tıklanamıyor — shadcn Select */}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="swap-target">Takas yapılacak çalışan</Label>
+              <Select value={form.target_id ?? ''}
+                onValueChange={(id) => setForm((f) => ({ ...f, target_id: id, target_shift_id: undefined }))}>
+                <SelectTrigger id="swap-target" className="w-full"><SelectValue placeholder="Çalışan seçin" /></SelectTrigger>
+                <SelectContent>
+                  {employees.filter((e) => e.id !== currentEmployeeId).map((e) => (
+                    <SelectItem key={e.id} value={e.id}>{e.full_name}</SelectItem>
+                  ))}
+                </SelectContent>
               </Select>
-            </FormControl>
-          )}
-          <EmployeeSelect
-            employees={employees.filter((e) => e.id !== currentEmployeeId)}
-            value={form.target_id ?? ''}
-            label="Takas Yapılacak Çalışan"
-            onChange={(id) => setForm((f) => ({ ...f, target_id: id, target_shift_id: undefined }))}
-            fullWidth
-          />
-          {form.target_id && targetShifts.length > 0 && (
-            <FormControl fullWidth size="small">
-              <InputLabel>Karşılığında Alınacak Vardiya (isteğe bağlı)</InputLabel>
-              <Select value={form.target_shift_id ?? ''} label="Karşılığında Alınacak Vardiya (isteğe bağlı)"
-                onChange={(e) => setForm((f) => ({ ...f, target_shift_id: e.target.value || null }))}>
-                <MenuItem value="">Yok — vardiyamı devret</MenuItem>
-                {targetShifts.map((a) => (
-                  <MenuItem key={a.id} value={a.id}>{fmtShift(a)}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          )}
-          <TextField size="small" label="Not" value={form.requester_note ?? ''}
-            onChange={(e) => setForm((f) => ({ ...f, requester_note: e.target.value }))} fullWidth />
+            </div>
+            {form.target_id && targetShifts.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="swap-target-shift">Karşılığında alınacak vardiya (isteğe bağlı)</Label>
+                <Select value={form.target_shift_id ?? NO_TARGET_SHIFT}
+                  onValueChange={(v) => setForm((f) => ({ ...f, target_shift_id: v === NO_TARGET_SHIFT ? null : v }))}>
+                  <SelectTrigger id="swap-target-shift" className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_TARGET_SHIFT}>Yok — vardiyamı devret</SelectItem>
+                    {targetShifts.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>{fmtShift(a)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="swap-note">Not</Label>
+              <Input id="swap-note" value={form.requester_note ?? ''}
+                onChange={(e) => setForm((f) => ({ ...f, requester_note: e.target.value }))} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={closeDialog}>Vazgeç</Button>
+            <Button onClick={() => void handleCreate()}
+              disabled={saving || !form.requester_shift_id || !form.target_id}>
+              {saving ? <Loader2 className="animate-spin" aria-label="Gönderiliyor" /> : 'Onaya Gönder'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={closeDialog} color="inherit">Vazgeç</Button>
-          <Button onClick={handleCreate} variant="contained"
-            disabled={saving || !form.requester_shift_id || !form.target_id}>
-            {saving ? <CircularProgress size={18} /> : 'Onaya Gönder'}
-          </Button>
-        </DialogActions>
       </Dialog>
 
       {/* Red gerekçesi dialog */}
-      <Dialog open={rejecting !== null} onClose={() => setRejecting(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>Takas Talebini Reddet</DialogTitle>
-        <DialogContent sx={{ pt: '12px !important' }}>
-          <TextField size="small" label="Gerekçe (isteğe bağlı)" fullWidth multiline minRows={2}
-            value={rejecting?.note ?? ''}
-            onChange={(e) => setRejecting((r) => r && { ...r, note: e.target.value })} />
+      <Dialog open={rejecting !== null} onOpenChange={(open) => { if (!open) setRejecting(null) }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Takas Talebini Reddet</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="swap-reject-note">Gerekçe (isteğe bağlı)</Label>
+            <Textarea id="swap-reject-note" rows={2}
+              value={rejecting?.note ?? ''}
+              onChange={(e) => setRejecting((r) => r && { ...r, note: e.target.value })} />
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setRejecting(null)}>Vazgeç</Button>
+            <Button variant="destructive"
+              onClick={() => {
+                if (!rejecting) return
+                void handleReview(rejecting.id, 'rejected', rejecting.note.trim())
+                setRejecting(null)
+              }}>
+              Reddet
+            </Button>
+          </DialogFooter>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setRejecting(null)} color="inherit">Vazgeç</Button>
-          <Button color="error" variant="contained"
-            onClick={() => {
-              if (!rejecting) return
-              void handleReview(rejecting.id, 'rejected', rejecting.note.trim())
-              setRejecting(null)
-            }}>
-            Reddet
-          </Button>
-        </DialogActions>
       </Dialog>
 
       {/* Çalışma süresi ihlali onayı */}
-      <Dialog open={ackPrompt !== null} onClose={() => setAckPrompt(null)} maxWidth="sm" fullWidth>
-        <DialogTitle>Çalışma Süresi İhlali</DialogTitle>
-        <DialogContent sx={{ pt: '12px !important' }}>
-          <Alert severity="warning" sx={{ mb: 1 }}>
-            Bu takas aşağıdaki İş Kanunu kurallarını ihlal ediyor. Yine de onaylamak istiyor musunuz?
+      <AlertDialog open={ackPrompt !== null} onOpenChange={(open) => { if (!open) setAckPrompt(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Çalışma Süresi İhlali</AlertDialogTitle>
+            <AlertDialogDescription>
+              Bu takas aşağıdaki İş Kanunu kurallarını ihlal ediyor. Yine de onaylamak istiyor musunuz?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Alert tone="warning">
+            <TriangleAlert />
+            <ul className="col-start-2 list-disc space-y-0.5 pl-4 text-sm text-ink">
+              {ackPrompt?.violations.map((v) => <li key={v}>{v}</li>)}
+            </ul>
           </Alert>
-          <Box component="ul" sx={{ m: 0, pl: 2 }}>
-            {ackPrompt?.violations.map((v) => (
-              <li key={v}><Typography variant="body2">{v}</Typography></li>
-            ))}
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setAckPrompt(null)} color="inherit">Vazgeç</Button>
-          <Button color="warning" variant="contained"
-            onClick={() => {
-              if (!ackPrompt) return
-              void handleReview(ackPrompt.id, 'approved', undefined, true)
-              setAckPrompt(null)
-            }}>
-            İhlallere Rağmen Onayla
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Vazgeç</AlertDialogCancel>
+            <Button
+              className="bg-warning text-white hover:bg-warning/90"
+              onClick={() => {
+                if (!ackPrompt) return
+                void handleReview(ackPrompt.id, 'approved', undefined, true)
+                setAckPrompt(null)
+              }}>
+              İhlallere Rağmen Onayla
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
   )
 }

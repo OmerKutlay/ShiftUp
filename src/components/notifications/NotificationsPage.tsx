@@ -4,63 +4,22 @@
  * NotificationsPage — FAZ 10
  * /notifications sayfası için tam liste görünümü.
  */
-import {
-  Box,
-  Typography,
-  List,
-  ListItem,
-  ListItemButton,
-  ListItemText,
-  Button,
-  Divider,
-  Chip,
-  Paper,
-  Alert,
-} from '@mui/material'
-import NotificationsIcon from '@mui/icons-material/Notifications'
-import AccessTimeIcon from '@mui/icons-material/AccessTime'
-import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
-import EventAvailableIcon from '@mui/icons-material/EventAvailableOutlined'
-import EventBusyIcon from '@mui/icons-material/EventBusyOutlined'
-import BuildIcon from '@mui/icons-material/Build'
-import WarningAmberIcon from '@mui/icons-material/WarningAmber'
-import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive'
-import PersonIcon from '@mui/icons-material/Person'
+import { Bell, CircleAlert, Info, RefreshCw, User } from 'lucide-react'
 import { formatDistanceToNow, format } from 'date-fns'
 import { tr } from 'date-fns/locale'
+import { useRouter } from 'next/navigation'
 import { useNotifications } from '@/hooks/useNotifications'
 import { useAuth } from '@/context/AuthContext'
 import { PageHeader, ListSkeleton } from '@/components/common'
-import type { Notification, NotificationType } from '@/types/notification'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import type { Notification } from '@/types/notification'
 import { humanizeIsoDates } from '@/lib/dateUtils'
 import { notificationLink } from '@/lib/notificationLinks'
 import { PushPermissionCard } from '@/components/pwa/PushPermissionCard'
-import { useRouter } from 'next/navigation'
-import { C, tint } from '@/lib/palette'
-
-const TYPE_META: Record<
-  NotificationType,
-  { icon: React.ReactNode; color: string; label: string }
-> = {
-  shift_reminder:      { icon: <AccessTimeIcon />,            color: C.brand, label: 'Vardiya Hatırlatması' },
-  leave_submitted:     { icon: <EventAvailableIcon />,         color: C.info, label: 'İzin Talebi' },
-  leave_approved:      { icon: <CheckCircleOutlineIcon />,     color: C.success, label: 'İzin Onaylandı' },
-  leave_rejected:      { icon: <EventBusyIcon />,              color: C.danger, label: 'İzin Reddedildi' },
-  attendance_override: { icon: <BuildIcon />,                  color: C.warning, label: 'Devam Düzeltmesi' },
-  open_shift_available:{ icon: <EventAvailableIcon />,         color: C.plum, label: 'Açık Vardiya' },
-  time_correction_submitted: { icon: <AccessTimeIcon />,       color: C.info, label: 'Mesai Talebi' },
-  time_correction_approved:  { icon: <CheckCircleOutlineIcon />, color: C.success, label: 'Mesai Onaylandı' },
-  time_correction_rejected:  { icon: <EventBusyIcon />,        color: C.danger, label: 'Mesai Reddedildi' },
-  shift_swap_submitted:      { icon: <AccessTimeIcon />,       color: C.info, label: 'Takas Talebi' },
-  shift_swap_approved:       { icon: <CheckCircleOutlineIcon />, color: C.success, label: 'Takas Onaylandı' },
-  shift_swap_rejected:       { icon: <EventBusyIcon />,        color: C.danger, label: 'Takas Reddedildi' },
-  open_shift_claimed:        { icon: <EventAvailableIcon />,   color: C.plum, label: 'Açık Vardiya Alındı' },
-  attendance_late_clock_in:  { icon: <WarningAmberIcon />,     color: C.warning, label: 'Geç Giriş' },
-  attendance_late_clock_out: { icon: <WarningAmberIcon />,     color: C.warning, label: 'Geç Çıkış' },
-  attendance_missed_clock_in:  { icon: <WarningAmberIcon />,   color: C.danger, label: 'Giriş Okutulmadı' },
-  attendance_missed_clock_out: { icon: <WarningAmberIcon />,   color: C.danger, label: 'Çıkış Okutulmadı' },
-  push_test:                 { icon: <NotificationsActiveIcon />, color: C.brand, label: 'Test Bildirimi' },
-}
+import { cn } from '@/lib/utils'
+import { ICON_TONE_CLASS, notificationMeta } from './notificationMeta'
 
 function NotificationItem({
   notification,
@@ -70,7 +29,9 @@ function NotificationItem({
   onMarkAsRead: (id: string) => void
 }) {
   const router = useRouter()
-  const meta = TYPE_META[notification.type]
+  const meta = notificationMeta(notification.type)
+  const Icon = meta.Icon
+  const unread = !notification.is_read
   const timeAgo = formatDistanceToNow(new Date(notification.created_at), {
     addSuffix: true,
     locale: tr,
@@ -78,83 +39,48 @@ function NotificationItem({
   const fullDate = format(new Date(notification.created_at), 'd MMM yyyy, HH:mm', { locale: tr })
 
   return (
-    <ListItem disablePadding>
-      <ListItemButton
+    <li>
+      <button
+        type="button"
         onClick={() => {
-          if (!notification.is_read) onMarkAsRead(notification.id)
+          if (unread) onMarkAsRead(notification.id)
           // İlgili sayfaya git (hedef bildirimler sayfasıysa yalnızca okundu işaretlenir)
           const href = notificationLink(notification.type)
           if (href !== '/notifications') router.push(href)
         }}
-        sx={{
-          px: 2.5,
-          py: 1.75,
-          alignItems: 'flex-start',
-          gap: 2,
-          bgcolor: notification.is_read ? 'transparent' : tint(C.brand, 0.06),
-          borderRadius: 1,
-          '&:hover': {
-            bgcolor: notification.is_read ? tint(C.ink, 0.04) : tint(C.brand, 0.1),
-          },
-        }}
+        className={cn(
+          'flex w-full items-start gap-3 px-4 py-3.5 text-left transition-colors outline-none focus-visible:bg-muted',
+          unread ? 'bg-brand-soft/45 hover:bg-brand-soft/70' : 'hover:bg-muted/70'
+        )}
       >
-        <Box sx={{ flexShrink: 0, mt: 0.5, color: meta.color, display: 'flex', alignItems: 'center' }}>
-          {meta.icon}
-        </Box>
+        <span
+          aria-hidden
+          className={cn('mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-xl [&_svg]:size-[18px]', ICON_TONE_CLASS[meta.tone])}
+        >
+          <Icon />
+        </span>
 
-        <ListItemText
-          primary={
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-              <Typography variant="body2" fontWeight={notification.is_read ? 400 : 700} color="text.primary">
-                {notification.title}
-              </Typography>
-              <Chip
-                label={meta.label}
-                size="small"
-                sx={{
-                  bgcolor: `${meta.color}22`,
-                  color: meta.color,
-                  fontWeight: 600,
-                  fontSize: '0.65rem',
-                  height: 18,
-                  '& .MuiChip-label': { px: 0.75 },
-                }}
-              />
-              {!notification.is_read && (
-                <Chip
-                  label="Yeni"
-                  size="small"
-                  sx={{
-                    bgcolor: 'primary.main',
-                    color: C.white,
-                    fontWeight: 700,
-                    fontSize: '0.65rem',
-                    height: 18,
-                    '& .MuiChip-label': { px: 0.75 },
-                  }}
-                />
-              )}
-            </Box>
-          }
-          secondary={
-            <Box component="span" sx={{ display: 'block' }}>
-              <Typography variant="body2" color="text.secondary" component="span" sx={{ display: 'block', mt: 0.5 }}>
-                {humanizeIsoDates(notification.message)}
-              </Typography>
-              <Typography
-                variant="caption"
-                component="span"
-                sx={{ color: 'text.secondary', opacity: 0.6, display: 'block', mt: 0.5 }}
-                title={fullDate}
-              >
-                {timeAgo}
-              </Typography>
-            </Box>
-          }
-          disableTypography
-        />
-      </ListItemButton>
-    </ListItem>
+        <span className="min-w-0 flex-1">
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className={cn('text-sm text-ink', unread ? 'font-bold' : 'font-medium')}>{notification.title}</span>
+            {/* Başlıkla aynıysa rozet tekrar etmesin */}
+            {meta.label.toLocaleLowerCase('tr-TR') !== notification.title.toLocaleLowerCase('tr-TR') && (
+              <Badge tone={meta.tone} className="h-5 px-1.5 text-[0.68rem]">{meta.label}</Badge>
+            )}
+          </span>
+          <span className="mt-1 block text-sm text-ink-secondary">{humanizeIsoDates(notification.message)}</span>
+          <span className="mt-1 block text-xs text-ink-muted" title={fullDate}>
+            {timeAgo}
+          </span>
+        </span>
+
+        {unread && (
+          <span className="mt-2 size-2 shrink-0 rounded-full bg-primary">
+            <span className="sr-only">Yeni</span>
+          </span>
+        )}
+      </button>
+    </li>
   )
 }
 
@@ -164,44 +90,27 @@ export function NotificationsPage() {
     useNotifications(authEmployee?.id ?? null)
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 720, mx: 'auto' }}>
+    <div className="mx-auto w-full max-w-[720px] p-4 md:p-6">
       <PageHeader
         title="Bildirimler"
-        titleAdornment={
-          unreadCount > 0 && (
-            <Chip
-              label={`${unreadCount} okunmamış`}
-              size="small"
-              sx={{ bgcolor: 'primary.main', color: C.white, fontWeight: 700 }}
-            />
-          )
-        }
+        titleAdornment={unreadCount > 0 && <Badge tone="solid">{unreadCount} okunmamış</Badge>}
         subtitle={
           authEmployee && (
-            <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
-              <PersonIcon sx={{ fontSize: 14 }} />
+            <span className="inline-flex items-center gap-1">
+              <User className="size-3.5" aria-hidden />
               {authEmployee.full_name}
-            </Box>
+            </span>
           )
         }
         actions={
           <>
             {unreadCount > 0 && (
-              <Button
-                size="small"
-                variant="outlined"
-                onClick={markAllAsRead}
-                sx={{ borderColor: 'divider', color: 'text.secondary', fontSize: '0.78rem' }}
-              >
+              <Button size="sm" variant="outline" onClick={markAllAsRead}>
                 Tümünü okundu işaretle
               </Button>
             )}
-            <Button
-              size="small"
-              variant="outlined"
-              onClick={refresh}
-              sx={{ borderColor: 'divider', color: 'text.secondary', fontSize: '0.78rem' }}
-            >
+            <Button size="sm" variant="outline" onClick={refresh}>
+              <RefreshCw />
               Yenile
             </Button>
           </>
@@ -211,51 +120,42 @@ export function NotificationsPage() {
       {authEmployee && <PushPermissionCard hideWhenSubscribed />}
 
       {authStatus === 'unauthenticated' && (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          Bildirimleri görmek için giriş yapmanız gerekiyor.
+        <Alert tone="info" className="mb-4">
+          <Info />
+          <AlertDescription className="text-ink">Bildirimleri görmek için giriş yapmanız gerekiyor.</AlertDescription>
         </Alert>
       )}
 
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
+        <Alert tone="danger" className="mb-4">
+          <CircleAlert />
+          <AlertDescription className="text-ink">{error}</AlertDescription>
         </Alert>
       )}
 
-      <Paper
-        sx={{
-          bgcolor: C.surface,
-          border: '1px solid',
-          borderColor: 'divider',
-          borderRadius: 2,
-          overflow: 'hidden',
-        }}
-      >
+      <section aria-label="Bildirim listesi" className="overflow-hidden rounded-2xl border bg-card">
         {authStatus === 'loading' || (authEmployee && isFirstLoad) ? (
           <ListSkeleton count={6} variant="plain" actions={0} />
         ) : notifications.length === 0 ? (
-          <Box sx={{ py: 6, textAlign: 'center' }}>
-            <NotificationsIcon sx={{ color: 'text.secondary', opacity: 0.3, fontSize: 48, mb: 1 }} />
-            <Typography variant="body1" color="text.secondary">
+          <div className="flex flex-col items-center px-4 py-12 text-center">
+            <span className="mb-3 flex size-12 items-center justify-center rounded-full bg-surface-muted text-ink-muted">
+              <Bell className="size-6" aria-hidden />
+            </span>
+            <p className="font-semibold text-ink">
               {authEmployee ? 'Henüz bildirim bulunmuyor' : 'Giriş yapılmadı'}
-            </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ opacity: 0.7 }}>
+            </p>
+            <p className="mt-1 text-xs text-ink-secondary">
               Vardiya hatırlatmaları ve izin bildirimleri burada görünecek
-            </Typography>
-          </Box>
+            </p>
+          </div>
         ) : (
-          <List disablePadding>
-            {notifications.map((n, idx) => (
-              <Box key={n.id}>
-                <NotificationItem notification={n} onMarkAsRead={markAsRead} />
-                {idx < notifications.length - 1 && (
-                  <Divider sx={{ borderColor: 'divider', opacity: 0.4, mx: 2 }} />
-                )}
-              </Box>
+          <ul className="divide-y">
+            {notifications.map((n) => (
+              <NotificationItem key={n.id} notification={n} onMarkAsRead={markAsRead} />
             ))}
-          </List>
+          </ul>
         )}
-      </Paper>
-    </Box>
+      </section>
+    </div>
   )
 }

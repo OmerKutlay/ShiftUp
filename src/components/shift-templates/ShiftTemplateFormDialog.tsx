@@ -1,24 +1,17 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  TextField,
-  FormControlLabel,
-  Switch,
-  Stack,
-  CircularProgress,
-  Alert,
-  Box,
-  Typography,
-} from '@mui/material'
-import AccessTimeIcon from '@mui/icons-material/AccessTime'
+import { AlertCircle, Clock, Loader2, X } from 'lucide-react'
 import type { ShiftTemplate, CreateShiftTemplatePayload, UpdateShiftTemplatePayload } from '@/types/shiftTemplate'
-import { C, tint } from '@/lib/palette'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 
 interface Props {
   open: boolean
@@ -93,7 +86,7 @@ export function ShiftTemplateFormDialog({ open, onClose, onSave, template, loadi
   }
 
   const handleText =
-    (field: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    (field: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       setForm((f) => ({ ...f, [field]: e.target.value }))
       setErrors((err) => ({ ...err, [field]: undefined }))
     }
@@ -127,115 +120,106 @@ export function ShiftTemplateFormDialog({ open, onClose, onSave, template, loadi
   })()
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle sx={{ fontWeight: 700 }}>
-        {isEdit ? 'Şablonu Düzenle' : 'Yeni Vardiya Şablonu'}
-      </DialogTitle>
+    <Dialog open={open} onOpenChange={(next) => { if (!next) onClose() }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{isEdit ? 'Şablonu Düzenle' : 'Yeni Vardiya Şablonu'}</DialogTitle>
+          <DialogDescription>Haftalık planda tek tıkla atanacak vardiya saatleri.</DialogDescription>
+        </DialogHeader>
 
-      <DialogContent>
-        <Stack spacing={2.5} sx={{ mt: 1 }}>
+        <div className="grid gap-4 sm:grid-cols-2">
           {submitError && (
-            <Alert severity="error" onClose={() => setSubmitError(null)}>
-              {submitError}
+            <Alert tone="danger" className="pr-10 sm:col-span-2">
+              <AlertCircle />
+              <AlertDescription className="text-ink">{submitError}</AlertDescription>
+              <button
+                type="button"
+                aria-label="Kapat"
+                onClick={() => setSubmitError(null)}
+                className="absolute top-2 right-2 flex size-7 items-center justify-center rounded-lg text-ink-secondary hover:bg-card/60"
+              >
+                <X className="size-4" />
+              </button>
             </Alert>
           )}
 
-          <TextField
-            label="Şablon Adı"
-            placeholder="Açılış, Kapanış, Ortacı…"
-            value={form.name}
-            onChange={handleText('name')}
-            error={!!errors.name}
-            helperText={errors.name}
-            fullWidth
-            autoFocus
-            inputProps={{ 'aria-label': 'Şablon Adı' }}
-          />
+          <div className="flex flex-col gap-1.5 sm:col-span-2">
+            <Label htmlFor="tpl-name">Şablon adı</Label>
+            <Input
+              id="tpl-name"
+              placeholder="Açılış, Kapanış, Ortacı…"
+              value={form.name}
+              onChange={handleText('name')}
+              aria-invalid={!!errors.name || undefined}
+              autoFocus
+            />
+            {errors.name && <p className="text-xs text-danger">{errors.name}</p>}
+          </div>
 
-          <Box sx={{ display: 'flex', gap: 2 }}>
-            <TextField
-              label="Başlangıç"
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="tpl-start">Başlangıç saati</Label>
+            <Input
+              id="tpl-start"
               type="time"
+              step={300}
               value={form.start_time}
               onChange={handleText('start_time')}
-              error={!!errors.start_time}
-              helperText={errors.start_time}
-              fullWidth
-              InputLabelProps={{ shrink: true }}
-              inputProps={{ step: 300, 'aria-label': 'Başlangıç saati' }}
+              aria-invalid={!!errors.start_time || undefined}
             />
-            <TextField
-              label="Bitiş"
+            {errors.start_time && <p className="text-xs text-danger">{errors.start_time}</p>}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="tpl-end">Bitiş saati</Label>
+            <Input
+              id="tpl-end"
               type="time"
+              step={300}
               value={form.end_time}
               onChange={handleText('end_time')}
-              error={!!errors.end_time}
-              helperText={errors.end_time}
-              fullWidth
-              InputLabelProps={{ shrink: true }}
-              inputProps={{ step: 300, 'aria-label': 'Bitiş saati' }}
+              aria-invalid={!!errors.end_time || undefined}
             />
-          </Box>
+            {errors.end_time && <p className="text-xs text-danger">{errors.end_time}</p>}
+          </div>
 
           {durationLabel && (
-            <Box
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 0.75,
-                px: 1.5,
-                py: 0.75,
-                bgcolor: tint(C.brand, 0.08),
-                borderRadius: 1.5,
-                border: `1px solid ${tint(C.brand, 0.2)}`,
-              }}
-            >
-              <AccessTimeIcon sx={{ fontSize: 14, color: 'primary.main' }} />
-              <Typography variant="caption" color="primary.main" fontWeight={600}>
-                {durationLabel}
-              </Typography>
-            </Box>
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-primary sm:col-span-2">
+              <Clock aria-hidden className="size-3.5" />
+              {durationLabel}
+            </p>
           )}
 
-          <TextField
-            label="Açıklama (opsiyonel)"
-            value={form.description}
-            onChange={handleText('description')}
-            fullWidth
-            multiline
-            rows={2}
-            inputProps={{ 'aria-label': 'Açıklama' }}
-          />
+          <div className="flex flex-col gap-1.5 sm:col-span-2">
+            <Label htmlFor="tpl-desc">Açıklama (opsiyonel)</Label>
+            <Textarea
+              id="tpl-desc"
+              rows={2}
+              className="min-h-16"
+              value={form.description}
+              onChange={handleText('description')}
+            />
+          </div>
 
           {isEdit && (
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={form.active}
-                  onChange={(e) => setForm((f) => ({ ...f, active: e.target.checked }))}
-                  color="success"
-                />
-              }
-              label={form.active ? 'Aktif' : 'Pasif'}
-            />
+            <div className="flex items-center gap-3 sm:col-span-2">
+              <Switch
+                id="tpl-active"
+                checked={form.active}
+                onCheckedChange={(checked) => setForm((f) => ({ ...f, active: checked }))}
+                className="data-[state=checked]:bg-success"
+              />
+              <Label htmlFor="tpl-active">{form.active ? 'Aktif' : 'Pasif'}</Label>
+            </div>
           )}
-        </Stack>
-      </DialogContent>
+        </div>
 
-      <DialogActions sx={{ px: 3, pb: 2.5 }}>
-        <Button onClick={onClose} disabled={loading} color="inherit">
-          İptal
-        </Button>
-        <Button
-          onClick={handleSubmit}
-          disabled={loading}
-          variant="contained"
-          color="primary"
-          startIcon={loading ? <CircularProgress size={16} color="inherit" /> : null}
-        >
-          {isEdit ? 'Kaydet' : 'Ekle'}
-        </Button>
-      </DialogActions>
+        <DialogFooter>
+          <Button type="button" variant="ghost" onClick={onClose} disabled={loading}>İptal</Button>
+          <Button type="button" onClick={handleSubmit} disabled={loading}>
+            {loading && <Loader2 className="animate-spin" />}
+            {isEdit ? 'Kaydet' : 'Ekle'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
     </Dialog>
   )
 }
