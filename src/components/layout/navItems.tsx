@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Menu, Bell, Plane, QrCode, ScanLine, Settings, Users, UsersRound,
 } from 'lucide-react'
 
-import { hasRole, MANAGER_ROLES, ADMIN_ROLES, type RoleName } from '@/lib/auth/roles'
+import { hasRole, MANAGER_ROLES, ADMIN_ROLES, type AccessLevel } from '@/lib/auth/roles'
 
 /** /more sayfasındaki gruplama */
 export type NavGroup = 'operasyon' | 'planlama' | 'devam' | 'yonetim' | 'hesap'
@@ -30,7 +30,7 @@ export interface NavItem {
   icon: React.ReactNode
   group: NavGroup
   /** Bu nav item yalnızca belirtilen rollere gösterilir. Undefined = herkese. */
-  requiredRoles?: RoleName[]
+  requiredRoles?: AccessLevel[]
 }
 
 /** Masaüstü yan menüdeki öğeler (sıra = menü sırası) */
@@ -66,13 +66,13 @@ export interface BottomTab {
   icon: React.ReactNode
 }
 
-export function isManagerRole(roleName: string | null | undefined): boolean {
-  return hasRole(roleName, MANAGER_ROLES)
+export function isManagerRole(accessLevel: AccessLevel | null | undefined): boolean {
+  return hasRole(accessLevel, MANAGER_ROLES)
 }
 
 /** Rolün görebileceği öğeler */
-export function filterNavItems(items: NavItem[], roleName: string | null | undefined): NavItem[] {
-  return items.filter((item) => !item.requiredRoles || hasRole(roleName, item.requiredRoles))
+export function filterNavItems(items: NavItem[], accessLevel: AccessLevel | null | undefined): NavItem[] {
+  return items.filter((item) => !item.requiredRoles || hasRole(accessLevel, item.requiredRoles))
 }
 
 /** href pathname için aktif mi? '/' yalnızca birebir eşleşir, diğerleri önek (alt sayfalar dahil). */
@@ -82,12 +82,12 @@ export function isNavActive(pathname: string, href: string): boolean {
 }
 
 /** Role göre mobil alt bar sekmeleri (5 adet, ortadaki QR Tara) */
-export function getBottomTabs(roleName: string | null | undefined): BottomTab[] {
-  const scan: BottomTab = { label: 'QR Tara', href: SCAN_HREF, icon: <ScanLine /> }
-  const more: BottomTab = { label: 'Daha fazla', href: MORE_HREF, icon: <Menu /> }
-  const plan: BottomTab = { label: 'Plan', href: '/schedule', icon: <CalendarDays /> }
+export function getBottomTabs(accessLevel: AccessLevel | null | undefined): BottomTab[] {
+  const scan: BottomTab = { label: 'QR Tara', href: SCAN_HREF, icon: <QrCodeScannerIcon /> }
+  const more: BottomTab = { label: 'Daha fazla', href: MORE_HREF, icon: <MoreHorizIcon /> }
+  const plan: BottomTab = { label: 'Plan', href: '/schedule', icon: <CalendarMonthIcon /> }
 
-  if (isManagerRole(roleName)) {
+  if (isManagerRole(accessLevel)) {
     return [
       { label: 'Bugün', href: '/', icon: <House /> },
       plan,
@@ -116,9 +116,9 @@ export function getActiveTabHref(pathname: string, tabs: BottomTab[]): string | 
 }
 
 /** /more sayfasında listelenecek öğeler: erişilebilir olup alt barda bulunmayanlar */
-export function getMoreItems(roleName: string | null | undefined): NavItem[] {
-  const tabHrefs = new Set(getBottomTabs(roleName).map((t) => t.href))
-  return filterNavItems([...NAV_ITEMS, NOTIFICATIONS_ITEM], roleName).filter((i) => !tabHrefs.has(i.href))
+export function getMoreItems(accessLevel: AccessLevel | null | undefined): NavItem[] {
+  const tabHrefs = new Set(getBottomTabs(accessLevel).map((t) => t.href))
+  return filterNavItems([...NAV_ITEMS, NOTIFICATIONS_ITEM], accessLevel).filter((i) => !tabHrefs.has(i.href))
 }
 
 /** Öğeleri NAV_GROUP_ORDER sırasıyla gruplar (boş gruplar atlanır) */

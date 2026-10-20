@@ -201,60 +201,39 @@ function ReviewDialog({ open, request, onClose, onReview, saving }: ReviewDialog
   const days = dayCount(request.start_date, request.end_date)
 
   return (
-    <Dialog open={open} onOpenChange={(next) => { if (!next) onClose() }}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>İzin Talebini İncele</DialogTitle>
-          <DialogDescription>Talebi onaylayın ya da gerekçesiyle reddedin.</DialogDescription>
-        </DialogHeader>
-
-        <div className="flex flex-col gap-4">
-          {error && (
-            <Alert tone="danger">
-              <AlertCircle />
-              <AlertDescription className="text-ink">{error}</AlertDescription>
-            </Alert>
-          )}
-
-          <div className="rounded-xl bg-surface-muted px-4 py-3">
-            <p className="text-sm font-bold text-ink">{emp?.full_name ?? '—'}</p>
-            {emp?.role && <p className="text-xs text-ink-secondary">{emp.role}</p>}
-            <dl className="mt-2.5 grid gap-1.5 border-t pt-2.5">
-              <Row label="İzin tipi" value={LEAVE_TYPE_LABELS[request.leave_type]} />
-              <Row label="Tarih" value={`${fmtDate(request.start_date)} – ${fmtDate(request.end_date)} (${days} gün)`} />
-              {request.reason && <Row label="Açıklama" value={request.reason} />}
-            </dl>
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="leave-review-note">Yönetici notu (opsiyonel)</Label>
-            <Textarea
-              id="leave-review-note"
-              rows={3}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="Onay veya red sebebini belirtebilirsiniz..."
-            />
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>İptal</Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => handle('rejected')}
-            disabled={saving}
-            className="text-danger hover:bg-danger-soft hover:text-danger"
-          >
-            <X />
-            Reddet
-          </Button>
-          <Button type="button" onClick={() => handle('approved')} disabled={saving}>
-            {saving ? <Loader2 className="animate-spin" /> : <Check />}
-            Onayla
-          </Button>
-        </DialogFooter>
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle sx={{ fontWeight: 700 }}>İzin Talebini İncele</DialogTitle>
+      <DialogContent sx={{ pt: 1 }}>
+        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+        <Box
+          sx={{
+            p: 2,
+            mb: 2,
+            border: '1px solid',
+            borderColor: 'divider',
+            borderRadius: 2,
+            bgcolor: tint(C.ink, 0.02),
+          }}
+        >
+          <Typography variant="subtitle2" fontWeight={700}>{emp?.full_name ?? '—'}</Typography>
+          <Typography variant="caption" color="text.secondary" display="block">{emp?.roles?.name}</Typography>
+          <Divider sx={{ my: 1, borderColor: 'divider' }} />
+          <Stack spacing={0.5}>
+            <Row label="İzin Tipi" value={LEAVE_TYPE_LABELS[request.leave_type]} />
+            <Row label="Tarih" value={`${fmtDate(request.start_date)} – ${fmtDate(request.end_date)} (${days} gün)`} />
+            {request.reason && <Row label="Açıklama" value={request.reason} />}
+          </Stack>
+        </Box>
+        <TextField
+          fullWidth
+          size="small"
+          label="Yönetici notu (opsiyonel)"
+          multiline
+          rows={3}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Onay veya red sebebini belirtebilirsiniz..."
+        />
       </DialogContent>
     </Dialog>
   )
@@ -314,7 +293,7 @@ function AnnualLeaveCard({ balance }: { balance: AnnualLeaveBalance }) {
 
 export function LeavePage() {
   const { employee: me } = useAuth()
-  const isManager = hasRole(me?.roles?.name ?? me?.role_name ?? null, MANAGER_ROLES)
+  const isManager = hasRole(me?.roles?.access_level ?? null, MANAGER_ROLES)
   const confirm = useConfirm()
 
   const requestsQ = useSWR('/api/leave', (url: string) => apiFetch<{ requests: LeaveRequestWithEmployee[] }>(url))
@@ -565,14 +544,64 @@ function LeaveCard({
   const days = dayCount(request.start_date, request.end_date)
 
   return (
-    <SectionRow className="flex-wrap items-start py-3 sm:flex-nowrap">
-      <PersonAvatar name={emp?.full_name ?? '?'} size={38} />
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <p className="text-sm font-bold">{emp?.full_name ?? '—'}</p>
-          <p className="text-[0.72rem] text-ink-secondary">{emp?.role ?? '—'}</p>
-        </div>
-        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+    <Paper
+      elevation={0}
+      sx={{
+        p: { xs: 2, md: 2.5 },
+        border: '1px solid',
+        borderColor: request.status === 'pending' ? tint(C.warning, 0.3) : 'divider',
+        borderRadius: 2,
+        bgcolor: 'background.paper',
+        display: 'grid',
+        gridTemplateColumns: { xs: '1fr', sm: '1fr auto' },
+        gap: 2,
+        alignItems: 'center',
+        '&:hover': { borderColor: 'primary.dark' },
+        transition: 'border-color 0.2s',
+      }}
+    >
+      <Box>
+        {/* Employee + status */}
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, mb: 1 }}>
+          <Box
+            sx={{
+              width: 36,
+              height: 36,
+              borderRadius: '50%',
+              bgcolor: tint(C.brand, 0.12),
+              border: `2px solid ${tint(C.brand, 0.25)}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontWeight: 700,
+              color: 'primary.main',
+              fontSize: '0.85rem',
+              flexShrink: 0,
+            }}
+          >
+            {emp?.full_name?.charAt(0) ?? '?'}
+          </Box>
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography variant="subtitle2" fontWeight={700}>{emp?.full_name ?? '—'}</Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>{emp?.roles?.name ?? '—'}</Typography>
+            {/* Her kartta aynı yerde: rol satırının altında iki chip yan yana */}
+            <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.75, mt: 0.5 }}>
+              <LeaveStatusChip status={request.status} />
+              <Chip
+                label={LEAVE_TYPE_LABELS[request.leave_type]}
+                size="small"
+                sx={{
+                  height: 20,
+                  fontSize: '0.65rem',
+                  bgcolor: tint(C.plum, 0.12),
+                  color: C.plum,
+                  border: `1px solid ${tint(C.plum, 0.3)}`,
+                }}
+              />
+            </Box>
+          </Box>
+        </Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.75, mt: 0.5 }}>
           <StatusBadge tone="info" label={LEAVE_TYPE_LABELS[request.leave_type]} />
           <p className="text-[0.8rem] font-semibold tabular-nums">
             {fmtDate(request.start_date)} – {fmtDate(request.end_date)}

@@ -47,7 +47,6 @@ function makeEmployee(overrides: Partial<EmployeeWithRole> = {}): EmployeeWithRo
     id: 'emp-001',
     full_name: 'Ahmet Kaya',
     email: null,
-    role: 'Kasiyer',
     role_id: null,
     active: true,
     employment_type: 'full_time',

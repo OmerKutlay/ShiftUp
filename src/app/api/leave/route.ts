@@ -11,7 +11,7 @@ import { createAdminClient } from '@/lib/supabaseAdmin'
 import type { CreateLeaveRequestPayload, LeaveType } from '@/types/leave'
 import { LEAVE_TYPE_LABELS } from '@/types/leave'
 import { createNotification, notifyManagers } from '@/lib/notificationRepository'
-import { requireAuth, canAccessEmployee, MANAGER_ROLES, requireMinRole, ROLES, hasRole, forbidden } from '@/lib/auth'
+import { requireAuth, canAccessEmployee, MANAGER_ROLES, requireMinRole, ACCESS, hasRole, forbidden } from '@/lib/auth'
 import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/apiErrors'
 import { isUuid, isValidDate } from '@/lib/validation'
 import { turkeyToday, addDaysToDateString } from '@/lib/dateUtils'
@@ -30,7 +30,7 @@ const MAX_SICK_BACKDATE_DAYS = 30
 export async function GET(req: NextRequest) {
   const auth = await requireAuth(req)
   if ('response' in auth) return auth.response
-  const isManager = hasRole(auth.employee.role_name, MANAGER_ROLES)
+  const isManager = hasRole(auth.employee.access_level, MANAGER_ROLES)
 
   try {
     const sp = req.nextUrl.searchParams
@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
       .select(`
         id, employee_id, leave_type, start_date, end_date,
         reason, status, reviewer_note, reviewed_at, created_at, updated_at,
-        employees!employee_id ( id, full_name, role )
+        employees!employee_id ( id, full_name, roles ( name ) )
       `)
       .order('created_at', { ascending: false })
 
@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
     const isWeeklyRest = body.leave_type === 'weekly_rest'
     let actorId: string
     if (isWeeklyRest) {
-      const managerAuth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
+      const managerAuth = await requireMinRole(req, ACCESS.MANAGER)
       if ('response' in managerAuth) return managerAuth.response
       actorId = managerAuth.employee.id
     } else {
@@ -254,7 +254,7 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const auth = await requireAuth(req)
   if ('response' in auth) return auth.response
-  const isManager = hasRole(auth.employee.role_name, MANAGER_ROLES)
+  const isManager = hasRole(auth.employee.access_level, MANAGER_ROLES)
 
   try {
     const id = req.nextUrl.searchParams.get('id')

@@ -8,7 +8,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
-import { requireMinRole, ROLES } from '@/lib/auth'
+import { requireMinRole, ACCESS } from '@/lib/auth'
 import { badRequest, serverError } from '@/lib/apiErrors'
 import { isUuid } from '@/lib/validation'
 
@@ -87,7 +87,7 @@ async function enrich(admin: Admin, logs: RawLog[]) {
 }
 
 export async function GET(req: NextRequest) {
-  const auth = await requireMinRole(req, ROLES.MAGAZA_MUDURU)
+  const auth = await requireMinRole(req, ACCESS.STORE_MANAGER)
   if ('response' in auth) return auth.response
 
   const sp = req.nextUrl.searchParams

@@ -31,7 +31,7 @@ export function WorkforcePage() {
 
   const { employee: authEmployee } = useAuth()
   const isManager = hasRole(
-    authEmployee?.roles?.name ?? authEmployee?.role_name ?? null,
+    authEmployee?.roles?.access_level ?? null,
     MANAGER_ROLES
   )
 

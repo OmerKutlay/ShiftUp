@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     const all = req.nextUrl.searchParams.get('all') === 'true'
     if (requestedId && !isUuid(requestedId)) return badRequest('Geçersiz çalışan ID.')
 
-    const isManager = hasRole(currentEmployee.role_name, MANAGER_ROLES)
+    const isManager = hasRole(currentEmployee.access_level, MANAGER_ROLES)
     const admin = createAdminClient()
 
     let query = admin
@@ -115,7 +115,7 @@ export async function DELETE(req: NextRequest) {
     if (exErr) return serverError('DELETE /api/availability', exErr)
     if (!existing) return notFound('Kayıt bulunamadı.')
 
-    if (existing.employee_id !== currentEmployee.id && !hasRole(currentEmployee.role_name, MANAGER_ROLES)) {
+    if (existing.employee_id !== currentEmployee.id && !hasRole(currentEmployee.access_level, MANAGER_ROLES)) {
       return forbidden('Yalnızca kendi müsaitlik kaydınızı silebilirsiniz.')
     }
 

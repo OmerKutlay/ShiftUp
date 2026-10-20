@@ -17,7 +17,6 @@ const EMPLOYEE_SELECT = `
   id,
   full_name,
   email,
-  role,
   role_id,
   active,
   auth_user_id,
@@ -27,6 +26,9 @@ const EMPLOYEE_SELECT = `
     id,
     name,
     description,
+        access_level,
+        planning_group,
+        sort_order,
     created_at
   )
 `

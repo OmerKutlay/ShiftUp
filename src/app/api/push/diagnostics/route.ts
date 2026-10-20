@@ -13,7 +13,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
-import { requireMinRole, ROLES } from '@/lib/auth'
+import { requireMinRole, ACCESS } from '@/lib/auth'
 import { serverError } from '@/lib/apiErrors'
 import {
   computePushDiagnosticSteps,
@@ -29,7 +29,7 @@ function isMissing(err: { code?: string } | null | undefined): boolean {
 }
 
 export async function GET(req: NextRequest) {
-  const auth = await requireMinRole(req, ROLES.MAGAZA_MUDURU)
+  const auth = await requireMinRole(req, ACCESS.STORE_MANAGER)
   if ('response' in auth) return auth.response
   const { employee } = auth
 

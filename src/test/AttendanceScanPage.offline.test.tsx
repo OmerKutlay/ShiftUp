@@ -38,7 +38,7 @@ describe('AttendanceScanPage — çevrimdışı', () => {
   beforeEach(() => {
     mockedUseAuth.mockReturnValue({
       status: 'authenticated',
-      employee: { id: 'emp-1', full_name: 'Ayşe Yılmaz', role: 'Kasiyer' },
+      employee: { id: 'emp-1', full_name: 'Ayşe Yılmaz', roles: { name: 'Kasiyer' } },
       signOut: vi.fn(),
       refreshEmployee: vi.fn(),
     } as unknown as ReturnType<typeof useAuth>)

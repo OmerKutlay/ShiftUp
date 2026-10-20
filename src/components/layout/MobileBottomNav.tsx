@@ -24,7 +24,7 @@ export const BOTTOM_NAV_OVERLAY_OFFSET = BOTTOM_NAV_SPACE + 8
 export function MobileBottomNav() {
   const pathname = usePathname()
   const { employee, status } = useAuth()
-  const roleName = employee?.roles?.name ?? employee?.role_name ?? null
+  const roleName = employee?.roles?.access_level ?? null
   // Oturum yüklenirken çalışan sekmeleri gösterilip sonra yöneticiye dönmesin (flash)
   const tabs = status === 'loading' ? [] : getBottomTabs(roleName)
   const activeHref = getActiveTabHref(pathname, tabs)

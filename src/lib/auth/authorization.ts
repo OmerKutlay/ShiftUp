@@ -10,7 +10,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentEmployee, type SessionEmployee } from './session'
-import { isKioskRole, roleAtLeast, type RoleName } from './roles'
+import { isKioskRole, roleAtLeast, type AccessLevel } from './roles'
 
 // ─── Response helpers ────────────────────────────────────────
 
@@ -51,7 +51,7 @@ export async function requireAuth(
   if (!employee) {
     return { response: unauthorized() }
   }
-  if (!allowKiosk && isKioskRole(employee.role_name)) {
+  if (!allowKiosk && isKioskRole(employee.access_level)) {
     return { response: forbidden('Kiosk hesabı bu işlemi yapamaz.') }
   }
   return { employee }
@@ -69,7 +69,7 @@ export async function requireAuth(
  */
 export async function requireRole(
   req: NextRequest,
-  allowedRoles: RoleName[]
+  allowedRoles: AccessLevel[]
 ): Promise<{ employee: SessionEmployee } | { response: NextResponse }> {
   const authResult = await requireAuth(req)
   if ('response' in authResult) return authResult
@@ -78,7 +78,7 @@ export async function requireRole(
 
   if (allowedRoles.length === 0) return { employee }
 
-  const hasRole = allowedRoles.some((r) => employee.role_name === r)
+  const hasRole = allowedRoles.some((r) => employee.access_level === r)
   if (!hasRole) {
     return { response: forbidden() }
   }
@@ -88,22 +88,22 @@ export async function requireRole(
 
 /**
  * Employee'ın minimum rol seviyesini karşılayıp karşılamadığını kontrol eder.
- * Hiyerarşi: Yönetici > Mağaza Müdürü > Müdür Yardımcısı > Çalışan
+ * Hiyerarşi: Admin > Müdür > Yönetici > Çalışan (roles.access_level)
  *
  * Kullanım:
- *   const auth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
+ *   const auth = await requireMinRole(req, ACCESS.MANAGER)
  *   if ('response' in auth) return auth.response
  */
 export async function requireMinRole(
   req: NextRequest,
-  minRole: RoleName
+  minRole: AccessLevel
 ): Promise<{ employee: SessionEmployee } | { response: NextResponse }> {
   const authResult = await requireAuth(req)
   if ('response' in authResult) return authResult
 
   const { employee } = authResult
 
-  if (!employee.role_name || !roleAtLeast(employee.role_name, minRole)) {
+  if (!roleAtLeast(employee.access_level, minRole)) {
     return { response: forbidden() }
   }
 
@@ -128,7 +128,7 @@ export async function requireMinRole(
 export async function canAccessEmployee(
   req: NextRequest,
   targetEmployeeId: string,
-  managerRoles: RoleName[]
+  managerRoles: AccessLevel[]
 ): Promise<{ employee: SessionEmployee } | { response: NextResponse }> {
   const authResult = await requireAuth(req)
   if ('response' in authResult) return authResult
@@ -139,7 +139,7 @@ export async function canAccessEmployee(
   if (employee.id === targetEmployeeId) return { employee }
 
   // Manager+ rolleri tüm employee verilerine erişebilir
-  if (employee.role_name && managerRoles.includes(employee.role_name)) {
+  if (employee.access_level && managerRoles.includes(employee.access_level)) {
     return { employee }
   }
 

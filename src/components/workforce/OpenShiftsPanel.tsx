@@ -28,7 +28,9 @@ import { shiftKindOf } from '@/components/schedule/scheduleHelpers'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { apiFetch } from '@/lib/api/http'
-import { SHIFT_KIND_TONES } from '@/lib/palette'
+import { fetchRoles } from '@/lib/api/employees'
+import { ACCESS } from '@/lib/auth/roles'
+import { C } from '@/lib/palette'
 
 const STATUS_LABELS: Record<string, string> = {
   open: 'Açık',
@@ -64,7 +66,7 @@ function Notice({ tone, icon, children, onClose }: {
 export function OpenShiftsPanel() {
   const { employee: authEmployee } = useAuth()
   const isManager = hasRole(
-    authEmployee?.roles?.name ?? authEmployee?.role_name ?? null,
+    authEmployee?.roles?.access_level ?? null,
     MANAGER_ROLES
   )
 
@@ -75,6 +77,9 @@ export function OpenShiftsPanel() {
     apiFetch<{ open_shifts: OpenShift[] }>(url)
   )
   const shifts = shiftsQ.data?.open_shifts ?? []
+  // Gerekli rol: sistem rolü adlarından seçilir (üstlenme kontrolü rol adıyla eşleşir)
+  const rolesQ = useSWR(isManager ? 'roles' : null, fetchRoles)
+  const roleOptions = (rolesQ.data ?? []).filter((r) => r.access_level !== ACCESS.KIOSK)
   const isFirstLoad = !shiftsQ.data && !shiftsQ.error
   const error = actionError ?? (shiftsQ.error ? (shiftsQ.error instanceof Error ? shiftsQ.error.message : 'Yüklenemedi.') : null)
   const [form, setForm] = useState(EMPTY_FORM)
@@ -335,12 +340,53 @@ export function OpenShiftsPanel() {
               </div>
             </div>
 
-            <DialogFooter>
-              <Button variant="ghost" onClick={() => setDialogOpen(false)}>İptal</Button>
-              <Button onClick={() => void handleCreate()} disabled={saving}>
-                {saving ? <Loader2 className="animate-spin" aria-label="Kaydediliyor" /> : 'Oluştur'}
-              </Button>
-            </DialogFooter>
+            <DateField
+              size="small"
+              label="Tarih"
+              value={form.work_date}
+              onChange={(v) => setForm((f) => ({ ...f, work_date: v }))}
+              fullWidth
+            />
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <TextField
+                size="small"
+                label="Başlangıç"
+                type="time"
+                value={form.start_time}
+                onChange={(e) => setForm((f) => ({ ...f, start_time: e.target.value }))}
+                inputProps={{ step: 300 }}
+                fullWidth
+              />
+              <TextField
+                size="small"
+                label="Bitiş"
+                type="time"
+                value={form.end_time}
+                onChange={(e) => setForm((f) => ({ ...f, end_time: e.target.value }))}
+                inputProps={{ step: 300 }}
+                fullWidth
+              />
+            </Box>
+            <TextField
+              size="small"
+              select
+              label="Gerekli Rol (opsiyonel)"
+              value={form.role_needed}
+              onChange={(e) => setForm((f) => ({ ...f, role_needed: e.target.value }))}
+              fullWidth
+            >
+              <MenuItem value=""><em>Herkes</em></MenuItem>
+              {roleOptions.map((r) => (
+                <MenuItem key={r.id} value={r.name}>{r.name}</MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              size="small"
+              label="Açıklama (opsiyonel)"
+              value={form.description}
+              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+              fullWidth
+            />
           </DialogContent>
         </Dialog>
       )}

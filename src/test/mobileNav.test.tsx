@@ -28,14 +28,15 @@ import {
   groupNavItems,
   isNavActive,
 } from '@/components/layout/navItems'
+import { ACCESS, type AccessLevel } from '@/lib/auth/roles'
 import { MobileBottomNav } from '@/components/layout/MobileBottomNav'
 import { MorePage } from '@/components/more/MorePage'
 import { dampenPull, decideGesture, PULL_THRESHOLD } from '@/components/layout/PullToRefresh'
 
-function asRole(name: string, fullName = 'Ayşe Yılmaz') {
+function asRole(level: AccessLevel, fullName = 'Ayşe Yılmaz') {
   mockAuth = {
     status: 'authenticated',
-    employee: { id: 'e1', full_name: fullName, role: 'Kasiyer', roles: { name } },
+    employee: { id: 'e1', full_name: fullName, roles: { name: 'Kasiyer', access_level: level } },
   }
 }
 
@@ -55,11 +56,11 @@ describe('isNavActive', () => {
 
 describe('getBottomTabs', () => {
   it('çalışan: Vardiyam, Plan, QR, İzin, Daha fazla', () => {
-    const tabs = getBottomTabs('Çalışan')
+    const tabs = getBottomTabs(ACCESS.EMPLOYEE)
     expect(hrefs(tabs)).toEqual(['/my-schedule', '/schedule', '/attendance/scan', '/leave', '/more'])
     expect(tabs.map((t) => t.label)).toEqual(['Vardiyam', 'Plan', 'QR Tara', 'İzin', 'Daha fazla'])
   })
-  it.each(['Yönetici', 'Mağaza Müdürü', 'Müdür Yardımcısı'])('yönetici (%s): Bugün, Plan, QR, Bildirimler, Daha fazla', (role) => {
+  it.each([ACCESS.MANAGER, ACCESS.STORE_MANAGER, ACCESS.ADMIN])('yönetici (%s): Bugün, Plan, QR, Bildirimler, Daha fazla', (role) => {
     expect(hrefs(getBottomTabs(role))).toEqual(['/', '/schedule', '/attendance/scan', '/notifications', '/more'])
   })
   it('rol bilinmiyorsa çalışan sekmeleri', () => {
@@ -68,7 +69,7 @@ describe('getBottomTabs', () => {
 })
 
 describe('getActiveTabHref', () => {
-  const manager = getBottomTabs('Yönetici')
+  const manager = getBottomTabs(ACCESS.MANAGER)
   it('ana sayfa yalnızca "/"de Bugün sekmesini seçer', () => {
     expect(getActiveTabHref('/', manager)).toBe('/')
     expect(getActiveTabHref('/schedule', manager)).toBe('/schedule')
@@ -81,25 +82,25 @@ describe('getActiveTabHref', () => {
 
 describe('getMoreItems / filterNavItems', () => {
   it('çalışan yönetici sayfalarını görmez, alt bardakiler tekrarlanmaz', () => {
-    const items = hrefs(getMoreItems('Çalışan'))
+    const items = hrefs(getMoreItems(ACCESS.EMPLOYEE))
     expect(items).toEqual(expect.arrayContaining(['/open-shifts', '/time-correction', '/notifications']))
     for (const h of ['/', '/dashboard', '/employees', '/settings', '/qr-kiosk', '/my-schedule', '/leave', '/schedule', '/attendance/scan']) {
       expect(items).not.toContain(h)
     }
   })
   it('Müdür Yardımcısı Ayarlar hariç yönetim sayfalarını görür', () => {
-    const items = hrefs(getMoreItems('Müdür Yardımcısı'))
+    const items = hrefs(getMoreItems(ACCESS.MANAGER))
     expect(items).toEqual(expect.arrayContaining(['/dashboard', '/employees', '/reports', '/my-schedule', '/leave']))
     expect(items).not.toContain('/settings')
     expect(items).not.toContain('/notifications')
     expect(items).not.toContain('/')
   })
   it('Mağaza Müdürü Ayarlar dahil tüm menüyü görür', () => {
-    expect(filterNavItems(NAV_ITEMS, 'Mağaza Müdürü')).toHaveLength(NAV_ITEMS.length)
-    expect(hrefs(getMoreItems('Mağaza Müdürü'))).toContain('/settings')
+    expect(filterNavItems(NAV_ITEMS, ACCESS.STORE_MANAGER)).toHaveLength(NAV_ITEMS.length)
+    expect(hrefs(getMoreItems(ACCESS.STORE_MANAGER))).toContain('/settings')
   })
   it('gruplar sabit sırada, boş grup yok', () => {
-    const groups = groupNavItems(getMoreItems('Çalışan'))
+    const groups = groupNavItems(getMoreItems(ACCESS.EMPLOYEE))
     expect(groups.every((g) => g.items.length > 0)).toBe(true)
     expect(groups.map((g) => g.group)).toEqual(['planlama', 'devam', 'hesap'])
   })
@@ -111,7 +112,7 @@ describe('MobileBottomNav', () => {
   })
 
   it('çalışan sekmelerini nav landmark içinde, aktif sekmeyi aria-current ile gösterir', () => {
-    asRole('Çalışan')
+    asRole(ACCESS.EMPLOYEE)
     mockPathname = '/leave'
     renderWithProviders(<MobileBottomNav />)
     const nav = screen.getByRole('navigation', { name: 'Alt menü' })
@@ -124,7 +125,7 @@ describe('MobileBottomNav', () => {
   })
 
   it('yönetici "/"de Bugün aktif; /schedule\'da Bugün aktif değil', () => {
-    asRole('Mağaza Müdürü')
+    asRole(ACCESS.STORE_MANAGER)
     const { unmount } = renderWithProviders(<MobileBottomNav />)
     expect(screen.getByRole('link', { name: 'Bugün' })).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('link', { name: 'Bildirimler' })).toBeInTheDocument()
@@ -144,20 +145,20 @@ describe('MobileBottomNav', () => {
 
 describe('MorePage', () => {
   it('profil, gruplu bağlantılar ve çıkış', async () => {
-    asRole('Çalışan', 'Ayşe Yılmaz')
+    asRole(ACCESS.EMPLOYEE, 'Ayşe Yılmaz')
     mockPathname = '/more'
     renderWithProviders(<MorePage />)
     expect(screen.getByText('Ayşe Yılmaz')).toBeInTheDocument()
-    expect(screen.getByText('Çalışan')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Devam ve izin' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /Açık vardiyalar/ })).toHaveAttribute('href', '/open-shifts')
+    expect(screen.getByText('Kasiyer')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Devam & İzin' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Açık Vardiyalar/ })).toHaveAttribute('href', '/open-shifts')
     expect(screen.queryByRole('link', { name: /Çalışanlar/ })).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Çıkış Yap' }))
     expect(signOut).toHaveBeenCalled()
   })
 
   it('bildirim teşhisi Daha fazla sayfasında gösterilmez (Ayarlar › Bildirimler\'de)', () => {
-    asRole('Mağaza Müdürü')
+    asRole(ACCESS.STORE_MANAGER)
     renderWithProviders(<MorePage />)
     expect(screen.queryByText('Bildirim teşhisi')).not.toBeInTheDocument()
   })

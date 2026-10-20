@@ -117,7 +117,7 @@ function enterFullscreen() {
 export function QrKioskPage() {
   const router = useRouter()
   const { employee, signOut } = useAuth()
-  const isKiosk = isKioskRole(employee?.roles?.name ?? employee?.role_name)
+  const isKiosk = isKioskRole(employee?.roles?.access_level ?? null)
 
   const [qrData, setQrData] = useState<string | null>(null)
   const [link, setLink] = useState<LinkState>('connecting')

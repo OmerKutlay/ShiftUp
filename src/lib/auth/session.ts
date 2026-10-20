@@ -16,15 +16,17 @@
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { IS_DEV_AUTH, DEV_SESSION_COOKIE } from '@/lib/authConfig'
 import { verifyDevSession } from './devSession'
-import type { RoleName } from './roles'
+import { accessLevelOf, type AccessLevel } from './roles'
 
 export interface SessionEmployee {
   id: string
   full_name: string
   email: string | null
-  role: string          // serbest metin (unvan)
   role_id: string | null
-  role_name: RoleName | null  // roles tablosundan gelen yapılandırılmış rol
+  /** Sistem rolünün adı — yalnızca gösterim */
+  role_name: string | null
+  /** Yetki seviyesi (roles.access_level) — tüm yetki kontrolleri bununla yapılır */
+  access_level: AccessLevel | null
   active: boolean
 }
 
@@ -32,10 +34,9 @@ const EMPLOYEE_SELECT = `
   id,
   full_name,
   email,
-  role,
   role_id,
   active,
-  roles ( name )
+  roles ( name, access_level )
 ` as const
 
 /**
@@ -104,15 +105,15 @@ export async function getCurrentEmployee(
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapToSessionEmployee(data: any): SessionEmployee {
-  // Supabase nested select: roles → { name } veya null
-  const roleName = data.roles?.name ?? null
+  // Supabase nested select: roles → { name, access_level } veya null
+  const roles = Array.isArray(data.roles) ? data.roles[0] : data.roles
   return {
     id: data.id as string,
     full_name: data.full_name as string,
     email: data.email as string | null,
-    role: data.role as string,
     role_id: data.role_id as string | null,
-    role_name: roleName as RoleName | null,
+    role_name: (roles?.name as string | undefined) ?? null,
+    access_level: accessLevelOf(roles),
     active: data.active as boolean,
   }
 }

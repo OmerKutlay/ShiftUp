@@ -36,7 +36,8 @@ export const TIMESHEET_CODE_LABELS: Record<Exclude<TimesheetCode, ''>, string> =
 export interface TimesheetEmployee {
   id: string
   full_name: string
-  role: string
+  /** Sistem rolü adı (gösterim) */
+  role_name: string
   employment_type: 'full_time' | 'part_time'
   overtime_consent_at?: string | null
 }

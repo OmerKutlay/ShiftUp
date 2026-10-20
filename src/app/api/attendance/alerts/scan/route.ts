@@ -15,7 +15,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { timingSafeEqual } from 'crypto'
 import { createAdminClient } from '@/lib/supabaseAdmin'
-import { requireMinRole, ROLES, unauthorized } from '@/lib/auth'
+import { requireMinRole, ACCESS, unauthorized } from '@/lib/auth'
 import { scanMissedAttendance } from '@/lib/attendanceAlerts'
 import { serverError } from '@/lib/apiErrors'
 
@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   if (!isCronRequest(req)) {
-    const auth = await requireMinRole(req, ROLES.MUDUR_YARDIMCISI)
+    const auth = await requireMinRole(req, ACCESS.MANAGER)
     if ('response' in auth) return auth.response
   }
   return runScan()

@@ -1,6 +1,7 @@
 /**
  * scheduleHelpers — haftalık plan ekranının saf yardımcıları (sabitler, özet ve müsaitlik hesapları).
  */
+import type { AccessLevel, PlanningGroup } from '@/lib/auth/roles'
 import type { ShiftAssignmentWithDetails } from '@/types/schedule'
 import type { EmployeeAvailability, DayOfWeek } from '@/types/workforce'
 import { shiftDurationMins, netWorkMins, checkMinRest } from '@/lib/workingTimeService'
@@ -10,37 +11,48 @@ import { kindFromTimes, type ShiftKind } from '@/lib/workforcePlanner'
 // ─── Sabitler ─────────────────────────────────────────────────
 export const DAY_LABELS = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
 
-// Rol pozisyonlarına göre sıralama önceliği (küçük = üstte).
-// Sıra önemli: 'Müdür Yardımcısı' 'müdür' de içerdiği için önce yardımcı kontrol edilir.
-export const ROLE_SORT_ORDER: Array<{ keywords: string[]; order: number }> = [
-  { keywords: ['yardımcı', 'yardimci'], order: 1 },
-  { keywords: ['müdür', 'mudur', 'yönetici', 'yonetici'], order: 0 },
-  { keywords: ['kasiyer', 'kasa'], order: 2 },
-  { keywords: ['satış', 'satis', 'danışman', 'danisman', 'reyon'], order: 3 },
-  { keywords: ['görsel', 'gorsel'], order: 4 },
-  { keywords: ['depo'], order: 5 },
-]
+/** Sıralama/gruplama için gereken rol alanları (EmployeeWithRole.roles ile uyumlu) */
+export type RoleLike = {
+  planning_group?: PlanningGroup | null
+  access_level?: AccessLevel
+  sort_order?: number
+} | null | undefined
 
-export function getRoleSortOrder(role: string): number {
-  const normalized = role.toLocaleLowerCase('tr')
-  for (const { keywords, order } of ROLE_SORT_ORDER) {
-    if (keywords.some((k) => normalized.includes(k))) return order
-  }
-  return 99 // bilinmeyen roller en sona
+// Plan içi sıralama önceliği (küçük = üstte): planlama grubuna göre
+const GROUP_ORDER: Record<PlanningGroup, number> = {
+  store_manager: 0,
+  assistant_manager: 1,
+  floor_lead: 2,
+  cashier: 3,
+  sales: 4,
+  visual: 5,
+  stock: 6,
+}
+const UNKNOWN_ORDER = 99
+
+/** Role göre sıralama anahtarı: planlama grubu; grubu olmayanlar (null) en sona */
+export function getRoleSortOrder(role: RoleLike): number {
+  if (role?.planning_group) return GROUP_ORDER[role.planning_group] ?? UNKNOWN_ORDER
+  return UNKNOWN_ORDER
 }
 
-/** Haftalık plandaki rol grupları (ROLE_SORT_ORDER sıralarına göre) */
+/** İki rolü karşılaştırır: önce grup sırası, eşitse roles.sort_order */
+export function compareRoles(a: RoleLike, b: RoleLike): number {
+  return getRoleSortOrder(a) - getRoleSortOrder(b) || (a?.sort_order ?? 999) - (b?.sort_order ?? 999)
+}
+
+/** Haftalık plandaki rol grupları (getRoleSortOrder sıralarına göre) */
 export const ROLE_GROUPS = [
-  { key: 'yonetim', label: 'Yönetim', orders: [0, 1] },
-  { key: 'kasa', label: 'Kasa', orders: [2] },
-  { key: 'satis', label: 'Satış', orders: [3] },
-  { key: 'gorsel-depo', label: 'Görsel & Depo', orders: [4, 5] },
-  { key: 'diger', label: 'Diğer', orders: [99] },
+  { key: 'yonetim', label: 'Yönetim', orders: [0, 1, 2] },
+  { key: 'kasa', label: 'Kasa', orders: [3] },
+  { key: 'satis', label: 'Satış', orders: [4] },
+  { key: 'gorsel-depo', label: 'Görsel & Depo', orders: [5, 6] },
+  { key: 'diger', label: 'Diğer', orders: [UNKNOWN_ORDER] },
 ] as const
 
 export type RoleGroupKey = (typeof ROLE_GROUPS)[number]['key']
 
-export function roleGroupOf(role: string): RoleGroupKey {
+export function roleGroupOf(role: RoleLike): RoleGroupKey {
   const order = getRoleSortOrder(role)
   return ROLE_GROUPS.find((g) => (g.orders as readonly number[]).includes(order))?.key ?? 'diger'
 }
