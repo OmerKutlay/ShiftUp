@@ -1,7 +1,9 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { CameraOff, Loader2 } from 'lucide-react'
+import { CameraOff } from 'lucide-react'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
+import { Spinner } from '@/components/ui/spinner'
 import { PermissionHelp } from './scanPageHelpers'
 
 interface Props {
@@ -115,41 +117,41 @@ export function QrScanner({ onScan, onError, active = true }: Props) {
 
   if (permissionDenied) {
     return (
-      <div className="flex w-full max-w-xs flex-col items-center gap-2 rounded-2xl bg-card p-4 text-center">
-        <span className="flex size-12 items-center justify-center rounded-full bg-danger-soft text-danger">
-          <CameraOff className="size-6" />
-        </span>
-        <p className="text-sm font-bold text-danger">Kamera izni gerekli</p>
-        <p className="text-xs text-ink-secondary">QR taraması için kamera iznine ihtiyaç var.</p>
+      <Empty className="w-full gap-4 p-0 md:p-0">
+        <EmptyHeader>
+          <EmptyMedia variant="icon" className="bg-destructive/10 text-destructive"><CameraOff /></EmptyMedia>
+          <EmptyTitle>Kamera izni gerekli</EmptyTitle>
+          <EmptyDescription>QR taraması için kamera iznine ihtiyaç var.</EmptyDescription>
+        </EmptyHeader>
         {/* Cihaza / kurulu uygulamaya göre adım adım yönlendirme */}
         <PermissionHelp kind="camera" />
-      </div>
+      </Empty>
     )
   }
 
   return (
-    // Tam genişlik, en fazla 280px — tarayıcı her zaman kapsayıcıya sığar
-    <div className="relative w-full max-w-[280px]">
+    // Tam genişlik, en fazla 288px — tarayıcı her zaman kapsayıcıya sığar
+    <div className="relative w-full max-w-72">
       {/* html5-qrcode mount noktası — kare oran korunur; video kapsayıcıyı doldurur, önizleme resmi gizli */}
       <div
         id="qr-scanner-container"
         ref={containerRef}
-        className="aspect-square w-full overflow-hidden rounded-2xl bg-black [&_img]:hidden [&_video]:!h-full [&_video]:!w-full [&_video]:object-cover"
+        className="aspect-square w-full overflow-hidden rounded-xl bg-black [&_img]:hidden [&_video]:!h-full [&_video]:!w-full [&_video]:object-cover"
       />
 
       {/* Tarama çerçevesi: dört köşe işaretçisi */}
       {!initializing && (
         <div aria-hidden className="pointer-events-none absolute inset-[14%]">
-          <span className="absolute top-0 left-0 size-7 rounded-tl-lg border-t-[3px] border-l-[3px] border-white" />
-          <span className="absolute top-0 right-0 size-7 rounded-tr-lg border-t-[3px] border-r-[3px] border-white" />
-          <span className="absolute bottom-0 left-0 size-7 rounded-bl-lg border-b-[3px] border-l-[3px] border-white" />
-          <span className="absolute right-0 bottom-0 size-7 rounded-br-lg border-r-[3px] border-b-[3px] border-white" />
+          <span className="absolute top-0 left-0 size-7 rounded-tl-lg border-t-4 border-l-4 border-white" />
+          <span className="absolute top-0 right-0 size-7 rounded-tr-lg border-t-4 border-r-4 border-white" />
+          <span className="absolute bottom-0 left-0 size-7 rounded-bl-lg border-b-4 border-l-4 border-white" />
+          <span className="absolute right-0 bottom-0 size-7 rounded-br-lg border-r-4 border-b-4 border-white" />
         </div>
       )}
 
       {initializing && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-2xl bg-ink/80 text-white">
-          <Loader2 className="size-7 animate-spin" />
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-xl bg-black/80 text-white">
+          <Spinner className="size-6" />
           <span className="text-xs">Kamera açılıyor…</span>
         </div>
       )}

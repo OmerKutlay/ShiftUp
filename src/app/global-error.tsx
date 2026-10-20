@@ -3,9 +3,20 @@
 /**
  * Kök hata sınırı — root layout / provider'lar çökerse gösterilir.
  * Kendi <html>/<body> etiketini tanımlar; root layout (globals.css / Tailwind) yüklenmeyebileceği
- * için yalnızca satır içi stil kullanır (renkler src/lib/palette.ts ile aynı).
+ * için yalnızca satır içi stil kullanır. Görünüm shadcn Empty kalıbının aynısı; renkler
+ * globals.css'teki stone tema token'larının hex karşılıkları.
  */
 import { RotateCw, Sun } from 'lucide-react'
+
+const C = {
+  background: '#FFFFFF',
+  foreground: '#0C0A09',
+  muted: '#F5F5F4',
+  mutedForeground: '#78716C',
+  border: '#E7E5E4',
+  primary: '#C2532D',
+  primaryForeground: '#FFFFFF',
+}
 
 export default function GlobalError({
   error,
@@ -23,10 +34,11 @@ export default function GlobalError({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: '#F5EFE6',
-          color: '#2B211B',
+          background: C.background,
+          color: C.foreground,
           fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
-          padding: 16,
+          padding: 24,
+          boxSizing: 'border-box',
         }}
       >
         <title>Hata — ShiftUp</title>
@@ -35,40 +47,36 @@ export default function GlobalError({
           style={{
             width: '100%',
             maxWidth: 384,
-            boxSizing: 'border-box',
-            background: '#FFFDFA',
-            border: '1px solid #ECE4D8',
-            borderRadius: 16,
-            padding: '32px 24px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 24,
             textAlign: 'center',
           }}
         >
-          {/* BrandMark ile aynı çizim (Tailwind burada yüklü olmayabilir) */}
-          <span
-            aria-hidden
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: 40,
-              height: 40,
-              borderRadius: 11,
-              background: '#C2532D',
-              color: '#FFFFFF',
-              marginBottom: 16,
-            }}
-          >
-            <Sun size={25} strokeWidth={2} />
-          </span>
-          <h1 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 8px' }}>Uygulama yüklenemedi</h1>
-          <p style={{ color: '#605853', fontSize: 14, lineHeight: 1.5, margin: '0 0 24px' }}>
-            Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin; sorun sürerse yöneticinize bildirin.
-            {error.digest && (
-              <span style={{ display: 'block', marginTop: 8, fontFamily: 'monospace', fontSize: 12, color: '#8C827A' }}>
-                Hata kodu: {error.digest}
-              </span>
-            )}
-          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+            {/* BrandMark ile aynı çizim (Tailwind burada yüklü olmayabilir) */}
+            <span
+              aria-hidden
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 40,
+                height: 40,
+                borderRadius: 11,
+                background: C.primary,
+                color: C.primaryForeground,
+                marginBottom: 8,
+              }}
+            >
+              <Sun size={25} strokeWidth={2} />
+            </span>
+            <h1 style={{ fontSize: 18, fontWeight: 500, letterSpacing: '-0.01em', margin: 0 }}>Uygulama yüklenemedi</h1>
+            <p style={{ color: C.mutedForeground, fontSize: 14, lineHeight: 1.6, margin: 0 }}>
+              Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin; sorun sürerse yöneticinize bildirin.
+            </p>
+          </div>
           <button
             onClick={() => retry()}
             style={{
@@ -76,21 +84,37 @@ export default function GlobalError({
               alignItems: 'center',
               justifyContent: 'center',
               gap: 8,
-              width: '100%',
-              height: 44,
-              background: '#C2532D',
-              color: '#FFFFFF',
+              height: 36,
+              padding: '0 16px',
+              background: C.primary,
+              color: C.primaryForeground,
               border: 0,
-              borderRadius: 10,
+              borderRadius: 6,
               fontSize: 14,
-              fontWeight: 600,
+              fontWeight: 500,
               fontFamily: 'inherit',
               cursor: 'pointer',
             }}
           >
             <RotateCw size={16} aria-hidden />
-            Tekrar Dene
+            Tekrar dene
           </button>
+          {error.digest && (
+            <p
+              style={{
+                margin: 0,
+                padding: '4px 8px',
+                borderRadius: 6,
+                border: `1px solid ${C.border}`,
+                background: C.muted,
+                fontFamily: 'ui-monospace, monospace',
+                fontSize: 12,
+                color: C.mutedForeground,
+              }}
+            >
+              Hata kodu: {error.digest}
+            </p>
+          )}
         </main>
       </body>
     </html>
