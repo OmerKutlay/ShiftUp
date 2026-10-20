@@ -2,7 +2,7 @@
 
 /**
  * MorePage — mobil "Daha fazla" sekmesi: profil kartı (Item), alt barda olmayan erişilebilir
- * sayfalar (gruplu ItemGroup) ve çıkış. Liste navItems'tan gelir; rol filtresi yan menüyle aynıdır.
+ * sayfalar (gruplu ItemGroup), tema seçimi ve çıkış. Liste navItems'tan gelir; rol filtresi yan menüyle aynıdır.
  */
 import Link from 'next/link'
 import { ChevronRight, LogIn, LogOut } from 'lucide-react'
@@ -10,6 +10,7 @@ import { ChevronRight, LogIn, LogOut } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { getMoreItems, groupNavItems } from '@/components/layout/navItems'
 import { Page, PageHeader, PersonAvatar } from '@/components/common'
+import { ThemeSelect } from '@/components/common/ThemeSwitch'
 import { Button } from '@/components/ui/button'
 import {
   Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemSeparator, ItemTitle,
@@ -74,6 +75,13 @@ export function MorePage() {
           </ItemGroup>
         </section>
       ))}
+
+      <section aria-labelledby="more-theme" className="flex flex-col gap-2">
+        <h2 id="more-theme" className="px-1 text-sm font-medium text-muted-foreground">
+          Tema
+        </h2>
+        <ThemeSelect fullWidth />
+      </section>
 
       {status === 'authenticated' && (
         <Button

@@ -28,6 +28,7 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group'
 import { Spinner } from '@/components/ui/spinner'
 import { BrandMark } from '@/components/common/BrandMark'
+import { ThemeSwitch } from '@/components/common/ThemeSwitch'
 import { cn } from '@/lib/utils'
 
 type Step = 'email' | 'otp'
@@ -216,11 +217,12 @@ export function LoginForm({ authMode }: Props) {
   return (
     <div
       className={cn(
-        'flex min-h-dvh flex-col items-center justify-center bg-muted/40 p-6 md:p-10',
+        'relative flex min-h-dvh flex-col items-center justify-center bg-muted/40 p-6 md:p-10',
         // Kabuksuz sayfa: iOS çentik / ana ekran çubuğu için güvenli alan kendi dolgumuzda
         'pt-[max(1.5rem,var(--app-top))] pb-[max(1.5rem,var(--safe-bottom))]'
       )}
     >
+      <ThemeSwitch className="absolute top-[max(1rem,var(--app-top))] right-4" />
       <div className="flex w-full max-w-sm flex-col gap-6">
         {/* Marka */}
         <div className="flex items-center justify-center gap-2.5">

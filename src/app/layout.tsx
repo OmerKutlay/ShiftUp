@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Providers } from './providers'
+import { THEME_COLORS, THEME_INIT_SCRIPT } from '@/lib/theme'
 import './globals.css'
 
 // latin-ext: Türkçe karakterler (ı, ş, ğ, İ) fallback fonta düşmesin
@@ -21,7 +22,7 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    // Açık tema: koyu durum çubuğu metni (black-translucent beyaz metin verir)
+    // Opak durum çubuğu; metin rengi zemine göre (black-translucent beyaz metin ve perde verir)
     statusBarStyle: 'default',
     title: 'ShiftUp',
   },
@@ -33,13 +34,22 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
-  // Üst bar zemini (bg-background) ile aynı: opak durum çubuğu sayfayla bütün görünsün
-  themeColor: '#FFFFFF',
+  // Üst bar zemini (bg-background) ile aynı: opak durum çubuğu sayfayla bütün görünsün.
+  // Sistem ayarına göre; uygulamada başka tema seçilirse lib/theme.ts etiketleri günceller.
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: THEME_COLORS.light },
+    { media: '(prefers-color-scheme: dark)', color: THEME_COLORS.dark },
+  ],
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="tr">
+    // suppressHydrationWarning: `dark` sınıfını hidrasyondan önce tema betiği ekler
+    <html lang="tr" suppressHydrationWarning>
+      <head>
+        {/* İlk boyamadan önce: kayıtlı tema tercihi / sistem ayarı (yanlış temada parlama olmasın) */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
       {/* Safe-area boşlukları kabukta: üst bar ve alt bar kendi zeminleriyle doldurur */}
       <body className={`${geistSans.variable} ${geistMono.variable} font-sans`}>
         {/*

@@ -74,7 +74,8 @@ Grafik serileri: `chart-1` marka, `chart-2` yeşil-mavi, `chart-3` mavi, `chart-
 - **iOS 26 ana ekran uygulaması (PWA) notları:**
   - Durum çubuğu rengi sayfanın en üstündeki *opak, tam genişlikte, `position: fixed`* öğeden
     örneklenir; uygun öğe yoksa iOS üst kenara kendi bulanıklığını çizer. Üst bar bu yüzden
-    sabit ve opaktır; `theme-color` üst bar zeminiyle aynıdır (`#FFFFFF`).
+    sabit ve opaktır; `theme-color` üst bar zeminiyle aynıdır (açık `#FFFFFF`, koyu `#0C0A09`;
+    `lib/theme.ts` seçilen temaya göre günceller).
   - `apple-mobile-web-app-status-bar-style` **`default`** kalır (`black-translucent` iOS 26'da
     kaldırılamayan koyu bir perde çizer). Bu ayar kurulum anında okunur: değişirse uygulama
     ana ekrandan silinip yeniden eklenmelidir.
