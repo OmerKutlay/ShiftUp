@@ -81,7 +81,7 @@ test.describe('Çalışan alt menüsü', () => {
     await page.goto('/my-schedule')
     const main = page.getByRole('main')
     // Ayın tüm günleri listelenir → sayfa ekrandan uzun
-    await expect(main.getByText(/Plan: 09:00 – 17:00/).last()).toBeVisible()
+    await expect(main.getByText('09:00–17:00', { exact: true }).filter({ visible: true }).last()).toBeVisible()
 
     const isLong = await page.evaluate(() => document.documentElement.scrollHeight > window.innerHeight * 1.5)
     expect(isLong).toBe(true)
