@@ -3,7 +3,6 @@
  */
 import type { DailyShiftEntry } from '@/types/attendance'
 import { roleNameOf } from '@/lib/roleJoin'
-import { plannedBreakMins } from '@/lib/workingTimeService'
 import {
   clock, dayStatusOf, lateMinutes, timelineSegments, workedMinutes,
   type DayStatus, type Segment, type ShiftWindow, shiftWindow,
@@ -46,7 +45,7 @@ export function buildDailyRows(entries: DailyShiftEntry[], now: number): DailyRo
       win,
       status,
       late: lateMinutes(rec?.clock_in_at, win),
-      worked: workedMinutes(rec, now, plannedBreakMins(sa.start_time, sa.end_time)),
+      worked: workedMinutes(rec, now, sa),
       segments: timelineSegments(win, rec, status, now),
       summary: `Vardiya ${sa.start_time.slice(0, 5)}–${sa.end_time.slice(0, 5)}${parts.length ? `, ${parts.join(', ')}` : ', okutma yok'}`,
     }

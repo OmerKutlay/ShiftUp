@@ -15,7 +15,6 @@
  */
 import { workedMinutes, type AttendanceTimes } from '@/lib/attendanceDurations'
 import { MAX_WEEKLY_WORK_MINS, NIGHT_END_MINS, NIGHT_START_MINS } from '@/lib/laborLaw'
-import { plannedBreakMins } from '@/lib/workingTimeService'
 import { addDaysToDateString, dayOfWeekFromDateString } from '@/lib/dateUtils'
 import type { PublicHoliday } from '@/types/holiday'
 
@@ -53,9 +52,9 @@ export interface TimesheetShift {
   attendance: (AttendanceTimes & { status?: string }) | null
 }
 
-/** Vardiyanın net fiili çalışması: planlanan mola ile fiili moladan büyüğü düşülür */
+/** Vardiyanın net fiili çalışması — mola kuralı ve yuvarlama: bkz. attendanceDurations */
 function shiftWorkedMins(s: TimesheetShift): number {
-  return s.attendance ? workedMinutes(s.attendance, plannedBreakMins(s.start_time, s.end_time)) ?? 0 : 0
+  return s.attendance ? workedMinutes(s.attendance, s) ?? 0 : 0
 }
 
 export interface TimesheetLeave {

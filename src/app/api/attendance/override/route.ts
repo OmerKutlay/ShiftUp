@@ -5,6 +5,8 @@
  * - Kaydın düzeltme sonrası son hali tutarlı olmalı (durum ↔ saatler, kronolojik sıra).
  * - Yönetici kendi devam kaydını düzeltemez.
  * - exception_note zorunludur ve mevcut nota EKLENİR (yuvarlama notu kaybolmaz).
+ * - Mola alanları elle girilemez (400); mola otomatik hesaplanır. Molada unutulan kayıt kapatılırsa
+ *   bitmemiş mola okutulmamış sayılır.
  * - Eski/yeni değerler audit_logs'a yazılır.
  * - Kayıt okunduktan sonra başkası güncellediyse 409 döner (updated_at koşulu).
  *
@@ -28,7 +30,9 @@ const VALID_STATUSES: AttendanceStatus[] = [
   'working_after_break',
   'clocked_out',
 ]
-const TIME_FIELDS = ['clock_in_at', 'break_start_at', 'break_end_at', 'clock_out_at'] as const
+const TIME_FIELDS = ['clock_in_at', 'clock_out_at'] as const
+/** Mola elle girilmez — okutulan molalar korunur, düşülecek mola otomatik hesaplanır (bkz. attendanceDurations) */
+const BREAK_FIELDS = ['break_start_at', 'break_end_at', 'completed_break_minutes'] as const
 
 function isValidIso(val: unknown): boolean {
   if (val === null || val === undefined) return true // null silme için geçerli
@@ -51,6 +55,9 @@ export async function POST(req: NextRequest) {
 
     if (body.status !== undefined && !(VALID_STATUSES as string[]).includes(body.status)) {
       return badRequest(`Geçersiz status: ${body.status}`)
+    }
+    if (BREAK_FIELDS.some((f) => f in body)) {
+      return badRequest('Mola elle girilemez; mola süresi otomatik hesaplanır.', 'BREAK_NOT_EDITABLE')
     }
     for (const field of TIME_FIELDS) {
       if (field in body && !isValidIso(body[field])) {
@@ -76,13 +83,17 @@ export async function POST(req: NextRequest) {
     const next: OverrideState = {
       status: (body.status ?? existing.status) as AttendanceStatus,
       clock_in_at: 'clock_in_at' in body ? (body.clock_in_at ?? null) : existing.clock_in_at,
-      break_start_at: 'break_start_at' in body ? (body.break_start_at ?? null) : existing.break_start_at,
-      break_end_at: 'break_end_at' in body ? (body.break_end_at ?? null) : existing.break_end_at,
+      break_start_at: existing.break_start_at,
+      break_end_at: existing.break_end_at,
       clock_out_at: 'clock_out_at' in body ? (body.clock_out_at ?? null) : existing.clock_out_at,
-      completed_break_minutes: body.completed_break_minutes ?? existing.completed_break_minutes ?? 0,
+      completed_break_minutes: existing.completed_break_minutes ?? 0,
+    }
+    // Molada unutulan kayıt kapatılıyorsa bitmemiş mola okutulmamış sayılır (mola elle tamamlanmaz)
+    if (next.status !== 'on_break' && next.break_start_at && !next.break_end_at) {
+      next.break_start_at = null
     }
     // ISO'ları normalize et
-    for (const field of TIME_FIELDS) {
+    for (const field of ['clock_in_at', 'break_start_at', 'break_end_at', 'clock_out_at'] as const) {
       const v = next[field]
       if (v) next[field] = new Date(v).toISOString()
     }

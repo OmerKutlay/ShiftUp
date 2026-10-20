@@ -11,6 +11,7 @@
 import { useEffect, useState } from 'react'
 import type { BadgeTone } from '@/components/common'
 import type { AttendanceRecord, AttendanceStatus } from '@/types/attendance'
+import { workedMinutes as completedWorkedMinutes, type PlannedShift } from '@/lib/attendanceDurations'
 
 const TURKEY_UTC_OFFSET = '+03:00'
 const MINUTE_MS = 60_000
@@ -116,20 +117,18 @@ export function lateMinutes(clockInAt: string | null | undefined, win: ShiftWind
 
 /**
  * Net çalışma (dk): giriş → çıkış (ya da şimdi), molalar düşülür.
- * Çıkış yapıldıysa planlanan mola ile fiili moladan büyüğü düşülür (mola okutmayan mola yapmış sayılır);
- * vardiya sürerken yalnızca fiili mola düşülür.
+ * Çıkış yapıldıysa ve vardiya verildiyse puantajdaki hesap kullanılır (mola kuralı + tam/buçuklu
+ * saate yuvarlama, bkz. lib/attendanceDurations); vardiya sürerken yalnızca fiili mola düşülür.
  */
-export function workedMinutes(rec: AttendanceRecord | null, now: number, plannedBreakMins = 0): number | null {
+export function workedMinutes(rec: AttendanceRecord | null, now: number, shift?: PlannedShift): number | null {
   const inAt = ms(rec?.clock_in_at)
   if (!rec || inAt === null) return null
-  const clockOut = ms(rec.clock_out_at)
-  const outAt = clockOut ?? now
+  if (rec.clock_out_at && shift) return completedWorkedMinutes(rec, shift)
+  const outAt = ms(rec.clock_out_at) ?? now
   const bStart = ms(rec.break_start_at)
   const bEnd = ms(rec.break_end_at) ?? (rec.status === 'on_break' ? now : null)
   const lastBreak = bStart !== null && bEnd !== null ? Math.max(0, bEnd - bStart) / MINUTE_MS : 0
-  const actualBreak = (rec.completed_break_minutes ?? 0) + lastBreak
-  const breakMins = clockOut !== null ? Math.max(plannedBreakMins, actualBreak) : actualBreak
-  return Math.max(0, (outAt - inAt) / MINUTE_MS - breakMins)
+  return Math.max(0, (outAt - inAt) / MINUTE_MS - (rec.completed_break_minutes ?? 0) - lastBreak)
 }
 
 // ─── Zaman çizelgesi ─────────────────────────────────────────
