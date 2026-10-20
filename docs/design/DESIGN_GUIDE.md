@@ -80,11 +80,12 @@ Grafik serileri: `chart-1` marka, `chart-2` yeşil-mavi, `chart-3` mavi, `chart-
     ana ekrandan silinip yeniden eklenmelidir.
   - Görünüm alanı durum çubuğu kadar kısa hesaplanabildiği için (WebKit 301108)
     `globals.css`'te standalone için `html { min-height: … }` düzeltmesi vardır; silmeyin.
-  - iOS 26+ üst kenara ~40pt'lik bir bulanıklık geçişi (scroll edge effect) çizer; sayfanın bunu
-    kapatabileceği bir ayar yoktur. Bu yüzden ekranın üstünden konumlanan her şey
-    `env(safe-area-inset-top)` yerine **`var(--app-top)`** kullanır: iOS 26+ ana ekran uygulamasında
-    bu değer bandı (`--edge-ramp`) içerir ve bant üst barın düz zeminiyle dolar. Stüdyoda
-    `STUDIO_EDGE_RAMP=2.5rem` ile görülebilir.
+  - iOS 26+ üst kenara bir bulanıklık geçişi (scroll edge effect) çizer; ekranın en üstünde tam
+    genişlikte, 10px'ten yüksek, zeminli bir `position: fixed` öğe bulursa bulanıklık yerine onun
+    düz rengini kullanır. `layout.tsx`'teki görünmez kenar şeridi (yalnızca standalone) bu öğedir;
+    silmeyin. Üst bar boşluk bırakmadan ekranın en üstüne oturur.
+  - Ekranın üstünden konumlanan her şey `env(safe-area-inset-top)` yerine **`var(--app-top)`**
+    kullanır (tek yerden ayarlanabilsin diye; şu an ikisi aynıdır).
   - Alttan konumlanan her şey `env(safe-area-inset-bottom)` yerine **`var(--safe-bottom)`**
     kullanır (34px ile sınırlı): iOS ana ekran uygulaması bu değeri ilk döndürmeye kadar şişkin
     bildirebiliyor ve alt bar ekranın dibinden kopmuş görünüyordu.
