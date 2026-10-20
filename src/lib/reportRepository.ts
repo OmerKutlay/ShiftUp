@@ -135,7 +135,7 @@ export function exportReportToCsv(rows: AttendanceReportRow[]): string {
     working: 'Çalışıyor',
     on_break: 'Molada',
     working_after_break: 'Çalışıyor',
-    clocked_out: 'Çıkış Yaptı',
+    clocked_out: 'Çıkış yaptı',
     on_leave: 'İzinli',
     upcoming: 'Başlamadı',
   }

@@ -4,12 +4,12 @@ export type LeaveType = 'annual' | 'sick' | 'personal' | 'unpaid' | 'other' | 'w
 export type LeaveStatus = 'pending' | 'approved' | 'rejected'
 
 export const LEAVE_TYPE_LABELS: Record<LeaveType, string> = {
-  annual: 'Yıllık İzin',
-  sick: 'Hastalık İzni',
-  personal: 'Kişisel İzin',
-  unpaid: 'Ücretsiz İzin',
+  annual: 'Yıllık izin',
+  sick: 'Hastalık izni',
+  personal: 'Kişisel izin',
+  unpaid: 'Ücretsiz izin',
   other: 'Diğer',
-  weekly_rest: 'Haftalık Tatil',
+  weekly_rest: 'Haftalık tatil',
 }
 
 /** weekly_rest tipi manager tarafından doğrudan atanır, onay akışına girmez */
@@ -27,7 +27,7 @@ export function isAutoWeeklyRest(l: { leave_type: string; reason: string | null 
 }
 
 export const LEAVE_STATUS_LABELS: Record<LeaveStatus, string> = {
-  pending: 'Onay Bekliyor',
+  pending: 'Onay bekliyor',
   approved: 'Onaylandı',
   rejected: 'Reddedildi',
 }

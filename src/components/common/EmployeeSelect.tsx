@@ -152,14 +152,14 @@ export function EmployeeSelect<T extends EmployeeOption>({
               }}
               onClick={openList}
               onKeyDown={onKeyDown}
-              className="h-full min-w-0 flex-1 bg-transparent pl-3 text-base outline-none placeholder:text-ink-muted disabled:cursor-not-allowed md:text-sm"
+              className="h-full min-w-0 flex-1 bg-transparent pl-3 text-base outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed md:text-sm"
             />
             {emptyLabel && value && !disabled && (
               <button
                 type="button"
                 aria-label="Temizle"
                 onClick={() => { onChange(''); closeList(); inputRef.current?.focus() }}
-                className="flex size-8 items-center justify-center rounded-lg text-ink-muted hover:bg-muted hover:text-ink"
+                className="flex size-8 items-center justify-center rounded-lg text-muted-foreground/70 hover:bg-muted hover:text-foreground"
               >
                 <X className="size-4" />
               </button>
@@ -170,7 +170,7 @@ export function EmployeeSelect<T extends EmployeeOption>({
               aria-label={open ? 'Kapat' : 'Aç'}
               disabled={disabled}
               onClick={() => { if (open) { closeList() } else { openList(); inputRef.current?.focus() } }}
-              className="mr-1 flex size-8 items-center justify-center rounded-lg text-ink-secondary hover:bg-muted"
+              className="mr-1 flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
             >
               <ChevronDown className={cn('size-4 transition-transform', open && 'rotate-180')} />
             </button>
@@ -188,7 +188,7 @@ export function EmployeeSelect<T extends EmployeeOption>({
         >
           <ul id={listId} role="listbox" aria-label={label} className="max-h-64 overflow-y-auto">
             {filtered.length === 0 ? (
-              <li className="px-2.5 py-2 text-sm text-ink-secondary">Çalışan bulunamadı</li>
+              <li className="px-2.5 py-2 text-sm text-muted-foreground">Çalışan bulunamadı</li>
             ) : (
               filtered.map((o, i) => (
                 <li
@@ -207,8 +207,8 @@ export function EmployeeSelect<T extends EmployeeOption>({
                 >
                   {showRole ? (
                     <div className="flex flex-col">
-                      <span className="font-semibold text-ink">{optionLabel(o)}</span>
-                      {o.roles?.name && <span className="text-xs text-ink-secondary">{o.roles.name}</span>}
+                      <span className="font-semibold text-foreground">{optionLabel(o)}</span>
+                      {o.roles?.name && <span className="text-xs text-muted-foreground">{o.roles.name}</span>}
                     </div>
                   ) : (
                     optionLabel(o)

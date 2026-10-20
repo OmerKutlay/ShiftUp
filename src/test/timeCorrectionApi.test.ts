@@ -284,6 +284,6 @@ describe('Manuel düzeltme çalışma özeti dahil', () => {
 
 describe('STATUS_LABELS direct', () => {
   it('direct status label doğru', () => {
-    expect(TIME_CORRECTION_STATUS_LABELS['direct']).toBe('Yönetici Girişi')
+    expect(TIME_CORRECTION_STATUS_LABELS['direct']).toBe('Yönetici girişi')
   })
 })

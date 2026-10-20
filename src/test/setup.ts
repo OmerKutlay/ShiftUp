@@ -13,3 +13,12 @@ if (typeof Element !== 'undefined') {
   Element.prototype.releasePointerCapture ??= () => {}
   Element.prototype.scrollIntoView ??= () => {}
 }
+
+// Radix RadioGroup / Switch / Checkbox boyut ölçümü için (jsdom'da yok)
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver
+}

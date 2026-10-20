@@ -33,6 +33,20 @@ function safeStop(scanner: ScannerInstance | null) {
   }
 }
 
+/** Tarayıcı / html5-qrcode kamera hatalarını (İngilizce) Türkçe açıklamaya çevirir */
+export function cameraErrorMessage(raw: string): string {
+  const m = raw.toLowerCase()
+  if (m.includes('notfound') || m.includes('not found') || m.includes('no camera') || m.includes('devices not found')) {
+    return 'Bu cihazda kamera bulunamadı.'
+  }
+  if (m.includes('notreadable') || m.includes('could not start') || m.includes('in use') || m.includes('trackstart')) {
+    return 'Kamera başka bir uygulama tarafından kullanılıyor olabilir. Diğer uygulamaları kapatıp tekrar deneyin.'
+  }
+  if (m.includes('overconstrained')) return 'Arka kamera açılamadı. Tekrar deneyin.'
+  if (m.includes('notsupported') || m.includes('not supported')) return 'Bu tarayıcı kamerayı desteklemiyor.'
+  return 'Kamera açılamadı. Tekrar deneyin.'
+}
+
 export function QrScanner({ onScan, onError, active = true }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const scannerRef = useRef<ScannerInstance | null>(null)
@@ -98,13 +112,13 @@ export function QrScanner({ onScan, onError, active = true }: Props) {
           ) {
             setPermissionDenied(true)
           } else {
-            onError?.(err instanceof Error ? err.message : String(err))
+            onError?.(cameraErrorMessage(message))
           }
         })
     }).catch((err: unknown) => {
       if (mounted) {
         setInitializing(false)
-        onError?.(err instanceof Error ? err.message : 'QR tarayıcı yüklenemedi.')
+        onError?.('QR tarayıcı yüklenemedi. Sayfayı yenileyip tekrar deneyin.')
       }
     })
 

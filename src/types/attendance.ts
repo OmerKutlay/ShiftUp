@@ -8,11 +8,11 @@ export type AttendanceStatus =
   | 'clocked_out'
 
 export const ATTENDANCE_STATUS_LABELS: Record<AttendanceStatus, string> = {
-  shift_waiting: 'Vardiya Bekleniyor',
+  shift_waiting: 'Vardiya bekleniyor',
   working: 'Çalışıyor',
   on_break: 'Molada',
   working_after_break: 'Çalışıyor',
-  clocked_out: 'Çıkış Yaptı',
+  clocked_out: 'Çıkış yaptı',
 }
 
 export interface Employee {

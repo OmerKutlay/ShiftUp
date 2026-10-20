@@ -37,8 +37,8 @@ function cellClass(opts: { selected?: boolean; today?: boolean; muted?: boolean 
     'flex items-center justify-center rounded-md border border-transparent text-sm font-medium transition-colors outline-none',
     'focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-30',
     opts.selected
-      ? 'bg-primary font-bold text-primary-foreground hover:bg-brand-dark'
-      : cn('hover:bg-accent', opts.muted ? 'text-ink-muted' : 'text-ink'),
+      ? 'bg-primary font-bold text-primary-foreground hover:bg-primary/90'
+      : cn('hover:bg-accent', opts.muted ? 'text-muted-foreground/70' : 'text-foreground'),
     opts.today && !opts.selected && 'border-primary/60'
   )
 }
@@ -145,12 +145,12 @@ function Calendar({ mode, selected, min, max, clearable, onPick, onClear }: Cale
           type="button"
           variant="ghost"
           size="sm"
-          className="px-2 text-[0.95rem] font-bold"
+          className="px-2 text-sm font-semibold"
           onClick={() => setView(view === 'years' ? (mode === 'date' ? 'days' : 'months') : view === 'days' ? 'months' : 'years')}
           aria-label={view === 'years' ? 'Geri dön' : 'Ay veya yıl seç'}
         >
           {headerLabel}
-          {view !== 'years' && <ChevronDown className="size-4 text-ink-secondary" />}
+          {view !== 'years' && <ChevronDown className="size-4 text-muted-foreground" />}
         </Button>
         {view !== 'years' && (
           <div className="flex">
@@ -170,7 +170,7 @@ function Calendar({ mode, selected, min, max, clearable, onPick, onClear }: Cale
         <>
           <div className="mb-1 grid grid-cols-7" aria-hidden>
             {WEEKDAYS.map((w, i) => (
-              <span key={w} className={cn('py-1 text-center text-xs font-bold', i >= 5 ? 'text-ink-muted' : 'text-ink-secondary')}>
+              <span key={w} className={cn('py-1 text-center text-xs font-bold', i >= 5 ? 'text-muted-foreground/70' : 'text-muted-foreground')}>
                 {w}
               </span>
             ))}
@@ -247,7 +247,7 @@ function Calendar({ mode, selected, min, max, clearable, onPick, onClear }: Cale
       {/* Alt çubuk */}
       <div className="mt-3 flex items-center justify-between border-t pt-2">
         {clearable ? (
-          <Button type="button" variant="ghost" size="sm" className="text-ink-secondary" onClick={onClear}>Temizle</Button>
+          <Button type="button" variant="ghost" size="sm" className="text-muted-foreground" onClick={onClear}>Temizle</Button>
         ) : <span />}
         <Button
           type="button"
@@ -313,7 +313,7 @@ function PickerField({
     <div className={cn('flex flex-col gap-1.5', fullWidth ? 'w-full' : 'w-full sm:w-auto', className)}>
       <Label htmlFor={inputId} className={hideLabel ? 'sr-only' : undefined}>
         {label}
-        {required && <span aria-hidden className="-ml-1.5 text-danger">*</span>}
+        {required && <span aria-hidden className="-ml-1.5 text-destructive">*</span>}
       </Label>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverAnchor asChild>
@@ -348,9 +348,9 @@ function PickerField({
                   show()
                 }
               }}
-              className="h-full min-w-0 flex-1 cursor-[inherit] bg-transparent pl-3 text-base caret-transparent outline-none placeholder:text-ink-muted md:text-sm"
+              className="h-full min-w-0 flex-1 cursor-[inherit] bg-transparent pl-3 text-base caret-transparent outline-none placeholder:text-muted-foreground md:text-sm"
             />
-            <CalendarDays aria-hidden className={cn('mr-3 size-4 shrink-0', open ? 'text-primary' : 'text-ink-secondary')} />
+            <CalendarDays aria-hidden className={cn('mr-3 size-4 shrink-0', open ? 'text-primary' : 'text-muted-foreground')} />
           </div>
         </PopoverAnchor>
         <PopoverContent
@@ -378,7 +378,7 @@ function PickerField({
         </PopoverContent>
       </Popover>
       {helperText && (
-        <p id={helperId} className={cn('text-xs', error ? 'text-danger' : 'text-ink-secondary')}>{helperText}</p>
+        <p id={helperId} className={cn('text-xs', error ? 'text-destructive' : 'text-muted-foreground')}>{helperText}</p>
       )}
     </div>
   )
