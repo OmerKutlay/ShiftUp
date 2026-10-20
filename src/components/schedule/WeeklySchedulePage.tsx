@@ -455,7 +455,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
                 <PersonAvatar name={emp.full_name} size={28} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[0.85rem] font-semibold">{emp.full_name}</p>
-                  <p className="truncate text-[0.7rem] text-ink-secondary">{busy ?? emp.role}</p>
+                  <p className="truncate text-[0.7rem] text-ink-secondary">{busy ?? emp.roles?.name}</p>
                 </div>
               </DropdownMenuItem>
             ))}
