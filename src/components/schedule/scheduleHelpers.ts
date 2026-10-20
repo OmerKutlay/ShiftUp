@@ -74,6 +74,18 @@ export function fmtHours(mins: number): string {
   return `${Math.round(mins / 60 * 10) / 10}s`
 }
 
+/** Süre: '7s', '7s 30d' (DESIGN_GUIDE §6) */
+export function fmtDuration(mins: number): string {
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return m ? `${h}s ${m}d` : `${h}s`
+}
+
+/** Saat aralığı: '09:00–17:00' (en tire, boşluksuz) */
+export function fmtRange(start: string, end: string): string {
+  return `${start.slice(0, 5)}–${end.slice(0, 5)}`
+}
+
 /** Vardiyanın mola hakkı (brüt − net) */
 export function breakMinsOf(start: string, end: string): number {
   return shiftDurationMins(start, end) - netWorkMins(start, end)
