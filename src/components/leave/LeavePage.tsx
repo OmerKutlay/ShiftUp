@@ -94,7 +94,9 @@ function LeaveStatusBadge({ status }: { status: LeaveStatus }) {
 }
 
 const REQUESTABLE_TYPES: LeaveType[] = ['annual', 'sick', 'personal', 'unpaid', 'other']
-const FILTER_TYPES: LeaveType[] = [...REQUESTABLE_TYPES, 'weekly_rest']
+/** Haftalık tatiller bu sayfada listelenmez (Haftalık plan'da yönetilir) */
+const FILTER_TYPES: LeaveType[] = REQUESTABLE_TYPES
+const LEAVE_LIST_URL = '/api/leave?exclude_type=weekly_rest'
 const todayIso = () => format(new Date(), 'yyyy-MM-dd')
 const normalize = (s: string) => s.toLocaleLowerCase('tr-TR')
 
@@ -413,7 +415,7 @@ export function LeavePage() {
   const isManager = hasRole(me?.roles?.access_level ?? null, MANAGER_ROLES)
   const confirm = useConfirm()
 
-  const requestsQ = useSWR('/api/leave', (url: string) => apiFetch<{ requests: LeaveRequestWithEmployee[] }>(url))
+  const requestsQ = useSWR(LEAVE_LIST_URL, (url: string) => apiFetch<{ requests: LeaveRequestWithEmployee[] }>(url))
   // Çalışan seçimi yalnızca yöneticiler için; çalışan kendi adına talep açar
   const employeesQ = useSWR(isManager ? 'employees:active' : null, fetchActiveEmployees)
   const employees: EmployeeWithRole[] = isManager

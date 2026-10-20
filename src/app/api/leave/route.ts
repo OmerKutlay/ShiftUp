@@ -38,10 +38,14 @@ export async function GET(req: NextRequest) {
     const employeeId = sp.get('employee_id')
     const from = sp.get('from')
     const to = sp.get('to')
+    // ?exclude_type=weekly_rest → İzinler sayfası haftalık tatilleri listelemez (planla birlikte
+    // her hafta birikirler; hafta tatilleri Haftalık plan'da yönetilir)
+    const excludeType = sp.get('exclude_type')
 
     if (statusFilter && !VALID_STATUSES.includes(statusFilter)) return badRequest('Geçersiz durum filtresi.')
     if (employeeId && !isUuid(employeeId)) return badRequest('Geçersiz çalışan ID.')
     if ((from && !isValidDate(from)) || (to && !isValidDate(to))) return badRequest('Geçersiz tarih aralığı.')
+    if (excludeType && !VALID_LEAVE_TYPES.includes(excludeType as LeaveType)) return badRequest('Geçersiz izin tipi.')
 
     const admin = createAdminClient()
 
@@ -56,6 +60,7 @@ export async function GET(req: NextRequest) {
 
     if (statusFilter) query = query.eq('status', statusFilter)
     if (employeeId) query = query.eq('employee_id', employeeId)
+    if (excludeType) query = query.neq('leave_type', excludeType)
     // Aralıkla kesişen izinler
     if (to) query = query.lte('start_date', to)
     if (from) query = query.gte('end_date', from)
