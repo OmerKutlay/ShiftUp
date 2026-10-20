@@ -1,9 +1,11 @@
 'use client'
 
 /**
- * PeriodStepper — "‹ Ekim 2026 ›" biçiminde dönem gezgini (ay / hafta).
+ * PeriodStepper — "‹ Ekim 2026 ›" biçiminde dönem gezgini (ay / hafta): shadcn ButtonGroup.
  */
 import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { ButtonGroup } from '@/components/ui/button-group'
 
 interface Props {
   label: React.ReactNode
@@ -17,25 +19,22 @@ interface Props {
   nextDisabled?: boolean
 }
 
-const arrow =
-  'flex w-10 items-center justify-center self-stretch text-ink-secondary transition-colors outline-none hover:bg-muted focus-visible:bg-accent disabled:pointer-events-none disabled:text-ink-muted/50'
-
 export function PeriodStepper({ label, onPrev, onNext, prevLabel, nextLabel, minLabelWidth = 96, nextDisabled }: Props) {
   return (
-    <div className="inline-flex h-10 shrink-0 items-center overflow-hidden rounded-[10px] border bg-card">
-      <button type="button" onClick={onPrev} aria-label={prevLabel} className={arrow}>
-        <ChevronLeft className="size-4" />
-      </button>
+    <ButtonGroup className="shrink-0">
+      <Button variant="outline" size="icon" onClick={onPrev} aria-label={prevLabel}>
+        <ChevronLeft />
+      </Button>
       <div
         aria-live="polite"
-        className="flex items-center justify-center self-stretch whitespace-nowrap border-x px-3 text-sm font-semibold"
+        className="flex h-9 items-center justify-center border-y bg-background px-3 text-sm font-medium whitespace-nowrap shadow-xs"
         style={{ minWidth: minLabelWidth }}
       >
         {label}
       </div>
-      <button type="button" onClick={onNext} aria-label={nextLabel} disabled={nextDisabled} className={arrow}>
-        <ChevronRight className="size-4" />
-      </button>
-    </div>
+      <Button variant="outline" size="icon" onClick={onNext} aria-label={nextLabel} disabled={nextDisabled}>
+        <ChevronRight />
+      </Button>
+    </ButtonGroup>
   )
 }

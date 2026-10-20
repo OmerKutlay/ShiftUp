@@ -1,7 +1,8 @@
 'use client'
 
 /**
- * SegmentedControl — bej zemin üstünde beyaz seçili seçenekli hap grup (Kişiler / Tablo, Hafta / Gün).
+ * SegmentedControl — görünüm seçici (Kişiler / Tablo, Hafta / Gün): shadcn TabsList görünümünde
+ * düğme grubu. Sekme içeriği değiştirmeyen, yalnızca görünümü seçen yerlerde kullanılır.
  */
 import { cn } from '@/lib/utils'
 
@@ -15,17 +16,17 @@ interface Props<T extends string> {
   onChange: (value: T) => void
   options: Option<T>[]
   'aria-label': string
-  /** Seçili seçenek koyu (mürekkep) zeminli — mobil sekme görünümü */
+  /** @deprecated görünüm farkı kaldırıldı */
   dark?: boolean
   fullWidth?: boolean
 }
 
-export function SegmentedControl<T extends string>({ value, onChange, options, dark, fullWidth, ...rest }: Props<T>) {
+export function SegmentedControl<T extends string>({ value, onChange, options, fullWidth, ...rest }: Props<T>) {
   return (
     <div
       role="group"
       aria-label={rest['aria-label']}
-      className={cn('h-10 shrink-0 gap-0.5 rounded-[10px] bg-surface-muted p-[3px]', fullWidth ? 'flex' : 'inline-flex')}
+      className={cn('h-9 shrink-0 items-center rounded-lg bg-muted p-[3px] text-muted-foreground', fullWidth ? 'flex' : 'inline-flex')}
     >
       {options.map((o) => {
         const selected = o.value === value
@@ -36,11 +37,10 @@ export function SegmentedControl<T extends string>({ value, onChange, options, d
             aria-pressed={selected}
             onClick={() => onChange(o.value)}
             className={cn(
-              'whitespace-nowrap rounded-lg px-3.5 text-[0.8125rem] font-semibold transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
+              'inline-flex h-full items-center justify-center gap-1.5 rounded-md border border-transparent px-3 text-sm font-medium whitespace-nowrap transition-[color,box-shadow] outline-none',
+              'focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 [&_svg]:size-4',
               fullWidth && 'flex-1',
-              selected
-                ? dark ? 'bg-ink text-white' : 'bg-card text-ink shadow-[0_1px_2px_rgb(43_33_27/0.08)]'
-                : 'text-ink-secondary hover:text-ink'
+              selected ? 'bg-background text-foreground shadow-sm' : 'hover:text-foreground'
             )}
           >
             {o.label}
