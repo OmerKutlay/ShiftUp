@@ -6,6 +6,9 @@
  *      tolerans aşıldıysa yöneticilere "geç giriş" / "geç çıkış" bildirimi.
  *   2. Periyodik tarama: vardiya başlamış ama giriş okutulmamış ya da vardiya
  *      bitmiş ama çıkış okutulmamış çalışanlar için yöneticilere bildirim.
+ *      Asıl tarama veritabanında pg_cron ile çalışır (public.scan_missed_attendance,
+ *      20261023100000_attendance_missed_scan_cron.sql) — uygulama kapalıyken de push gider.
+ *      Buradaki TS kopyası yedektir; mantık değişirse SQL fonksiyonu da güncellenmeli.
  *
  * Tüm bildirimler related_id = shift_assignment_id taşır; aynı vardiya için
  * aynı tipte ikinci bildirim gönderilmez.

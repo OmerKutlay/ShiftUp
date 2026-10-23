@@ -9,8 +9,9 @@
  *   - POST : CRON_SECRET veya Müdür Yardımcısı+ oturumu
  *     (oturumlu tetikleme yalnızca POST — tarayıcıdan GET ile CSRF tetiklenemez)
  *
- * Not: Cron kurulmasa da yönetici bildirim sorgusu (GET /api/notifications)
- * aynı taramayı dakikada en fazla bir kez tetikler.
+ * Not: Asıl tarama veritabanında pg_cron ile 2 dakikada bir çalışır
+ * (public.scan_missed_attendance). Bu uç nokta ve yönetici bildirim sorgusundaki
+ * (GET /api/notifications) dakikada bir tetikleme yedektir.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { timingSafeEqual } from 'crypto'
