@@ -45,6 +45,10 @@ npx supabase db push         # bağlı (canlı) projeye uygula
 > Vardiya hatırlatma bildirimleri `shift-reminder-job` (pg_cron, 5 dk) ile `shift-reminder`
 > Edge Function'ını çağırır; fonksiyonun kaynağı bu repoda değildir.
 >
+> "Giriş/çıkış okutulmadı" uyarıları `attendance-missed-scan` (pg_cron, 2 dk) ile
+> `public.scan_missed_attendance()` SQL fonksiyonundan gelir
+> (`20261023100000_attendance_missed_scan_cron.sql`); uygulama kapalıyken de push gider.
+>
 > Bütünlük migration'ı (`20261012100100_integrity_constraints.sql`) mevcut veride çakışma
 > bulursa ilgili tekil kısıtı oluşturmaz ve `WARNING` basar — hiçbir veri silinmez. Çıktıyı
 > kontrol edip uyarıdaki sorguyla kayıtları inceleyin.
