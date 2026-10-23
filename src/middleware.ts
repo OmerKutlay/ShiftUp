@@ -18,6 +18,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { DEV_SESSION_COOKIE, IS_DEV_AUTH } from '@/lib/authConfig'
 import { verifyDevSessionEdge } from '@/lib/auth/devSessionEdge'
+import { isSessionExpired } from '@/lib/auth/sessionAge'
 import { isKioskRole, roleAtLeast, accessLevelOf, ACCESS, type AccessLevel } from '@/lib/auth/roles'
 import { startTrace } from '@/lib/requestTrace'
 
@@ -165,7 +166,18 @@ export async function middleware(request: NextRequest) {
     const { createSupabaseMiddlewareClient } = await import('@/lib/supabase/middleware-client')
     const supabase = createSupabaseMiddlewareClient(request, response)
     const { data: { user } } = await supabase.auth.getUser()
-    if (user) identity = { authUserId: user.id }
+    if (user) {
+      // Girişten 30 gün geçtiyse oturum kesin kapanır (refresh token sunucuda iptal edilir)
+      const { data: { session } } = await supabase.auth.getSession()
+      if (isSessionExpired(session?.access_token, user.last_sign_in_at)) {
+        await supabase.auth.signOut().catch(() => {})
+        trace.step('session', { ok: false, expired: true })
+        return pathname === '/login'
+          ? clearSessionCookies(request, response)
+          : redirectToLogin(request, null, true)
+      }
+      identity = { authUserId: user.id }
+    }
   }
 
   // /login ve korumalı sayfalar AYNI ölçütü kullanır: geçerli oturum + aktif çalışan kaydı.
