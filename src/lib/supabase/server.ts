@@ -10,6 +10,7 @@
  */
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { SUPABASE_COOKIE_OPTIONS } from '@/lib/auth/sessionAge'
 
 export async function createSupabaseServerClient() {
   const cookieStore = await cookies()
@@ -24,6 +25,7 @@ export async function createSupabaseServerClient() {
   }
 
   return createServerClient(url, key, {
+    cookieOptions: SUPABASE_COOKIE_OPTIONS,
     cookies: {
       getAll() {
         return cookieStore.getAll()

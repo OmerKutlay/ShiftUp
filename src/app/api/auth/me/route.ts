@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { IS_DEV_AUTH, DEV_SESSION_COOKIE } from '@/lib/authConfig'
 import { verifyDevSession } from '@/lib/auth/devSession'
+import { isSessionExpired } from '@/lib/auth/sessionAge'
 
 const EMPLOYEE_SELECT = `
   id,
@@ -66,6 +67,13 @@ export async function GET(req: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
+      return NextResponse.json({ employee: null }, { status: 401 })
+    }
+
+    // Girişten 30 gün geçtiyse oturum kesin kapanır (bkz. sessionAge)
+    const { data: { session } } = await supabase.auth.getSession()
+    if (isSessionExpired(session?.access_token, user.last_sign_in_at)) {
+      await supabase.auth.signOut().catch(() => {})
       return NextResponse.json({ employee: null }, { status: 401 })
     }
 

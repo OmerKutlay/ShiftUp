@@ -16,6 +16,7 @@
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { IS_DEV_AUTH, DEV_SESSION_COOKIE } from '@/lib/authConfig'
 import { verifyDevSession } from './devSession'
+import { isSessionExpired } from './sessionAge'
 import { accessLevelOf, type AccessLevel } from './roles'
 
 export interface SessionEmployee {
@@ -88,6 +89,13 @@ export async function getCurrentEmployee(
     const supabase = await createSupabaseServerClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return null
+
+    // Girişten 30 gün geçtiyse oturum kesin kapanır (bkz. sessionAge)
+    const { data: { session } } = await supabase.auth.getSession()
+    if (isSessionExpired(session?.access_token, user.last_sign_in_at)) {
+      await supabase.auth.signOut().catch(() => {})
+      return null
+    }
 
     const { data } = await admin
       .from('employees')

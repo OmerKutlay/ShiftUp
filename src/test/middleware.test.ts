@@ -11,6 +11,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest, type NextResponse } from 'next/server'
 
 const getUser = vi.fn()
+const signOut = vi.fn(async () => ({ error: null }))
+let accessToken: string | null = null
 let employeeRow: { data: unknown; error: unknown } = { data: null, error: null }
 
 vi.mock('@/lib/authConfig', () => ({ IS_DEV_AUTH: false, DEV_SESSION_COOKIE: 'dev_auth_session' }))
@@ -23,6 +25,8 @@ vi.mock('@/lib/supabase/middleware-client', () => ({
         if (r.refreshed) res.cookies.set('sb-proj-auth-token', 'NEW_TOKEN', { path: '/' })
         return { data: { user: r.user } }
       },
+      getSession: async () => ({ data: { session: accessToken ? { access_token: accessToken } : null } }),
+      signOut,
     },
   }),
 }))
@@ -53,6 +57,7 @@ function asEmployee(accessLevel: string, active = true) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  accessToken = null
   getUser.mockResolvedValue({ user: { id: 'auth-1' }, refreshed: false })
   asEmployee('employee')
 })
@@ -162,5 +167,39 @@ describe('middleware — PWA dosyaları oturumsuz erişilebilir', () => {
       expect(location(res)).toBeNull()
     }
     expect(getUser).not.toHaveBeenCalled()
+  })
+})
+
+describe('middleware — oturum girişten 30 gün sonra kesin kapanır', () => {
+  const DAY = 24 * 60 * 60
+  /** amr claim'inde giriş anı taşıyan (imzasız) test token'ı */
+  const tokenLoggedInDaysAgo = (days: number) => {
+    const payload = { amr: [{ method: 'otp', timestamp: Math.floor(Date.now() / 1000) - days * DAY }] }
+    return `h.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.s`
+  }
+
+  it('29 günlük oturum geçerli kalır', async () => {
+    accessToken = tokenLoggedInDaysAgo(29)
+    const res = await middleware(req('/my-schedule', { cookie: OLD_COOKIE }))
+    expect(location(res)).toBeNull()
+    expect(signOut).not.toHaveBeenCalled()
+  })
+
+  it('31 günlük oturum: /login\'e yönlendirilir, çerezler silinir, refresh token iptal edilir', async () => {
+    accessToken = tokenLoggedInDaysAgo(31)
+    const res = await middleware(req('/my-schedule', { cookie: OLD_COOKIE }))
+    expect(location(res)).toBe('/login?next=%2Fmy-schedule')
+    expect(res.headers.get('set-cookie')).toMatch(/sb-proj-auth-token=;/)
+    expect(signOut).toHaveBeenCalledOnce()
+
+    const login = await middleware(req('/login', { cookie: OLD_COOKIE }))
+    expect(login.status).toBe(200) // döngü yok: giriş formu gösterilir
+  })
+
+  it('amr yoksa last_sign_in_at kullanılır', async () => {
+    getUser.mockResolvedValue({
+      user: { id: 'auth-1', last_sign_in_at: new Date(Date.now() - 31 * DAY * 1000).toISOString() },
+    })
+    expect(location(await middleware(req('/my-schedule', { cookie: OLD_COOKIE })))).toBe('/login?next=%2Fmy-schedule')
   })
 })
