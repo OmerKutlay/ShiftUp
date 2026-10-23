@@ -27,6 +27,7 @@ import {
   getMoreItems,
   groupNavItems,
   isNavActive,
+  pageMetaFor,
 } from '@/components/layout/navItems'
 import { ACCESS, type AccessLevel } from '@/lib/auth/roles'
 import { MobileBottomNav } from '@/components/layout/MobileBottomNav'
@@ -93,7 +94,14 @@ describe('getMoreItems / filterNavItems', () => {
     expect(items).toEqual(expect.arrayContaining(['/dashboard', '/employees', '/reports', '/my-schedule', '/leave']))
     expect(items).not.toContain('/settings')
     expect(items).not.toContain('/notifications')
-    expect(items).not.toContain('/')
+  })
+  it('Günlük operasyon herkese Daha fazla › Operasyon altında görünür (yöneticide Bugün sekmesi olsa da)', () => {
+    const daily = (role: AccessLevel) => getMoreItems(role).find((i) => i.label === 'Günlük operasyon')
+    expect(daily(ACCESS.MANAGER)).toMatchObject({ href: '/', group: 'operasyon' })
+    // Çalışanın "/" ana sayfası Vardiyam'dır; aynı sayfa ona /daily'de açılır
+    expect(daily(ACCESS.EMPLOYEE)).toMatchObject({ href: '/daily', group: 'operasyon' })
+    expect(pageMetaFor('/daily', ACCESS.EMPLOYEE).title).toBe('Günlük operasyon')
+    expect(pageMetaFor('/daily').title).toBe('Günlük operasyon')
   })
   it('çalışan İş gücü sayfasını "Müsaitlik ve takas" adıyla Planlama grubunda görür', () => {
     const item = getMoreItems(ACCESS.EMPLOYEE).find((i) => i.href === '/workforce')
@@ -107,7 +115,7 @@ describe('getMoreItems / filterNavItems', () => {
   it('gruplar sabit sırada, boş grup yok', () => {
     const groups = groupNavItems(getMoreItems(ACCESS.EMPLOYEE))
     expect(groups.every((g) => g.items.length > 0)).toBe(true)
-    expect(groups.map((g) => g.group)).toEqual(['planlama', 'devam', 'hesap'])
+    expect(groups.map((g) => g.group)).toEqual(['operasyon', 'planlama', 'devam', 'hesap'])
   })
 })
 

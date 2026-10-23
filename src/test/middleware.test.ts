@@ -129,6 +129,18 @@ describe('middleware — yenilenen oturum çerezleri yönlendirmede korunur', ()
   })
 })
 
+describe('middleware — Günlük operasyon', () => {
+  it('çalışanın ana sayfası Vardiyam kalır; Günlük operasyonu /daily\'de açar', async () => {
+    expect(location(await middleware(req('/', { cookie: OLD_COOKIE })))).toBe('/my-schedule')
+    expect(location(await middleware(req('/daily', { cookie: OLD_COOKIE })))).toBeNull()
+  })
+
+  it('yönetici "/"de Günlük operasyonu görür', async () => {
+    asEmployee('manager')
+    expect(location(await middleware(req('/', { cookie: OLD_COOKIE })))).toBeNull()
+  })
+})
+
 describe('middleware — API istekleri', () => {
   it('API isteklerinde Supabase oturum çağrısı yapılmaz (route kendi doğrular)', async () => {
     const res = await middleware(req('/api/auth/me', { cookie: OLD_COOKIE }))

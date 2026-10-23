@@ -136,6 +136,8 @@ export async function mockApi(context: BrowserContext, opts: MockApiOptions = {}
           return json(route, { enabled: false, publicKey: null })
         case '/api/attendance/current-status':
           return json(route, opts.currentStatus ?? DEFAULT_CURRENT_STATUS)
+        case '/api/attendance/daily':
+          return json(route, { date: new Date().toISOString().slice(0, 10), entries: [] })
         case '/api/notifications':
           return json(route, { notifications: [] })
         case '/api/store-location/name':
