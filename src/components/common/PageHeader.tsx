@@ -1,6 +1,6 @@
 /**
  * PageHeader — sayfa başlığı: başlık + açıklama solda, eylemler sağda (DESIGN_GUIDE §4).
- * Mobilde eylemler başlığın altına iner.
+ * Mobilde eylemler başlığın altına iner ve sağa hizalanır.
  */
 import { cn } from '@/lib/utils'
 
@@ -37,7 +37,7 @@ export function PageHeader({
         {desc && <div className="text-sm text-muted-foreground">{desc}</div>}
         {meta && <p className="text-xs text-muted-foreground">{meta}</p>}
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      {actions && <div className="flex flex-wrap items-center gap-2 max-sm:justify-end">{actions}</div>}
     </header>
   )
 }

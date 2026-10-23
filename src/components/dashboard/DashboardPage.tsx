@@ -296,7 +296,7 @@ export function DashboardPage() {
           </>
         }
         actions={
-          <Button variant="outline" className="max-sm:ml-auto" onClick={() => void load()} disabled={loading}>
+          <Button variant="outline" onClick={() => void load()} disabled={loading}>
             {loading ? <Spinner /> : <RefreshCw />}
             Yenile
           </Button>
