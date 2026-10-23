@@ -330,8 +330,10 @@ export function LoginForm({ authMode }: Props) {
                     <div className="relative">
                       <input
                         id="login-otp"
-                        type="text"
+                        // type="tel": inputMode'u yok sayan klavyelerde (ör. Samsung) de rakam tuş takımı açılır
+                        type="tel"
                         inputMode="numeric"
+                        pattern="[0-9]*"
                         value={state.otp}
                         onChange={(e) => {
                           const v = e.target.value.replace(/\D/g, '').slice(0, 6)
