@@ -7,13 +7,13 @@
  * içindeki yeri, tür rengiyle) → durum sekmesi + arama → DataTable (mobilde Item kartları)
  * → satır menüsü (Düzenle) → form Dialog → sonuç toast.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
+import useSWR, { useSWRConfig } from 'swr'
 import { CalendarClock, MoreHorizontal, Plus, Search, SquarePen, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
 
 import type { CreateShiftTemplatePayload, ShiftTemplate, UpdateShiftTemplatePayload } from '@/types/shiftTemplate'
 import { createShiftTemplate, fetchShiftTemplates, updateShiftTemplate } from '@/lib/api/shiftTemplates'
-import { useLoadedKey } from '@/hooks/useLoadedKey'
 import { cn } from '@/lib/utils'
 import {
   DataTable, Page, PageHeader, SegmentedControl, StatusBadge, TableSkeleton, type ColumnDef,
@@ -161,9 +161,11 @@ function DayTimeline({ rows }: { rows: Row[] }) {
 // ─── Sayfa ───────────────────────────────────────────────────
 
 export function ShiftTemplatesPage() {
-  const [templates, setTemplates] = useState<ShiftTemplate[]>([])
-  const { isFirstLoad, markLoaded } = useLoadedKey()
-  const [error, setError] = useState<string | null>(null)
+  // SWR önbelleği: sayfaya dönüşte son liste hemen görünür, arka planda tazelenir
+  const templatesQ = useSWR('shift-templates:all', fetchShiftTemplates)
+  const templates = useMemo(() => templatesQ.data ?? [], [templatesQ.data])
+  const isFirstLoad = !templatesQ.data && !templatesQ.error
+  const error = templatesQ.error ? (templatesQ.error instanceof Error ? templatesQ.error.message : 'Yükleme hatası.') : null
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<ShiftTemplate | null>(null)
@@ -172,21 +174,9 @@ export function ShiftTemplatesPage() {
   const [status, setStatus] = useState<StatusFilter>('all')
   const [search, setSearch] = useState('')
 
-  const load = useCallback(async () => {
-    setError(null)
-    try {
-      const data = await fetchShiftTemplates()
-      setTemplates(data)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Yükleme hatası.')
-    } finally {
-      markLoaded()
-    }
-  }, [markLoaded])
-
-  useEffect(() => {
-    void load() // eslint-disable-line react-hooks/set-state-in-effect
-  }, [load])
+  const { mutate } = useSWRConfig()
+  // Aktif şablon listesi (haftalık plan) de değişmiş olabilir
+  const load = () => mutate((key) => typeof key === 'string' && key.startsWith('shift-templates:'))
 
   const openCreate = () => {
     setEditTarget(null)

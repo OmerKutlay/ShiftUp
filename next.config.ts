@@ -57,6 +57,11 @@ const nextConfig: NextConfig = {
   cacheComponents: false,
   partialPrefetching: false,
   experimental: {
+    // İstemci router önbelleği: ziyaret edilen / önceden yüklenen sayfa 30 dk sunucuya gitmeden açılır
+    // (dynamic varsayılanı 0 — her geçişte Worker + oturum kontrolü ve "Yükleniyor…" ekranı).
+    // Sayfalar client bileşeni; veri SWR'dan gelir ve geri dönüşte arka planda tazelenir.
+    // Çıkış / oturum düşmesi tam sayfa yüklemesi yaptığından önbellek kullanıcılar arasında taşınmaz.
+    staleTimes: { dynamic: 1800, static: 1800 },
     // API route'larındaki try/catch'lerin yakalayıp logladığı prerender bail-out gürültüsünü gizler
     hideLogsAfterAbort: true,
   },

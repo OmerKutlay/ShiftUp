@@ -47,9 +47,10 @@ export function MobileBottomNav() {
 
 function TabLink({ tab, active }: { tab: BottomTab; active: boolean }) {
   return (
+    // Yalnızca alt sekmeler (en fazla 5) önceden yüklenir; staleTimes ile 30 dk'da bir kez —
+    // ilk dokunuşta da sunucu beklenmez. Kenar çubuğu ve "Daha fazla" listesi prefetch={false} kalır.
     <Link
       href={tab.href}
-      prefetch={false}
       aria-current={active ? 'page' : undefined}
       className={cn(
         'relative flex min-w-0 flex-col items-center justify-center gap-1 outline-none transition-colors',

@@ -3,11 +3,11 @@
 /**
  * useNotifications hook — FAZ 10
  * Seçili employee_id'ye ait bildirimleri yönetir.
- * Yükleme: ilk mount + employeeId değişimi + (opsiyonel) pollMs aralığıyla periyodik yenileme.
+ * Yükleme: SWR (anahtar: employeeId) + (opsiyonel) pollMs aralığıyla periyodik yenileme; gizli sekmede durur.
  */
-import { useState, useEffect, useCallback } from 'react'
-import { useLoadedKey } from './useLoadedKey'
-import { useAutoRefresh } from '@/hooks/useAutoRefresh'
+import { useEffect, useCallback, useMemo } from 'react'
+import useSWR from 'swr'
+import { apiFetch } from '@/lib/api/http'
 import type { Notification } from '@/types/notification'
 import { registerPushSignOutHook, syncSubscription } from '@/lib/pwa/push'
 
@@ -29,40 +29,29 @@ function setAppBadge(count: number) {
 }
 
 export function useNotifications(employeeId: string | null, pollMs?: number) {
-  const [notifications, setNotifications] = useState<Notification[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const { isFirstLoad, markLoaded } = useLoadedKey(employeeId ?? '')
+  // SWR önbelleği: zil ve sayfa aynı veriyi paylaşır; sayfaya dönüşte son liste hemen görünür,
+  // arka planda tazelenir ve yalnızca veri değiştiyse yeniden çizilir
+  const key = employeeId ? (['notifications', employeeId] as const) : null
+  const q = useSWR(key, () => apiFetch<{ notifications: Notification[] }>('/api/notifications?limit=30'), {
+    refreshInterval: pollMs,
+  })
+  const { mutate } = q
+  const notifications = useMemo(() => q.data?.notifications ?? [], [q.data])
+  const error = q.error ? 'Bildirimler yüklenemedi.' : null
+  const isFirstLoad = !q.data && !q.error
+  const loading = q.isLoading
 
-  const fetch = useCallback(async () => {
-    if (!employeeId) {
-      setNotifications([])
-      return
-    }
-    try {
-      const res = await window.fetch(`/api/notifications?limit=30`, {
-        credentials: 'same-origin',
-      })
-      if (!res.ok) return
-      const json = await res.json() as { notifications: Notification[] }
-      setNotifications(json.notifications ?? [])
-      setError(null)
-    } catch {
-      setError('Bildirimler yüklenemedi.')
-    }
-  }, [employeeId])
+  const fetch = useCallback(async () => { await mutate() }, [mutate])
 
-  useEffect(() => {
-    if (!employeeId) return
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLoading(true)
-    fetch().finally(() => {
-      setLoading(false)
-      markLoaded(employeeId)
-    })
-  }, [employeeId, fetch, markLoaded])
-
-  useAutoRefresh(fetch, pollMs, !!employeeId)
+  /** Okundu işaretini önbellekte hemen uygular (optimistik) */
+  const markLocal = useCallback(
+    (match: (n: Notification) => boolean) =>
+      mutate(
+        (d) => d && { ...d, notifications: d.notifications.map((n) => (match(n) ? { ...n, is_read: true } : n)) },
+        { revalidate: false },
+      ),
+    [mutate],
+  )
 
   // Push geldiğinde (service worker → PUSH_RECEIVED) listeyi beklemeden yenile
   useEffect(() => {
@@ -85,7 +74,7 @@ export function useNotifications(employeeId: string | null, pollMs?: number) {
   }, [employeeId])
 
   const unreadCount = notifications.filter((n) => !n.is_read).length
-  const loaded = !!employeeId && !isFirstLoad
+  const loaded = !!employeeId && !!q.data
 
   // Uygulama ikonu rozeti (Badging API; destekleyen kurulu PWA'larda)
   useEffect(() => {
@@ -96,10 +85,7 @@ export function useNotifications(employeeId: string | null, pollMs?: number) {
   const markAsRead = useCallback(
     async (notificationId: string) => {
       if (!employeeId) return
-      // Optimistik güncelleme
-      setNotifications((prev) =>
-        prev.map((n) => (n.id === notificationId ? { ...n, is_read: true } : n)),
-      )
+      void markLocal((n) => n.id === notificationId)
       try {
         await window.fetch('/api/notifications/read', {
           method: 'PATCH',
@@ -112,13 +98,12 @@ export function useNotifications(employeeId: string | null, pollMs?: number) {
         fetch()
       }
     },
-    [employeeId, fetch],
+    [employeeId, fetch, markLocal],
   )
 
   const markAllAsRead = useCallback(async () => {
     if (!employeeId) return
-    // Optimistik güncelleme
-    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })))
+    void markLocal(() => true)
     try {
       await window.fetch('/api/notifications/read-all', {
         method: 'PATCH',
@@ -129,7 +114,7 @@ export function useNotifications(employeeId: string | null, pollMs?: number) {
     } catch {
       fetch()
     }
-  }, [employeeId, fetch])
+  }, [employeeId, fetch, markLocal])
 
   const refresh = useCallback(() => fetch(), [fetch])
 
