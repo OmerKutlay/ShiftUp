@@ -351,16 +351,17 @@ export function DirectCorrectionCard() {
             </FieldDescription>
           </Field>
 
-          <div className="grid gap-4 sm:grid-cols-3">
-            <DateField label="Tarih" value={directForm.date}
+          {/* DateField etiketi Label + gap-1.5 kullanır; saat alanları aynı ölçüyle hizalanır */}
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+            <DateField label="Tarih" value={directForm.date} className="col-span-2 sm:col-span-1"
               onChange={(v) => setDirectForm((f) => ({ ...f, date: v }))} fullWidth />
-            <Field>
-              <FieldLabel htmlFor="tc-direct-start">Giriş saati</FieldLabel>
+            <Field className="gap-1.5">
+              <FieldLabel htmlFor="tc-direct-start" className="leading-none">Giriş saati</FieldLabel>
               <Input id="tc-direct-start" type="time" step={300} value={directForm.start} className="tabular-nums"
                 onChange={(e) => setDirectForm((f) => ({ ...f, start: e.target.value }))} />
             </Field>
-            <Field>
-              <FieldLabel htmlFor="tc-direct-end">Çıkış saati</FieldLabel>
+            <Field className="gap-1.5">
+              <FieldLabel htmlFor="tc-direct-end" className="leading-none">Çıkış saati</FieldLabel>
               <Input id="tc-direct-end" type="time" step={300} value={directForm.end} className="tabular-nums"
                 onChange={(e) => setDirectForm((f) => ({ ...f, end: e.target.value }))} />
             </Field>

@@ -55,6 +55,7 @@ export const SHOTS: Shot[] = [
   { name: 'leave-new', path: '/leave', personas: E, steps: [{ button: /izin talebi|yeni talep|talep oluştur/i }], viewportOnly: true },
 
   { name: 'time-correction', path: '/time-correction', personas: ALL },
+  { name: 'time-correction-direct', path: '/time-correction', personas: M, steps: [{ tab: /doğrudan/i }] },
   { name: 'time-correction-mine', path: '/time-correction', personas: M, steps: [{ tab: /taleplerim|benim/i }] },
 
   { name: 'workforce-availability', path: '/workforce', personas: ALL },
