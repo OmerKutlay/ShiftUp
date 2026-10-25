@@ -9,8 +9,9 @@
  *   Açık        açık durumdaki vardiyalar
  *   Takas       kullanıcının işlem yapması gereken talepler
  */
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import useSWR from 'swr'
+import { format } from 'date-fns'
 import { ArrowLeftRight, BriefcaseBusiness, CalendarClock, CalendarRange, TriangleAlert } from 'lucide-react'
 import { AvailabilityEditor } from './AvailabilityEditor'
 import { OpenShiftsPanel } from './OpenShiftsPanel'
@@ -19,8 +20,6 @@ import { WorkforcePlanningPanel } from './WorkforcePlanningPanel'
 import {
   SWAPS_KEY, availabilityKey, fetchAvailability, fetchOpenShifts, fetchSwaps, openShiftsKey,
 } from './workforceShared'
-import type { EmployeeWithRole } from '@/types/employee'
-import type { ShiftAssignmentWithDetails } from '@/types/schedule'
 import { fetchActiveEmployees } from '@/lib/api/employees'
 import { fetchWeeklyAssignments } from '@/lib/api/schedule'
 import { useAuth } from '@/context/AuthContext'
@@ -29,7 +28,6 @@ import { Page, PageHeader, TableSkeleton } from '@/components/common'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useLoadedKey } from '@/hooks/useLoadedKey'
 
 type WorkforceTab = 'availability' | 'open-shifts' | 'swap' | 'plan'
 
@@ -50,10 +48,6 @@ function Count({ n }: { n: number | undefined }) {
 
 export function WorkforcePage() {
   const [tab, setTab] = useState<WorkforceTab>('availability')
-  const [employees, setEmployees] = useState<EmployeeWithRole[]>([])
-  const [assignments, setAssignments] = useState<ShiftAssignmentWithDetails[]>([])
-  const { isFirstLoad, markLoaded } = useLoadedKey()
-  const [error, setError] = useState<string | null>(null)
 
   const { employee: authEmployee } = useAuth()
   const meId = authEmployee?.id ?? null
@@ -62,23 +56,15 @@ export function WorkforcePage() {
     MANAGER_ROLES
   )
 
-  const load = useCallback(async () => {
-    setError(null)
-    try {
-      const [emps, asgns] = await Promise.all([
-        fetchActiveEmployees(),
-        fetchWeeklyAssignments(new Date()),
-      ])
-      setEmployees(emps)
-      setAssignments(asgns)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Yükleme hatası.')
-    } finally {
-      markLoaded()
-    }
-  }, [markLoaded])
-
-  useEffect(() => { void load() }, [load]) // eslint-disable-line react-hooks/set-state-in-effect
+  // SWR önbelleği: sayfaya dönüşte son veri hemen görünür, arka planda tazelenir
+  const employeesQ = useSWR('employees:active', fetchActiveEmployees)
+  const today = format(new Date(), 'yyyy-MM-dd')
+  const assignmentsQ = useSWR(['shifts:week', today], () => fetchWeeklyAssignments(new Date(`${today}T12:00:00`)))
+  const employees = employeesQ.data ?? []
+  const assignments = assignmentsQ.data ?? []
+  const isFirstLoad = (!employeesQ.data && !employeesQ.error) || (!assignmentsQ.data && !assignmentsQ.error)
+  const loadError = employeesQ.error ?? assignmentsQ.error
+  const error = loadError ? (loadError instanceof Error ? loadError.message : 'Yükleme hatası.') : null
 
   // ── Sekme sayaçları (paneller aynı önbelleği kullanır) ──
   const availQ = useSWR(meId ? availabilityKey(isManager, meId) : null, fetchAvailability)
