@@ -248,19 +248,22 @@ export function TimeCorrectionPage() {
 
       {isManager ? (
         <Tabs value={managerTab} onValueChange={(v) => setManagerTab(v as ManagerTab)} className="gap-4">
-          <div className="-mx-4 overflow-x-auto px-4 md:mx-0 md:px-0">
-            <TabsList>
-              <TabsTrigger value="review">
-                Çalışan talepleri
-                {!!pendingCount && <Badge variant="secondary" className="tabular-nums">{pendingCount}</Badge>}
-              </TabsTrigger>
-              <TabsTrigger value="direct">Doğrudan düzeltme</TabsTrigger>
-              <TabsTrigger value="mine">
-                Taleplerim
-                {requests.length > 0 && <Badge variant="secondary" className="tabular-nums">{requests.length}</Badge>}
-              </TabsTrigger>
-            </TabsList>
-          </div>
+          {/* Mobilde üç sekme tam genişlikte, kısa etiketlerle — taşma / yatay kaydırma olmasın */}
+          <TabsList className="w-full sm:w-fit">
+            <TabsTrigger value="review" className="max-sm:min-w-0">
+              <span className="sm:hidden">Çalışanlar</span>
+              <span className="max-sm:hidden">Çalışan talepleri</span>
+              {!!pendingCount && <Badge variant="secondary" className="tabular-nums">{pendingCount}</Badge>}
+            </TabsTrigger>
+            <TabsTrigger value="direct" className="max-sm:min-w-0">
+              <span className="sm:hidden">Doğrudan</span>
+              <span className="max-sm:hidden">Doğrudan düzeltme</span>
+            </TabsTrigger>
+            <TabsTrigger value="mine" className="max-sm:min-w-0">
+              Taleplerim
+              {requests.length > 0 && <Badge variant="secondary" className="tabular-nums">{requests.length}</Badge>}
+            </TabsTrigger>
+          </TabsList>
           <TabsContent value="review"><EmployeeRequestsReview /></TabsContent>
           <TabsContent value="direct"><DirectCorrectionCard /></TabsContent>
           <TabsContent value="mine">{ownView}</TabsContent>
