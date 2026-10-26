@@ -8,6 +8,8 @@ import Link from 'next/link'
 import { ChevronRight, LogIn, LogOut, ShieldCheck } from 'lucide-react'
 
 import { useAuth } from '@/context/AuthContext'
+import { useAnnouncementUnread } from '@/hooks/useAnnouncementUnread'
+import { Badge } from '@/components/ui/badge'
 import { getMoreItems, groupNavItems } from '@/components/layout/navItems'
 import { Page, PageHeader, PersonAvatar } from '@/components/common'
 import { ThemeSelect } from '@/components/common/ThemeSwitch'
@@ -20,6 +22,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 export function MorePage() {
   const { employee, status, signOut } = useAuth()
   const roleName = employee?.roles?.access_level ?? null
+  const announcementsUnread = useAnnouncementUnread()
   const groups = status === 'loading' ? [] : groupNavItems(getMoreItems(roleName))
 
   return (
@@ -65,6 +68,9 @@ export function MorePage() {
                       <ItemTitle>{item.label}</ItemTitle>
                     </ItemContent>
                     <ItemActions>
+                      {item.href === '/announcements' && announcementsUnread > 0 && (
+                        <Badge tone="brand" aria-label={`${announcementsUnread} okunmamış duyuru`}>{announcementsUnread}</Badge>
+                      )}
                       <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
                     </ItemActions>
                   </Link>

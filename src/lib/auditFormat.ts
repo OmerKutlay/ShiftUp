@@ -61,6 +61,7 @@ const ACTION_LABELS: Record<string, string> = {
   'holiday.upsert': 'Resmi tatil kaydedildi',
   'holiday.delete': 'Resmi tatil silindi',
   'report.timesheet.export': 'Aylık puantaj indirildi',
+  'report.payroll.export': 'Bordro puantajı indirildi',
 }
 
 // Yeni bir action eklenip burada unutulursa en azından ana grubu okunur görünsün
@@ -74,6 +75,7 @@ const GROUP_LABELS: Record<string, string> = {
   workforce: 'Planlama işlemi',
   store: 'Mağaza işlemi',
   store_location: 'Mağaza konumu işlemi',
+  store_norm: 'Norm saati işlemi',
   holiday: 'Resmi tatil işlemi',
   report: 'Rapor işlemi',
 }
@@ -120,6 +122,9 @@ const FIELD_LABELS: Record<string, string> = {
   removed: 'Kaldırılan planlı vardiya',
   keptWorked: 'Korunan vardiya (çalışılmış)',
   name: 'Ad',
+  month: 'Ay',
+  norm_hours: 'Norm saati',
+  note: 'Not',
   half_day: 'Yarım gün',
   latitude: 'Enlem',
   longitude: 'Boylam',

@@ -7,6 +7,7 @@
 import { useEffect } from 'react'
 import Link from 'next/link'
 import { CircleAlert, RotateCw } from 'lucide-react'
+import { reportClientError } from '@/lib/api/clientErrors'
 import { Button } from '@/components/ui/button'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 
@@ -19,6 +20,7 @@ export default function Error({
 }) {
   useEffect(() => {
     console.error('[app/error]', error)
+    reportClientError('app-error', error)
   }, [error])
 
   return (

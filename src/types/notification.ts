@@ -9,6 +9,8 @@ export type NotificationType =
   | 'shift_changed'
   /** Haftalık plan aktarıldı ve çalışanın vardiyaları değişti (POST /api/workforce/apply) */
   | 'schedule_published'
+  /** Admin mağazanın aylık norm saatini belirledi (PUT /api/stores/norm) */
+  | 'store_norm_set'
   | 'leave_submitted'
   | 'leave_approved'
   | 'leave_rejected'
@@ -27,6 +29,8 @@ export type NotificationType =
   | 'attendance_missed_clock_out'
   /** Molada olan çalışana: toplam mola 1 saate yaklaştı (pg_cron → scan_break_ending) */
   | 'attendance_break_ending'
+  /** Duyuru yayınlandı / hatırlatıldı (related_id = duyuru id) */
+  | 'announcement'
   /** Eski kurulum testi bildirimleri (endpoint kaldırıldı; mevcut kayıtlar için) */
   | 'push_test'
 

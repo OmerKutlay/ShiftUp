@@ -95,3 +95,24 @@ export async function apiFetch<T>(
   }
   return json as T
 }
+
+/**
+ * Dosya indirir (xlsx/csv): blob + sunucunun Content-Disposition dosya adı.
+ * Hata durumunda (429, 5xx…) JSON gövdesini ApiError'a çevirir — tarayıcı ham JSON'a gitmez.
+ */
+export async function apiDownload(url: string): Promise<{ blob: Blob; filename: string | null }> {
+  const res = await fetch(url, { credentials: 'same-origin' })
+  if (res.status === 401 && typeof window !== 'undefined') window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+  if (!res.ok) {
+    const json = (await res.json().catch(() => ({}))) as Record<string, unknown>
+    throw new ApiError(
+      typeof json.error === 'string' ? json.error : 'İndirme başarısız oldu.',
+      typeof json.code === 'string' ? json.code : undefined,
+      res.status,
+      json
+    )
+  }
+  const cd = res.headers.get('content-disposition') ?? ''
+  const filename = /filename="([^"]+)"/.exec(cd)?.[1] ?? null
+  return { blob: await res.blob(), filename }
+}

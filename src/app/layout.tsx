@@ -61,7 +61,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         */}
         <div
           aria-hidden
-          className="pointer-events-none fixed inset-x-0 top-0 z-[2147483647] hidden h-3 bg-background bg-clip-text standalone:block"
+          className="print-hide pointer-events-none fixed inset-x-0 top-0 z-[2147483647] hidden h-3 bg-background bg-clip-text standalone:block"
         />
         {/* Service Worker kaydı ve güncelleme uyarısı: PwaLayer → ServiceWorkerUpdater */}
         <Providers>{children}</Providers>

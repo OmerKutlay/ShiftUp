@@ -25,8 +25,10 @@ type SettingsTab = 'location' | 'stores' | 'holidays' | 'audit' | 'notifications
 const TABS: { value: SettingsTab; icon: React.ReactNode; label: string; short: string; adminOnly?: boolean }[] = [
   { value: 'location', icon: <MapPin />, label: 'Mağaza konumu', short: 'Konum' },
   { value: 'stores', icon: <Store />, label: 'Mağazalar', short: 'Mağazalar', adminOnly: true },
+  { value: 'norms', icon: <Gauge />, label: 'Norm saatleri', short: 'Norm', adminOnly: true },
   { value: 'holidays', icon: <CalendarDays />, label: 'Resmi tatiller', short: 'Tatiller' },
   { value: 'audit', icon: <History />, label: 'Denetim kaydı', short: 'Denetim' },
+  { value: 'errors', icon: <Bug />, label: 'Hatalar', short: 'Hatalar', adminOnly: true },
   { value: 'notifications', icon: <Bell />, label: 'Bildirimler', short: 'Bildirimler' },
   { value: 'kvkk', icon: <ShieldCheck />, label: 'KVKK', short: 'KVKK' },
 ]
@@ -70,6 +72,7 @@ export function SettingsPage() {
         {/* Yalnızca açık sekme bağlanır: paneller kendi verisini bağlandığında yükler */}
         <TabsContent value="location"><StoreLocationPage embedded /></TabsContent>
         {isAdmin && <TabsContent value="stores"><StoresPanel /></TabsContent>}
+        {isAdmin && <TabsContent value="norms"><NormHoursPanel /></TabsContent>}
         <TabsContent value="holidays"><HolidaysPanel /></TabsContent>
         <TabsContent value="audit"><AuditLogPanel /></TabsContent>
         <TabsContent value="kvkk"><KvkkPanel /></TabsContent>

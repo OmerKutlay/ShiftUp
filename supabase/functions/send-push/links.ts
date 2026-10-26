@@ -9,6 +9,7 @@ export const NOTIFICATION_LINKS: Record<string, string> = {
   shift_reminder: '/my-schedule',
   shift_changed: '/my-schedule',
   schedule_published: '/my-schedule',
+  store_norm_set: '/schedule',
   leave_submitted: '/leave',
   leave_approved: '/leave',
   leave_rejected: '/leave',
@@ -26,6 +27,7 @@ export const NOTIFICATION_LINKS: Record<string, string> = {
   attendance_missed_clock_in: '/',
   attendance_missed_clock_out: '/',
   attendance_break_ending: '/my-schedule',
+  announcement: '/announcements',
   push_test: '/more',
 }
 

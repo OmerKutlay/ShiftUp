@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { addWeeks, format, subWeeks } from 'date-fns'
 import { tr } from 'date-fns/locale'
-import { CircleAlert, Info, Plus, Trash2, Users } from 'lucide-react'
+import { CircleAlert, Info, Plus, Printer, Trash2, Users } from 'lucide-react'
 import { toast } from 'sonner'
 
 import type { EmployeeWithRole } from '@/types/employee'
@@ -49,6 +49,7 @@ import {
 } from './scheduleHelpers'
 import { ShiftKindLegend, weeklyLimitMins } from './ScheduleCells'
 import { MobileDayBoard } from './MobileDayBoard'
+import { MonthlyNormIndicator } from './MonthlyNormIndicator'
 import { WeekGrid, WeekGridSkeleton } from './WeekGrid'
 import { EDITOR_BAR_COMPACT_HEIGHT, ScheduleEditorBar } from './ScheduleEditorBar'
 import {
@@ -624,6 +625,11 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     ? `${weekRange} · ${scheduleEntries.length} kişi · ${summary.shifts} vardiya · ${fmtHoursTr(summary.mins).replace(' s', ' saat')}`
     : !isMobile ? 'Ekibin haftalık vardiya planı' : undefined
 
+  // Aylık norm göstergesi (yönetici); görünen haftanın çoğunluk ayı, taslaklar dahil
+  const normIndicator = hasData && !readOnly ? (
+    <MonthlyNormIndicator weekStart={weekDays[0]} saved={savedAssignments} projected={assignments} />
+  ) : null
+
   const leaveIsRest = !!leaveDeleteDialog && restDayMap.has(`${leaveDeleteDialog.employee.id}:${leaveDeleteDialog.date}`)
 
   return (
@@ -642,20 +648,34 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
             </TooltipContent>
           </Tooltip>
         ) : undefined}
-        actions={hasData && !readOnly && !isMobile && !editing ? (
-          <Button onClick={startEditing}>
-            <Plus />
-            Vardiya ekle
-          </Button>
+        actions={hasData && !editing ? (
+          <>
+            {/* Aynı sekmede açılır: iOS ana ekran uygulamasında target=_blank tarayıcıya atar */}
+            <Button asChild variant="outline" size={isMobile ? 'icon' : 'default'}>
+              <Link href={`/schedule/print?week=${weekDays[0]}`} aria-label="Yazdır">
+                <Printer />
+                {!isMobile && 'Yazdır'}
+              </Link>
+            </Button>
+            {!readOnly && !isMobile && (
+              <Button onClick={startEditing}>
+                <Plus />
+                Vardiya ekle
+              </Button>
+            )}
+          </>
         ) : undefined}
       />
 
       {/* Araç çubuğu */}
       {isMobile ? (
-        <div className="flex items-center gap-2 [&>:first-child]:flex-1">
-          {weekStepper}
-          {hasData && !editing && viewToggle}
-        </div>
+        <>
+          <div className="flex items-center gap-2 [&>:first-child]:flex-1">
+            {weekStepper}
+            {hasData && !editing && viewToggle}
+          </div>
+          {normIndicator}
+        </>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
           {weekStepper}
@@ -672,6 +692,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
               </SelectContent>
             </Select>
           )}
+          {normIndicator}
           {hasData && view === 'week' && <ShiftKindLegend kinds={presentKinds} className="ml-auto" />}
         </div>
       )}

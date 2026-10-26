@@ -3,7 +3,7 @@
  * `short` dar panelde, `label` /notifications sayfasında kullanılır.
  */
 import {
-  BellRing, CalendarCheck, CalendarClock, CalendarPlus, CalendarRange, CalendarX, CircleCheck, Clock, Coffee,
+  BellRing, Megaphone, CalendarCheck, CalendarClock, CalendarPlus, CalendarRange, CalendarX, CircleCheck, Clock, Coffee,
   TriangleAlert, Wrench,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -21,6 +21,7 @@ export const NOTIFICATION_META: Record<NotificationType, NotificationMeta> = {
   shift_reminder:              { Icon: Clock,         tone: 'neutral', label: 'Vardiya hatırlatması', short: 'Vardiya' },
   shift_changed:               { Icon: CalendarClock, tone: 'info',    label: 'Vardiya değişikliği',  short: 'Vardiya' },
   schedule_published:          { Icon: CalendarRange, tone: 'brand',   label: 'Haftalık plan',        short: 'Plan' },
+  store_norm_set:              { Icon: Gauge,         tone: 'info',    label: 'Aylık norm saati',     short: 'Norm' },
   leave_submitted:             { Icon: CalendarPlus,  tone: 'info',    label: 'İzin talebi',          short: 'İzin talebi' },
   leave_approved:              { Icon: CircleCheck,   tone: 'success', label: 'İzin onaylandı',       short: 'Onaylandı' },
   leave_rejected:              { Icon: CalendarX,     tone: 'danger',  label: 'İzin reddedildi',      short: 'Reddedildi' },
@@ -38,6 +39,7 @@ export const NOTIFICATION_META: Record<NotificationType, NotificationMeta> = {
   attendance_missed_clock_in:  { Icon: TriangleAlert, tone: 'danger',  label: 'Giriş okutulmadı',     short: 'Giriş yok' },
   attendance_missed_clock_out: { Icon: TriangleAlert, tone: 'danger',  label: 'Çıkış okutulmadı',     short: 'Çıkış yok' },
   attendance_break_ending:     { Icon: Coffee,        tone: 'warning', label: 'Mola bitiyor',         short: 'Mola' },
+  announcement:                { Icon: Megaphone,     tone: 'brand',   label: 'Duyuru',               short: 'Duyuru' },
   push_test:                 { Icon: BellRing,      tone: 'neutral', label: 'Test bildirimi',       short: 'Test' },
 }
 

@@ -213,3 +213,16 @@ describe('middleware — oturum girişten 30 gün sonra kesin kapanır', () => {
     expect(location(await middleware(req('/my-schedule', { cookie: OLD_COOKIE })))).toBe('/login?next=%2Fmy-schedule')
   })
 })
+
+describe('middleware — /schedule/print erişimi /schedule ile aynı', () => {
+  it('çalışan ve yönetici plan çıktısını açabilir; oturum yoksa girişe yönlenir', async () => {
+    for (const role of ['employee', 'manager']) {
+      asEmployee(role)
+      const res = await middleware(req('/schedule/print?week=2026-10-26', { cookie: OLD_COOKIE }))
+      expect(res.status).toBe(200)
+      expect(location(res)).toBeNull()
+    }
+    getUser.mockResolvedValue({ user: null })
+    expect(location(await middleware(req('/schedule/print')))).toBe('/login?next=%2Fschedule%2Fprint')
+  })
+})

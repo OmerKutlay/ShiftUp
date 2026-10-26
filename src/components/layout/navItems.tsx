@@ -6,7 +6,7 @@
  */
 import {
   BriefcaseBusiness, CalendarClock, CalendarDays, ChartColumnBig, ClipboardCheck, FilePenLine, House, Layers,
-  LayoutDashboard, Menu, Bell, Plane, QrCode, ScanLine, Settings, Users, UsersRound,
+  LayoutDashboard, Megaphone, Menu, Bell, Plane, QrCode, ScanLine, Settings, Users, UsersRound,
 } from 'lucide-react'
 
 import { hasRole, MANAGER_ROLES, ADMIN_ROLES, ACCESS, type AccessLevel } from '@/lib/auth/roles'
@@ -47,6 +47,7 @@ export const DAILY_EMPLOYEE_HREF = '/daily'
 export const NAV_ITEMS: NavItem[] = [
   { label: 'Genel bakış',        href: '/dashboard',       icon: <LayoutDashboard />,     group: 'operasyon', requiredRoles: MANAGER_ROLES },
   { label: 'Günlük operasyon',   href: '/',                icon: <ClipboardCheck />,         group: 'operasyon', employeeHref: DAILY_EMPLOYEE_HREF },
+  { label: 'Duyurular',          href: '/announcements',   icon: <Megaphone />,        group: 'operasyon' },
   { label: 'Çalışanlar',         href: '/employees',       icon: <Users />,        group: 'yonetim',   requiredRoles: MANAGER_ROLES },
   { label: 'Vardiya şablonları', href: '/shift-templates', icon: <Layers />,      group: 'planlama',  requiredRoles: MANAGER_ROLES },
   { label: 'Haftalık plan',      href: '/schedule',        icon: <CalendarDays />, group: 'planlama' },

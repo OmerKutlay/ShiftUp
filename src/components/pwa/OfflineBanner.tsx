@@ -43,7 +43,7 @@ export function OfflineBanner() {
       aria-live="polite"
       className={cn(
         // Ters renkli (koyu) hap: içerikten ayrışır, toast'larla çakışmaz
-        'pointer-events-none fixed left-1/2 z-[1400] flex w-max max-w-[calc(100vw-32px)] -translate-x-1/2 items-center gap-2 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background shadow-lg',
+        'print-hide pointer-events-none fixed left-1/2 z-[1400] flex w-max max-w-[calc(100vw-32px)] -translate-x-1/2 items-center gap-2 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background shadow-lg',
         'bottom-[calc(var(--overlay-offset)+var(--safe-bottom))] md:bottom-4',
         'animate-in fade-in-0 slide-in-from-bottom-2 duration-200 [&_svg]:size-4 [&_svg]:shrink-0'
       )}
