@@ -59,6 +59,7 @@ const ACTION_LABELS: Record<string, string> = {
   'holiday.upsert': 'Resmi tatil kaydedildi',
   'holiday.delete': 'Resmi tatil silindi',
   'report.timesheet.export': 'Aylık puantaj indirildi',
+  'report.payroll.export': 'Bordro puantajı indirildi',
 }
 
 // Yeni bir action eklenip burada unutulursa en azından ana grubu okunur görünsün
