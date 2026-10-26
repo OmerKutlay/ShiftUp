@@ -152,6 +152,16 @@ export async function mockApi(context: BrowserContext, opts: MockApiOptions = {}
             acknowledged_at: '2026-10-01T09:00:00.000Z',
             acknowledged_version: KVKK_NOTICE_VERSION,
           })
+        case '/api/announcements/unread-count':
+          return json(route, { unread_count: 0 })
+        case '/api/checklists/today':
+          return json(route, {
+            date: new Date().toISOString().slice(0, 10),
+            runs: [],
+            can_tick: false,
+            is_manager: employee.roles?.access_level !== 'employee',
+            current_employee_id: employee.id,
+          })
         default:
           unmocked.push(`${route.request().method()} ${path}`)
           return json(route, { error: 'e2e: taklit edilmedi' }, 404)
