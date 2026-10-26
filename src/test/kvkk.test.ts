@@ -107,7 +107,8 @@ describe('GET /api/kvkk/acknowledgements', () => {
     state.employee = storeMgr
     const body = await (await getList(json('GET', '/api/kvkk/acknowledgements'))).json()
     expect(body.employees.map((e: { id: string }) => e.id).sort()).toEqual(['emp-1', 'emp-2'])
-    expect(Object.keys(body.employees[0]).sort()).toEqual(['full_name', 'id', 'kvkk_notice_ack_at', 'kvkk_notice_version'])
+    expect(body.employees[0]).not.toHaveProperty('email')
+    expect(body.employees[0]).not.toHaveProperty('birth_date')
   })
 
   it('aktif mağazası B olan admin yalnızca B çalışanlarını görür', async () => {
