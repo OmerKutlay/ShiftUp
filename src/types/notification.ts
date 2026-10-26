@@ -27,6 +27,8 @@ export type NotificationType =
   | 'attendance_missed_clock_out'
   /** Molada olan çalışana: toplam mola 1 saate yaklaştı (pg_cron → scan_break_ending) */
   | 'attendance_break_ending'
+  /** Kontrol listesi son saatini 15 dk geçti, tamamlanmadı (yöneticilere; pg_cron → scan_checklist_overdue) */
+  | 'checklist_overdue'
   /** Eski kurulum testi bildirimleri (endpoint kaldırıldı; mevcut kayıtlar için) */
   | 'push_test'
 

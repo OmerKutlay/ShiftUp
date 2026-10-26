@@ -26,6 +26,7 @@ export const NOTIFICATION_LINKS: Record<string, string> = {
   attendance_missed_clock_in: '/',
   attendance_missed_clock_out: '/',
   attendance_break_ending: '/my-schedule',
+  checklist_overdue: '/checklists',
   push_test: '/more',
 }
 

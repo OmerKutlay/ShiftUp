@@ -35,6 +35,8 @@ export const NOTIFICATION_LINKS: Record<NotificationType, string> = {
   attendance_missed_clock_out: '/',
   // Mola bitiş hatırlatması çalışana gider → moladan dönüş okutulan sayfa
   attendance_break_ending: '/my-schedule',
+  // Geciken kontrol listesi yöneticilere gider
+  checklist_overdue: '/checklists',
   // Test bildirimi → anlık bildirim ayarının bulunduğu Daha fazla sayfası
   push_test: '/more',
 }
