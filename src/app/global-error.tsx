@@ -6,7 +6,9 @@
  * için yalnızca satır içi stil kullanır. Görünüm shadcn Empty kalıbının aynısı; renkler
  * globals.css'teki stone tema token'larının hex karşılıkları.
  */
+import { useEffect } from 'react'
 import { RotateCw, Sun } from 'lucide-react'
+import { reportClientError } from '@/lib/api/clientErrors'
 
 const C = {
   background: '#FFFFFF',
@@ -25,6 +27,10 @@ export default function GlobalError({
   error: Error & { digest?: string }
   retry: () => void
 }) {
+  useEffect(() => {
+    reportClientError('global-error', error)
+  }, [error])
+
   return (
     <html lang="tr">
       <body

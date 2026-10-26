@@ -5,6 +5,7 @@
  * istemciye yalnızca genel mesaj + kod döner.
  */
 import { NextResponse } from 'next/server'
+import { logError } from '@/lib/errorLog'
 
 export function badRequest(error: string, code = 'VALIDATION_ERROR') {
   return NextResponse.json({ error, code }, { status: 400 })
@@ -24,9 +25,8 @@ export function tooManyRequests(error = 'Çok fazla istek. Lütfen biraz sonra t
 
 /** Beklenmeyen DB/iç hata: detay loglanır, istemciye genel mesaj döner */
 export function serverError(context: string, err?: unknown, message = 'Sunucu hatası.') {
-  const detail =
-    err && typeof err === 'object' && 'message' in err ? (err as { message: unknown }).message : err
-  console.error(`[${context}]`, detail)
+  // console.error + app_errors (asenkron, kısıtlı, fırlatmaz) — bkz. errorLog.ts
+  logError(context, err ?? 'Bilinmeyen hata')
   return NextResponse.json({ error: message, code: 'SERVER_ERROR' }, { status: 500 })
 }
 
