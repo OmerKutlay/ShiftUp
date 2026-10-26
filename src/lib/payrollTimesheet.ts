@@ -57,6 +57,7 @@ export const SGK_MISSING_DAY_CODES: ReadonlyArray<{ code: string; label: string 
 const SGK_REST = '01'
 const SGK_UNPAID = '21'
 const SGK_ABSENT = '15'
+const SGK_TERMINATION = '16'
 const SGK_MULTIPLE = '12'
 
 /** Bordro gün kodları (puantaj kodlarından türetilir) */
@@ -132,9 +133,8 @@ export interface EmploymentWindow {
 }
 
 /**
- * Ay içinde işte olunan aralık. endDate (işten çıkış) şimdilik kimse vermiyor; employees.termination_date
- * eklendiğinde buraya bağlanır — çıkış ayında SGK 16 "Fesih tarihinde çalışmamıştır" eksik günü de
- * bu aralık dışındaki günlerden türetilmelidir (bkz. employedSgkDays). null = ayın tamamı.
+ * Ay içinde işte olunan aralık. endDate = employees.termination_date (son çalışma günü, dahil); SGK 16
+ * "Fesih tarihinde çalışmamıştır" için toPayrollRows. null = ayın tamamı.
  * Ay dışında (işe giriş ay sonundan sonra / çıkış ay başından önce) → null.
  */
 export function employmentWindow(
@@ -157,6 +157,11 @@ export function employmentWindow(
  *   - tam ay → 30 (Şubat dahil: ay sonuna kadar çalışılan Şubat 30 sayılır)
  *   - aksi halde takvim günü sayısı (toDay − fromDay + 1), en çok 30
  * Pencere yoksa (ay dışı) → 0.
+ *
+ * İşten çıkış: termination_date son çalışma günüdür (dahil); sonraki günler işte olunan gün sayılmaz, yani
+ * prim günü çıkış gününde biter. SGK 16 "Fesih tarihinde çalışmamıştır" yalnızca çıkış gününde hiç çalışma
+ * kaydı olmadığında o 1 gün için kullanılır (toPayrollRows). Kaynak (üçüncü taraf, SGK metni değil):
+ * https://www.alomaliye.com/2012/04/17/sgk-eksik-gun-nedenleri/ , https://www.kazimceylan.av.tr/md/sgk-eksik-gun-kodlari
  */
 export function employedSgkDays(month: string, hireDate: string | null | undefined, endDate?: string | null): number {
   const w = employmentWindow(month, hireDate, endDate)
@@ -167,9 +172,10 @@ export function employedSgkDays(month: string, hireDate: string | null | undefin
 }
 
 /** Eksik gün sayısından SGK prim günü ve neden kodu (saf; testlerde doğrudan denenir) */
-export function sgkSummary(employedDays: number, reasons: { rest: number; unpaid: number; absent: number }) {
-  const missing = reasons.rest + reasons.unpaid + reasons.absent
-  const kinds = [reasons.rest > 0 && SGK_REST, reasons.unpaid > 0 && SGK_UNPAID, reasons.absent > 0 && SGK_ABSENT]
+export function sgkSummary(employedDays: number, reasons: { rest: number; unpaid: number; absent: number; termination?: number }) {
+  const termination = reasons.termination ?? 0
+  const missing = reasons.rest + reasons.unpaid + reasons.absent + termination
+  const kinds = [reasons.rest > 0 && SGK_REST, reasons.unpaid > 0 && SGK_UNPAID, reasons.absent > 0 && SGK_ABSENT, termination > 0 && SGK_TERMINATION]
     .filter((c): c is string => !!c)
   return {
     missingDays: missing,
@@ -192,24 +198,28 @@ export function toPayrollRows(month: string, rows: TimesheetRow[]): PayrollRow[]
   const out: PayrollRow[] = []
   for (const r of rows) {
     const hire = r.employee.hire_date ?? null
-    const window = employmentWindow(month, hire)
+    const end = r.employee.termination_date ?? null
+    const window = employmentWindow(month, hire, end)
     if (!window) continue
-    const employed = employedSgkDays(month, hire)
+    const employed = employedSgkDays(month, hire, end)
     // 31. gün yalnızca işte olunan gün 30'a tamamlanmışken prim günü yaratmaz
     const skip31 = len === 31 && employed === 30
 
     const codes: Record<string, PayrollDayCode> = {}
     const t = { worked: 0, rest: 0, holiday: 0, annual: 0, sick: 0, unpaid: 0, excuse: 0, absent: 0, holidayWorked: 0 }
     let holidayWorkedMins = 0
-    const missing = { rest: 0, unpaid: 0, absent: 0 }
+    const missing = { rest: 0, unpaid: 0, absent: 0, termination: 0 }
     let hasRecord = false
     for (const d of days) {
       const dayNo = Number(d.slice(8))
-      if (dayNo < window.fromDay) { codes[d] = ''; continue }
+      // İşe girişten önceki ve son çalışma gününden sonraki günler işte olunan gün değildir
+      if (dayNo < window.fromDay || dayNo > window.toDay) { codes[d] = ''; continue }
       const c = r.days[d] ?? ''
       codes[d] = c === '' ? '' : DAY_CODE[c]
       if (c !== '' && c !== 'RT') hasRecord = true
       const countsMissing = !(skip31 && dayNo === 31)
+      // Fesih tarihinde (son çalışma günü) hiç çalışma/izin kaydı yoksa SGK 16 "Fesih tarihinde çalışmamıştır"
+      if (end && d === end && c === '' && countsMissing) missing.termination++
       switch (c) {
         case 'Ç': t.worked++; break
         case 'RTÇ': t.worked++; t.holidayWorked++; holidayWorkedMins += r.dayMins[d] ?? 0; break
@@ -226,6 +236,7 @@ export function toPayrollRows(month: string, rows: TimesheetRow[]): PayrollRow[]
     const notes: string[] = []
     if (r.overtimeWithoutConsent) notes.push('Fazla çalışma için yazılı onay kayıtlı değil')
     if (window.fromDay > 1) notes.push(`Ay içinde işe giriş (${hire})`)
+    if (end && end.startsWith(month)) notes.push(`Ayrıldı ${end}`)
     if (!hasRecord) notes.push(NO_RECORDS_NOTE)
     out.push({
       employeeId: r.employee.id,

@@ -222,11 +222,10 @@ Kurallar ve sınırlar (02 ve 14 numaralı kodlar güncel listede yoktur; liste 
 
 - Ay 30 gün kabul edilir; tam çalışılan ayda 28/29/31 günlük de olsa prim günü 30'dur. 31 günlük ayda
   31. gün eksik gün sayılmaz (yalnızca işte olunan gün 30 iken; 3. gün ve sonrası girişte sayılır). İşte olunan
-  gün = takvim günü sayısı, en çok 30 (işe giriş tarihi çalışan kaydından okunur; işten çıkış tarihi
-  eklendiğinde aynı hesaba bağlanacak).
+  gün = takvim günü sayısı, en çok 30 (işe giriş ve işten çıkış tarihi çalışan kaydından okunur).
 - Rapor günleri bu raporda eksik gün sayılır (eski "Aylık puantaj" SGK sütunu yalnızca ücretsiz izin ve
   devamsızlığı düşer).
-- İşten çıkış tarihi tutulmadığından ay içinde ayrılanların eksik günü (kod 16) elle girilmelidir.
+- İşten çıkış (son çalışma günü dahil): sonraki günler işte olunan gün sayılmaz, prim günü çıkış gününde biter; Not sütununda "Ayrıldı <tarih>" yazar. Çıkış gününde hiç çalışma/izin kaydı yoksa o gün SGK 16 eksik günüdür. Ay başından önce ayrılanlar listelenmez (kaynak: kod yorumu).
 - Fazla mesai bu mağazadaki vardiyalardan hesaplanır (puantaj mağaza bazlıdır); birden fazla mağazada
   çalışanın işveren düzeyindeki haftalık toplamı için Raporlar › Fazla çalışma'ya bakın.
 - Ay bitmeden alınan çıktı geçicidir; gelecek günler eksik sayılmaz.

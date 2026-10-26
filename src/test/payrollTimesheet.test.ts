@@ -141,6 +141,40 @@ describe('payroll — SGK prim günü ve eksik gün kodu', () => {
     expect(employedSgkDays('2026-10', null, '2026-10-20')).toBe(20)
     expect(employedSgkDays('2026-10', '2026-11-05')).toBe(0)
   })
+  it('ay içinde ayrılan: çıkıştan sonraki günler sayılmaz, prim günü çıkış gününde biter, Not "Ayrıldı"', () => {
+    const r = one({
+      employees: [{ ...EMP, termination_date: '2026-10-20' }],
+      shifts: [worked('2026-10-20'), worked('2026-10-22')],
+    })
+    expect(r.days['2026-10-20']).toBe('Ç')
+    expect(r.days['2026-10-22']).toBe('')
+    expect(r.workedDays).toBe(1)
+    expect(r.employedDays).toBe(20)
+    expect(r.missingReasonCode).toBe('')
+    expect(r.sgkDays).toBe(20)
+    expect(r.notes).toContain('Ayrıldı 2026-10-20')
+  })
+  it('çıkış gününde hiç kayıt yoksa kod 16 (1 gün); başka nedenle birlikte 12', () => {
+    const a = one({ employees: [{ ...EMP, termination_date: '2026-10-20' }], shifts: [worked('2026-10-19')] })
+    expect(a.missingDays).toBe(1)
+    expect(a.missingReasonCode).toBe('16')
+    expect(a.sgkDays).toBe(19)
+    const b = one({
+      employees: [{ ...EMP, termination_date: '2026-10-20' }],
+      shifts: [worked('2026-10-19')], leaves: [leave('unpaid', '2026-10-10')],
+    })
+    expect(b.missingReasonCode).toBe('12')
+  })
+  it('ay başından önce ayrılan çalışan listelenmez; ay sonunda ayrılan tam ay prim günü alır', () => {
+    const rows = buildPayrollTimesheet({
+      ...base, employees: [EMP, { ...EMP, id: 'e8', full_name: 'Eski', termination_date: '2026-09-30' }],
+      shifts: [worked('2026-10-05')], leaves: [],
+    }).rows
+    expect(rows.map((r) => r.employeeId)).toEqual(['e1'])
+    const last = one({ employees: [{ ...EMP, termination_date: '2026-10-31' }], shifts: [worked('2026-10-31')] })
+    expect(last.employedDays).toBe(30)
+    expect(last.sgkDays).toBe(30)
+  })
   it('SGK kod listesi 01, 07, 12, 15, 21 içerir', () => {
     const codes = SGK_MISSING_DAY_CODES.map((c) => c.code)
     expect(codes).toEqual(expect.arrayContaining(['01', '07', '12', '15', '21']))

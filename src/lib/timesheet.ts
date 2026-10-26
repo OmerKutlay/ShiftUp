@@ -42,6 +42,8 @@ export interface TimesheetEmployee {
   overtime_consent_at?: string | null
   /** İşe giriş tarihi — yalnızca bordro puantajı için (queryTimesheet includeHireDate) */
   hire_date?: string | null
+  /** Son çalışma günü (dahil) — yalnızca bordro puantajı için okunur */
+  termination_date?: string | null
 }
 
 export interface TimesheetShift {
