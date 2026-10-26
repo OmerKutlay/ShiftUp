@@ -49,12 +49,14 @@ export function useWeeklySchedule(currentWeek: Date, { readOnly = false } = {}) 
   )
 
   // "employee_id:YYYY-MM-DD" anahtarlı izin haritaları
-  const { approvedLeaveMap, leaveDayToId, restDayMap } = useMemo(() => {
+  const { approvedLeaveMap, leaveDayToId, restDayMap, multiDayLeaveIds } = useMemo(() => {
     const leaveSet = new Set<string>()
     const idMap = new Map<string, string>()
     const restSet = new Set<string>()
+    const multiDay = new Set<string>()
     for (const lr of leavesQ.data?.requests ?? []) {
       const end = lr.end_date.slice(0, 10)
+      if (lr.start_date.slice(0, 10) !== end) multiDay.add(lr.id)
       for (let d = lr.start_date.slice(0, 10); d <= end; d = addDaysToDateString(d, 1)) {
         if (d < from || d > to) continue
         const key = `${lr.employee_id}:${d}`
@@ -63,7 +65,7 @@ export function useWeeklySchedule(currentWeek: Date, { readOnly = false } = {}) 
         if (lr.leave_type === 'weekly_rest') restSet.add(key)
       }
     }
-    return { approvedLeaveMap: leaveSet, leaveDayToId: idMap, restDayMap: restSet }
+    return { approvedLeaveMap: leaveSet, leaveDayToId: idMap, restDayMap: restSet, multiDayLeaveIds: multiDay }
   }, [leavesQ.data, from, to])
 
   // employeeId → DayOfWeek → kayıtlar
@@ -103,6 +105,8 @@ export function useWeeklySchedule(currentWeek: Date, { readOnly = false } = {}) 
     approvedLeaveMap,
     leaveDayToId,
     restDayMap,
+    /** Birden fazla günü kapsayan izin / tatil kayıtları (silinince tüm aralık gider) */
+    multiDayLeaveIds,
     availabilityMap,
     /** Tarih → resmi tatil */
     holidayMap,
