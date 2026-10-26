@@ -12,6 +12,8 @@ import { fetchEmployees, fetchActiveEmployees, createEmployee, isActiveStore } f
 import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/apiErrors'
 import { validateEmployeeInput } from '@/lib/employeeValidation'
 import { canSwitchStore } from '@/lib/storeScope'
+import { createAdminClient } from '@/lib/supabaseAdmin'
+import { addLateJoinerRecipient } from '@/lib/announcementService'
 import { isUuid } from '@/lib/validation'
 import type { CreateEmployeePayload, EmployeeWithRole } from '@/types/employee'
 
@@ -88,6 +90,9 @@ export async function POST(req: NextRequest) {
       ...result.payload,
       store_id: storeId,
     } as CreateEmployeePayload & { store_id: string })
+    // Sabit / onay zorunlu duyurulara alıcı olarak eklenir; hata çalışan kaydını bozmaz
+    await addLateJoinerRecipient(createAdminClient(), employee.id).catch((e) =>
+      console.error('[POST /api/employees] duyuru alıcı ekleme', e))
     return NextResponse.json({ employee }, { status: 201 })
   } catch (err) {
     if (err instanceof Error && /duplicate|unique|23505/i.test(err.message)) {
