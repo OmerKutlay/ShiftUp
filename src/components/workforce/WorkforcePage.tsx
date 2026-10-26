@@ -8,8 +8,11 @@
  *   Müsaitlik   kaydı olan çalışan sayısı (çalışan için kendi kayıt sayısı)
  *   Açık        açık durumdaki vardiyalar
  *   Takas       kullanıcının işlem yapması gereken talepler
+ *
+ * ?tab=swap gibi bir parametreyle açılırsa o sekme seçilir (ör. takas bildirimine tıklanınca).
  */
-import { useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import useSWR from 'swr'
 import { format } from 'date-fns'
 import { ArrowLeftRight, BriefcaseBusiness, CalendarClock, CalendarRange, TriangleAlert } from 'lucide-react'
@@ -44,6 +47,18 @@ function TabLabel({ short, long }: { short: string; long: string }) {
 function Count({ n }: { n: number | undefined }) {
   if (!n) return null
   return <Badge variant="secondary" className="tabular-nums">{n}</Badge>
+}
+
+const URL_TABS: WorkforceTab[] = ['availability', 'open-shifts', 'swap', 'plan']
+
+/** URL'deki ?tab= değerini sekmeye uygular; Suspense içinde olduğundan sayfanın geri kalanı önceden çizilir */
+function TabFromUrl({ onTab, allowPlan }: { onTab: (t: WorkforceTab) => void; allowPlan: boolean }) {
+  const param = useSearchParams().get('tab')
+  useEffect(() => {
+    const t = URL_TABS.find((x) => x === param)
+    if (t && (t !== 'plan' || allowPlan)) onTab(t)
+  }, [param, allowPlan, onTab])
+  return null
 }
 
 export function WorkforcePage() {
@@ -97,6 +112,10 @@ export function WorkforcePage() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
+
+      <Suspense fallback={null}>
+        <TabFromUrl onTab={setTab} allowPlan={isManager} />
+      </Suspense>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as WorkforceTab)} className="gap-4 md:gap-6">
         <TabsList className="max-w-full justify-start overflow-x-auto">

@@ -16,7 +16,7 @@ export const NOTIFICATION_LINKS: Record<string, string> = {
   time_correction_submitted: '/time-correction',
   time_correction_approved: '/time-correction',
   time_correction_rejected: '/time-correction',
-  shift_swap_submitted: '/workforce',
+  shift_swap_submitted: '/workforce?tab=swap',
   shift_swap_approved: '/my-schedule',
   shift_swap_rejected: '/my-schedule',
   attendance_late_clock_in: '/',

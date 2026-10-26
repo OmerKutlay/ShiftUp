@@ -3,6 +3,7 @@
  */
 
 export type NotificationType =
+  /** Vardiya başlamadan ~1 saat önce çalışana (pg_cron → scan_shift_reminders) */
   | 'shift_reminder'
   | 'leave_submitted'
   | 'leave_approved'

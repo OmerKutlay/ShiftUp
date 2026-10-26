@@ -7,7 +7,7 @@
  * src/test/notificationLinks.test.ts ile doğrulanır — burada değişiklik yapınca orayı da güncelleyin.
  *
  * Not: Yetkisi olmayan bir sayfaya giden çalışanı middleware kendi ana sayfasına
- * (/my-schedule) yönlendirir; ör. takas teklifi alan çalışan /workforce yerine programını görür.
+ * (/my-schedule) yönlendirir. /workforce herkese açıktır; ?tab=swap doğrudan takas sekmesini açar.
  */
 import type { NotificationType } from '@/types/notification'
 
@@ -22,8 +22,8 @@ export const NOTIFICATION_LINKS: Record<NotificationType, string> = {
   time_correction_submitted: '/time-correction',
   time_correction_approved: '/time-correction',
   time_correction_rejected: '/time-correction',
-  // Takas onayı yalnızca İş Gücü Planlama > Vardiya Takası sekmesinde (Müdür Yardımcısı+)
-  shift_swap_submitted: '/workforce',
+  // Takas teklifi (karşı taraf kabul eder) ve yönetici onayı İş Gücü > Vardiya takası sekmesinde
+  shift_swap_submitted: '/workforce?tab=swap',
   shift_swap_approved: '/my-schedule',
   shift_swap_rejected: '/my-schedule',
   // Geç/eksik okutma uyarıları yöneticilere gider → Günlük Operasyon

@@ -28,6 +28,23 @@ function setAppBadge(count: number) {
   }
 }
 
+/**
+ * Uygulamada okundu sayılan bildirimleri sistem bildirim çubuğundan da kaldırır.
+ * notificationId verilmezse tümü kapanır. Push gövdesindeki data.notificationId ile eşlenir (sw-push.js).
+ */
+function closeSystemNotifications(notificationId?: string) {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return
+  void navigator.serviceWorker.getRegistration()
+    .then((reg) => reg?.getNotifications())
+    .then((list) => {
+      for (const n of list ?? []) {
+        const id = (n.data as { notificationId?: unknown } | null)?.notificationId
+        if (!notificationId || id === notificationId) n.close()
+      }
+    })
+    .catch(() => {})
+}
+
 export function useNotifications(employeeId: string | null, pollMs?: number) {
   // SWR önbelleği: zil ve sayfa aynı veriyi paylaşır; sayfaya dönüşte son liste hemen görünür,
   // arka planda tazelenir ve yalnızca veri değiştiyse yeniden çizilir
@@ -86,13 +103,15 @@ export function useNotifications(employeeId: string | null, pollMs?: number) {
     async (notificationId: string) => {
       if (!employeeId) return
       void markLocal((n) => n.id === notificationId)
+      closeSystemNotifications(notificationId)
       try {
-        await window.fetch('/api/notifications/read', {
+        const res = await window.fetch('/api/notifications/read', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'same-origin',
           body: JSON.stringify({ notification_id: notificationId }),
         })
+        if (!res.ok) throw new Error(String(res.status))
       } catch {
         // Başarısız olursa yeniden yükle
         fetch()
@@ -104,14 +123,16 @@ export function useNotifications(employeeId: string | null, pollMs?: number) {
   const markAllAsRead = useCallback(async () => {
     if (!employeeId) return
     void markLocal(() => true)
+    closeSystemNotifications()
     try {
-      await window.fetch('/api/notifications/read-all', {
+      const res = await window.fetch('/api/notifications/read-all', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-
       })
+      if (!res.ok) throw new Error(String(res.status))
     } catch {
+      // Başarısız olursa yeniden yükle (optimistik işaret geri alınır)
       fetch()
     }
   }, [employeeId, fetch, markLocal])

@@ -19,10 +19,14 @@ export interface NotificationDayGroup {
   items: Notification[]
 }
 
-/** Bildirimleri gün gün gruplar: "Bugün", "Dün", "18 Ekim Pazar" (sıra korunur) */
+/**
+ * Bildirimleri gün gün gruplar: "Bugün", "Dün", "18 Ekim Pazar" — en yeni önce.
+ * API okunmamışları öne alır (limit okunmamışları kesmesin); gruplar yine de tarih sırasındadır.
+ */
 export function groupNotificationsByDay(notifications: Notification[]): NotificationDayGroup[] {
   const groups: NotificationDayGroup[] = []
-  for (const n of notifications) {
+  const sorted = [...notifications].sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0))
+  for (const n of sorted) {
     const d = new Date(n.created_at)
     const key = Number.isNaN(d.getTime()) ? 'unknown' : format(d, 'yyyy-MM-dd')
     let g = groups.find((x) => x.key === key)
