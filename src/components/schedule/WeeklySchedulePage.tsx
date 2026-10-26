@@ -674,7 +674,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
             {weekStepper}
             {hasData && !editing && viewToggle}
           </div>
-        {normIndicator}
+          {normIndicator}
         </>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
