@@ -2,6 +2,7 @@
  * employeeRepository — employees / roles veri katmanı (yalnızca server).
  * Client bileşenleri '@/lib/api/employees' üzerinden API'yi çağırır.
  */
+import { isTerminatedAsOf } from '@/lib/employment'
 import { db } from '@/lib/db'
 import { NOT_KIOSK_FILTER } from '@/lib/auth/roles'
 import type {
@@ -84,6 +85,7 @@ export async function fetchActiveEmployees(storeId: string): Promise<EmployeeWit
       store_id,
       employment_type,
       hire_date,
+      termination_date,
       birth_date,
       overtime_consent_at,
       created_at,
@@ -104,7 +106,8 @@ export async function fetchActiveEmployees(storeId: string): Promise<EmployeeWit
     .order('full_name', { ascending: true })
 
   if (error) throw new Error(`Aktif çalışanlar yüklenemedi: ${error.message}`)
-  return (data ?? []) as unknown as EmployeeWithRole[]
+  // Son çalışma günü geçenler cron çalışmasa da aktif sayılmaz
+  return ((data ?? []) as unknown as EmployeeWithRole[]).filter((e) => !isTerminatedAsOf(e))
 }
 
 /** Tek çalışanı id ile getirir */

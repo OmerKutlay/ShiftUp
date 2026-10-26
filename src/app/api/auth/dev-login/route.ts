@@ -18,6 +18,7 @@
  * ÖNEMLİ: Bu route yalnızca AUTH_MODE=development'ta aktiftir.
  * Production'da 403 döner.
  */
+import { isEffectivelyActive } from '@/lib/employment'
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import {
@@ -59,7 +60,7 @@ export async function POST(req: NextRequest) {
   if (step === 'check-email') {
     const { data: employee } = await admin
       .from('employees')
-      .select('id, full_name, active, email, role_id')
+      .select('id, full_name, active, termination_date, email, role_id')
       .eq('email', email)
       .maybeSingle()
 
@@ -69,7 +70,7 @@ export async function POST(req: NextRequest) {
         { status: 403 }
       )
     }
-    if (!employee.active) {
+    if (!isEffectivelyActive(employee)) {
       return NextResponse.json(
         { ok: false, reason: 'EMPLOYEE_INACTIVE' },
         { status: 403 }
@@ -116,6 +117,7 @@ export async function POST(req: NextRequest) {
         email,
         role_id,
         active,
+        termination_date,
         auth_user_id,
         created_at,
         updated_at,
@@ -132,7 +134,7 @@ export async function POST(req: NextRequest) {
       .eq('email', email)
       .maybeSingle()
 
-    if (!employee || !employee.active) {
+    if (!employee || !isEffectivelyActive(employee)) {
       return NextResponse.json(
         { ok: false, reason: 'EMPLOYEE_NOT_FOUND' },
         { status: 403 }

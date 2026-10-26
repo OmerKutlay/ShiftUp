@@ -81,6 +81,52 @@ function tables() {
   }
 }
 
+// ─── RPC simülasyonu ─────────────────────────────────────────
+// Gerçek mantık SQL'de (apply_employee_offboarding, tek transaction); burada aynı sözleşme bellek içinde
+// uygulanır, böylece TS tarafı (argümanlar, hata eşlemesi, denetim, bildirim) test edilir.
+type RpcArgs = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
+let rpcCalls: RpcArgs[] = []
+let rpcFail: { message: string } | null = null
+
+function offboardRpc(a: RpcArgs, d: FakeDb) {
+  rpcCalls.push(a)
+  if (rpcFail) return { error: rpcFail }
+  const today = '2026-10-26'
+  const emp = d.tables.employees.find((e) => e.id === a.p_employee_id)!
+  if (emp.termination_date) return { error: { message: 'ALREADY_TERMINATED' } }
+  const mine = d.tables.shift_assignments.filter((s) => s.employee_id === a.p_employee_id && s.work_date > a.p_last_day)
+  const att = mine.filter((s) => (s.attendance_records ?? []).length > 0).map((s) => s.work_date).sort()[0]
+  if (att) return { error: { message: `HAS_ATTENDANCE:${att}` } }
+  const effective = a.p_last_day < today
+  Object.assign(emp, {
+    termination_date: a.p_last_day, termination_reason: a.p_reason, termination_note: a.p_note,
+    terminated_by: a.p_actor_id, terminated_at: 'now', termination_leave_balance: a.p_leave_balance,
+    termination_prev_active: emp.active, ...(effective ? { active: false } : {}),
+  })
+  const rej = (r: RpcArgs) => Object.assign(r, { status: 'rejected', reviewer_note: a.p_cancel_note })
+  const l1 = d.tables.leave_requests.filter((r) => r.employee_id === a.p_employee_id && r.status === 'pending').map(rej)
+  const l2 = d.tables.leave_requests.filter((r) => r.employee_id === a.p_employee_id && r.status === 'approved' && r.start_date > a.p_last_day).map(rej)
+  const tc = d.tables.manual_time_correction_requests.filter((r) => r.employee_id === a.p_employee_id && r.status === 'pending').map(rej)
+  const swaps = d.tables.shift_swap_requests
+    .filter((s) => s.status === 'pending' && (s.requester_id === a.p_employee_id || s.target_id === a.p_employee_id))
+    .map((s) => { s.status = 'cancelled'; return { id: s.id, requester_id: s.requester_id, target_id: s.target_id, requester_shift_date: null, target_shift_date: null } })
+  let converted = 0
+  if (a.p_convert) {
+    for (const s of mine.filter((x) => x.work_date >= today && !x.is_on_leave)) {
+      d.tables.open_shifts.push({ id: `os-${s.id}`, store_id: s.store_id, work_date: s.work_date, start_time: String(s.start_time).slice(0, 5), status: 'open' })
+      converted++
+    }
+  }
+  d.tables.shift_assignments = d.tables.shift_assignments.filter((s) => !mine.includes(s))
+  if (effective) d.tables.push_subscriptions = d.tables.push_subscriptions.filter((p) => p.employee_id !== a.p_employee_id)
+  return {
+    data: {
+      shifts_deleted: mine.length, shifts_converted: converted, leave_cancelled: l1.length + l2.length,
+      time_corrections_cancelled: tc.length, swaps, deactivated_now: effective, prev_active: true,
+    },
+  }
+}
+
 vi.setConfig({ testTimeout: 60_000 }) // route modülleri her testte taze yüklenir; yavaş makinede ilk yükleme uzun sürebilir
 
 let db: FakeDb
@@ -116,7 +162,9 @@ const del = () => new NextRequest('http://localhost/api/employees/x/offboarding'
 const row = (table: string, rid: string) => db.tables[table].find((r) => r.id === rid)!
 
 beforeEach(() => {
-  db = createFakeDb(tables())
+  rpcCalls = []
+  rpcFail = null
+  db = createFakeDb(tables(), { rpc: { apply_employee_offboarding: offboardRpc } })
   // Bugün: 26 Ekim 2026 (Europe/Istanbul)
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2026-10-26T09:00:00Z'))
@@ -335,5 +383,169 @@ describe('kalıcı silme ve elle aktifleştirme', () => {
     )
     expect(res.status).toBe(409)
     expect(row('employees', E_STAFF).active).toBe(false)
+  })
+})
+
+describe('tek transaction (RPC)', () => {
+  it('RPC doğru argümanlarla çağrılır; tüm yazmalar yalnızca RPC üzerinden yapılır', async () => {
+    const m = await offboarding(asManager)
+    const res = await m.POST(post({ ...valid, note: ' Not ', convert_to_open_shifts: true }), ctx(E_STAFF))
+    expect(res.status).toBe(200)
+    expect(rpcCalls).toHaveLength(1)
+    expect(rpcCalls[0]).toMatchObject({
+      p_employee_id: E_STAFF, p_actor_id: E_MGR, p_last_day: '2026-10-31', p_reason: 'istifa',
+      p_note: 'Not', p_leave_balance: 8, p_convert: true,
+    })
+    expect(rpcCalls[0].p_cancel_note).toContain('Ayşe Çalışan')
+  })
+
+  it('RPC hata verirse 500: çalışan satırı, talepler, vardiyalar, denetim ve bildirim dokunulmaz', async () => {
+    rpcFail = { message: 'boom' }
+    const m = await offboarding(asManager)
+    const before = JSON.stringify(db.tables)
+    const res = await m.POST(post(valid), ctx(E_STAFF))
+    expect(res.status).toBe(500)
+    expect(JSON.stringify(db.tables)).toBe(before)
+    expect(rpcCalls).toHaveLength(1)
+    // aynı istek (retry) sonra başarılı olur: çalışan yarım terminated kalmadı
+    rpcFail = null
+    expect((await m.POST(post(valid), ctx(E_STAFF))).status).toBe(200)
+  })
+
+  it('RPC ALREADY_TERMINATED / HAS_ATTENDANCE hatalarını 409 olarak eşler', async () => {
+    const m = await offboarding(asManager)
+    rpcFail = { message: 'ALREADY_TERMINATED' }
+    expect((await m.POST(post(valid), ctx(E_STAFF))).status).toBe(409)
+    rpcFail = { message: 'HAS_ATTENDANCE:2026-10-27' }
+    const res = await m.POST(post(valid), ctx(E_STAFF))
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toBe('2026-10-27 günü çalışma kaydı var; son iş günü bu tarihten önce olamaz.')
+  })
+
+  it('denetim kaydı iptal edilen takasların ayrıntısını ve izin bakiyesi kapsamını içerir; bildirim related_id taşımaz', async () => {
+    const m = await offboarding(asManager)
+    await m.POST(post(valid), ctx(E_STAFF))
+    const log = db.tables.audit_logs.find((l) => l.action === 'employee.terminate')!
+    const after = log.after as { cancelled_swaps: Array<{ id: string; requester_id: string; target_id: string }>; leave_balance_scope: string }
+    expect(after.cancelled_swaps.map((s) => s.id).sort()).toEqual(['sw-req', 'sw-tgt'])
+    expect(after.cancelled_swaps.find((s) => s.id === 'sw-req')).toMatchObject({ requester_id: E_STAFF, target_id: E_OTHER })
+    expect(after.leave_balance_scope).toContain('içinde bulunulan hizmet yılı')
+    expect(log.note).toContain('bordro')
+    expect(db.tables.notifications.every((n) => n.related_id === null)).toBe(true)
+  })
+})
+
+describe('giriş/çıkış kaydı olan vardiyalar korunur', () => {
+  const withAttendance = () => {
+    row('shift_assignments', 's-a').attendance_records = [{ id: 'att-1' }]
+  }
+
+  it('son günden sonra kaydı olan vardiya varsa 409; RPC çağrılmaz, hiçbir şey silinmez', async () => {
+    withAttendance()
+    const m = await offboarding(asManager)
+    const res = await m.POST(post({ last_day: '2026-10-20', reason: 'istifa' }), ctx(E_STAFF))
+    expect(res.status).toBe(409)
+    const body = await res.json()
+    expect(body.code).toBe('HAS_ATTENDANCE')
+    expect(body.error).toBe('2026-11-02 günü çalışma kaydı var; son iş günü bu tarihten önce olamaz.')
+    expect(rpcCalls).toHaveLength(0)
+    expect(row('employees', E_STAFF).termination_date).toBeNull()
+    expect(db.tables.shift_assignments).toHaveLength(6)
+  })
+
+  it('önizleme çakışma tarihini ve vardiya başına has_attendance / can_convert bilgisini verir', async () => {
+    withAttendance()
+    // Geçmişe dönük son gün: 22 Ekim vardiyası (bugünden önce, kayıtsız) silinir ama çevrilemez
+    db.tables.shift_assignments.push(shift('s-back', E_STAFF, STORE_A, '2026-10-22'))
+    const m = await offboarding(asManager)
+    const { preview } = await (await m.GET(get('2026-10-20'), ctx(E_STAFF))).json()
+    expect(preview.attendance_conflict_date).toBe('2026-11-02')
+    const byId = Object.fromEntries(preview.future_shifts.map((s: { id: string }) => [s.id, s]))
+    expect(byId['s-a']).toMatchObject({ has_attendance: true, can_convert: false })
+    expect(byId['s-back']).toMatchObject({ has_attendance: false, can_convert: false }) // geçmiş gün
+    expect(byId['s-b']).toMatchObject({ has_attendance: false, can_convert: true })
+    expect(byId['s-leave']).toMatchObject({ can_convert: false }) // izinli
+    expect(preview.leave_balance.scope).toContain('içinde bulunulan hizmet yılı')
+  })
+
+  it('kaydı olmayan geçmiş vardiya silinebilir ama açık vardiyaya çevrilmez', async () => {
+    db.tables.shift_assignments.push(shift('s-back', E_STAFF, STORE_A, '2026-10-22'))
+    const m = await offboarding(asManager)
+    const res = await m.POST(post({ last_day: '2026-10-20', reason: 'istifa', convert_to_open_shifts: true }), ctx(E_STAFF))
+    expect(res.status).toBe(200)
+    expect(db.tables.shift_assignments.find((s) => s.id === 's-back')).toBeUndefined()
+    expect(db.tables.open_shifts.map((o) => o.work_date)).not.toContain('2026-10-22')
+    expect(db.tables.open_shifts.map((o) => o.work_date).sort()).toEqual(['2026-10-31', '2026-11-02', '2026-11-03'])
+  })
+})
+
+describe('geri alma: active yalnızca ayrılış yüzünden pasifse geri gelir', () => {
+  it('ayrılış nedeniyle pasifleşen (prev_active=true) aktifleşir', async () => {
+    let m = await offboarding(asManager)
+    await m.POST(post({ last_day: '2026-10-20', reason: 'istifa' }), ctx(E_STAFF))
+    m = await offboarding(asAdmin)
+    await m.DELETE(del(), ctx(E_STAFF))
+    expect(row('employees', E_STAFF)).toMatchObject({ active: true, termination_prev_active: null })
+  })
+
+  it('ayrılış yürürlüğe girmeden elle pasifleştirilmiş çalışan geri almada pasif kalır', async () => {
+    const m = await offboarding(asManager)
+    await m.POST(post(valid), ctx(E_STAFF)) // 31 Ekim: hâlâ aktif
+    row('employees', E_STAFF).active = false // araya giren elle pasifleştirme
+    const adm = await offboarding(asAdmin)
+    expect((await adm.DELETE(del(), ctx(E_STAFF))).status).toBe(200)
+    expect(row('employees', E_STAFF)).toMatchObject({ active: false, termination_date: null })
+  })
+
+  it('kayıtlı önceki değer false ise false değerine döner', async () => {
+    Object.assign(row('employees', E_STAFF), { termination_date: '2026-10-20', termination_reason: 'istifa', termination_prev_active: false, active: false })
+    const adm = await offboarding(asAdmin)
+    await adm.DELETE(del(), ctx(E_STAFF))
+    expect(row('employees', E_STAFF).active).toBe(false)
+  })
+})
+
+describe('mağaza transferi ve aktiflik süzgeçleri', () => {
+  it('ayrılışı kayıtlı (veya bekleyen) çalışan başka mağazaya taşınamaz (409)', async () => {
+    const off = await offboarding(asManager)
+    await off.POST(post(valid), ctx(E_STAFF)) // 31 Ekim: bekleyen ayrılış
+    const m = await employeeRoute(asAdmin)
+    const res = await m.PATCH(
+      new NextRequest('http://localhost/api/employees/x', {
+        method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ store_id: STORE_B }),
+      }),
+      ctx(E_STAFF)
+    )
+    expect(res.status).toBe(409)
+    expect(row('employees', E_STAFF).store_id).toBe(STORE_A)
+  })
+
+  it('fetchActiveEmployees ve GET /api/employees?active, cron çalışmasa da son günü geçeni dışlar', async () => {
+    Object.assign(row('employees', E_STAFF), { termination_date: '2026-10-25' }) // dün bitti, active hâlâ true
+    Object.assign(row('employees', E_OTHER), { termination_date: '2026-10-26' }) // bugün son gün: hâlâ aktif
+    vi.resetModules()
+    vi.doMock('@/lib/db', () => ({ db }))
+    const { fetchActiveEmployees } = await import('@/lib/employeeRepository')
+    const ids = (await fetchActiveEmployees(STORE_A)).map((e) => e.id)
+    expect(ids).not.toContain(E_STAFF)
+    expect(ids).toContain(E_OTHER)
+
+    vi.doMock('@/lib/auth/session', () => ({ getCurrentEmployee: vi.fn().mockResolvedValue(asManager) }))
+    vi.doMock('@/lib/supabaseAdmin', () => ({ createAdminClient: () => db }))
+    const m = await import('@/app/api/employees/route')
+    const list = async (q: string) =>
+      ((await (await m.GET(new NextRequest(`http://localhost/api/employees${q}`))).json()).employees as Array<{ id: string }>).map((e) => e.id)
+    expect(await list('?active=true')).not.toContain(E_STAFF)
+    expect(await list('?active=false')).toContain(E_STAFF)
+    expect(await list('?active=false')).not.toContain(E_OTHER)
+  })
+
+  it('getActiveManagerIds son günü geçmiş yöneticiyi dışlar', async () => {
+    Object.assign(row('employees', E_PEER_MGR), { termination_date: '2026-10-25' })
+    vi.resetModules()
+    const { getActiveManagerIds } = await import('@/lib/notificationRepository')
+    const ids = await getActiveManagerIds(db as never, STORE_A)
+    expect(ids).not.toContain(E_PEER_MGR)
+    expect(ids).toContain(E_MGR)
   })
 })

@@ -5,6 +5,7 @@
  *      Çalışan aktif mağazaya eklenir; yalnızca Admin body.store_id ile başka (aktif) bir
  *      mağazaya ekleyebilir — diğer roller farklı store_id gönderirse 403.
  */
+import { isEffectivelyActive } from '@/lib/employment'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, requireMinRole, ACCESS, MANAGER_ROLES, hasRole, forbidden } from '@/lib/auth'
 import { fetchEmployees, fetchActiveEmployees, createEmployee, isActiveStore } from '@/lib/employeeRepository'
@@ -28,7 +29,7 @@ export async function GET(req: NextRequest) {
       employees = await fetchActiveEmployees(storeId)
     } else {
       employees = await fetchEmployees(storeId)
-      if (activeParam === 'false') employees = employees.filter((e) => !e.active)
+      if (activeParam === 'false') employees = employees.filter((e) => !isEffectivelyActive(e))
     }
 
     // Standart çalışan diğerlerinin iletişim/kimlik ve özlük bilgilerini (doğum tarihi vb.) görmez

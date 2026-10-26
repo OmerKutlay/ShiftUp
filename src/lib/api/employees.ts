@@ -69,17 +69,20 @@ export interface OffboardingShiftInfo {
   start_time: string
   end_time: string
   is_on_leave: boolean
+  has_attendance: boolean
+  can_convert: boolean
 }
 
 export interface OffboardingPreview {
   last_day: string
   deactivates_now: boolean
   future_shifts: OffboardingShiftInfo[]
+  attendance_conflict_date: string | null
   pending_leave: number
   future_approved_leave: number
   pending_time_corrections: number
   pending_swaps: number
-  leave_balance: { known: boolean; entitlement_days: number; used_days: number; remaining_days: number }
+  leave_balance: { known: boolean; entitlement_days: number; used_days: number; remaining_days: number; scope: string; note: string }
 }
 
 export interface OffboardingInput {

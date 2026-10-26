@@ -18,7 +18,8 @@ import { turkeyToday } from '@/lib/dateUtils'
 import { logAudit } from '@/lib/auditLog'
 import { isTerminationReason } from '@/types/employee'
 import {
-  applyOffboarding, buildOffboardingPreview, undoOffboarding, validateLastDay,
+  applyOffboarding, buildOffboardingPreview, undoOffboarding, validateLastDay, OffboardingError,
+  LEAVE_BALANCE_NOTE, LEAVE_BALANCE_SCOPE,
   type TerminationTarget,
 } from '@/lib/employeeOffboarding'
 
@@ -94,6 +95,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     }
     const convert = body.convert_to_open_shifts === true
 
+    // Tüm yazmalar tek RPC'de (transaction); hata olursa hiçbir şey değişmez
     const result = await applyOffboarding(createAdminClient(), {
       emp: target,
       actorId: auth.employee.id,
@@ -102,7 +104,6 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       note,
       convertToOpenShifts: convert,
     })
-    if (!result) return conflict('Bu çalışanın işten çıkışı zaten kayıtlı.', 'ALREADY_TERMINATED')
 
     await logAudit({
       actorId: auth.employee.id,
@@ -116,17 +117,24 @@ export async function POST(req: NextRequest, { params }: Ctx) {
         termination_reason: body.reason,
         termination_note: note,
         termination_leave_balance: result.leave_balance,
+        leave_balance_scope: LEAVE_BALANCE_SCOPE,
         active: !result.deactivated_now,
         shifts_deleted: result.shifts_deleted,
         shifts_converted: result.shifts_converted,
         leave_cancelled: result.leave_cancelled,
         time_corrections_cancelled: result.time_corrections_cancelled,
         swaps_cancelled: result.swaps_cancelled,
+        // Vardiya silinince takas satırları CASCADE ile gider; ayrıntı yalnızca burada kalır
+        cancelled_swaps: result.swaps,
       },
+      note: LEAVE_BALANCE_NOTE,
     })
 
     return NextResponse.json({ result })
   } catch (err) {
+    if (err instanceof OffboardingError) {
+      return err.code === 'NOT_FOUND' ? notFound(err.message) : conflict(err.message, err.code)
+    }
     return serverError('POST /api/employees/[id]/offboarding', err)
   }
 }

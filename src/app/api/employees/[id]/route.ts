@@ -102,6 +102,9 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
         return forbidden('Çalışanı başka mağazaya taşıma yetkiniz yok.')
       }
       if (!isUuid(body.store_id)) return badRequest('Geçersiz mağaza ID.')
+      if (target.termination_date) {
+        return conflict('İşten çıkışı kayıtlı çalışan başka mağazaya taşınamaz.', 'TERMINATED')
+      }
       if (!(await isActiveStore(body.store_id))) {
         return notFound('Hedef mağaza bulunamadı veya aktif değil.', 'STORE_NOT_FOUND')
       }

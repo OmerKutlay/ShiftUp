@@ -83,6 +83,8 @@ export function EmployeeOffboardingDialog({ employee, onClose, onDone }: Props) 
     ? preview.pending_leave + preview.future_approved_leave + preview.pending_time_corrections + preview.pending_swaps
     : 0
   const shifts = preview?.future_shifts ?? []
+  const convertible = shifts.filter((s) => s.can_convert).length
+  const conflictDate = preview?.attendance_conflict_date ?? null
   const stores = [...new Set(shifts.map((s) => s.store_name).filter(Boolean))]
 
   return (
@@ -128,6 +130,9 @@ export function EmployeeOffboardingDialog({ employee, onClose, onDone }: Props) 
             </Field>
           </FieldGroup>
 
+          {conflictDate && (
+            <Alert variant="destructive"><TriangleAlert /><AlertTitle>İşten çıkış yapılamaz</AlertTitle><AlertDescription>{conflictDate} günü çalışma kaydı var; son iş günü bu tarihten önce olamaz.</AlertDescription></Alert>
+          )}
           {previewError && (
             <Alert variant="destructive"><TriangleAlert /><AlertTitle>Önizleme alınamadı</AlertTitle><AlertDescription>{previewError}</AlertDescription></Alert>
           )}
@@ -138,7 +143,7 @@ export function EmployeeOffboardingDialog({ employee, onClose, onDone }: Props) 
               <ul className="flex list-disc flex-col gap-1.5 pl-5">
                 <li>
                   {shifts.length > 0
-                    ? `${fmtDate(preview.last_day)} sonrasındaki ${shifts.length} vardiya ${convert ? 'açık vardiyaya çevrilir' : 'silinir'}${stores.length > 1 ? ` (${stores.join(', ')})` : ''}.`
+                    ? `${fmtDate(preview.last_day)} sonrasındaki ${shifts.length} vardiya silinir${convert && convertible > 0 ? ` (bugün ve sonrası ${convertible} tanesi açık vardiyaya çevrilir)` : ''}${stores.length > 1 ? ` — ${stores.join(', ')}` : ''}.`
                     : 'Son günden sonra planlı vardiyası yok.'}
                 </li>
                 <li>
@@ -163,7 +168,7 @@ export function EmployeeOffboardingDialog({ employee, onClose, onDone }: Props) 
                   </ul>
                   <label className="flex items-center gap-2">
                     <Checkbox checked={convert} onCheckedChange={(v) => setConvert(v === true)} />
-                    <span>Açık vardiyaya çevir (diğer çalışanlar alabilir)</span>
+                    <span>Açık vardiyaya çevir (yalnızca bugün ve sonrası; diğer çalışanlar alabilir)</span>
                   </label>
                 </div>
               )}
@@ -172,6 +177,11 @@ export function EmployeeOffboardingDialog({ employee, onClose, onDone }: Props) 
                   ? <>Kullanılmamış yıllık izin: <strong>{preview.leave_balance.remaining_days} gün</strong>
                     {preview.leave_balance.remaining_days > 0 && ' (ücreti ödenmeli — İş K. Md. 59)'}</>
                   : 'İşe giriş tarihi girilmediği için yıllık izin bakiyesi hesaplanamadı.'}
+                {preview.leave_balance.known && (
+                  <span className="block text-xs text-muted-foreground">
+                    Kapsam: {preview.leave_balance.scope}. Önceki yıllardan devreden izin için bordro ile doğrulayın.
+                  </span>
+                )}
               </p>
             </div>
           )}
@@ -183,7 +193,7 @@ export function EmployeeOffboardingDialog({ employee, onClose, onDone }: Props) 
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={close} disabled={busy}>İptal</Button>
-          <Button type="button" variant="destructive" onClick={() => void submit()} disabled={busy || !reason || !dateOk || !preview}>
+          <Button type="button" variant="destructive" onClick={() => void submit()} disabled={busy || !reason || !dateOk || !preview || !!conflictDate}>
             {busy && <Spinner />}
             İşten çıkışı onayla
           </Button>
