@@ -55,7 +55,7 @@ describe('WeekPrintSheet', () => {
     expect(screen.getAllByText('09:00–18:00')).toHaveLength(2)
     expect(screen.getByText('Açılış')).toBeInTheDocument()
     expect(screen.getByText('Pzt 26.10')).toBeInTheDocument()
-    expect(screen.getByText('Paz 01.11')).toBeInTheDocument()
+    expect(screen.getByText('Paz 1.11')).toBeInTheDocument()
   })
 
   it('izin, haftalık tatil ve resmi tatil işaretlerini yazar; izinli kişi sayıya girmez', () => {
