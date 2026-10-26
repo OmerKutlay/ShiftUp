@@ -8,6 +8,7 @@
  *
  * AuthContext tarafından her sayfa yüklemesinde çağrılır.
  */
+import { isEffectivelyActive } from '@/lib/employment'
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { IS_DEV_AUTH, DEV_SESSION_COOKIE } from '@/lib/authConfig'
@@ -24,6 +25,7 @@ const EMPLOYEE_SELECT = `
   role_id,
   active,
   store_id,
+  termination_date,
   auth_user_id,
   created_at,
   updated_at,
@@ -57,7 +59,7 @@ export async function GET(req: NextRequest) {
         .eq('id', employeeId)
         .maybeSingle()
 
-      if (!employee || !employee.active) {
+      if (!employee || !isEffectivelyActive(employee)) {
         return NextResponse.json({ employee: null }, { status: 403 })
       }
 
@@ -87,7 +89,7 @@ export async function GET(req: NextRequest) {
       .eq('auth_user_id', user.id)
       .maybeSingle()
 
-    if (!employee || !employee.active) {
+    if (!employee || !isEffectivelyActive(employee)) {
       return NextResponse.json({ employee: null }, { status: 403 })
     }
 

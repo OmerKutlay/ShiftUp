@@ -9,6 +9,7 @@
  * Hedef çalışan yöneticinin aktif mağazasında olmalıdır (başka mağaza → 404).
  * Token ömrü en fazla 60 sn — ekran fotoğrafıyla uzaktan okutma penceresini daraltır.
  */
+import { isEffectivelyActive } from '@/lib/employment'
 import { NextRequest, NextResponse } from 'next/server'
 import { generateQrToken, QrTokenError } from '@/lib/qrTokenService'
 import { createAdminClient } from '@/lib/supabaseAdmin'
@@ -60,7 +61,7 @@ export async function POST(req: NextRequest) {
     const admin = createAdminClient()
     const { data: employee, error: empError } = await admin
       .from('employees')
-      .select('id, active, store_id')
+      .select('id, active, store_id, termination_date')
       .eq('id', body.employee_id)
       .eq('store_id', auth.employee.store_id)
       .maybeSingle()
@@ -69,7 +70,7 @@ export async function POST(req: NextRequest) {
     if (!employee) {
       return NextResponse.json({ error: 'Çalışan bulunamadı.', code: 'EMPLOYEE_NOT_FOUND' }, { status: 404 })
     }
-    if (!employee.active) {
+    if (!isEffectivelyActive(employee)) {
       return NextResponse.json({ error: 'Pasif çalışan için QR üretilemez.', code: 'EMPLOYEE_INACTIVE' }, { status: 403 })
     }
 

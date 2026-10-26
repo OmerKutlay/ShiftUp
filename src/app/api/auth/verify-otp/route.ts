@@ -16,6 +16,7 @@
  *
  * ÖNEMLİ: Bu route yalnızca AUTH_MODE=production'da aktiftir.
  */
+import { isEffectivelyActive } from '@/lib/employment'
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { IS_DEV_AUTH } from '@/lib/authConfig'
@@ -71,11 +72,11 @@ export async function POST(req: NextRequest) {
     const admin = createAdminClient()
     const { data: employee } = await admin
       .from('employees')
-      .select('id, active')
+      .select('id, active, termination_date')
       .eq('auth_user_id', data.user.id)
       .maybeSingle()
 
-    if (!employee || !employee.active) {
+    if (!employee || !isEffectivelyActive(employee)) {
       await supabase.auth.signOut()
       return NextResponse.json({ ok: false, reason: 'EMPLOYEE_NOT_FOUND' }, { status: 403 })
     }

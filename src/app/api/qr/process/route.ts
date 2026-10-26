@@ -20,6 +20,7 @@
  * Konum: ATTENDANCE_REQUIRE_LOCATION !== 'false' ise (varsayılan) konum zorunludur ve
  * mağaza geofence'i içinde olmalıdır. Ölçülen mesafe/doğruluk denetim için kayda yazılır.
  */
+import { isEffectivelyActive } from '@/lib/employment'
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAndConsumeToken, QrTokenError } from '@/lib/qrTokenService'
 import { isKioskQr, consumeKioskQr, rotateAndBroadcastKioskQr } from '@/lib/kioskQrService'
@@ -162,7 +163,7 @@ async function processQr(req: NextRequest, trace: RequestTrace): Promise<NextRes
     // Employee aktiflik kontrolü
     const { data: employee, error: empError } = await admin
       .from('employees')
-      .select('id, full_name, active')
+      .select('id, full_name, active, termination_date')
       .eq('id', employeeId)
       .maybeSingle()
 
@@ -171,7 +172,7 @@ async function processQr(req: NextRequest, trace: RequestTrace): Promise<NextRes
     if (!employee) {
       return NextResponse.json({ error: 'Çalışan kaydı bulunamadı.', code: 'EMPLOYEE_NOT_FOUND' }, { status: 404 })
     }
-    if (!employee.active) {
+    if (!isEffectivelyActive(employee)) {
       return NextResponse.json({ error: 'Pasif çalışan işlem yapamaz.', code: 'EMPLOYEE_INACTIVE' }, { status: 403 })
     }
 
