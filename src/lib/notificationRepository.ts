@@ -3,6 +3,7 @@
  * Server-side (API routes) kullanımı için admin client gerektirir.
  * createAdminClient() çağıranın sorumluluğundadır.
  */
+import { isTerminatedAsOf } from '@/lib/employment'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { CreateNotificationPayload, Notification, NotificationType } from '@/types/notification'
 import { ACCESS, MANAGER_ROLES, accessLevelOf } from '@/lib/auth/roles'
@@ -72,7 +73,7 @@ export async function createNotifications(
 export async function getActiveManagerIds(admin: SupabaseClient, storeId: string): Promise<string[]> {
   const { data: employees, error } = await admin
     .from('employees')
-    .select('id, store_id, roles(access_level)')
+    .select('id, store_id, termination_date, roles(access_level)')
     .eq('active', true)
 
   if (error) throw error
@@ -80,6 +81,7 @@ export async function getActiveManagerIds(admin: SupabaseClient, storeId: string
   return (employees ?? [])
     .filter((e) => {
       const level = accessLevelOf(e.roles)
+      if (isTerminatedAsOf(e as { termination_date?: string | null })) return false
       if (level === null || !MANAGER_ROLES.includes(level)) return false
       return level === ACCESS.ADMIN || e.store_id === storeId
     })

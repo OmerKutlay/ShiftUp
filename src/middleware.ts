@@ -21,6 +21,7 @@ import { verifyDevSessionEdge } from '@/lib/auth/devSessionEdge'
 import { isSessionExpired } from '@/lib/auth/sessionAge'
 import { isKioskRole, roleAtLeast, accessLevelOf, ACCESS, type AccessLevel } from '@/lib/auth/roles'
 import { startTrace } from '@/lib/requestTrace'
+import { isEffectivelyActive } from '@/lib/employment'
 
 const PUBLIC_PATHS = ['/login', '/offline']
 const PUBLIC_API_PREFIX = '/api/auth/'
@@ -95,13 +96,13 @@ async function loadEmployee(by: { id?: string; authUserId?: string }): Promise<E
   try {
     const { createAdminClient } = await import('@/lib/supabaseAdmin')
     const admin = createAdminClient()
-    let query = admin.from('employees').select('active, roles ( access_level )')
+    let query = admin.from('employees').select('active, termination_date, roles ( access_level )')
     query = by.id ? query.eq('id', by.id) : query.eq('auth_user_id', by.authUserId!)
     const { data, error } = await query.maybeSingle()
     if (error) return { status: 'error' }
     if (!data) return { status: 'missing' }
     const role = accessLevelOf(data.roles)
-    return { status: 'ok', active: Boolean(data.active), role }
+    return { status: 'ok', active: isEffectivelyActive({ active: Boolean(data.active), termination_date: data.termination_date as string | null }), role }
   } catch {
     return { status: 'error' }
   }

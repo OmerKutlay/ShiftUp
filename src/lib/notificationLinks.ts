@@ -15,6 +15,7 @@ export const NOTIFICATION_LINKS: Record<NotificationType, string> = {
   shift_reminder: '/my-schedule',
   shift_changed: '/my-schedule',
   schedule_published: '/my-schedule',
+  store_norm_set: '/schedule',
   leave_submitted: '/leave',
   leave_approved: '/leave',
   leave_rejected: '/leave',
@@ -38,6 +39,8 @@ export const NOTIFICATION_LINKS: Record<NotificationType, string> = {
   // Geciken kontrol listesi yöneticilere gider
   checklist_overdue: '/checklists',
   // Test bildirimi → anlık bildirim ayarının bulunduğu Daha fazla sayfası
+  // Duyuru → Duyurular sayfası
+  announcement: '/announcements',
   push_test: '/more',
 }
 
@@ -45,6 +48,8 @@ export const NOTIFICATION_LINKS: Record<NotificationType, string> = {
 export const DEFAULT_NOTIFICATION_LINK = '/notifications'
 
 /** Bildirim tipinin hedef sayfası (bilinmeyen tip → /notifications) */
-export function notificationLink(type: string): string {
+export function notificationLink(type: string, relatedId?: string | null): string {
+  // Duyuru bildirimi ilgili duyurunun detayını açar (push'ta statik adres: /announcements)
+  if (type === 'announcement' && relatedId) return `/announcements?id=${encodeURIComponent(relatedId)}`
   return (NOTIFICATION_LINKS as Record<string, string>)[type] ?? DEFAULT_NOTIFICATION_LINK
 }

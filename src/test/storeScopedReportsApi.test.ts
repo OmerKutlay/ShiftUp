@@ -238,6 +238,23 @@ describe('GET /api/reports/timesheet', () => {
     expect(holidays.map((h) => h.id).sort()).toEqual(['h-a', 'h-nat'])
   })
 
+
+  it('işten ayrılan çalışan, çalıştığı ayların puantajında kalır; ayrıldıktan sonraki ayda (vardiyası yoksa) listelenmez', async () => {
+    const E_LEFT = '00000000-0000-4000-8000-0000000000d1'
+    db.tables.employees.push({
+      ...emp(E_LEFT, 'Ayrılan Deniz', STORE_A, false),
+      termination_date: '2026-10-20', termination_reason: 'istifa',
+    })
+    db.tables.shift_assignments.push(shift('s-left', E_LEFT, STORE_A, '2026-10-12'))
+    const oct = await bodyOf(asManager)
+    expect(oct.rows.map((r) => r.employee.id)).toContain(E_LEFT)
+    expect(oct.rows.find((r) => r.employee.id === E_LEFT)!.days['2026-10-12']).toBeTruthy()
+
+    const { GET } = await mod(asManager, 'timesheet')
+    const nov = (await (await GET(req('http://localhost/api/reports/timesheet?month=2026-11'))).json()) as Body
+    expect(nov.rows.map((r) => r.employee.id)).not.toContain(E_LEFT)
+  })
+
   it('B mağazasında Can yeni vardiyasıyla görünür, A çalışanları görünmez', async () => {
     const { rows } = await bodyOf(asAdminInB)
     expect(rows.map((r) => r.employee.id).sort()).toEqual([E_B1, E_MOVED].sort())

@@ -9,16 +9,18 @@ import { usePathname } from 'next/navigation'
 
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel, SidebarHeader, SidebarMenu,
-  SidebarMenuButton, SidebarMenuItem, SidebarRail,
+  SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem, SidebarRail,
 } from '@/components/ui/sidebar'
 import { StoreSwitcher } from '@/components/stores/StoreSwitcher'
 import { useAuth } from '@/context/AuthContext'
+import { useAnnouncementUnread } from '@/hooks/useAnnouncementUnread'
 import { NAV_ITEMS, filterNavItems, groupNavItems, isNavActive } from './navItems'
 import { NavUser } from './NavUser'
 
 export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
   const { employee, status } = useAuth()
+  const announcementsUnread = useAnnouncementUnread()
   const groups = status === 'loading' ? [] : groupNavItems(filterNavItems(NAV_ITEMS, employee?.roles?.access_level ?? null))
 
   return (
@@ -43,6 +45,9 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                         <span>{item.label}</span>
                       </Link>
                     </SidebarMenuButton>
+                    {item.href === '/announcements' && announcementsUnread > 0 && (
+                      <SidebarMenuBadge aria-label={`${announcementsUnread} okunmamış duyuru`}>{announcementsUnread}</SidebarMenuBadge>
+                    )}
                   </SidebarMenuItem>
                 )
               })}

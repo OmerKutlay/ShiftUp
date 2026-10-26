@@ -33,6 +33,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { ShiftTime } from '@/components/daily-attendance/ShiftTime'
 import { clock, formatDelay, lateMinutes, shiftWindow, turkeyDate, useNow } from '@/components/daily-attendance/attendanceTime'
 import { StaffingChart } from './StaffingChart'
+import { MonthlyNormCard } from './MonthlyNormCard'
 import { useHydrated } from '@/hooks/useHydrated'
 
 // ─── Types ───────────────────────────────────────────────────
@@ -363,6 +364,8 @@ export function DashboardPage() {
               href="/leave"
             />
           </StatCards>
+
+          <MonthlyNormCard />
 
           <div className="grid gap-4 md:gap-6 @5xl/main:grid-cols-3">
             <div className="flex min-w-0 flex-col @5xl/main:col-span-2">

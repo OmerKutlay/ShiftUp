@@ -279,8 +279,6 @@ operasyonel tabloları gruplar halinde temizler ve silinen satır sayısını js
 | Tablo | Saklama |
 |---|---|
 | `qr_tokens` | süresi dolmuş / kullanılmış, 2 günden eski |
-| `qr_scan_uses` | 3 gün |
-| `kiosk_keys` | süresi dolmuş / iptal edilmiş, 30 günden eski |
 | `rate_limits` | süresi dolmuş, 1 günden eski |
 | `notifications` | okunmuş 90 gün, okunmamış 180 gün |
 | `app_errors` | 30 gün |

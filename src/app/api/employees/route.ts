@@ -5,12 +5,15 @@
  *      Çalışan aktif mağazaya eklenir; yalnızca Admin body.store_id ile başka (aktif) bir
  *      mağazaya ekleyebilir — diğer roller farklı store_id gönderirse 403.
  */
+import { isEffectivelyActive } from '@/lib/employment'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, requireMinRole, ACCESS, MANAGER_ROLES, hasRole, forbidden } from '@/lib/auth'
 import { fetchEmployees, fetchActiveEmployees, createEmployee, isActiveStore } from '@/lib/employeeRepository'
 import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/apiErrors'
 import { validateEmployeeInput } from '@/lib/employeeValidation'
 import { canSwitchStore } from '@/lib/storeScope'
+import { createAdminClient } from '@/lib/supabaseAdmin'
+import { addLateJoinerRecipient } from '@/lib/announcementService'
 import { isUuid } from '@/lib/validation'
 import type { CreateEmployeePayload, EmployeeWithRole } from '@/types/employee'
 
@@ -28,7 +31,7 @@ export async function GET(req: NextRequest) {
       employees = await fetchActiveEmployees(storeId)
     } else {
       employees = await fetchEmployees(storeId)
-      if (activeParam === 'false') employees = employees.filter((e) => !e.active)
+      if (activeParam === 'false') employees = employees.filter((e) => !isEffectivelyActive(e))
     }
 
     // Standart çalışan diğerlerinin iletişim/kimlik ve özlük bilgilerini (doğum tarihi vb.) görmez
@@ -40,6 +43,11 @@ export async function GET(req: NextRequest) {
         birth_date: null,
         hire_date: null,
         overtime_consent_at: null,
+        termination_date: null,
+        termination_reason: null,
+        termination_note: null,
+        terminated_at: null,
+        termination_leave_balance: null,
       }))
     }
 
@@ -82,6 +90,9 @@ export async function POST(req: NextRequest) {
       ...result.payload,
       store_id: storeId,
     } as CreateEmployeePayload & { store_id: string })
+    // Sabit / onay zorunlu duyurulara alıcı olarak eklenir; hata çalışan kaydını bozmaz
+    await addLateJoinerRecipient(createAdminClient(), employee.id).catch((e) =>
+      console.error('[POST /api/employees] duyuru alıcı ekleme', e))
     return NextResponse.json({ employee }, { status: 201 })
   } catch (err) {
     if (err instanceof Error && /duplicate|unique|23505/i.test(err.message)) {

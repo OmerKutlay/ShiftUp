@@ -13,8 +13,8 @@
  * roldeki çalışanları yönetebilir. E-posta değişikliği bağlı Supabase Auth
  * kullanıcısına da yansıtılır (yalnızca yetkili yönetici yapabilir).
  *
- * Bağlı vardiya/devam kaydı olan çalışan silinemez (FK RESTRICT → 409);
- * UI bu durumda pasifleştirme önerir.
+ * Vardiya/devam/izin/mesai kaydı olan çalışan silinemez (409 HAS_RECORDS);
+ * UI bu durumda "İşten çıkış" akışını önerir (bkz. ./offboarding).
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
@@ -26,6 +26,7 @@ import { isUuid } from '@/lib/validation'
 import { canSwitchStore } from '@/lib/storeScope'
 import { turkeyToday } from '@/lib/dateUtils'
 import { logAudit } from '@/lib/auditLog'
+import { addLateJoinerRecipient } from '@/lib/announcementService'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -34,13 +35,27 @@ async function loadTarget(id: string, storeId: string) {
   const admin = createAdminClient()
   const { data, error } = await admin
     .from('employees')
-    .select('id, full_name, email, active, auth_user_id, role_id, store_id, roles ( access_level )')
+    .select('id, full_name, email, active, auth_user_id, role_id, store_id, termination_date, roles ( access_level )')
     .eq('id', id)
     .eq('store_id', storeId)
     .maybeSingle()
   if (error) throw error
   if (!data) return null
   return { ...data, access_level: accessLevelOf(data.roles) }
+}
+
+/** Çalışanın silinmesi halinde kaybolacak kayıtları var mı? */
+async function hasEmployeeRecords(employeeId: string): Promise<boolean> {
+  const admin = createAdminClient()
+  for (const table of ['shift_assignments', 'attendance_records', 'leave_requests', 'manual_time_correction_requests']) {
+    const { count, error } = await admin
+      .from(table)
+      .select('id', { count: 'exact', head: true })
+      .eq('employee_id', employeeId)
+    if (error) throw error
+    if ((count ?? 0) > 0) return true
+  }
+  return false
 }
 
 export async function PATCH(req: NextRequest, { params }: Ctx) {
@@ -88,6 +103,9 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
         return forbidden('Çalışanı başka mağazaya taşıma yetkiniz yok.')
       }
       if (!isUuid(body.store_id)) return badRequest('Geçersiz mağaza ID.')
+      if (target.termination_date) {
+        return conflict('İşten çıkışı kayıtlı çalışan başka mağazaya taşınamaz.', 'TERMINATED')
+      }
       if (!(await isActiveStore(body.store_id))) {
         return notFound('Hedef mağaza bulunamadı veya aktif değil.', 'STORE_NOT_FOUND')
       }
@@ -115,6 +133,10 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     if ('error' in result) return badRequest(result.error)
     if (transferTo) result.payload.store_id = transferTo
     if (Object.keys(result.payload).length === 0) return badRequest('Güncellenecek alan yok.')
+    // İşten çıkışı kayıtlı çalışan elle aktifleştirilemez; ayrılış önce (Admin) geri alınmalı
+    if (result.payload.active === true && target.termination_date) {
+      return conflict('Bu çalışanın işten çıkışı kayıtlı. Aktifleştirmek için önce işten çıkışı geri alın.', 'TERMINATED')
+    }
 
     const emailChanged =
       result.payload.email !== undefined && result.payload.email !== (target.email ?? null)
@@ -147,6 +169,9 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       after: result.payload,
     })
     if (transferTo) {
+      // Yeni mağazanın sabit / onay zorunlu duyurularına alıcı olarak eklenir; hata transferi bozmaz
+      await addLateJoinerRecipient(createAdminClient(), id).catch((e) =>
+        console.error('[PATCH /api/employees/[id]] duyuru alıcı ekleme', e))
       // Transfer hem eski hem yeni mağazanın denetim kaydında görünür
       for (const storeId of new Set([activeStoreId, transferTo])) {
         await logAudit({
@@ -193,6 +218,15 @@ export async function DELETE(req: NextRequest, { params }: Ctx) {
 
     if (!canManageRole(auth.employee.access_level, employee.access_level)) {
       return forbidden('Bu çalışanı silme yetkiniz yok.')
+    }
+
+    // Yasal kayıtlar (vardiya, devam, izin, mesai) korunur: geçmişi olan çalışan silinmez,
+    // "İşten çıkış" akışı kullanılır. Yalnızca hiçbir kaydı olmayan (ör. yanlış eklenmiş) çalışan silinebilir.
+    if (employee.termination_date || (await hasEmployeeRecords(id))) {
+      return conflict(
+        'Bu çalışanın vardiya, devam veya izin kayıtları var; yasal kayıtlar korunduğu için silinemez. Bunun yerine "İşten çıkış" işlemini kullanın.',
+        'HAS_RECORDS'
+      )
     }
 
     const { error: deleteError } = await admin
