@@ -70,7 +70,7 @@
     "wrangler": "^4.153.0"
   },
   "allowScripts": {
-    "workerd@1.20261006.1": true
+    "workerd@1.20261023.1": true
   },
   "overrides": {
     "@node-minify/core": {
