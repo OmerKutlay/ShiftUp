@@ -15,6 +15,8 @@ import type { NotificationType } from '@/types/notification'
 // Tüm tipler — yeni tip eklenince TS burada (ve Record<NotificationType, string>'de) hata verir
 const ALL_TYPES = {
   shift_reminder: true,
+  shift_changed: true,
+  schedule_published: true,
   leave_submitted: true,
   leave_approved: true,
   leave_rejected: true,
@@ -67,6 +69,8 @@ describe('notificationLinks', () => {
 
   it('acil (high urgency) tipler: vardiya hatırlatması ve devam uyarıları', () => {
     expect(edge.isUrgentType('shift_reminder')).toBe(true)
+    expect(edge.isUrgentType('shift_changed')).toBe(true)
+    expect(edge.isUrgentType('schedule_published')).toBe(false)
     expect(edge.isUrgentType('attendance_missed_clock_in')).toBe(true)
     expect(edge.isUrgentType('attendance_override')).toBe(true)
     expect(edge.isUrgentType('leave_approved')).toBe(false)

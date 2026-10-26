@@ -3,7 +3,8 @@
  * `short` dar panelde, `label` /notifications sayfasında kullanılır.
  */
 import {
-  BellRing, CalendarCheck, CalendarPlus, CalendarX, CircleCheck, Clock, Coffee, TriangleAlert, Wrench,
+  BellRing, CalendarCheck, CalendarClock, CalendarPlus, CalendarRange, CalendarX, CircleCheck, Clock, Coffee,
+  TriangleAlert, Wrench,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { BadgeTone } from '@/components/ui/badge'
@@ -18,6 +19,8 @@ export interface NotificationMeta {
 
 export const NOTIFICATION_META: Record<NotificationType, NotificationMeta> = {
   shift_reminder:              { Icon: Clock,         tone: 'neutral', label: 'Vardiya hatırlatması', short: 'Vardiya' },
+  shift_changed:               { Icon: CalendarClock, tone: 'info',    label: 'Vardiya değişikliği',  short: 'Vardiya' },
+  schedule_published:          { Icon: CalendarRange, tone: 'brand',   label: 'Haftalık plan',        short: 'Plan' },
   leave_submitted:             { Icon: CalendarPlus,  tone: 'info',    label: 'İzin talebi',          short: 'İzin talebi' },
   leave_approved:              { Icon: CircleCheck,   tone: 'success', label: 'İzin onaylandı',       short: 'Onaylandı' },
   leave_rejected:              { Icon: CalendarX,     tone: 'danger',  label: 'İzin reddedildi',      short: 'Reddedildi' },

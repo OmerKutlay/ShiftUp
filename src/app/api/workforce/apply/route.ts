@@ -32,6 +32,7 @@ import { addDaysToDateString, turkeyToday } from '@/lib/dateUtils'
 import { getWorkingTimeConfig } from '@/lib/workingTimeConfig'
 import { validateWeekPlan, type PlanShift } from '@/lib/planValidation'
 import { logAudit } from '@/lib/auditLog'
+import { notifySchedulePublished } from '@/lib/shiftNotifications'
 import { completedYears, minorWorkViolations } from '@/lib/laborLaw'
 import { netWorkMins } from '@/lib/workingTimeService'
 import type { EmploymentType } from '@/types/employee'
@@ -282,6 +283,15 @@ export async function POST(req: NextRequest) {
       entityId: null,
       after: { weekStart, weekEnd, created: newShiftIds.length, replaced: deleteIds.length, restDays: newRestIds.length },
       note: violations.length > 0 ? `İhlaller onaylandı: ${violations.join(' | ')}` : null,
+    })
+
+    // Vardiyaları değişen çalışanlara haftalık plan bildirimi (korunan vardiyalar iki tarafta da var)
+    await notifySchedulePublished(admin, {
+      actorId: auth.employee.id,
+      weekStart,
+      weekEnd,
+      before: [...(deletedRows as unknown as PlanShift[]), ...kept],
+      after: [...rows, ...kept],
     })
 
     return NextResponse.json({

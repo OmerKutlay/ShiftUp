@@ -83,7 +83,7 @@ export function NotificationRow({ notification, onSelect, compact = false }: {
           <ItemTitle className={cn('w-full', unread ? 'font-semibold' : 'font-medium')}>
             <span className="min-w-0 flex-1">{notification.title}</span>
           </ItemTitle>
-          <ItemDescription className={cn('text-pretty [overflow-wrap:anywhere]', compact ? 'line-clamp-2' : 'line-clamp-none')}>
+          <ItemDescription className={cn('text-pretty whitespace-pre-line [overflow-wrap:anywhere]', compact ? 'line-clamp-2' : 'line-clamp-none')}>
             {humanizeIsoDates(notification.message)}
           </ItemDescription>
           <span className="mt-0.5 block text-xs text-muted-foreground" title={when.full}>

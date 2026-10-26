@@ -12,6 +12,7 @@ import { isUuid, isValidDate, isValidTime } from '@/lib/validation'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { logAudit } from '@/lib/auditLog'
 import { checkAssignmentRules } from '@/lib/shiftAssignmentRules'
+import { notifyShiftChange } from '@/lib/shiftNotifications'
 
 export async function GET(req: NextRequest) {
   const auth = await requireAuth(req)
@@ -106,6 +107,8 @@ export async function POST(req: NextRequest) {
       after: { employee_id, work_date, start_time, end_time },
       note: rules.violations.length > 0 ? `İhlaller onaylandı: ${rules.violations.map((v) => v.message).join(' | ')}` : null,
     })
+
+    await notifyShiftChange(admin, auth.employee.id, { kind: 'created', shift: assignment })
 
     return NextResponse.json({ assignment }, { status: 201 })
   } catch (err) {

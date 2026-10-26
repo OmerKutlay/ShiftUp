@@ -13,6 +13,8 @@ import type { NotificationType } from '@/types/notification'
 
 export const NOTIFICATION_LINKS: Record<NotificationType, string> = {
   shift_reminder: '/my-schedule',
+  shift_changed: '/my-schedule',
+  schedule_published: '/my-schedule',
   leave_submitted: '/leave',
   leave_approved: '/leave',
   leave_rejected: '/leave',
