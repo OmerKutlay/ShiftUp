@@ -40,6 +40,11 @@ export async function GET(req: NextRequest) {
         birth_date: null,
         hire_date: null,
         overtime_consent_at: null,
+        termination_date: null,
+        termination_reason: null,
+        termination_note: null,
+        terminated_at: null,
+        termination_leave_balance: null,
       }))
     }
 

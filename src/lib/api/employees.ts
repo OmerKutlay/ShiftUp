@@ -8,6 +8,7 @@ import type {
   Role,
   CreateEmployeePayload,
   UpdateEmployeePayload,
+  TerminationReason,
 } from '@/types/employee'
 
 export async function fetchRoles(): Promise<Role[]> {
@@ -56,4 +57,50 @@ export function activateEmployee(id: string): Promise<Employee> {
  */
 export async function deleteEmployee(id: string): Promise<void> {
   await apiFetch(`/api/employees/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+// ─── İşten ayrılış ───────────────────────────────────────────
+
+export interface OffboardingShiftInfo {
+  id: string
+  store_id: string
+  store_name: string | null
+  work_date: string
+  start_time: string
+  end_time: string
+  is_on_leave: boolean
+}
+
+export interface OffboardingPreview {
+  last_day: string
+  deactivates_now: boolean
+  future_shifts: OffboardingShiftInfo[]
+  pending_leave: number
+  future_approved_leave: number
+  pending_time_corrections: number
+  pending_swaps: number
+  leave_balance: { known: boolean; entitlement_days: number; used_days: number; remaining_days: number }
+}
+
+export interface OffboardingInput {
+  last_day: string
+  reason: TerminationReason
+  note?: string
+  convert_to_open_shifts?: boolean
+}
+
+export async function fetchOffboardingPreview(id: string, date: string): Promise<OffboardingPreview> {
+  const { preview } = await apiFetch<{ preview: OffboardingPreview }>(
+    `/api/employees/${encodeURIComponent(id)}/offboarding?date=${encodeURIComponent(date)}`
+  )
+  return preview
+}
+
+export async function offboardEmployee(id: string, input: OffboardingInput): Promise<void> {
+  await apiFetch(`/api/employees/${encodeURIComponent(id)}/offboarding`, { method: 'POST', body: input })
+}
+
+/** Yalnızca Admin: ayrılışı geri alır (silinen vardiyalar geri gelmez) */
+export async function undoOffboarding(id: string): Promise<void> {
+  await apiFetch(`/api/employees/${encodeURIComponent(id)}/offboarding`, { method: 'DELETE' })
 }

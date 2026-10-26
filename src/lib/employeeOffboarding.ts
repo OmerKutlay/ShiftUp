@@ -14,11 +14,9 @@ import { addDaysToDateString, turkeyToday } from '@/lib/dateUtils'
 import { fetchHolidaysInRange } from '@/lib/holidayRepository'
 import { createNotifications } from '@/lib/notificationRepository'
 import { isValidDate } from '@/lib/validation'
+import { MAX_BACKDATE_DAYS, MAX_FUTURE_DAYS } from '@/lib/offboardingLimits'
 
-/** Geriye dönük en fazla kaç gün önceki bir son çalışma günü girilebilir */
-export const MAX_BACKDATE_DAYS = 30
-/** İleriye dönük en fazla kaç gün sonrası girilebilir */
-export const MAX_FUTURE_DAYS = 365
+export { MAX_BACKDATE_DAYS, MAX_FUTURE_DAYS }
 
 export interface OffboardingShift {
   id: string

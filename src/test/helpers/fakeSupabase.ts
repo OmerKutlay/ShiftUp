@@ -75,7 +75,21 @@ class Query implements PromiseLike<{ data: any; error: any; count?: number | nul
     } else this.filters.push((r) => r[c] !== v)
     return this
   }
-  or(_expr: string) { return this }
+  /** PostgREST `col.eq.v,col.neq.v,col.is.null` — yalnızca bu üç işleç; bilinmeyen işleç koşulu geçirir */
+  or(expr: string) {
+    const conds = expr.split(",").map((part) => {
+      const [col, op, ...rest] = part.split(".")
+      const v = rest.join(".")
+      return (r: Row) => {
+        if (op === "eq") return String(r[col]) === v
+        if (op === "neq") return String(r[col]) !== v
+        if (op === "is" && v === "null") return r[col] == null
+        return true
+      }
+    })
+    this.filters.push((r) => conds.some((c) => c(r)))
+    return this
+  }
   order(col: string, opts?: { ascending?: boolean }) { this.orderBy.push({ col, asc: opts?.ascending !== false }); return this }
   limit(n: number) { this.limitN = n; return this }
   range(from: number, to: number) { this.rangeFrom = from; this.limitN = to - from + 1; return this }

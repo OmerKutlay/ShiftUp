@@ -192,7 +192,7 @@ describe('EmployeesPage — düzenleme', () => {
 describe('EmployeesPage — pasif çalışan', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('5. Pasif çalışan listede görünür ama "Pasif" chip ile işaretlenir', async () => {
+  it('5. Pasif çalışan varsayılan "Aktif" görünümde yok; "Ayrılanlar" sekmesinde "Pasif" chip ile görünür', async () => {
     vi.mocked(repo.fetchEmployees).mockResolvedValue([
       makeEmployee({ active: false }),
     ])
@@ -200,12 +200,34 @@ describe('EmployeesPage — pasif çalışan', () => {
 
     renderPage()
 
+    await waitFor(() => expect(screen.getByText('Aktif çalışan')).toBeInTheDocument())
+    expect(screen.queryByText('Ahmet Kaya')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByText('Ayrılanlar'))
     await waitFor(() => {
       expect(screen.getByText('Ahmet Kaya')).toBeInTheDocument()
-      // Chip olarak render edilen "Pasif" label'ı bul (role "status" yoktur, ama text içeriyor)
-      const passiveChips = screen.getAllByText(/^Pasif$/)
-      expect(passiveChips.length).toBeGreaterThanOrEqual(1)
+      expect(screen.getAllByText(/^Pasif$/).length).toBeGreaterThanOrEqual(1)
     })
+  })
+
+  it('İşten ayrılan çalışan "Ayrıldı · tarih · neden" chip ile Ayrılanlar sekmesinde görünür', async () => {
+    vi.mocked(repo.fetchEmployees).mockResolvedValue([
+      makeEmployee({ active: false, termination_date: '2026-01-31', termination_reason: 'istifa' }),
+      makeEmployee({ id: 'emp-002', full_name: 'Zeynep Aktif' }),
+    ])
+    vi.mocked(repo.fetchRoles).mockResolvedValue([])
+
+    renderPage()
+
+    await waitFor(() => expect(screen.getByText('Zeynep Aktif')).toBeInTheDocument())
+    expect(screen.queryByText('Ahmet Kaya')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByText('Ayrılanlar'))
+    await waitFor(() => {
+      expect(screen.getByText('Ahmet Kaya')).toBeInTheDocument()
+      expect(screen.getByText(/Ayrıldı · 31 Oca 2026 · İstifa/)).toBeInTheDocument()
+    })
+    expect(screen.queryByText('Zeynep Aktif')).not.toBeInTheDocument()
   })
 })
 
