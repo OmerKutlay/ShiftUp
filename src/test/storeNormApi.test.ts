@@ -44,6 +44,7 @@ function seed(): FakeDb {
       e(MGR_A, STORE_A, ACCESS.MANAGER),
       e(EMP_A1, STORE_A, ACCESS.EMPLOYEE),
       e(uuid(27), STORE_A, ACCESS.EMPLOYEE, false), // planlanmayan rol: sayılmaz
+      { ...e(uuid(28), STORE_A, ACCESS.EMPLOYEE), termination_date: '2026-10-31' }, // Kasım'dan önce ayrıldı: sayılmaz
       e(KIOSK_A, STORE_A, ACCESS.KIOSK),
       e(EMP_B1, STORE_B, ACCESS.EMPLOYEE),
       e(MGR_B, STORE_B, ACCESS.MANAGER),

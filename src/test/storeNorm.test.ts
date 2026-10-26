@@ -3,7 +3,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import {
-  computeDefaultNorm, computeNormUsage, daysInMonth, defaultDerivation, employedDuringMonth, majorityMonthOfWeek, monthLabelTr, normLevel,
+  computeDefaultNorm, computeNormUsage, daysInMonth, defaultDerivation, employedDaysInMonth, employedDuringMonth, majorityMonthOfWeek, monthLabelTr, normLevel,
   normMonthStart, normWarningFor, resolveStoreNorm, type NormEmployee,
 } from '@/lib/storeNorm'
 import { plannedNetHours } from '@/lib/storeNormService'
@@ -22,8 +22,20 @@ describe('varsayılan norm', () => {
     expect(daysInMonth('2028-02-01')).toBe(29)
   })
 
-  it('ay ortasında işe başlayan ayın içinde sayılır, sonraki aya başlayan sayılmaz', () => {
+  it('ay ortasında işe başlayan çalışılan gün oranıyla, sonraki aya başlayan hiç sayılmaz', () => {
+    // 15 Kas girişi: 16/30 gün
     const list = [emp(), emp({ hire_date: '2026-11-15' }), emp({ hire_date: '2026-12-01' })]
+    expect(computeDefaultNorm(list, '2026-11-01').employeeCount).toBe(1.5)
+  })
+
+  it('ayrılan: son çalışma günü dahil oranlanır, ay öncesi ayrılan sayılmaz', () => {
+    const list = [
+      emp({ termination_date: '2026-11-15' }),                // 15/30
+      emp({ termination_date: '2026-10-31' }),                // ay başından önce
+      emp({ termination_date: '2026-11-30' }),                // ayın son günü: tam
+      emp({ active: false, termination_date: '2026-11-15' }), // cron pasifleştirdi: tarihler belirleyici (15/30)
+      emp({ active: false }),                                 // tarihsiz pasif: sayılmaz
+    ]
     expect(computeDefaultNorm(list, '2026-11-01').employeeCount).toBe(2)
   })
 
@@ -41,10 +53,18 @@ describe('varsayılan norm', () => {
     expect(employedDuringMonth({ hire_date: '2026-11-30' }, '2026-11-01')).toBe(true)
     expect(employedDuringMonth({ hire_date: '2026-12-01' }, '2026-11-01')).toBe(false)
     expect(employedDuringMonth({ hire_date: null }, '2026-11-01')).toBe(true)
+    expect(employedDuringMonth({ termination_date: '2026-10-31' }, '2026-11-01')).toBe(false)
+    expect(employedDuringMonth({ termination_date: '2026-11-01' }, '2026-11-01')).toBe(true)
+    expect(employedDaysInMonth({ hire_date: '2026-11-10', termination_date: '2026-11-19' }, '2026-11-01')).toBe(10)
+    expect(employedDuringMonth({ termination_date: '2026-10-31' }, '2026-11-01')).toBe(false)
+    expect(employedDuringMonth({ termination_date: '2026-11-01' }, '2026-11-01')).toBe(true)
+    expect(employedDaysInMonth({ hire_date: '2026-11-10', termination_date: '2026-11-19' }, '2026-11-01')).toBe(10)
   })
 
   it('türetme metni', () => {
     expect(defaultDerivation(12, '2026-11-01')).toBe('12 kişi × 45 sa × 30/7')
+    expect(defaultDerivation(11.4, '2026-11-01')).toBe('11,4 kişi × 45 sa × 30/7')
+    expect(defaultDerivation(11.4, '2026-11-01')).toBe('11,4 kişi × 45 sa × 30/7')
   })
 
   it('çalışan yoksa norm 0', () => {

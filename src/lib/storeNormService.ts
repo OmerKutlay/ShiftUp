@@ -45,13 +45,13 @@ export async function fetchNormEmployees(admin: SupabaseClient, storeIds: string
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await admin
       .from('employees')
-      .select('id, store_id, active, hire_date, roles(access_level, planning_group)')
+      .select('id, store_id, active, hire_date, termination_date, roles(access_level, planning_group)')
       .in('store_id', storeIds)
       .order('id')
       .range(from, from + PAGE - 1)
     if (error) throw error
     const rows = (data ?? []) as unknown as Array<{
-      store_id: string; active: boolean; hire_date: string | null; roles: unknown
+      store_id: string; active: boolean; hire_date: string | null; termination_date: string | null; roles: unknown
     }>
     for (const r of rows) {
       const role = unwrapJoin(r.roles as { planning_group?: string | null } | null)
@@ -59,6 +59,7 @@ export async function fetchNormEmployees(admin: SupabaseClient, storeIds: string
       out.set(r.store_id, [...(out.get(r.store_id) ?? []), {
         active: r.active,
         hire_date: r.hire_date,
+        termination_date: r.termination_date,
         isKiosk: isKioskRole(level),
         isAdmin: level === ACCESS.ADMIN,
         planned: !!role?.planning_group,

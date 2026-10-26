@@ -26,6 +26,8 @@ export interface NormEmployee {
   planned: boolean
   /** YYYY-MM-DD; boşsa ay başından beri çalışıyor sayılır */
   hire_date?: string | null
+  /** Son çalışma günü (dahil); boşsa ayrılmamış */
+  termination_date?: string | null
 }
 
 /** 'YYYY-MM-DD' veya 'YYYY-MM' → 'YYYY-MM-01' (geçersizse null) */
@@ -46,22 +48,45 @@ export function monthEnd(monthStart: string): string {
 }
 
 /**
- * Çalışan o ayda (herhangi bir günde) işte mi? Tek yerde tutulur: ayrılış tarihi
- * (termination_date) eklendiğinde yalnızca burası genişletilir.
+ * Çalışanın o ayda istihdamda olduğu gün sayısı (işe giriş ve son çalışma günü dahil;
+ * src/lib/employment.ts isEmployedOn ile aynı kural). "Ayda çalıştı mı" koşulu tek yerde.
  */
-export function employedDuringMonth(e: Pick<NormEmployee, 'hire_date'>, monthStart: string): boolean {
-  return !e.hire_date || e.hire_date <= monthEnd(monthStart)
+export function employedDaysInMonth(
+  e: Pick<NormEmployee, 'hire_date' | 'termination_date'>, monthStart: string,
+): number {
+  const end = monthEnd(monthStart)
+  const from = e.hire_date && e.hire_date > monthStart ? e.hire_date : monthStart
+  const to = e.termination_date && e.termination_date < end ? e.termination_date : end
+  if (to < from) return 0
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000) + 1
 }
 
-/** Varsayılan norm kadrosu: aktif, kiosk/Admin değil, planlanan bir role sahip ve ayda çalışan */
+export function employedDuringMonth(
+  e: Pick<NormEmployee, 'hire_date' | 'termination_date'>, monthStart: string,
+): boolean {
+  return employedDaysInMonth(e, monthStart) > 0
+}
+
+/**
+ * Kadro ağırlığı: kiosk / Admin / planlanmayan rol 0; ayın tamamında çalışan 1; ay ortasında
+ * giren veya ayrılan çalışılan gün / ay günü kadar. Ayrılış tarihi olanda tarihler belirleyicidir
+ * (cron active'i sonradan kapatsa da geçmiş ay normu değişmez); tarihsiz pasif hesap sayılmaz.
+ */
+export function normWeight(e: NormEmployee, monthStart: string): number {
+  if (e.isKiosk || e.isAdmin || !e.planned) return 0
+  if (!e.active && !e.termination_date) return 0
+  return employedDaysInMonth(e, monthStart) / daysInMonth(monthStart)
+}
+
+/** Ağırlığı sıfırdan büyük mü (ayda en az bir gün kadroda) */
 export function countsForNorm(e: NormEmployee, monthStart: string): boolean {
-  if (!e.active || e.isKiosk || e.isAdmin || !e.planned) return false
-  return employedDuringMonth(e, monthStart)
+  return normWeight(e, monthStart) > 0
 }
 
 /** Varsayılanın nasıl türetildiği: "12 kişi × 45 sa × 30/7" */
 export function defaultDerivation(employeeCount: number, monthStart: string): string {
-  return `${employeeCount} kişi × ${WEEKLY_LEGAL_HOURS} sa × ${daysInMonth(monthStart)}/7`
+  const count = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 1 }).format(employeeCount)
+  return `${count} kişi × ${WEEKLY_LEGAL_HOURS} sa × ${daysInMonth(monthStart)}/7`
 }
 
 export interface DefaultNorm {
@@ -70,8 +95,10 @@ export interface DefaultNorm {
 }
 
 export function computeDefaultNorm(employees: NormEmployee[], monthStart: string): DefaultNorm {
-  const employeeCount = employees.filter((e) => countsForNorm(e, monthStart)).length
-  const raw = (employeeCount * WEEKLY_LEGAL_HOURS * daysInMonth(monthStart)) / 7
+  // Ay ortasında giren/ayrılan çalışılan gün oranıyla ağırlıklanır (ör. 11,4 kişi)
+  const headcount = employees.reduce((sum, e) => sum + normWeight(e, monthStart), 0)
+  const employeeCount = Math.round(headcount * 10) / 10
+  const raw = (headcount * WEEKLY_LEGAL_HOURS * daysInMonth(monthStart)) / 7
   // Kayan nokta hatası tam katları bir üst 10'a atmasın
   const normHours = Math.ceil(Math.round(raw * 1e6) / 1e6 / 10) * 10
   return { normHours, employeeCount }
