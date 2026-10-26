@@ -11,6 +11,8 @@
  */
 import { test as base, expect, type BrowserContext, type Route } from '@playwright/test'
 
+import { KVKK_NOTICE_VERSION } from '../../src/lib/kvkk'
+
 export type RoleName = 'Çalışan' | 'Mağaza Müdürü'
 
 export const EMPLOYEE_ID = 'emp-e2e-calisan'
@@ -142,6 +144,14 @@ export async function mockApi(context: BrowserContext, opts: MockApiOptions = {}
           return json(route, { notifications: [] })
         case '/api/store-location/name':
           return json(route, { name: 'Kadıköy mağazası' })
+        case '/api/kvkk/ack':
+          // Aydınlatma metni onaylanmış sayılır; KVKK kartı alt menüyü örtmesin
+          return json(route, {
+            version: KVKK_NOTICE_VERSION,
+            acknowledged: true,
+            acknowledged_at: '2026-10-01T09:00:00.000Z',
+            acknowledged_version: KVKK_NOTICE_VERSION,
+          })
         default:
           unmocked.push(`${route.request().method()} ${path}`)
           return json(route, { error: 'e2e: taklit edilmedi' }, 404)
