@@ -17,6 +17,7 @@ const ALL_TYPES = {
   shift_reminder: true,
   shift_changed: true,
   schedule_published: true,
+  store_norm_set: true,
   leave_submitted: true,
   leave_approved: true,
   leave_rejected: true,
@@ -35,6 +36,7 @@ const ALL_TYPES = {
   attendance_missed_clock_out: true,
   attendance_break_ending: true,
   checklist_overdue: true,
+  announcement: true,
   push_test: true,
 } satisfies Record<NotificationType, true>
 

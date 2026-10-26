@@ -31,6 +31,8 @@ export type NotificationType =
   | 'attendance_break_ending'
   /** Kontrol listesi son saatini 15 dk geçti, tamamlanmadı (yöneticilere; pg_cron → scan_checklist_overdue) */
   | 'checklist_overdue'
+  /** Duyuru yayınlandı / hatırlatıldı (related_id = duyuru id) */
+  | 'announcement'
   /** Eski kurulum testi bildirimleri (endpoint kaldırıldı; mevcut kayıtlar için) */
   | 'push_test'
 

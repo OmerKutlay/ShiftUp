@@ -58,6 +58,8 @@ const ACTION_LABELS: Record<string, string> = {
   'employee.transfer': 'Çalışan mağaza değiştirdi',
   'store_location.create': 'Mağaza konumu eklendi',
   'store_location.update': 'Mağaza konumu güncellendi',
+  'store_norm.set': 'Mağaza aylık norm saati belirlendi',
+  'store_norm.delete': 'Mağaza aylık norm saati varsayılana döndürüldü',
   'kvkk.notice_ack': 'Aydınlatma metni teyit edildi',
   'company_settings.update': 'Şirket (KVKK) bilgileri güncellendi',
   'holiday.upsert': 'Resmi tatil kaydedildi',
