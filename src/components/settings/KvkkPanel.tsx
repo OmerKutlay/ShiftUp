@@ -7,7 +7,7 @@
  * Şirket bilgisi mağazadan bağımsızdır; yalnızca Admin düzenler, Mağaza Müdürü+ görür.
  * Onay listesi yalnızca aktif mağazanın aktif çalışanlarını gösterir.
  */
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
 import { toast } from 'sonner'
@@ -28,23 +28,17 @@ import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { Textarea } from '@/components/ui/textarea'
 
-const EMPTY: CompanySettings = { legal_name: '', address: '', kvkk_email: '' }
-
 function CompanyForm({ canEdit }: { canEdit: boolean }) {
   const { data, mutate } = useSWR(COMPANY_SETTINGS_KEY, fetchCompanySettings)
-  const [form, setForm] = useState<CompanySettings>(EMPTY)
+  // Düzenleme taslağı: dokunulana kadar sunucudaki değer gösterilir
+  const [draft, setDraft] = useState<CompanySettings | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (data) {
-      setForm({
-        legal_name: data.settings.legal_name ?? '',
-        address: data.settings.address ?? '',
-        kvkk_email: data.settings.kvkk_email ?? '',
-      })
-    }
-  }, [data])
+  const form: CompanySettings = draft ?? {
+    legal_name: data?.settings.legal_name ?? '',
+    address: data?.settings.address ?? '',
+    kvkk_email: data?.settings.kvkk_email ?? '',
+  }
 
   async function save() {
     setBusy(true)
@@ -52,6 +46,7 @@ function CompanyForm({ canEdit }: { canEdit: boolean }) {
     try {
       const saved = await saveCompanySettings(form)
       await mutate({ settings: saved }, { revalidate: false })
+      setDraft(null)
       toast.success('Şirket bilgileri kaydedildi.')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Kaydedilemedi.')
@@ -60,7 +55,7 @@ function CompanyForm({ canEdit }: { canEdit: boolean }) {
     }
   }
 
-  const set = (key: keyof CompanySettings) => (v: string) => setForm((f) => ({ ...f, [key]: v }))
+  const set = (key: keyof CompanySettings) => (v: string) => setDraft({ ...form, [key]: v })
 
   return (
     <Card>
