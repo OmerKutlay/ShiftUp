@@ -17,7 +17,7 @@ import { createAdminClient } from '@/lib/supabaseAdmin'
 import { logAudit } from '@/lib/auditLog'
 import { fetchStore, fetchStores } from '@/lib/storeRepository'
 import { notifyManagers } from '@/lib/notificationRepository'
-import { fetchNormRow, getStoreNormStatus } from '@/lib/storeNormService'
+import { fetchNormRow, getStoreNormStatus, getStoreNormStatuses } from '@/lib/storeNormService'
 import { formatHours, monthLabelTr, normMonthStart } from '@/lib/storeNorm'
 
 const MAX_NORM_HOURS = 99999
@@ -52,12 +52,9 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: 'Bu işlem için yetkiniz yok.', code: 'FORBIDDEN' }, { status: 403 })
       }
       const stores = (await fetchStores()).filter((s) => s.active)
-      const items = await Promise.all(
-        stores.map(async (s) => {
-          const row = await fetchNormRow(admin, s.id, month)
-          return { storeId: s.id, storeName: s.name, ...(await getStoreNormStatus(admin, s.id, month)), updatedAt: row?.updated_at ?? null }
-        }),
-      )
+      // Mağaza sayısından bağımsız sabit sayıda sorgu; fiili çalışma listede hesaplanmaz
+      const statuses = await getStoreNormStatuses(admin, stores.map((x) => x.id), month)
+      const items = stores.map((x) => ({ storeId: x.id, storeName: x.name, ...statuses.get(x.id)! }))
       return NextResponse.json({ month, stores: items })
     }
 
@@ -95,6 +92,10 @@ export async function PUT(req: NextRequest) {
 
     const admin = createAdminClient()
     const before = await fetchNormRow(admin, store.id, month)
+    // Değişiklik yoksa yazma, denetim kaydı ve bildirim yok (yinelenen bildirimi önler)
+    if (before && Number(before.norm_hours) === normHours && (before.note ?? null) === note) {
+      return NextResponse.json({ norm: await getStoreNormStatus(admin, store.id, month), unchanged: true })
+    }
     const { error } = await admin
       .from('store_monthly_norms')
       .upsert(

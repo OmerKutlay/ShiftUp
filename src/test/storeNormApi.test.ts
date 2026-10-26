@@ -27,8 +27,9 @@ const KIOSK_A = uuid(24)
 const EMP_B1 = uuid(25)
 const MGR_B = uuid(26)
 
-const e = (id: string, store: string, level: string) => ({
-  id, full_name: id, store_id: store, active: true, hire_date: null, role_id: null, roles: { access_level: level },
+const e = (id: string, store: string, level: string, planned = level !== ACCESS.ADMIN && level !== ACCESS.KIOSK) => ({
+  id, full_name: id, store_id: store, active: true, hire_date: null, role_id: null,
+  roles: { access_level: level, planning_group: planned ? 'sales' : null },
 })
 
 function seed(): FakeDb {
@@ -42,6 +43,7 @@ function seed(): FakeDb {
       e(SM_A, STORE_A, ACCESS.STORE_MANAGER),
       e(MGR_A, STORE_A, ACCESS.MANAGER),
       e(EMP_A1, STORE_A, ACCESS.EMPLOYEE),
+      e(uuid(27), STORE_A, ACCESS.EMPLOYEE, false), // planlanmayan rol: sayılmaz
       e(KIOSK_A, STORE_A, ACCESS.KIOSK),
       e(EMP_B1, STORE_B, ACCESS.EMPLOYEE),
       e(MGR_B, STORE_B, ACCESS.MANAGER),
@@ -73,6 +75,7 @@ const req = (method: string, qs = '', body?: unknown) =>
     headers: { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
+const db = () => state.db as FakeDb
 const tbl = (name: string) => (state.db as FakeDb).tables[name]
 
 beforeEach(() => {
@@ -99,8 +102,8 @@ describe('GET /api/stores/norm', () => {
     const res = await GET(req('GET', '?month=2026-11'))
     expect(res.status).toBe(200)
     const { norm } = await res.json()
-    // Aktif, kiosk olmayan 4 kişi × 45 × 30/7 = 771,4 → 780
-    expect(norm).toMatchObject({ source: 'default', normHours: 780, employeeCount: 4, plannedHours: 16, remainingHours: 764 })
+    // Admin, kiosk ve planlanmayan rol hariç 3 kişi × 45 × 30/7 = 578,6 → 580
+    expect(norm).toMatchObject({ source: 'default', normHours: 580, employeeCount: 3, monthDays: 30, plannedHours: 16, remainingHours: 564 })
   })
 
   it('Admin aktif mağazaya göre B mağazasını görür', async () => {
@@ -115,6 +118,27 @@ describe('GET /api/stores/norm', () => {
     as(SM_A, ACCESS.STORE_MANAGER)
     const { norm } = await (await GET(req('GET', '?month=2026-11'))).json()
     expect(norm).toMatchObject({ source: 'set', normHours: 1240, note: 'x' })
+  })
+
+  it('scope=all DB çağrı sayısı mağaza sayısıyla artmaz ve fiili çalışmayı hesaplamaz', async () => {
+    as(ADMIN, ACCESS.ADMIN)
+    const calls = async () => {
+      const spy = vi.spyOn(db(), 'from')
+      const body = await (await GET(req('GET', '?month=2026-11&scope=all'))).json()
+      const names = spy.mock.calls.map((c: unknown[]) => c[0] as string)
+      spy.mockRestore()
+      return { n: names.length, body, tables: new Set(names) }
+    }
+    const two = await calls()
+    expect(two.body.stores[0].workedHours).toBeNull()
+    expect(two.tables.has('attendance_records')).toBe(false)
+    for (let i = 3; i < 9; i++) {
+      db().tables.stores.push({ id: uuid(100 + i), name: 'S' + i, active: true })
+      db().tables.employees.push(e(uuid(200 + i), uuid(100 + i), ACCESS.EMPLOYEE))
+    }
+    const eight = await calls()
+    expect(eight.body.stores).toHaveLength(8)
+    expect(eight.n).toBe(two.n)
   })
 
   it('scope=all yalnızca Admin', async () => {
@@ -165,6 +189,15 @@ describe('PUT /api/stores/norm', () => {
     const notes = tbl('notifications').filter((n) => n.type === 'store_norm_set')
     expect(new Set(notes.map((n) => n.employee_id))).toEqual(new Set([SM_A, MGR_A])) // B mağazası ve Admin yok
     expect(notes[0].message).toBe('Kasım 2026 norm saatiniz: 1.240 saat — Kasım hakkı')
+  })
+
+  it('değişmeyen norm için bildirim / denetim kaydı yok', async () => {
+    as(ADMIN, ACCESS.ADMIN)
+    await PUT(req('PUT', '', body))
+    const res = await PUT(req('PUT', '', body))
+    expect((await res.json()).unchanged).toBe(true)
+    expect(tbl('audit_logs')).toHaveLength(1)
+    expect(tbl('notifications')).toHaveLength(2) // yalnızca ilk kayıtta (Müdür + Yönetici)
   })
 
   it('Admin storeId ile başka mağazaya yazabilir', async () => {

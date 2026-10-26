@@ -8,7 +8,7 @@
  * Sunucudaki planlanan saat + bu haftadaki kaydedilmemiş taslak farkı = "öngörülen" kullanım.
  * Norm yol göstericidir: aşım uyarısı kaydı engellemez (toast + kırmızı gösterge).
  */
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
 import { Gauge } from 'lucide-react'
 import { toast } from 'sonner'
@@ -16,7 +16,7 @@ import { toast } from 'sonner'
 import { fetchStoreNorm, storeNormKey } from '@/lib/api/storeNorm'
 import { netWorkMins } from '@/lib/workingTimeService'
 import {
-  computeNormUsage, formatHours, majorityMonthOfWeek, monthEnd, monthLabelTr, normWarningFor,
+  computeNormUsage, defaultDerivation, formatHours, majorityMonthOfWeek, monthEnd, monthLabelTr, normWarningFor,
   type NormLevel,
 } from '@/lib/storeNorm'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -63,11 +63,21 @@ export function MonthlyNormIndicator({ weekStart, saved, projected, className }:
     revalidateOnFocus: false,
   })
 
-  // Hafta verisi (kayıt / silme sonrası) yenilenince sunucu toplamını da tazele
+  // Hafta verisi (kayıt / silme sonrası) yenilenince sunucu toplamını da tazele. Tazeleme sürerken
+  // eşik kontrolü durur: kayıtlı veri yeni, sunucu toplamı eski olduğundan aynı geçiş ikinci kez
+  // uyarı vermesin. Bitince taban değer sessizce yeniden alınır.
   const first = useRef(true)
+  const refreshing = useRef(false)
+  const prev = useRef<{ month: string; hours: number; norm: number } | null>(null)
+  const [tick, setTick] = useState(0)
   useEffect(() => {
     if (first.current) { first.current = false; return }
-    void mutate()
+    refreshing.current = true
+    void mutate().finally(() => {
+      refreshing.current = false
+      prev.current = null
+      setTick((t) => t + 1)
+    })
   }, [saved, mutate])
 
   // Taslak farkı: bu haftanın o aya düşen kısmı için taslaklı − kayıtlı
@@ -76,9 +86,8 @@ export function MonthlyNormIndicator({ weekStart, saved, projected, className }:
   const usage = norm ? computeNormUsage(Math.round(planned * 10) / 10, norm.normHours) : null
 
   // Düzenleme sırasında / kayıt sonrası eşik yeni aşılınca tek seferlik, engellemeyen uyarı
-  const prev = useRef<{ month: string; hours: number; norm: number } | null>(null)
   useEffect(() => {
-    if (!norm || !usage) return
+    if (!norm || !usage || refreshing.current) return
     const last = prev.current
     prev.current = { month, hours: usage.plannedHours, norm: norm.normHours }
     if (!last || last.month !== month || last.norm !== norm.normHours) return
@@ -97,7 +106,7 @@ export function MonthlyNormIndicator({ weekStart, saved, projected, className }:
         })
       }
     }
-  }, [norm, usage, month])
+  }, [norm, usage, month, tick])
 
   if (!norm || !usage) return null
   const tone = TONE[usage.level]
@@ -137,12 +146,12 @@ export function MonthlyNormIndicator({ weekStart, saved, projected, className }:
           <dt className="text-muted-foreground">{usage.remainingHours < 0 ? 'Aşım' : 'Kalan'}</dt>
           <dd className={tone.text}>{formatHours(Math.abs(usage.remainingHours))} sa</dd>
           <dt className="text-muted-foreground">Fiili çalışılan</dt>
-          <dd>{formatHours(norm.workedHours)} sa</dd>
+          <dd>{formatHours(norm.workedHours ?? 0)} sa</dd>
         </dl>
         <p className="mt-3 text-xs text-muted-foreground">
           {norm.source === 'set'
             ? 'Norm, üst yönetim adına Admin tarafından belirlendi.'
-            : `Norm henüz girilmedi; ${norm.employeeCount} çalışan × 45 sa üzerinden hesaplanan tahmin kullanılıyor.`}
+            : `Norm henüz girilmedi; tahmin kullanılıyor (${defaultDerivation(norm.employeeCount, month)}, planlanan görevli kadro).`}
           {norm.note ? ` Not: ${norm.note}` : ''}
           {' '}Norm yol göstericidir, planı engellemez.
         </p>

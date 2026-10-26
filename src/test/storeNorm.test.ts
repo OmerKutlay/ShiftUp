@@ -3,12 +3,12 @@
  */
 import { describe, it, expect } from 'vitest'
 import {
-  computeDefaultNorm, computeNormUsage, daysInMonth, majorityMonthOfWeek, monthLabelTr, normLevel,
+  computeDefaultNorm, computeNormUsage, daysInMonth, defaultDerivation, employedDuringMonth, majorityMonthOfWeek, monthLabelTr, normLevel,
   normMonthStart, normWarningFor, resolveStoreNorm, type NormEmployee,
 } from '@/lib/storeNorm'
 import { plannedNetHours } from '@/lib/storeNormService'
 
-const emp = (over: Partial<NormEmployee> = {}): NormEmployee => ({ active: true, isKiosk: false, hire_date: null, ...over })
+const emp = (over: Partial<NormEmployee> = {}): NormEmployee => ({ active: true, isKiosk: false, isAdmin: false, planned: true, hire_date: null, ...over })
 const many = (n: number, over: Partial<NormEmployee> = {}) => Array.from({ length: n }, () => emp(over))
 
 describe('varsayılan norm', () => {
@@ -30,6 +30,21 @@ describe('varsayılan norm', () => {
   it('kiosk ve pasif hesaplar sayılmaz', () => {
     const list = [emp(), emp({ isKiosk: true }), emp({ active: false })]
     expect(computeDefaultNorm(list, '2026-11-01').employeeCount).toBe(1)
+  })
+
+  it('Admin ve planlanmayan roller (planning_group boş) sayılmaz', () => {
+    const list = [emp(), emp({ isAdmin: true }), emp({ planned: false })]
+    expect(computeDefaultNorm(list, '2026-11-01').employeeCount).toBe(1)
+  })
+
+  it('işte olma koşulu tek fonksiyonda', () => {
+    expect(employedDuringMonth({ hire_date: '2026-11-30' }, '2026-11-01')).toBe(true)
+    expect(employedDuringMonth({ hire_date: '2026-12-01' }, '2026-11-01')).toBe(false)
+    expect(employedDuringMonth({ hire_date: null }, '2026-11-01')).toBe(true)
+  })
+
+  it('türetme metni', () => {
+    expect(defaultDerivation(12, '2026-11-01')).toBe('12 kişi × 45 sa × 30/7')
   })
 
   it('çalışan yoksa norm 0', () => {

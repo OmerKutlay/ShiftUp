@@ -16,7 +16,7 @@ import { apiFetch } from '@/lib/api/http'
 import {
   allStoreNormsKey, clearStoreNorm, setStoreNorm, type StoreNormListItem,
 } from '@/lib/api/storeNorm'
-import { formatHours, monthLabelTr } from '@/lib/storeNorm'
+import { defaultDerivation, formatHours, monthLabelTr } from '@/lib/storeNorm'
 import { turkeyToday } from '@/lib/dateUtils'
 import { PeriodStepper, StatusBadge, useConfirm } from '@/components/common'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -93,7 +93,7 @@ function EditDialog({ item, month, onClose, onSaved }: {
               autoFocus
             />
             <p className="text-xs text-muted-foreground">
-              Hesaplanan tahmin: {formatHours(item.defaultHours)} sa ({item.employeeCount} çalışan)
+              Hesaplanan tahmin: {formatHours(item.defaultHours)} sa ({defaultDerivation(item.employeeCount, month)}, yukarı 10’a yuvarlı)
             </p>
             {error && <FieldError>{error}</FieldError>}
           </Field>
@@ -179,7 +179,7 @@ export function NormHoursPanel() {
                 </ItemTitle>
                 <ItemDescription className="tabular-nums">
                   Norm {formatHours(s.normHours)} sa · Planlanan {formatHours(s.plannedHours)} sa (%{s.percent})
-                  {s.source === 'default' && ` · ${s.employeeCount} çalışan`}
+                  {s.source === 'default' && ` · tahmin: ${defaultDerivation(s.employeeCount, month)}`}
                 </ItemDescription>
                 {s.note && <ItemDescription className="line-clamp-2">Not: {s.note}</ItemDescription>}
               </ItemContent>

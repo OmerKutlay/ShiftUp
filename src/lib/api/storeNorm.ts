@@ -12,13 +12,15 @@ export interface StoreNormDto {
   /** Admin girmediyse kullanılan hesaplanmış tahmin */
   defaultHours: number
   employeeCount: number
+  /** Ayın gün sayısı */
+  monthDays: number
   note: string | null
   plannedHours: number
   remainingHours: number
   percent: number
   level: NormLevel
   /** Çıkışı yapılmış vardiyalardaki fiili net saat */
-  workedHours: number
+  workedHours: number | null
 }
 
 export interface StoreNormListItem extends StoreNormDto {

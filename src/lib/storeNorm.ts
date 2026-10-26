@@ -20,6 +20,10 @@ export const NORM_WARN_RATIO = 0.9
 export interface NormEmployee {
   active: boolean
   isKiosk: boolean
+  /** Admin şirket geneli yöneticidir; mağaza kadrosunda sayılmaz */
+  isAdmin: boolean
+  /** Rolün planlama görevi var mı (planning_group dolu); boşsa vardiyaya planlanmaz */
+  planned: boolean
   /** YYYY-MM-DD; boşsa ay başından beri çalışıyor sayılır */
   hire_date?: string | null
 }
@@ -41,10 +45,23 @@ export function monthEnd(monthStart: string): string {
   return `${monthStart.slice(0, 8)}${String(daysInMonth(monthStart)).padStart(2, '0')}`
 }
 
-/** Çalışan o ayda (herhangi bir günde) işte mi? Pasifler ve kiosk hesapları sayılmaz. */
-export function countsForNorm(e: NormEmployee, monthStart: string): boolean {
-  if (!e.active || e.isKiosk) return false
+/**
+ * Çalışan o ayda (herhangi bir günde) işte mi? Tek yerde tutulur: ayrılış tarihi
+ * (termination_date) eklendiğinde yalnızca burası genişletilir.
+ */
+export function employedDuringMonth(e: Pick<NormEmployee, 'hire_date'>, monthStart: string): boolean {
   return !e.hire_date || e.hire_date <= monthEnd(monthStart)
+}
+
+/** Varsayılan norm kadrosu: aktif, kiosk/Admin değil, planlanan bir role sahip ve ayda çalışan */
+export function countsForNorm(e: NormEmployee, monthStart: string): boolean {
+  if (!e.active || e.isKiosk || e.isAdmin || !e.planned) return false
+  return employedDuringMonth(e, monthStart)
+}
+
+/** Varsayılanın nasıl türetildiği: "12 kişi × 45 sa × 30/7" */
+export function defaultDerivation(employeeCount: number, monthStart: string): string {
+  return `${employeeCount} kişi × ${WEEKLY_LEGAL_HOURS} sa × ${daysInMonth(monthStart)}/7`
 }
 
 export interface DefaultNorm {
@@ -67,6 +84,8 @@ export interface ResolvedNorm {
   /** Admin'in girdiği değer yokken de hesaplanan tahmin (yönetim paneli için) */
   defaultHours: number
   employeeCount: number
+  /** Ayın gün sayısı (varsayılan hesabı gösterimi için) */
+  monthDays: number
   note: string | null
 }
 
@@ -79,12 +98,12 @@ export function resolveStoreNorm(
   if (setRow) {
     return {
       month: monthStart, normHours: Number(setRow.norm_hours), source: 'set',
-      defaultHours: def.normHours, employeeCount: def.employeeCount, note: setRow.note ?? null,
+      defaultHours: def.normHours, employeeCount: def.employeeCount, monthDays: daysInMonth(monthStart), note: setRow.note ?? null,
     }
   }
   return {
     month: monthStart, normHours: def.normHours, source: 'default',
-    defaultHours: def.normHours, employeeCount: def.employeeCount, note: null,
+    defaultHours: def.normHours, employeeCount: def.employeeCount, monthDays: daysInMonth(monthStart), note: null,
   }
 }
 
