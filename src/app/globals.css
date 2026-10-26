@@ -213,3 +213,15 @@
   }
 }
 
+
+/* Haftalık plan çıktısı: A4 yatay; ekran araç çubuğu ve bildirimler basılmaz */
+@page { size: A4 landscape; margin: 10mm; }
+@media print {
+  html, body { background: #fff !important; }
+  .print-hide, [data-sonner-toaster] { display: none !important; }
+  .print-root { background: #fff !important; min-height: 0 !important; }
+  .print-sheet { color: #000 !important; }
+  .print-thead { display: table-header-group; }
+  tfoot { display: table-footer-group; }
+  tr { break-inside: avoid; page-break-inside: avoid; }
+}
