@@ -45,7 +45,7 @@ export async function checkAssignmentRules(
   const to = addDaysToDateString(weekDays[6], 1)
 
   const [empRes, shiftsRes, leaveRes] = await Promise.all([
-    admin.from('employees').select('id, full_name, active, employment_type, birth_date').eq('id', employeeId).maybeSingle(),
+    admin.from('employees').select('id, full_name, active, employment_type, birth_date, termination_date').eq('id', employeeId).maybeSingle(),
     admin
       .from('shift_assignments')
       .select('id, work_date, start_time, end_time')
@@ -69,6 +69,9 @@ export async function checkAssignmentRules(
   const name = emp?.full_name ?? 'Çalışan'
   if (!emp) return { blockers: ['Çalışan bulunamadı.'], violations: [], warnings: [] }
   if (!emp.active) blockers.push(`${name} aktif değil.`)
+  if (emp.termination_date && shift.work_date > emp.termination_date) {
+    blockers.push(`${name} ${emp.termination_date} tarihinde işten ayrıldı; sonraki günlere vardiya atanamaz.`)
+  }
   if (leaveRes.data && leaveRes.data.length > 0) blockers.push(`${name}, ${shift.work_date} tarihinde onaylı izinde.`)
 
   const existing = ((shiftsRes.data ?? []) as Array<{ id: string; work_date: string; start_time: string; end_time: string }>)

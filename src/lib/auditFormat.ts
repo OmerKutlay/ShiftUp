@@ -9,7 +9,7 @@ import { format, parse } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { ATTENDANCE_STATUS_LABELS } from '@/types/attendance'
 import { LEAVE_STATUS_LABELS, LEAVE_TYPE_LABELS } from '@/types/leave'
-import { EMPLOYMENT_TYPE_LABELS } from '@/types/employee'
+import { EMPLOYMENT_TYPE_LABELS, TERMINATION_REASON_LABELS } from '@/types/employee'
 
 export interface AuditRefs {
   employees: Record<string, string>
@@ -50,6 +50,8 @@ const ACTION_LABELS: Record<string, string> = {
   'shift.delete': 'Vardiya silindi',
   'employee.update': 'Çalışan bilgileri güncellendi',
   'employee.delete': 'Çalışan silindi',
+  'employee.terminate': 'İşten çıkış kaydedildi',
+  'employee.terminate_undo': 'İşten çıkış geri alındı',
   'workforce.apply': 'Haftalık plan yayınlandı',
   'store.create': 'Mağaza oluşturuldu',
   'store.update': 'Mağaza güncellendi',
@@ -108,6 +110,15 @@ const FIELD_LABELS: Record<string, string> = {
   hire_date: 'İşe giriş tarihi',
   birth_date: 'Doğum tarihi',
   overtime_consent_at: 'Fazla çalışma onay tarihi',
+  termination_date: 'Son çalışma günü',
+  termination_reason: 'İşten çıkış nedeni',
+  termination_note: 'İşten çıkış notu',
+  termination_leave_balance: 'Kullanılmamış yıllık izin (gün)',
+  shifts_deleted: 'Silinen vardiya',
+  shifts_converted: 'Açık vardiyaya çevrilen',
+  leave_cancelled: 'İptal edilen izin',
+  time_corrections_cancelled: 'İptal edilen mesai düzeltme',
+  swaps_cancelled: 'İptal edilen takas',
   work_date: 'Tarih',
   date: 'Tarih',
   start_time: 'Başlangıç',
@@ -166,6 +177,7 @@ function formatValue(key: string, v: unknown, refs: AuditRefs): string {
   }
   if (key === 'leave_type') return (LEAVE_TYPE_LABELS as Record<string, string>)[String(v)] ?? String(v)
   if (key === 'employment_type') return (EMPLOYMENT_TYPE_LABELS as Record<string, string>)[String(v)] ?? String(v)
+  if (key === 'termination_reason') return (TERMINATION_REASON_LABELS as Record<string, string>)[String(v)] ?? String(v)
   if (typeof v === 'boolean') return v ? 'Evet' : 'Hayır'
   if (typeof v === 'number') {
     if (MINUTE_FIELDS.has(key)) return `${v} dk`

@@ -22,6 +22,7 @@
  * Body: { assignments: DraftAssignment[], weekStart?: string, acknowledge_violations?: boolean }
  * Response: { created, replaced, skipped, restDays, warnings }
  */
+import { isEmployedOn } from '@/lib/employment'
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { requireMinRole, ACCESS } from '@/lib/auth'
@@ -91,7 +92,7 @@ export async function POST(req: NextRequest) {
         .eq('store_id', storeId)
         .gte('work_date', weekStart)
         .lte('work_date', weekEnd),
-      admin.from('employees').select('id, full_name, active, employment_type, birth_date, roles ( planning_group )').eq('store_id', storeId).or(NOT_KIOSK_FILTER),
+      admin.from('employees').select('id, full_name, active, employment_type, birth_date, termination_date, roles ( planning_group )').eq('store_id', storeId).or(NOT_KIOSK_FILTER),
       admin
         .from('leave_requests')
         .select('id, employee_id, leave_type, start_date, end_date, reason, status, reviewed_at, reviewed_by')
@@ -115,6 +116,7 @@ export async function POST(req: NextRequest) {
         id: e.id as string,
         full_name: e.full_name as string,
         active: e.active as boolean,
+        termination_date: (e.termination_date as string | null) ?? null,
         employment_type: e.employment_type as EmploymentType | null,
         birth_date: e.birth_date as string | null,
         /** Rolü vardiya planına giriyor mu (roles.planning_group) */
@@ -126,6 +128,9 @@ export async function POST(req: NextRequest) {
       const emp = empById.get(a.employee_id)
       if (!emp) return badRequest('Planda bilinmeyen bir çalışan var.')
       if (!emp.active) return conflict(`${emp.full_name} aktif değil; plana eklenemez.`)
+      if (!isEmployedOn(emp, a.work_date)) {
+        return conflict(`${emp.full_name} ${emp.termination_date} tarihinde işten ayrıldı; sonraki günlere plan yapılamaz.`)
+      }
     }
     // Şablonlar da aktif mağazaya ait olmalı (başka mağazanın şablonu sızdırılmaz)
     const templateIds = [...new Set(assignments.map((a) => a.shift_template_id).filter((t): t is string => !!t))]
@@ -229,6 +234,7 @@ export async function POST(req: NextRequest) {
       if (!e.planned && !weekDays.some((day) => seen.has(`${e.id}::${day}`))) continue
       const empLeaves = blockingLeaves.filter((l) => l.employee_id === e.id)
       const freeDays = weekDays.filter((day) =>
+        isEmployedOn(e, day) &&
         !seen.has(`${e.id}::${day}`) &&
         !empLeaves.some((l) => (l.start_date as string) <= day && (l.end_date as string) >= day)
       )

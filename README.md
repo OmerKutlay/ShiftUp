@@ -231,6 +231,12 @@ Kurallar ve sınırlar (02 ve 14 numaralı kodlar güncel listede yoktur; liste 
   çalışan listelenir ama Not sütununda "Kontrol edin: ay içinde kayıt yok" yazar.
 - CSV'de eksik gün nedeni kodu `="01"` biçimindedir; Excel baştaki sıfırı atmasın diye.
 
+## İşten ayrılış
+
+Çalışanlar Çalışanlar › satır menüsü › **İşten çıkış** ile (Müdür+; kendi seviyesindeki/üstündeki biri ve kendisi hariç, Admin hepsini) çıkarılır: son çalışma günü (dahil; en fazla 30 gün geriye, 1 yıl ileriye), neden (SGK kodlarının sadeleştirilmişi) ve not girilir. Onaydan önce etkiler önizlenir: son günden sonraki vardiyalar (tüm mağazalarda) silinir ya da açık vardiyaya çevrilir, bekleyen izin / mesai düzeltme / takas talepleri iptal edilir, çıkış tarihindeki kullanılmamış yıllık izin (İş K. Md. 59) `employees.termination_leave_balance` alanına kaydedilir. Her şey denetim kaydına yazılır. **Geri al** yalnızca Admin içindir; silinen vardiyalar geri yüklenmez.
+
+`active` anlamı: son çalışma günü geçince pasif. Oturum, giriş, QR ve kiosk kontrolleri `isEffectivelyActive()` (`src/lib/employment.ts`) ile ertesi gün 00:00'da (Europe/Istanbul) çalışanı reddeder; `apply_employee_terminations()` pg_cron işi (00:15) `active=false` yapar , push aboneliklerini siler ve oturumları (auth.sessions) kapatır. Bordro/norm hesapları için `isEmployedOn(employee, 'YYYY-MM-DD')` kullanılabilir. Vardiya / devam / izin kaydı olan çalışan kalıcı silinemez (409 `HAS_RECORDS`); yasal kayıtlar için işten çıkış kullanılır.
+
 ## İş Kanunu kuralları
 
 `src/lib/laborLaw.ts` — günlük 11 saat net (Md. 63), haftalık 45 saat ve fazla çalışma (Md. 41),

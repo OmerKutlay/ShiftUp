@@ -10,16 +10,17 @@
 import { useMemo, useState } from 'react'
 import useSWR from 'swr'
 import {
-  CalendarClock, FileSignature, MoreHorizontal, Plus, Search, SquarePen, Trash2, TriangleAlert, UserPlus,
-  Users, UsersRound,
+  CalendarClock, FileSignature, LogOut, MoreHorizontal, Plus, RotateCcw, Search, SquarePen, Trash2, TriangleAlert,
+  UserPlus, Users, UsersRound,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import type { CreateEmployeePayload, EmployeeWithRole, EmploymentType, UpdateEmployeePayload } from '@/types/employee'
-import { createEmployee, fetchEmployees, fetchRoles, updateEmployee } from '@/lib/api/employees'
+import { createEmployee, fetchEmployees, fetchRoles, undoOffboarding, updateEmployee } from '@/lib/api/employees'
 import { STORES_KEY, fetchStores } from '@/lib/api/stores'
 import { useAuth } from '@/context/AuthContext'
-import { ACCESS_LABELS, isKioskRole } from '@/lib/auth/roles'
+import { ACCESS, ACCESS_LABELS, canManageRole, isKioskRole, roleAtLeast } from '@/lib/auth/roles'
+import { isEffectivelyActive } from '@/lib/employment'
 import { cn } from '@/lib/utils'
 import { ROLE_GROUPS, compareRoles, roleGroupOf, type RoleGroupKey } from '@/components/schedule/scheduleHelpers'
 import {
@@ -39,21 +40,22 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmployeeDeleteDialog } from './EmployeeDeleteDialog'
 import { EmployeeFormDialog } from './EmployeeFormDialog'
+import { EmployeeOffboardingDialog } from './EmployeeOffboardingDialog'
 import { EmployeeStatusChip } from './EmployeeStatusChip'
 import { EMPLOYMENT_HINTS, EMPLOYMENT_LABELS, fmtDate, tenureLabel } from './format'
 
 // ─── Filtreler ───────────────────────────────────────────────
 
-type StatusFilter = 'all' | 'active' | 'inactive'
+type StatusFilter = 'all' | 'active' | 'left'
 type GroupFilter = 'all' | RoleGroupKey
 type TypeFilter = 'all' | EmploymentType
 
-const STATUS_LABELS: Record<StatusFilter, string> = { all: 'Tümü', active: 'Aktif', inactive: 'Pasif' }
+const STATUS_LABELS: Record<StatusFilter, string> = { active: 'Aktif', left: 'Ayrılanlar', all: 'Tümü' }
 
 const normalize = (s: string) => s.toLocaleLowerCase('tr-TR')
 
 const matchesStatus = (e: EmployeeWithRole, f: StatusFilter) =>
-  f === 'all' || (f === 'active' ? e.active : !e.active)
+  f === 'all' || (f === 'active' ? isEffectivelyActive(e) : !isEffectivelyActive(e))
 
 // ─── Küçük parçalar ──────────────────────────────────────────
 
@@ -64,10 +66,14 @@ function EmploymentBadge({ type }: { type: EmploymentType }) {
     : <span className="text-muted-foreground">{EMPLOYMENT_LABELS.full_time}</span>
 }
 
-function RowActions({ employee, onEdit, onDelete }: {
+function RowActions({ employee, onEdit, onDelete, onOffboard, onUndo, canOffboard, canUndo }: {
   employee: EmployeeWithRole
   onEdit: (e: EmployeeWithRole) => void
   onDelete: (e: EmployeeWithRole) => void
+  onOffboard: (e: EmployeeWithRole) => void
+  onUndo: (e: EmployeeWithRole) => void
+  canOffboard: boolean
+  canUndo: boolean
 }) {
   return (
     <DropdownMenu>
@@ -81,12 +87,24 @@ function RowActions({ employee, onEdit, onDelete }: {
           <MoreHorizontal />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-40">
+      <DropdownMenuContent align="end" className="w-52">
         <DropdownMenuItem onClick={() => onEdit(employee)}>
           <SquarePen />
           Düzenle
         </DropdownMenuItem>
         <DropdownMenuSeparator />
+        {canOffboard && employee.active && !employee.termination_date && (
+          <DropdownMenuItem onClick={() => onOffboard(employee)}>
+            <LogOut />
+            İşten çıkış
+          </DropdownMenuItem>
+        )}
+        {canUndo && employee.termination_date && (
+          <DropdownMenuItem onClick={() => onUndo(employee)}>
+            <RotateCcw />
+            İşten çıkışı geri al
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem variant="destructive" onClick={() => onDelete(employee)}>
           <Trash2 />
           Sil
@@ -117,10 +135,16 @@ export function EmployeesPage() {
   const [saving, setSaving] = useState(false)
   // Silme onayı
   const [deleteTarget, setDeleteTarget] = useState<EmployeeWithRole | null>(null)
+  // İşten çıkış
+  const [offboardTarget, setOffboardTarget] = useState<EmployeeWithRole | null>(null)
+  const { employee: me } = useAuth()
+  const myLevel = me?.roles?.access_level ?? null
+  const canOffboardAny = roleAtLeast(myLevel, ACCESS.STORE_MANAGER)
+  const canUndo = myLevel === ACCESS.ADMIN
 
   // Filtreler
   const [search, setSearch] = useState('')
-  const [status, setStatus] = useState<StatusFilter>('all')
+  const [status, setStatus] = useState<StatusFilter>('active')
   const [group, setGroup] = useState<GroupFilter>('all')
   const [type, setType] = useState<TypeFilter>('all')
 
@@ -158,11 +182,31 @@ export function EmployeesPage() {
     }
   }
 
-  const handleDeleteDone = async (result: 'deleted' | 'deactivated', emp: EmployeeWithRole) => {
+  const handleDeleteDone = async (_result: 'deleted', emp: EmployeeWithRole) => {
     setDeleteTarget(null)
-    toast.success(result === 'deleted' ? `${emp.full_name} silindi` : `${emp.full_name} pasifleştirildi`)
+    toast.success(`${emp.full_name} silindi`)
     await load()
   }
+
+  const handleOffboardDone = async (emp: EmployeeWithRole) => {
+    setOffboardTarget(null)
+    toast.success(`${emp.full_name} işten çıkış kaydedildi`)
+    await load()
+  }
+
+  const handleUndo = async (emp: EmployeeWithRole) => {
+    try {
+      await undoOffboarding(emp.id)
+      toast.success(`${emp.full_name} için işten çıkış geri alındı. Silinen vardiyalar geri yüklenmez.`)
+      await load()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'İşlem başarısız.')
+    }
+  }
+
+  const canOffboardFor = (e: EmployeeWithRole) =>
+    canOffboardAny && e.id !== me?.id && canManageRole(myLevel, e.roles?.access_level ?? null)
+  const rowActionProps = { onEdit: openEdit, onDelete: setDeleteTarget, onOffboard: setOffboardTarget, onUndo: handleUndo, canUndo }
 
   // Arama + grup + tip filtresi (durum sekmesinden bağımsız; sekme sayaçları buna göre)
   const baseFiltered = useMemo(() => {
@@ -188,7 +232,7 @@ export function EmployeesPage() {
   }
 
   // ── KPI ──
-  const active = employees.filter((e) => e.active)
+  const active = employees.filter((e) => isEffectivelyActive(e))
   const staff = active.filter((e) => !isKioskRole(e.roles?.access_level))
   const inactiveCount = employees.length - active.length
   const partTime = staff.filter((e) => e.employment_type === 'part_time').length
@@ -271,14 +315,14 @@ export function EmployeesPage() {
       id: 'status',
       accessorKey: 'active',
       header: 'Durum',
-      cell: ({ row }) => <EmployeeStatusChip active={row.original.active} />,
+      cell: ({ row }) => <EmployeeStatusChip active={row.original.active} employee={row.original} />,
     },
     {
       id: 'actions',
       header: () => <span className="sr-only">İşlemler</span>,
       enableSorting: false,
       meta: { align: 'right', className: 'w-12 py-0' },
-      cell: ({ row }) => <RowActions employee={row.original} onEdit={openEdit} onDelete={setDeleteTarget} />,
+      cell: ({ row }) => <RowActions employee={row.original} {...rowActionProps} canOffboard={canOffboardFor(row.original)} />,
     },
   ]
 
@@ -295,8 +339,8 @@ export function EmployeesPage() {
         </ItemDescription>
       </ItemContent>
       <ItemActions className="gap-1">
-        {!e.active && <EmployeeStatusChip active={false} />}
-        <RowActions employee={e} onEdit={openEdit} onDelete={setDeleteTarget} />
+        {(!e.active || e.termination_date) && <EmployeeStatusChip active={e.active} employee={e} />}
+        <RowActions employee={e} {...rowActionProps} canOffboard={canOffboardFor(e)} />
       </ItemActions>
     </Item>
   )
@@ -332,7 +376,7 @@ export function EmployeesPage() {
         aria-label="Durum filtresi"
         value={status}
         onChange={setStatus}
-        options={(['all', 'active', 'inactive'] as StatusFilter[]).map((f) => ({
+        options={(['active', 'left', 'all'] as StatusFilter[]).map((f) => ({
           value: f,
           label: (
             <>
@@ -465,6 +509,14 @@ export function EmployeesPage() {
         employee={deleteTarget}
         onClose={() => setDeleteTarget(null)}
         onDone={handleDeleteDone}
+        onOffboard={(emp) => { setDeleteTarget(null); setOffboardTarget(emp) }}
+      />
+
+      <EmployeeOffboardingDialog
+        key={offboardTarget?.id ?? 'none-offboard'}
+        employee={offboardTarget}
+        onClose={() => setOffboardTarget(null)}
+        onDone={handleOffboardDone}
       />
     </Page>
   )

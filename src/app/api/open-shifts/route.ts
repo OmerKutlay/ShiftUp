@@ -10,6 +10,7 @@
  * PATCH: requireMinRole(Müdür Yardımcısı) — yalnızca open ↔ cancelled geçişi;
  *        doldurulmuş (filled) vardiya değiştirilemez.
  */
+import { isTerminatedAsOf } from '@/lib/employment'
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import type { CreateOpenShiftPayload } from '@/types/workforce'
@@ -107,11 +108,12 @@ export async function POST(req: NextRequest) {
 
       const { data: employees } = await admin
         .from('employees')
-        .select('id, roles(name, access_level)')
+        .select('id, termination_date, roles(name, access_level)')
         .eq('store_id', auth.employee.store_id)
         .eq('active', true)
 
       const targets = (employees ?? []).filter((emp) => {
+        if (isTerminatedAsOf(emp as { termination_date?: string | null })) return false
         const level = accessLevelOf(emp.roles)
         if (level === ACCESS.KIOSK) return false
         return shift.role_needed

@@ -29,6 +29,32 @@ export const PART_TIME_RULES = {
   maxWeeklyDays: 4,
 } as const
 
+/**
+ * İşten çıkış nedeni — DB CHECK ile senkron. SGK işten çıkış bildirgesi kodlarının sadeleştirilmiş karşılığı:
+ * istifa (1/2/3), isveren_feshi (4/5/17-19), deneme_suresi (2), emeklilik (8/12-13), karsilikli_anlasma (10),
+ * sozlesme_sonu (belirli süreli sözleşmenin bitişi), vefat (12), diger.
+ */
+export const TERMINATION_REASONS = [
+  'istifa', 'isveren_feshi', 'deneme_suresi', 'emeklilik',
+  'karsilikli_anlasma', 'sozlesme_sonu', 'vefat', 'diger',
+] as const
+export type TerminationReason = (typeof TERMINATION_REASONS)[number]
+
+export const TERMINATION_REASON_LABELS: Record<TerminationReason, string> = {
+  istifa: 'İstifa',
+  isveren_feshi: 'İşveren feshi',
+  deneme_suresi: 'Deneme süresinde fesih',
+  emeklilik: 'Emeklilik',
+  karsilikli_anlasma: 'Karşılıklı anlaşma',
+  sozlesme_sonu: 'Sözleşme sonu',
+  vefat: 'Vefat',
+  diger: 'Diğer',
+}
+
+export function isTerminationReason(v: unknown): v is TerminationReason {
+  return typeof v === 'string' && (TERMINATION_REASONS as readonly string[]).includes(v)
+}
+
 // Veritabanındaki employees satırı (tam form, join'siz)
 export interface Employee {
   id: string
@@ -46,6 +72,14 @@ export interface Employee {
   birth_date?: string | null
   /** Fazla çalışma yazılı onay tarihi (İş K. Md. 41/8) */
   overtime_consent_at?: string | null
+  /** İşten ayrılış: son çalışma günü (dahil) ve nedeni — bkz. src/lib/employment.ts */
+  termination_date?: string | null
+  termination_reason?: TerminationReason | null
+  termination_note?: string | null
+  terminated_by?: string | null
+  terminated_at?: string | null
+  /** Çıkış tarihindeki kullanılmamış yıllık izin (gün; İş K. Md. 59 — bordro) */
+  termination_leave_balance?: number | null
   created_at: string
   updated_at: string
 }

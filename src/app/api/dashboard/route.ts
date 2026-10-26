@@ -4,6 +4,7 @@
  * "Bugün" Türkiye saatine göredir. Tüm sayılar ve listeler aktif mağaza kapsamındadır:
  * çalışanlar mağazaya kayıtlı olanlar, vardiyalar shift_assignments.store_id, izinler mağaza çalışanlarınındır.
  */
+import { isTerminatedAsOf } from '@/lib/employment'
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { requireMinRole, ACCESS } from '@/lib/auth'
@@ -45,7 +46,7 @@ export async function GET(req: NextRequest) {
     const [employeesResult, todayShiftsResult, pendingLeavesResult] = await Promise.all([
       admin
         .from('employees')
-        .select('id', { count: 'exact', head: true })
+        .select('id, termination_date')
         .eq('store_id', storeId)
         .eq('active', true)
         .or(NOT_KIOSK_FILTER),
@@ -117,7 +118,8 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       stats: {
-        active_employees: employeesResult.count ?? 0,
+        // Son çalışma günü geçenler cron çalışmasa da sayılmaz
+        active_employees: (employeesResult.data ?? []).filter((e) => !isTerminatedAsOf(e as { termination_date?: string | null })).length,
         today_shifts: todayShifts.length,
         currently_working: working,
         on_break: onBreak,

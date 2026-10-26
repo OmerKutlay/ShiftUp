@@ -95,37 +95,19 @@ class Query implements PromiseLike<{ data: any; error: any; count?: number | nul
     } else this.filters.push((r) => r[c] !== v)
     return this
   }
-  or(expr: string, opts?: { referencedTable?: string }) {
-    if (!this.db.options.evalOr) return this
-    const prefix = opts?.referencedTable ? `${opts.referencedTable}.` : ''
-    const split = (s: string) => {
-      const out: string[] = []
-      let depth = 0, cur = ''
-      for (const ch of s) {
-        if (ch === '(') depth++
-        if (ch === ')') depth--
-        if (ch === ',' && depth === 0) { out.push(cur); cur = '' } else cur += ch
+  /** PostgREST `col.eq.v,col.neq.v,col.is.null` — yalnızca bu üç işleç; bilinmeyen işleç koşulu geçirir */
+  or(expr: string) {
+    const conds = expr.split(",").map((part) => {
+      const [col, op, ...rest] = part.split(".")
+      const v = rest.join(".")
+      return (r: Row) => {
+        if (op === "eq") return String(r[col]) === v
+        if (op === "neq") return String(r[col]) !== v
+        if (op === "is" && v === "null") return r[col] == null
+        return true
       }
-      if (cur) out.push(cur)
-      return out
-    }
-    const leaf = (r: Row, t: string): boolean => {
-      if (t.startsWith('and(')) return split(t.slice(4, -1)).every((x) => leaf(r, x))
-      const [col, op, ...rest] = t.split('.')
-      const raw = rest.join('.')
-      const v = this.val(r, prefix + col)
-      switch (op) {
-        case 'is': return raw === 'null' ? v == null : String(v) === raw
-        case 'eq': return String(v) === raw
-        case 'gt': return v != null && v > raw
-        case 'gte': return v != null && v >= raw
-        case 'lt': return v != null && v < raw
-        case 'lte': return v != null && v <= raw
-        default: return true
-      }
-    }
-    const parts = split(expr)
-    this.filters.push((r) => parts.some((t) => leaf(r, t)))
+    })
+    this.filters.push((r) => conds.some((c) => c(r)))
     return this
   }
   order(col: string, opts?: { ascending?: boolean }) { this.orderBy.push({ col, asc: opts?.ascending !== false }); return this }

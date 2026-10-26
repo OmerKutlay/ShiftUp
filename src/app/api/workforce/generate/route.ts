@@ -15,6 +15,7 @@
  * (Md. 46: H.İ. takvim haftası içinde; geçen haftadan gelen seri (prevStreak) planlayıcıda tercih olarak kullanılır.)
  *   - Resmi tatil / arife (13:00 sonrası) günlerine atama — çalışan onayı ve 2 kat ücret (Md. 44, 47)
  */
+import { isEmployedOn } from '@/lib/employment'
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { requireMinRole, ACCESS } from '@/lib/auth'
@@ -62,7 +63,7 @@ export async function POST(req: NextRequest) {
     const [empsRes, tmplsRes, availsRes, leavesRes, prevRes, weekRes, holidays] = await Promise.all([
       admin
         .from('employees')
-        .select('id, full_name, employment_type, active, birth_date, roles ( planning_group )')
+        .select('id, full_name, employment_type, active, birth_date, termination_date, roles ( planning_group )')
         .eq('store_id', storeId)
         .eq('active', true)
         .or(NOT_KIOSK_FILTER)
@@ -182,6 +183,15 @@ export async function POST(req: NextRequest) {
           if (d >= weekStart && d <= weekEnd) set.add(d)
         }
       }
+    }
+
+    // İşten ayrılanlar son çalışma gününden sonra planlanmaz (izinli gibi bloklanır; ücretli izin sayılmaz)
+    for (const e of emps) {
+      const term = (e as { termination_date?: string | null }).termination_date
+      if (!term || term >= weekEnd) continue
+      const set = leaveMap.get(e.id as string) ?? new Set<string>()
+      for (let d = weekStart; d <= weekEnd; d = addDaysToDateString(d, 1)) if (!isEmployedOn({ termination_date: term }, d)) set.add(d)
+      leaveMap.set(e.id as string, set)
     }
 
     // Geçen haftanın sonundan geriye kesintisiz çalışılan gün sayısı (uzun seriden kaçınmak için)

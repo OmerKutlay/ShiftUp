@@ -20,6 +20,7 @@ import { IS_DEV_AUTH, DEV_SESSION_COOKIE } from '@/lib/authConfig'
 import { ACTIVE_STORE_COOKIE, resolveActiveStoreId } from '@/lib/storeScope'
 import { verifyDevSession } from './devSession'
 import { isSessionExpired } from './sessionAge'
+import { isEffectivelyActive } from '@/lib/employment'
 import { accessLevelOf, type AccessLevel } from './roles'
 
 export interface SessionEmployee {
@@ -50,6 +51,7 @@ const EMPLOYEE_SELECT = `
   role_id,
   active,
   store_id,
+  termination_date,
   roles ( name, access_level )
 ` as const
 
@@ -86,7 +88,7 @@ export async function getCurrentEmployee(
         .eq('id', employeeId)
         .maybeSingle()
 
-      if (!data || !data.active) return null
+      if (!data || !isEffectivelyActive(data)) return null
 
       return withActiveStore(admin, mapToSessionEmployee(data), await readCookie(ACTIVE_STORE_COOKIE))
     }
@@ -110,7 +112,7 @@ export async function getCurrentEmployee(
       .eq('auth_user_id', user.id)
       .maybeSingle()
 
-    if (!data || !data.active) return null
+    if (!data || !isEffectivelyActive(data)) return null
 
     return withActiveStore(admin, mapToSessionEmployee(data), await readCookie(ACTIVE_STORE_COOKIE))
   } catch {

@@ -402,3 +402,54 @@ describe('/api/open-shifts — mağaza izolasyonu', () => {
     expect(notified).not.toContain(MGR_B)
   })
 })
+
+// ─── İşten ayrılan çalışan planlanmaz ─────────────────────────
+describe('/api/workforce — işten ayrılan çalışan', () => {
+  const withTermination = (date: string) => {
+    const data = seed()
+    data.employees = data.employees.map((e) => (e.id === EMP_A1 ? { ...e, termination_date: date } : e))
+    return data
+  }
+
+  it('apply: son çalışma gününden sonraki güne atama 409; hiçbir şey değişmez', async () => {
+    const db = createFakeDb(withTermination(TUE), FAKE_OPTIONS)
+    setup(session(), db)
+    const { POST } = await import('@/app/api/workforce/apply/route')
+    const res = await POST(jsonReq('http://localhost/api/workforce/apply', 'POST', {
+      weekStart: WEEK_START,
+      acknowledge_violations: true,
+      assignments: [{ employee_id: EMP_A1, work_date: WED, start_time: '10:00', end_time: '19:00', shift_template_id: TPL_A }],
+    }))
+    expect(res.status).toBe(409)
+    expect(db.tables.shift_assignments.map((s) => s.id).sort()).toEqual([SHIFT_A, SHIFT_B].sort())
+  })
+
+  it('apply: son gün dahil planlanır; sonraki günler için haftalık tatil yazılmaz', async () => {
+    const db = createFakeDb(withTermination(TUE), FAKE_OPTIONS)
+    setup(session(), db)
+    const { POST } = await import('@/app/api/workforce/apply/route')
+    const res = await POST(jsonReq('http://localhost/api/workforce/apply', 'POST', {
+      weekStart: WEEK_START,
+      acknowledge_violations: true,
+      assignments: [{ employee_id: EMP_A1, work_date: TUE, start_time: '10:00', end_time: '19:00', shift_template_id: TPL_A }],
+    }))
+    expect(res.status).toBe(200)
+    const rests = db.tables.leave_requests.filter((l) => l.employee_id === EMP_A1 && l.leave_type === 'weekly_rest')
+    expect(rests.every((l) => (l.start_date as string) <= TUE)).toBe(true)
+  })
+})
+
+describe('/api/workforce/generate — işten ayrılan çalışan', () => {
+  it('son çalışma gününden sonraki günlere vardiya planlanmaz', async () => {
+    const data = seed()
+    data.employees = data.employees.map((e) => (e.id === EMP_A1 ? { ...e, termination_date: TUE } : e))
+    const db = createFakeDb(data, FAKE_OPTIONS)
+    setup(session(), db)
+    const { POST } = await import('@/app/api/workforce/generate/route')
+    const res = await POST(jsonReq('http://localhost/api/workforce/generate', 'POST', { week: WEEK_START, seed: 1 }))
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { assignments: { employee_id: string; work_date: string }[] }
+    const mine = body.assignments.filter((a) => a.employee_id === EMP_A1)
+    expect(mine.every((a) => a.work_date <= TUE)).toBe(true)
+  })
+})

@@ -8,7 +8,7 @@ import { useState } from 'react'
 import { Archive, Trash2, TriangleAlert } from 'lucide-react'
 
 import type { EmployeeWithRole } from '@/types/employee'
-import { deactivateEmployee, deleteEmployee } from '@/lib/api/employees'
+import { deleteEmployee } from '@/lib/api/employees'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import {
   AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogMedia,
@@ -19,11 +19,12 @@ import { Spinner } from '@/components/ui/spinner'
 
 type DeleteError = { message: string; isFkViolation: boolean }
 
-export function EmployeeDeleteDialog({ employee, onClose, onDone }: {
+export function EmployeeDeleteDialog({ employee, onClose, onDone, onOffboard }: {
   employee: EmployeeWithRole | null
   onClose: () => void
-  /** İşlem tamamlandı: 'deleted' ya da 'deactivated' */
-  onDone: (result: 'deleted' | 'deactivated', employee: EmployeeWithRole) => Promise<void> | void
+  onDone: (result: 'deleted', employee: EmployeeWithRole) => Promise<void> | void
+  /** Kayıtlı geçmişi olan çalışan için "İşten çıkış" akışını açar */
+  onOffboard: (employee: EmployeeWithRole) => void
 }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<DeleteError | null>(null)
@@ -43,22 +44,9 @@ export function EmployeeDeleteDialog({ employee, onClose, onDone }: {
       await onDone('deleted', employee)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Bir hata oluştu.'
-      const isFk = (err as { code?: string }).code === 'FK_VIOLATION'
+      const code = (err as { code?: string }).code
+      const isFk = code === 'HAS_RECORDS' || code === 'FK_VIOLATION'
       setError({ message: msg, isFkViolation: isFk })
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const handleDeactivate = async () => {
-    if (!employee) return
-    setBusy(true)
-    setError(null)
-    try {
-      await deactivateEmployee(employee.id)
-      await onDone('deactivated', employee)
-    } catch (err) {
-      setError({ message: err instanceof Error ? err.message : 'Pasifleştirme başarısız.', isFkViolation: false })
     } finally {
       setBusy(false)
     }
@@ -73,12 +61,12 @@ export function EmployeeDeleteDialog({ employee, onClose, onDone }: {
           <AlertDialogMedia className={fk ? 'bg-warning/10 text-warning' : 'bg-destructive/10 text-destructive'}>
             {fk ? <Archive /> : <Trash2 />}
           </AlertDialogMedia>
-          <AlertDialogTitle>{fk ? 'Çalışan pasifleştirilsin mi?' : 'Çalışan silinsin mi?'}</AlertDialogTitle>
+          <AlertDialogTitle>{fk ? 'Silinemez, işten çıkış yapılsın mı?' : 'Çalışan silinsin mi?'}</AlertDialogTitle>
           <AlertDialogDescription>
             {fk ? (
               <>
-                <span className="font-medium text-foreground">{employee?.full_name}</span> silinemiyor ama
-                pasifleştirilebilir: geçmiş kayıtları korunur, yeni vardiyalara atanmaz.
+                <span className="font-medium text-foreground">{employee?.full_name}</span> kayıtlı geçmişi (vardiya, devam, izin) olduğu için silinemez.
+                Yasal kayıtlar korunur; bunun yerine işten çıkış işlemi yapılır.
               </>
             ) : (
               <>
@@ -92,7 +80,7 @@ export function EmployeeDeleteDialog({ employee, onClose, onDone }: {
         {error && (
           <Alert variant={fk ? 'default' : 'destructive'} tone={fk ? 'warning' : undefined}>
             <TriangleAlert />
-            <AlertTitle>{fk ? 'Bağlı kayıtlar var' : 'Silinemedi'}</AlertTitle>
+            <AlertTitle>{fk ? 'Geçmiş kayıtlar var' : 'Silinemedi'}</AlertTitle>
             <AlertDescription>{error.message}</AlertDescription>
           </Alert>
         )}
@@ -102,9 +90,8 @@ export function EmployeeDeleteDialog({ employee, onClose, onDone }: {
             İptal
           </Button>
           {fk ? (
-            <Button type="button" onClick={() => void handleDeactivate()} disabled={busy}>
-              {busy && <Spinner />}
-              Pasifleştir
+            <Button type="button" onClick={() => { if (employee) { onOffboard(employee) } }} disabled={busy}>
+              İşten çıkış başlat
             </Button>
           ) : (
             <Button type="button" variant="destructive" onClick={() => void handleDelete()} disabled={busy}>

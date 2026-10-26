@@ -22,6 +22,7 @@
  *
  * ÖNEMLİ: Bu route yalnızca AUTH_MODE=production'da aktiftir.
  */
+import { isEffectivelyActive } from '@/lib/employment'
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { IS_DEV_AUTH } from '@/lib/authConfig'
@@ -63,13 +64,13 @@ export async function POST(req: NextRequest) {
 
     const { data: employee, error: empErr } = await admin
       .from('employees')
-      .select('id, email, active, auth_user_id')
+      .select('id, email, active, auth_user_id, termination_date')
       .eq('email', email)
       .maybeSingle()
     if (empErr) throw empErr
 
     // Kayıtlı değil / pasif → sessizce başarı (numaralandırma önlemi)
-    if (!employee || !employee.active) {
+    if (!employee || !isEffectivelyActive(employee)) {
       return NextResponse.json({ ok: true })
     }
 
