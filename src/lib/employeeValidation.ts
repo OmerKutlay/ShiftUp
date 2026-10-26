@@ -3,6 +3,7 @@
  */
 import { canManageRole, type AccessLevel } from '@/lib/auth/roles'
 import { fetchRoles } from '@/lib/employeeRepository'
+import { turkeyToday } from '@/lib/dateUtils'
 import { isUuid, isValidDate, isValidEmail } from '@/lib/validation'
 import type { CreateEmployeePayload } from '@/types/employee'
 
@@ -61,7 +62,7 @@ export async function validateEmployeeInput(
   }
 
   // Özlük tarihleri — yıllık izin hakkı (Md. 53) ve fazla çalışma onayı (Md. 41/8)
-  const today = new Date().toISOString().slice(0, 10)
+  const today = turkeyToday()
   for (const field of ['hire_date', 'birth_date', 'overtime_consent_at'] as const) {
     const v = body[field]
     if (v === undefined) continue
