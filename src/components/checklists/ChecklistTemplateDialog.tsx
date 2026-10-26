@@ -19,7 +19,7 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/c
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
-import { WEEKDAY_OPTIONS } from './format'
+import { WEEKDAY_OPTIONS, moveItem } from './format'
 
 interface Props {
   open: boolean
@@ -36,14 +36,6 @@ const nextKey = () => ++keySeq
 
 const KINDS: ChecklistKind[] = ['opening', 'closing', 'custom']
 
-/** Dizide i. öğeyi j. konuma taşır (sınır dışıysa aynen döner) */
-export function moveItem<T>(list: T[], i: number, j: number): T[] {
-  if (j < 0 || j >= list.length || i === j) return list
-  const next = [...list]
-  const [it] = next.splice(i, 1)
-  next.splice(j, 0, it)
-  return next
-}
 
 export function ChecklistTemplateDialog({ open, template, loading, onClose, onSave }: Props) {
   const isEdit = !!template

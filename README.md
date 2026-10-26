@@ -231,6 +231,17 @@ Kurallar ve sınırlar (02 ve 14 numaralı kodlar güncel listede yoktur; liste 
   çalışan listelenir ama Not sütununda "Kontrol edin: ay içinde kayıt yok" yazar.
 - CSV'de eksik gün nedeni kodu `="01"` biçimindedir; Excel baştaki sıfırı atmasın diye.
 
+
+## Kontrol listeleri
+
+Mağazaya özel tekrarlayan listeler (açılış / kapanış / özel) — `/checklists`. Şablonları Müdür Yardımcısı+
+yönetir; günlük uygulama `GET /api/checklists/today` ile tembel oluşur (cron gerekmez) ve maddeler
+uygulamaya kopyalanır (şablon sonradan değişse de geçmiş sabit kalır). Bugün bu mağazada vardiyası olan
+çalışan ya da yönetici maddeleri işaretler. Son saati olan liste, son saat + 15 dk geçince tamamlanmamışsa
+`scan_checklist_overdue()` (pg_cron, 5 dk) mağaza yöneticilerine bir kez `checklist_overdue` bildirimi
+gönderir; aynı fonksiyon bugünün uygulamalarını da oluşturur (uygulama kapalıyken bile). Migration'lar:
+`20261028150000` (enum değeri), `20261028150100` (tablolar + fonksiyonlar + cron).
+
 ## İş Kanunu kuralları
 
 `src/lib/laborLaw.ts` — günlük 11 saat net (Md. 63), haftalık 45 saat ve fazla çalışma (Md. 41),

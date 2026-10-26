@@ -60,3 +60,12 @@ export function applyItemToggle(
     }),
   }
 }
+
+/** Dizide i. öğeyi j. konuma taşır (sınır dışıysa aynı diziyi döner) */
+export function moveItem<T>(list: T[], i: number, j: number): T[] {
+  if (j < 0 || j >= list.length || i === j) return list
+  const next = [...list]
+  const [it] = next.splice(i, 1)
+  next.splice(j, 0, it)
+  return next
+}
