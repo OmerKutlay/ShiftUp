@@ -207,3 +207,49 @@ src/
 supabase/migrations/         # Şema, RLS, kısıtlar
 docs/                        # Geliştirici notları (ör. telefonla QR testi: docs/dev-tunnel.md)
 ```
+
+## İşletim
+
+### Veri saklama (retention)
+`public.purge_expired_data()` (pg_cron `purge-expired-data`, her gün 03:30 Türkiye saati) sınırsız büyüyen
+operasyonel tabloları gruplar halinde temizler ve silinen satır sayısını jsonb olarak döner:
+
+| Tablo | Saklama |
+|---|---|
+| `qr_tokens` | süresi dolmuş / kullanılmış, 2 günden eski |
+| `qr_scan_uses` | 3 gün |
+| `kiosk_keys` | süresi dolmuş / iptal edilmiş, 30 günden eski |
+| `rate_limits` | süresi dolmuş, 1 günden eski |
+| `notifications` | okunmuş 90 gün, okunmamış 180 gün |
+| `app_errors` | 30 gün |
+
+Yasal kayıtlar (`audit_logs`, devam/vardiya/izin/mesai düzeltme/takas kayıtları) **asla** silinmez.
+`net._http_response` pg_net tarafından yönetilir.
+
+### Hata günlüğü (`app_errors`)
+Ücretsiz, harici servis yok. `serverError()` (`src/lib/apiErrors.ts`) 500'leri `console.error` ile birlikte
+`app_errors`'a yazar (`src/lib/errorLog.ts`: asenkron `ctx.waitUntil`, hata başına dakikada 1 + isolate başına
+dakikada 30 satır sınırı). Tarayıcı hataları (`error.tsx`, `global-error.tsx`, ErrorBoundary)
+`POST /api/client-errors` ile gelir (oturum zorunlu, kullanıcı başına 5/dk, 8 KB; çalışan/mağaza oturumdan).
+Admin: Ayarlar → Hatalar (son 100 kayıt). Workers Logs `wrangler.jsonc` içinde zaten açık.
+
+### Yedekleme
+`.github/workflows/db-backup.yml` her Pazar 01:00 UTC'de (ve elle, "Run workflow") `public` şemasının
+`pg_dump` yedeğini alır, **şifreli** artifact olarak 90 gün saklar. Repo herkese açık olduğundan artifact'ler
+giriş yapmış herhangi bir GitHub kullanıcısı tarafından indirilebilir; bu yüzden şifreleme ve güçlü
+(en az 24 karakter, rastgele) bir parola zorunludur. Parolayı kaybederseniz yedek açılamaz; ayrıca saklayın.
+
+Secret'lar (yoksa iş sessizce atlanır):
+```bash
+gh secret set SUPABASE_DB_URL      # Supabase → Connect → Session pooler bağlantı dizesi
+gh secret set BACKUP_PASSPHRASE    # güçlü parola
+```
+
+Geri yükleme:
+```bash
+gh run download -n db-backup            # shiftup-YYYYMMDD-HHMM.dump.enc
+openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in shiftup-*.dump.enc -out backup.dump   # parola sorulur
+pg_restore --no-owner --clean --if-exists -d "$HEDEF_DB_URL" backup.dump
+```
+Yedek yalnızca `public` şemasıdır (auth kullanıcıları ve storage dahil değildir). Geri yüklemeyi önce
+boş bir test veritabanında deneyin.

@@ -1,0 +1,75 @@
+name: DB Backup
+
+# Haftalık şifreli veritabanı yedeği (Supabase ücretsiz planda PITR yok).
+# Repo herkese açık: artifact'ler giriş yapmış GitHub kullanıcılarınca görülebilir,
+# bu yüzden yedek ASLA şifresiz diske yazılmaz (pg_dump → openssl → dosya).
+on:
+  schedule:
+    - cron: '0 1 * * 0' # her Pazar 01:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: pg_dump (şifreli)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+    steps:
+      - name: Secret kontrolü
+        id: check
+        run: |
+          if [ -z "${SUPABASE_DB_URL:-}" ] || [ -z "${BACKUP_PASSPHRASE:-}" ]; then
+            echo "::notice::SUPABASE_DB_URL veya BACKUP_PASSPHRASE tanımlı değil; yedek atlandı."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: PostgreSQL 17 istemcisi (PGDG)
+        if: steps.check.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          . /etc/os-release
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          /usr/lib/postgresql/17/bin/pg_dump --version
+
+      - name: Dump + şifrele
+        if: steps.check.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          stamp="$(date -u +%Y%m%d-%H%M)"
+          # Düz metin diske yazılmaz: pg_dump çıktısı doğrudan openssl'e akar
+          /usr/lib/postgresql/17/bin/pg_dump "$SUPABASE_DB_URL" \
+            --format=custom --no-owner --schema=public \
+            | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass env:BACKUP_PASSPHRASE \
+            > "out/shiftup-${stamp}.dump.enc"
+          size="$(stat -c %s "out/shiftup-${stamp}.dump.enc")"
+          # Boş/bozuk yedeği başarılı sayma (yalnızca "Salted__" başlığı ~16 bayt)
+          if [ "$size" -lt 1024 ]; then
+            echo "::error::Yedek beklenenden çok küçük (${size} bayt)."
+            exit 1
+          fi
+          echo "Yedek boyutu: ${size} bayt"
+
+      - name: Artifact olarak yükle
+        if: steps.check.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup
+          path: out/*.dump.enc
+          retention-days: 90
+          if-no-files-found: error
