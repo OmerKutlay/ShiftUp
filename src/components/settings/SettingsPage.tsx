@@ -6,7 +6,7 @@
  */
 import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Bell, CalendarDays, History, MapPin, Store } from 'lucide-react'
+import { Bell, Bug, CalendarDays, History, MapPin, Store } from 'lucide-react'
 import { Page, PageHeader } from '@/components/common'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PushPermissionCard } from '@/components/pwa/PushPermissionCard'
@@ -17,8 +17,9 @@ import { ACCESS } from '@/lib/auth/roles'
 import { StoreLocationPage } from './StoreLocationPage'
 import { HolidaysPanel } from './HolidaysPanel'
 import { AuditLogPanel } from './AuditLogPanel'
+import { AppErrorsPanel } from './AppErrorsPanel'
 
-type SettingsTab = 'location' | 'stores' | 'holidays' | 'audit' | 'notifications'
+type SettingsTab = 'location' | 'stores' | 'holidays' | 'audit' | 'errors' | 'notifications'
 
 /** Sekme etiketi: masaüstünde ikon + tam ad, dar ekranda kısa ad (dört sekme 390px'e sığsın) */
 const TABS: { value: SettingsTab; icon: React.ReactNode; label: string; short: string; adminOnly?: boolean }[] = [
@@ -26,6 +27,7 @@ const TABS: { value: SettingsTab; icon: React.ReactNode; label: string; short: s
   { value: 'stores', icon: <Store />, label: 'Mağazalar', short: 'Mağazalar', adminOnly: true },
   { value: 'holidays', icon: <CalendarDays />, label: 'Resmi tatiller', short: 'Tatiller' },
   { value: 'audit', icon: <History />, label: 'Denetim kaydı', short: 'Denetim' },
+  { value: 'errors', icon: <Bug />, label: 'Hatalar', short: 'Hatalar', adminOnly: true },
   { value: 'notifications', icon: <Bell />, label: 'Bildirimler', short: 'Bildirimler' },
 ]
 
@@ -70,6 +72,7 @@ export function SettingsPage() {
         {isAdmin && <TabsContent value="stores"><StoresPanel /></TabsContent>}
         <TabsContent value="holidays"><HolidaysPanel /></TabsContent>
         <TabsContent value="audit"><AuditLogPanel /></TabsContent>
+        {isAdmin && <TabsContent value="errors"><AppErrorsPanel /></TabsContent>}
         <TabsContent value="notifications">
           <div className="flex max-w-3xl flex-col gap-4 md:gap-6">
             <PushPermissionCard />
