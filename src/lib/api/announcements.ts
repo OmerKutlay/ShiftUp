@@ -9,14 +9,20 @@ export const ANNOUNCEMENTS_UNREAD_KEY = '/api/announcements/unread-count'
 
 export interface AnnouncementsResponse {
   announcements: Announcement[]
-  unread_count: number
+  /** Arşivde sonraki sayfanın imleci (before) */
+  next_before?: string | null
+  /** Arşivin sonraki sayfalarında yoktur */
+  unread_count?: number
 }
 
 export interface AnnouncementDetailResponse {
   announcement: Announcement
   recipients?: AnnouncementRecipient[]
+  /** PATCH: onayı sıfırlanan kişi sayısı */
+  reack?: number
 }
 
+export const archiveMoreKey = (before: string) => `${ANNOUNCEMENTS_KEY}?archive=1&before=${encodeURIComponent(before)}`
 export const announcementsKey = (archive: boolean) => (archive ? `${ANNOUNCEMENTS_KEY}?archive=1` : ANNOUNCEMENTS_KEY)
 export const announcementKey = (id: string) => `${ANNOUNCEMENTS_KEY}/${encodeURIComponent(id)}`
 

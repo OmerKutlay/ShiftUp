@@ -53,8 +53,8 @@ export function AnnouncementFormDialog({ open, onOpenChange, editing, canCompany
     try {
       const expires_at = expiry ? endOfDayIso(expiry) : null
       if (editing) {
-        await updateAnnouncement(editing.id, { title, body, pinned, expires_at })
-        toast.success('Duyuru güncellendi')
+        const res = await updateAnnouncement(editing.id, { title, body, pinned, expires_at })
+        toast.success(res.reack ? `Duyuru güncellendi, ${res.reack} kişiden yeniden onay istendi` : 'Duyuru güncellendi')
       } else {
         const res = await createAnnouncement({
           title, body, pinned, requires_ack: requiresAck, target_roles: target, expires_at,
@@ -78,7 +78,9 @@ export function AnnouncementFormDialog({ open, onOpenChange, editing, canCompany
           <DialogTitle>{editing ? 'Duyuruyu düzenle' : 'Yeni duyuru'}</DialogTitle>
           <DialogDescription>
             {editing
-              ? 'Düzenleme okundu ve onay kayıtlarını sıfırlamaz, yeniden bildirim göndermez.'
+              ? editing.requires_ack
+                ? 'Başlık veya metin değişirse tüm onaylar sıfırlanır; onaylamış olanlara yeniden onay bildirimi gider.'
+                : 'Düzenleme okundu kayıtlarını sıfırlamaz ve yeniden bildirim göndermez.'
               : 'Yayınlanınca alıcılara bildirim gider; alıcı listesi yayın anında sabitlenir.'}
           </DialogDescription>
         </DialogHeader>

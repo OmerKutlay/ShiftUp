@@ -1,5 +1,6 @@
 /**
- * GET  /api/announcements?archive=1 — Oturumdaki kişinin duyuruları (+ okunmamış sayısı)
+ * GET  /api/announcements?archive=1&before=<ISO> — Oturumdaki kişinin duyuruları (+ okunmamış sayısı);
+ *      arşiv before (created_at) imleciyle sayfalanır, yanıttaki next_before sonraki sayfanın imlecidir
  * POST /api/announcements           — Duyuru yayınla (Yönetici+; tüm mağazalara yalnızca Admin)
  *
  * GET: çalışan yalnızca alıcısı olduğu duyuruları görür; yönetici ek olarak aktif mağazasının
@@ -28,11 +29,14 @@ export async function GET(req: NextRequest) {
   try {
     const admin = createAdminClient()
     const archive = req.nextUrl.searchParams.get('archive') === '1'
-    const [announcements, unread_count] = await Promise.all([
-      listAnnouncements(admin, employee, { archive }),
-      countUnread(admin, employee),
+    const beforeParam = req.nextUrl.searchParams.get('before')
+    const before = beforeParam && !Number.isNaN(new Date(beforeParam).getTime()) ? new Date(beforeParam).toISOString() : null
+    // Okunmamış sayısı tek sorgu; arşivin sonraki sayfalarında yeniden hesaplanmaz
+    const [list, unread_count] = await Promise.all([
+      listAnnouncements(admin, employee, { archive, before }),
+      before ? Promise.resolve(null) : countUnread(admin, employee),
     ])
-    return NextResponse.json({ announcements, unread_count })
+    return NextResponse.json({ ...list, ...(unread_count === null ? {} : { unread_count }) })
   } catch (err) {
     return serverError('GET /api/announcements', err)
   }

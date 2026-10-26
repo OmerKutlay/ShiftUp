@@ -116,6 +116,7 @@ export function AnnouncementDetailDialog({ id, onClose, onEdit }: Props) {
                 {a.author_name ?? 'Yönetim'} · {fmtWhen(a.created_at)}
                 {a.store_id === null && ' · Tüm mağazalar'}
                 {a.expires_at && ` · ${fmtDay(a.expires_at)} tarihine kadar`}
+                {a.edited_at && ` · Düzenlendi · ${fmtWhen(a.edited_at)}`}
               </>
             ) : 'Yükleniyor'}
           </DialogDescription>
@@ -166,8 +167,8 @@ export function AnnouncementDetailDialog({ id, onClose, onEdit }: Props) {
                   </TabsContent>
                 </Tabs>
                 <p className="text-xs text-muted-foreground">
-                  Alıcı listesi yayın anında sabitlenmiştir. Düzenleme okundu/onay kayıtlarını sıfırlamaz;
-                  yeniden bildirim için &quot;Hatırlat&quot; kullanın.
+                  Alıcı listesi yayın anında sabitlenmiştir (sabit ya da onay zorunlu duyurulara sonradan katılanlar eklenir).
+                  Düzenleme okundu kayıtlarını sıfırlamaz; onay zorunluysa başlık/metin değişince onaylar sıfırlanır.
                 </p>
               </section>
             )}

@@ -17,8 +17,9 @@ CREATE TABLE IF NOT EXISTS public.announcements (
   requires_ack     BOOLEAN     NOT NULL DEFAULT FALSE,
   target_roles     TEXT        NOT NULL DEFAULT 'all' CHECK (target_roles IN ('all', 'managers')),
   expires_at       TIMESTAMPTZ,
-  created_by       UUID        NOT NULL REFERENCES public.employees(id),
+  created_by       UUID        REFERENCES public.employees(id) ON DELETE SET NULL,
   last_reminded_at TIMESTAMPTZ,
+  edited_at        TIMESTAMPTZ,                                           -- son içerik düzenlemesi (hatırlatma updated_at'ı oynatır)
   deleted_at       TIMESTAMPTZ,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -43,6 +44,19 @@ CREATE TABLE IF NOT EXISTS public.announcement_recipients (
 
 CREATE INDEX IF NOT EXISTS idx_announcement_recipients_employee
   ON public.announcement_recipients (employee_id, created_at DESC);
+
+-- Okundu / onay: tek atomik güncelleme. İlk zaman korunur (coalesce), eşzamanlı istekler üstüne yazmaz.
+CREATE OR REPLACE FUNCTION public.announcement_mark(p_announcement UUID, p_employee UUID, p_ack BOOLEAN)
+RETURNS TABLE (read_at TIMESTAMPTZ, ack_at TIMESTAMPTZ)
+LANGUAGE sql
+AS $$
+  UPDATE public.announcement_recipients r
+     SET read_at = COALESCE(r.read_at, NOW()),
+         ack_at  = CASE WHEN p_ack THEN COALESCE(r.ack_at, NOW()) ELSE r.ack_at END
+   WHERE r.announcement_id = p_announcement AND r.employee_id = p_employee
+  RETURNING r.read_at, r.ack_at;
+$$;
+REVOKE ALL ON FUNCTION public.announcement_mark(UUID, UUID, BOOLEAN) FROM PUBLIC, anon, authenticated;
 
 ALTER TABLE public.announcements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.announcement_recipients ENABLE ROW LEVEL SECURITY;

@@ -36,15 +36,16 @@ export interface AnnouncementRow {
   requires_ack: boolean
   target_roles: AnnouncementTarget
   expires_at: string | null
-  created_by: string
+  created_by: string | null
   last_reminded_at: string | null
+  edited_at: string | null
   deleted_at: string | null
   created_at: string
   updated_at: string
 }
 
 export const ANNOUNCEMENT_COLUMNS =
-  'id, store_id, title, body, pinned, requires_ack, target_roles, expires_at, created_by, last_reminded_at, deleted_at, created_at, updated_at'
+  'id, store_id, title, body, pinned, requires_ack, target_roles, expires_at, created_by, last_reminded_at, edited_at, deleted_at, created_at, updated_at'
 
 type Actor = Pick<SessionEmployee, 'id' | 'access_level' | 'store_id'>
 
@@ -171,8 +172,8 @@ export function statsFor(rows: Pick<RecipientRow, 'read_at' | 'ack_at'>[]): Anno
   }
 }
 
-async function employeeNames(admin: SupabaseClient, ids: string[]): Promise<Map<string, string>> {
-  const unique = [...new Set(ids)]
+async function employeeNames(admin: SupabaseClient, rawIds: (string | null)[]): Promise<Map<string, string>> {
+  const unique = [...new Set(rawIds.filter((x): x is string => !!x))]
   if (unique.length === 0) return new Map()
   const { data, error } = await admin.from('employees').select('id, full_name').in('id', unique)
   if (error) throw error
@@ -198,7 +199,8 @@ function toApi(
     expires_at: a.expires_at,
     created_at: a.created_at,
     updated_at: a.updated_at,
-    author_name: authors.get(a.created_by) ?? null,
+    author_name: (a.created_by && authors.get(a.created_by)) || null,
+    edited_at: a.edited_at,
     is_recipient: !!mine,
     read_at: mine?.read_at ?? null,
     ack_at: mine?.ack_at ?? null,
@@ -207,43 +209,98 @@ function toApi(
   }
 }
 
+/** Arşiv sayfa boyutu (before imleciyle sonraki sayfa) */
+export const ARCHIVE_PAGE_SIZE = 30
+const ID_CHUNK = 100
+
 /**
- * Oturumdaki kişinin duyuru listesi (sabitlenenler önce, sonra yeniden eskiye).
- * archive=false → süresi dolmamışlar; archive=true → yalnızca süresi dolanlar.
- * Çalışan yalnızca alıcısı olduğu duyuruları görür; yönetici ek olarak yönettiği duyuruları.
+ * Süresi (dolmamış | dolmuş) + mağaza kapsamı filtresi (SQL). Tek `or` içinde and() ile birleştirilir;
+ * silinmişler her zaman dışarıda.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function scoped(q: any, storeClauses: string[], archive: boolean, nowIso: string, before?: string | null) {
+  let out = q.is('deleted_at', null)
+  if (archive) {
+    out = out.lte('expires_at', nowIso).or(storeClauses.join(','))
+    if (before) out = out.lt('created_at', before)
+  } else {
+    out = out.or(
+      storeClauses.flatMap((c) => [`and(${c},expires_at.is.null)`, `and(${c},expires_at.gt.${nowIso})`]).join(','),
+    )
+  }
+  return out.order('created_at', { ascending: false })
+}
+
+export interface AnnouncementList {
+  announcements: Announcement[]
+  /** Arşivde sonraki sayfa için `before` imleci (yoksa null) */
+  next_before: string | null
+}
+
+/**
+ * Oturumdaki kişinin duyuru listesi.
+ *   Güncel: süresi dolmamışlar, sabitlenenler önce, sonra yeniden eskiye (en fazla 60).
+ *   Arşiv: süresi dolanlar, yeniden eskiye, `before` (created_at) imleciyle sayfalı.
+ * Çalışan yalnızca alıcı olduğu duyuruları görür (önce kendi alıcı satırları alınır, sonra yalnızca o
+ * id'ler sorgulanır — başkalarının duyuruları pencereyi doldurup gizleyemez); yönetici ek olarak
+ * yönettiği duyuruları görür. Silinmiş / süre filtresi SQL'dedir.
  */
 export async function listAnnouncements(
   admin: SupabaseClient,
   actor: Actor,
-  { archive }: { archive: boolean },
-): Promise<Announcement[]> {
-  const { data, error } = await admin
-    .from('announcements')
-    .select(ANNOUNCEMENT_COLUMNS)
-    .is('deleted_at', null)
-    // Başka mağazaların duyuruları sonucu doldurmasın (JS'te inScope ile ayrıca doğrulanır)
-    .or(`store_id.is.null,store_id.eq.${actor.store_id}`)
-    .order('created_at', { ascending: false })
-    .limit(150)
-  if (error) throw error
-  const now = Date.now()
-  const candidates = ((data ?? []) as AnnouncementRow[]).filter(
-    (a) => inScope(actor, a) && isExpired(a, now) === archive,
-  )
-  if (candidates.length === 0) return []
+  { archive, before }: { archive: boolean; before?: string | null },
+): Promise<AnnouncementList> {
+  const nowIso = new Date().toISOString()
+  const limit = archive ? ARCHIVE_PAGE_SIZE + 1 : LIST_LIMIT
+  const scopeClauses = [`store_id.is.null`, `store_id.eq.${actor.store_id}`]
 
+  // 1) Kendi alıcı satırlarım (kimliklerim + okundu/onay durumu)
   const { data: mineData, error: mineErr } = await admin
     .from('announcement_recipients')
     .select('announcement_id, employee_id, read_at, ack_at')
     .eq('employee_id', actor.id)
-    .in('announcement_id', candidates.map((a) => a.id))
+    .order('created_at', { ascending: false })
+    .limit(1000)
   if (mineErr) throw mineErr
   const mine = new Map(((mineData ?? []) as RecipientRow[]).map((r) => [r.announcement_id, r]))
+  const mineIds = [...mine.keys()]
 
-  const visible = candidates
-    .filter((a) => mine.has(a.id) || canManage(actor, a))
-    .sort((x, y) => Number(y.pinned) - Number(x.pinned) || y.created_at.localeCompare(x.created_at))
-    .slice(0, LIST_LIMIT)
+  // 2) Alıcısı olduğum duyurular (id gruplarıyla; URL uzunluğu sınırı)
+  const queries: PromiseLike<{ data: unknown; error: unknown }>[] = []
+  for (let i = 0; i < mineIds.length; i += ID_CHUNK) {
+    queries.push(
+      scoped(
+        admin.from('announcements').select(ANNOUNCEMENT_COLUMNS).in('id', mineIds.slice(i, i + ID_CHUNK)),
+        scopeClauses, archive, nowIso, before,
+      ).limit(limit),
+    )
+  }
+  // 3) Yönettiğim duyurular (alıcısı olmasam da): aktif mağaza; şirket geneli yalnızca Admin
+  if (roleAtLeast(actor.access_level, ACCESS.MANAGER)) {
+    const clauses = [`store_id.eq.${actor.store_id}`, ...(actor.access_level === ACCESS.ADMIN ? ['store_id.is.null'] : [])]
+    queries.push(scoped(admin.from('announcements').select(ANNOUNCEMENT_COLUMNS), clauses, archive, nowIso, before).limit(limit))
+  }
+
+  const results = await Promise.all(queries)
+  const byId = new Map<string, AnnouncementRow>()
+  for (const r of results) {
+    if (r.error) throw r.error
+    for (const a of (r.data ?? []) as AnnouncementRow[]) {
+      // Savunma: SQL filtresinin yanında kapsam / silinme / süre JS'te de doğrulanır
+      if (a.deleted_at || !inScope(actor, a) || isExpired(a) !== archive) continue
+      if (mine.has(a.id) || canManage(actor, a)) byId.set(a.id, a)
+    }
+  }
+
+  let sorted = [...byId.values()].sort(
+    (x, y) => (archive ? 0 : Number(y.pinned) - Number(x.pinned)) || y.created_at.localeCompare(x.created_at),
+  )
+  let nextBefore: string | null = null
+  if (archive && sorted.length > ARCHIVE_PAGE_SIZE) {
+    sorted = sorted.slice(0, ARCHIVE_PAGE_SIZE)
+    nextBefore = sorted[sorted.length - 1].created_at
+  }
+  const visible = sorted.slice(0, LIST_LIMIT)
 
   const manageIds = visible.filter((a) => canManage(actor, a)).map((a) => a.id)
   const statRows = await loadRecipientRows(admin, manageIds)
@@ -251,9 +308,12 @@ export async function listAnnouncements(
   for (const r of statRows) byAnn.set(r.announcement_id, [...(byAnn.get(r.announcement_id) ?? []), r])
 
   const authors = await employeeNames(admin, visible.map((a) => a.created_by))
-  return visible.map((a) =>
-    toApi(a, actor, mine.get(a.id), authors, canManage(actor, a) ? statsFor(byAnn.get(a.id) ?? []) : undefined),
-  )
+  return {
+    announcements: visible.map((a) =>
+      toApi(a, actor, mine.get(a.id), authors, canManage(actor, a) ? statsFor(byAnn.get(a.id) ?? []) : undefined),
+    ),
+    next_before: nextBefore,
+  }
 }
 
 /** Tek duyuru (yönetici için istatistik ve alıcı listesi dahil); erişim yoksa null */
@@ -284,62 +344,45 @@ export async function getAnnouncementForActor(
   return { announcement, recipients }
 }
 
-/** Okunmamış (süresi dolmamış, silinmemiş, aktif mağaza kapsamındaki) duyuru sayısı */
+/**
+ * Okunmamış (silinmemiş, süresi dolmamış, aktif mağaza kapsamındaki) duyuru sayısı —
+ * announcements ile inner-join gömmesi kullanan tek sorgu.
+ */
 export async function countUnread(admin: SupabaseClient, actor: Actor): Promise<number> {
-  const { data, error } = await admin
+  const nowIso = new Date().toISOString()
+  const scope = [`store_id.is.null`, `store_id.eq.${actor.store_id}`]
+  const { count, error } = await admin
     .from('announcement_recipients')
-    .select('announcement_id')
+    .select('announcement_id, announcements!inner(id)', { count: 'exact', head: true })
     .eq('employee_id', actor.id)
     .is('read_at', null)
-    .order('created_at', { ascending: false })
-    .limit(150)
+    .is('announcements.deleted_at', null)
+    .or(
+      scope.flatMap((c) => [`and(${c},expires_at.is.null)`, `and(${c},expires_at.gt.${nowIso})`]).join(','),
+      { referencedTable: 'announcements' },
+    )
   if (error) throw error
-  const ids = ((data ?? []) as { announcement_id: string }[]).map((r) => r.announcement_id)
-  if (ids.length === 0) return 0
-  const { data: anns, error: annErr } = await admin
-    .from('announcements')
-    .select('id, store_id, expires_at')
-    .in('id', ids)
-    .is('deleted_at', null)
-  if (annErr) throw annErr
-  const now = Date.now()
-  return ((anns ?? []) as Pick<AnnouncementRow, 'store_id' | 'expires_at'>[]).filter(
-    (a) => inScope(actor, a) && !isExpired(a, now),
-  ).length
+  return count ?? 0
 }
 
-/** İlk çağrıda zamanı yazar, sonrakilerde dokunmaz (idempotent). Alıcı değilse null. */
+/**
+ * Okundu / onay: tek atomik güncelleme (announcement_mark RPC: read_at = coalesce(read_at, now()),
+ * onayda ack_at = coalesce(ack_at, now())). İlk zamanlar korunur. Alıcı değilse null.
+ */
 export async function markReadOrAck(
   admin: SupabaseClient,
   announcementId: string,
   employeeId: string,
   kind: 'read' | 'ack',
-): Promise<RecipientRow | null> {
-  const { data: row, error } = await admin
-    .from('announcement_recipients')
-    .select('announcement_id, employee_id, read_at, ack_at')
-    .eq('announcement_id', announcementId)
-    .eq('employee_id', employeeId)
-    .maybeSingle()
+): Promise<{ read_at: string | null; ack_at: string | null } | null> {
+  const { data, error } = await admin.rpc('announcement_mark', {
+    p_announcement: announcementId,
+    p_employee: employeeId,
+    p_ack: kind === 'ack',
+  })
   if (error) throw error
-  if (!row) return null
-  const now = new Date().toISOString()
-  const current = row as RecipientRow
-  const patch: Partial<Pick<RecipientRow, 'read_at' | 'ack_at'>> = {}
-  if (!current.read_at) patch.read_at = now
-  if (kind === 'ack' && !current.ack_at) patch.ack_at = now
-  if (Object.keys(patch).length === 0) return current
-  // Koşullu güncelleme: eşzamanlı iki istek ilk zamanın üstüne yazmaz
-  for (const [col, value] of Object.entries(patch)) {
-    const { error: upErr } = await admin
-      .from('announcement_recipients')
-      .update({ [col]: value })
-      .eq('announcement_id', announcementId)
-      .eq('employee_id', employeeId)
-      .is(col, null)
-    if (upErr) throw upErr
-  }
-  return { ...current, ...patch }
+  const row = (Array.isArray(data) ? data[0] : data) as { read_at: string | null; ack_at: string | null } | null
+  return row ?? null
 }
 
 /** Hatırlatma hedefleri: onay gerekiyorsa onaylamayanlar, değilse okumayanlar (hâlâ aktif olanlar) */
@@ -353,4 +396,92 @@ export async function pendingRecipientIds(
   const { data, error } = await admin.from('employees').select('id').in('id', pending).eq('active', true)
   if (error) throw error
   return ((data ?? []) as { id: string }[]).map((e) => e.id)
+}
+
+/**
+ * Onay zorunlu duyuruda başlık/metin değişince tüm onayları sıfırlar; daha önce onaylamış olanlara
+ * "tekrar onaylayın" bildirimi gönderir (tek toplu insert). Sıfırlanan kişi sayısını döner.
+ */
+export async function resetAcksAndNotify(
+  admin: SupabaseClient,
+  a: Pick<AnnouncementRow, 'id' | 'title'>,
+): Promise<number> {
+  const { data, error } = await admin
+    .from('announcement_recipients')
+    .update({ ack_at: null })
+    .eq('announcement_id', a.id)
+    .not('ack_at', 'is', null)
+    .select('employee_id')
+  if (error) throw error
+  const ids = ((data ?? []) as { employee_id: string }[]).map((r) => r.employee_id)
+  if (ids.length === 0) return 0
+  await createNotifications(
+    admin,
+    ids.map((employee_id) => ({
+      employee_id,
+      type: 'announcement' as const,
+      title: a.title,
+      message: 'Duyuru güncellendi, lütfen tekrar onaylayın.',
+      related_id: a.id,
+    })),
+  )
+  return ids.length
+}
+
+/**
+ * Sonradan katılan çalışan (yeni kayıt ya da mağaza transferi): yeni mağazasının ve şirket geneli
+ * duyurulardan, güncel (silinmemiş, süresi dolmamış) ve sabitlenmiş YA DA onay zorunlu olanlara
+ * alıcı olarak eklenir (hedef rol uyuyorsa). Tek bildirim: tek duyuruysa onun başlığı, birden
+ * fazlaysa özet. Eklenen duyuru sayısını döner. Çağıran hatayı yakalamalıdır (ana işlemi bozmasın).
+ */
+export async function addLateJoinerRecipient(admin: SupabaseClient, employeeId: string): Promise<number> {
+  const { data: emp, error } = await admin
+    .from('employees')
+    .select('id, store_id, active, roles(access_level)')
+    .eq('id', employeeId)
+    .maybeSingle()
+  if (error) throw error
+  const e = emp as { id: string; store_id: string; active: boolean; roles?: unknown } | null
+  if (!e || !e.active) return 0
+  const level = accessLevelOf(e.roles)
+  if (level === ACCESS.KIOSK) return 0
+
+  const nowIso = new Date().toISOString()
+  const { data: anns, error: annErr } = await scoped(
+    admin.from('announcements').select(ANNOUNCEMENT_COLUMNS),
+    [`store_id.is.null`, `store_id.eq.${e.store_id}`], false, nowIso,
+  ).limit(200)
+  if (annErr) throw annErr
+  const candidates = ((anns ?? []) as AnnouncementRow[]).filter(
+    (a) =>
+      !a.deleted_at && (a.pinned || a.requires_ack) && !isExpired(a) &&
+      (a.store_id === null || a.store_id === e.store_id) &&
+      a.created_by !== e.id &&
+      (a.target_roles === 'all' || isManagerLevel(level)),
+  )
+  if (candidates.length === 0) return 0
+
+  const { data: existing, error: exErr } = await admin
+    .from('announcement_recipients')
+    .select('announcement_id')
+    .eq('employee_id', e.id)
+    .in('announcement_id', candidates.map((a) => a.id))
+  if (exErr) throw exErr
+  const have = new Set(((existing ?? []) as { announcement_id: string }[]).map((r) => r.announcement_id))
+  const fresh = candidates.filter((a) => !have.has(a.id))
+  if (fresh.length === 0) return 0
+
+  const { error: insErr } = await admin
+    .from('announcement_recipients')
+    .insert(fresh.map((a) => ({ announcement_id: a.id, employee_id: e.id })))
+  if (insErr) throw insErr
+
+  await createNotifications(admin, [{
+    employee_id: e.id,
+    type: 'announcement',
+    title: fresh.length === 1 ? fresh[0].title : `${fresh.length} duyuru sizi bekliyor`,
+    message: fresh.length === 1 ? previewText(fresh[0].body) : 'Mağaza duyurularını okuyup onaylamanız gerekiyor.',
+    related_id: fresh.length === 1 ? fresh[0].id : null,
+  }])
+  return fresh.length
 }

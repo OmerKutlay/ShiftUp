@@ -18,6 +18,12 @@ export interface FakeDbOptions {
   unique?: Record<string, string[][]>
   /** tablo/operasyon için zorla hata döndür: { 'employees:select': { message } } */
   failOn?: Record<string, { message: string; code?: string }>
+  /**
+   * Opt-in: `.or()` ifadelerini gerçekten değerlendirir (varsayılan: yok sayılır).
+   * relations: tablo → { ilişkiAdı: { table, fk } } — `rel!inner(...)` gömmesi ve `rel.kolon` filtreleri için.
+   */
+  evalOr?: boolean
+  relations?: Record<string, Record<string, { table: string; fk: string }>>
   /** rpc handler'ları */
   rpc?: Record<string, (args: any, db: FakeDb) => { data?: any; error?: any } | Promise<{ data?: any; error?: any }>>
 }
@@ -44,7 +50,12 @@ class Query implements PromiseLike<{ data: any; error: any; count?: number | nul
 
   constructor(private db: FakeDb, private table: string) {}
 
-  select(_cols?: string, opts?: { count?: string; head?: boolean }) {
+  select(cols?: string, opts?: { count?: string; head?: boolean }) {
+    // rel!inner(...) gömmesi: ilişkili satırı olmayanlar elenir (satıra gömülü veri eklenmez)
+    for (const m of cols?.matchAll(/(\w+)!inner\(/g) ?? []) {
+      const rel = this.db.options.relations?.[this.table]?.[m[1]]
+      if (rel) this.filters.push((r) => !!this.db.tables[rel.table]?.some((x) => x.id === r[rel.fk]))
+    }
     if (this.op !== 'select') this.returning = true
     if (opts?.count) this.countMode = true
     if (opts?.head) this.head = true
@@ -59,14 +70,23 @@ class Query implements PromiseLike<{ data: any; error: any; count?: number | nul
   update(patch: Row) { this.op = 'update'; this.payload = patch; return this }
   delete() { this.op = 'delete'; return this }
 
-  eq(c: string, v: any) { this.filters.push((r) => r[c] === v); return this }
-  neq(c: string, v: any) { this.filters.push((r) => r[c] !== v); return this }
+  /** Kolon değeri; 'rel.kolon' ilişkili tablodaki satırdan okunur */
+  private val(r: Row, c: string): any {
+    const i = c.indexOf('.')
+    if (i < 0) return r[c]
+    const rel = this.db.options.relations?.[this.table]?.[c.slice(0, i)]
+    if (!rel) return r[c]
+    return this.db.tables[rel.table]?.find((x) => x.id === r[rel.fk])?.[c.slice(i + 1)]
+  }
+
+  eq(c: string, v: any) { this.filters.push((r) => this.val(r, c) === v); return this }
+  neq(c: string, v: any) { this.filters.push((r) => this.val(r, c) !== v); return this }
   in(c: string, vs: any[]) { this.filters.push((r) => vs.includes(r[c])); return this }
-  gt(c: string, v: any) { this.filters.push((r) => r[c] != null && r[c] > v); return this }
+  gt(c: string, v: any) { this.filters.push((r) => this.val(r, c) != null && this.val(r, c) > v); return this }
   gte(c: string, v: any) { this.filters.push((r) => r[c] != null && r[c] >= v); return this }
-  lt(c: string, v: any) { this.filters.push((r) => r[c] != null && r[c] < v); return this }
-  lte(c: string, v: any) { this.filters.push((r) => r[c] != null && r[c] <= v); return this }
-  is(c: string, v: any) { this.filters.push((r) => (v === null ? r[c] == null : r[c] === v)); return this }
+  lt(c: string, v: any) { this.filters.push((r) => this.val(r, c) != null && this.val(r, c) < v); return this }
+  lte(c: string, v: any) { this.filters.push((r) => this.val(r, c) != null && this.val(r, c) <= v); return this }
+  is(c: string, v: any) { this.filters.push((r) => (v === null ? this.val(r, c) == null : this.val(r, c) === v)); return this }
   not(c: string, op: string, v: any) {
     if (op === 'is') this.filters.push((r) => (v === null ? r[c] != null : r[c] !== v))
     else if (op === 'in') {
@@ -75,7 +95,39 @@ class Query implements PromiseLike<{ data: any; error: any; count?: number | nul
     } else this.filters.push((r) => r[c] !== v)
     return this
   }
-  or(_expr: string) { return this }
+  or(expr: string, opts?: { referencedTable?: string }) {
+    if (!this.db.options.evalOr) return this
+    const prefix = opts?.referencedTable ? `${opts.referencedTable}.` : ''
+    const split = (s: string) => {
+      const out: string[] = []
+      let depth = 0, cur = ''
+      for (const ch of s) {
+        if (ch === '(') depth++
+        if (ch === ')') depth--
+        if (ch === ',' && depth === 0) { out.push(cur); cur = '' } else cur += ch
+      }
+      if (cur) out.push(cur)
+      return out
+    }
+    const leaf = (r: Row, t: string): boolean => {
+      if (t.startsWith('and(')) return split(t.slice(4, -1)).every((x) => leaf(r, x))
+      const [col, op, ...rest] = t.split('.')
+      const raw = rest.join('.')
+      const v = this.val(r, prefix + col)
+      switch (op) {
+        case 'is': return raw === 'null' ? v == null : String(v) === raw
+        case 'eq': return String(v) === raw
+        case 'gt': return v != null && v > raw
+        case 'gte': return v != null && v >= raw
+        case 'lt': return v != null && v < raw
+        case 'lte': return v != null && v <= raw
+        default: return true
+      }
+    }
+    const parts = split(expr)
+    this.filters.push((r) => parts.some((t) => leaf(r, t)))
+    return this
+  }
   order(col: string, opts?: { ascending?: boolean }) { this.orderBy.push({ col, asc: opts?.ascending !== false }); return this }
   limit(n: number) { this.limitN = n; return this }
   range(from: number, to: number) { this.rangeFrom = from; this.limitN = to - from + 1; return this }

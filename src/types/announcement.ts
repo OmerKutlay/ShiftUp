@@ -23,6 +23,8 @@ export interface Announcement {
   expires_at: string | null
   created_at: string
   updated_at: string
+  /** Son içerik düzenlemesi (null = hiç düzenlenmedi) */
+  edited_at: string | null
   author_name: string | null
   /** Oturumdaki çalışan alıcı mı (yönetici alıcı olmadan da duyuruyu yönetebilir) */
   is_recipient: boolean

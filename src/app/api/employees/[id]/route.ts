@@ -26,6 +26,7 @@ import { isUuid } from '@/lib/validation'
 import { canSwitchStore } from '@/lib/storeScope'
 import { turkeyToday } from '@/lib/dateUtils'
 import { logAudit } from '@/lib/auditLog'
+import { addLateJoinerRecipient } from '@/lib/announcementService'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -147,6 +148,9 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       after: result.payload,
     })
     if (transferTo) {
+      // Yeni mağazanın sabit / onay zorunlu duyurularına alıcı olarak eklenir; hata transferi bozmaz
+      await addLateJoinerRecipient(createAdminClient(), id).catch((e) =>
+        console.error('[PATCH /api/employees/[id]] duyuru alıcı ekleme', e))
       // Transfer hem eski hem yeni mağazanın denetim kaydında görünür
       for (const storeId of new Set([activeStoreId, transferTo])) {
         await logAudit({

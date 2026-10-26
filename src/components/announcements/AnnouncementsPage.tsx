@@ -14,7 +14,8 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { Megaphone, Pin, Plus, ShieldCheck } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { ACCESS, hasRole, MANAGER_ROLES } from '@/lib/auth/roles'
-import { announcementsKey, type AnnouncementsResponse } from '@/lib/api/announcements'
+import { apiFetch } from '@/lib/api/http'
+import { announcementsKey, archiveMoreKey, type AnnouncementsResponse } from '@/lib/api/announcements'
 import { ListSkeleton, Page, PageHeader, SegmentedControl } from '@/components/common'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -47,7 +48,21 @@ export function AnnouncementsPage() {
   const [formKey, setFormKey] = useState(0)
 
   const { data, error, isLoading, mutate } = useSWR<AnnouncementsResponse>(announcementsKey(view === 'archive'))
-  const items = data?.announcements ?? []
+  // Arşivde sonraki sayfalar (before imleciyle) yerel olarak eklenir; görünüm/veri değişince sıfırlanır
+  const [more, setMore] = useState<{ items: Announcement[]; cursor: string | null; for: unknown } | null>(null)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const extra = more && more.for === data ? more : null
+  const items = [...(data?.announcements ?? []), ...(extra?.items ?? [])]
+  const cursor = extra ? extra.cursor : (data?.next_before ?? null)
+  const loadMore = async () => {
+    if (!cursor) return
+    setLoadingMore(true)
+    try {
+      const page = await apiFetch<AnnouncementsResponse>(archiveMoreKey(cursor))
+      setMore({ items: [...(extra?.items ?? []), ...page.announcements], cursor: page.next_before ?? null, for: data })
+    } catch { /* sessiz: düğme yeniden denenebilir */ }
+    finally { setLoadingMore(false) }
+  }
 
   const openForm = (a: Announcement | null) => {
     setEditing(a); setFormKey((k) => k + 1); setFormOpen(true)
@@ -65,7 +80,7 @@ export function AnnouncementsPage() {
       <PageHeader
         title="Duyurular"
         description="Mağaza duyuruları ve okundu takibi"
-        titleAdornment={data && data.unread_count > 0 ? <Badge tone="brand">{data.unread_count} yeni</Badge> : undefined}
+        titleAdornment={data && (data.unread_count ?? 0) > 0 ? <Badge tone="brand">{data.unread_count} yeni</Badge> : undefined}
         actions={isManager ? (
           <Button onClick={() => openForm(null)}><Plus /> Yeni duyuru</Button>
         ) : undefined}
@@ -96,6 +111,12 @@ export function AnnouncementsPage() {
             <AnnouncementRow key={a.id} a={a} onOpen={() => setOpenId(a.id)} />
           ))}
         </ItemGroup>
+      )}
+
+      {cursor && view === 'archive' && (
+        <Button variant="outline" onClick={() => void loadMore()} disabled={loadingMore} className="self-center">
+          Daha fazla göster
+        </Button>
       )}
 
       <AnnouncementDetailDialog id={openId} onClose={closeDetail} onEdit={(a) => openForm(a)} />

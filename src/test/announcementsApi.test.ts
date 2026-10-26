@@ -28,6 +28,9 @@ import { POST as readPOST } from '@/app/api/announcements/[id]/read/route'
 import { POST as ackPOST } from '@/app/api/announcements/[id]/ack/route'
 import { POST as remindPOST } from '@/app/api/announcements/[id]/remind/route'
 import { GET as unreadGET } from '@/app/api/announcements/unread-count/route'
+import { POST as employeesPOST } from '@/app/api/employees/route'
+import { PATCH as employeePATCH } from '@/app/api/employees/[id]/route'
+import { addLateJoinerRecipient } from '@/lib/announcementService'
 
 const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
 const STORE_A = uuid(1)
@@ -53,6 +56,18 @@ const session = (id: string, level: string, store: string) => ({
   active: true, home_store_id: store, store_id: store,
 })
 
+/** announcement_mark RPC'sinin bellek içi karşılığı (coalesce davranışı) */
+const markRpc = (args: { p_announcement: string; p_employee: string; p_ack: boolean }, fdb: FakeDb) => {
+  const row = fdb.tables.announcement_recipients.find(
+    (r) => r.announcement_id === args.p_announcement && r.employee_id === args.p_employee,
+  )
+  if (!row) return { data: [] }
+  const now = new Date().toISOString()
+  row.read_at = row.read_at ?? now
+  if (args.p_ack) row.ack_at = row.ack_at ?? now
+  return { data: [{ read_at: row.read_at, ack_at: row.ack_at ?? null }] }
+}
+
 function seed(): FakeDb {
   return createFakeDb({
     employees: [
@@ -70,6 +85,13 @@ function seed(): FakeDb {
     announcement_recipients: [],
     notifications: [],
     audit_logs: [],
+    roles: [{ id: uuid(99), name: 'Çalışan', access_level: ACCESS.EMPLOYEE, planning_group: null, sort_order: 1 }],
+    shift_assignments: [],
+    stores: [{ id: STORE_A, name: 'A', active: true }, { id: STORE_B, name: 'B', active: true }],
+  }, {
+    evalOr: true,
+    relations: { announcement_recipients: { announcements: { table: 'announcements', fk: 'announcement_id' } } },
+    rpc: { announcement_mark: markRpc },
   })
 }
 
@@ -269,12 +291,11 @@ describe('hiyerarşi, düzenleme ve silme', () => {
     expect((await detailPATCH(req(`/api/announcements/${id}`, 'PATCH', { title: 'Admin' }), ctx(id))).status).toBe(200)
   })
 
-  it('düzenleme okundu/onay kayıtlarını sıfırlamaz ve yeniden bildirim göndermez', async () => {
+  it('düzenleme (onay zorunlu olmayan) okundu kayıtlarını sıfırlamaz ve yeniden bildirim göndermez', async () => {
     as(MGR_A, ACCESS.MANAGER, STORE_A)
-    const id = await publish({ requires_ack: true })
+    const id = await publish()
     as(EMP_A1, ACCESS.EMPLOYEE, STORE_A)
     await readPOST(req(`/api/announcements/${id}/read`, 'POST'), ctx(id))
-    await ackPOST(req(`/api/announcements/${id}/ack`, 'POST'), ctx(id))
     const before = db().tables.notifications.length
 
     as(MGR_A, ACCESS.MANAGER, STORE_A)
@@ -282,7 +303,6 @@ describe('hiyerarşi, düzenleme ve silme', () => {
     expect(res.status).toBe(200)
     const row = db().tables.announcement_recipients.find((r) => r.employee_id === EMP_A1)!
     expect(row.read_at).toBeTruthy()
-    expect(row.ack_at).toBeTruthy()
     expect(db().tables.notifications).toHaveLength(before)
     expect(db().tables.announcements[0]).toMatchObject({ title: 'Güncel', body: 'Yeni metin', pinned: true })
   })
@@ -488,5 +508,235 @@ describe('liste, arşiv ve okunmamış sayısı', () => {
       expect(Object.keys(r).every((k) => ['ack_at', 'employee_id', 'full_name', 'read_at'].includes(k))).toBe(true)
       expect(r).not.toHaveProperty('email')
     }
+  })
+})
+
+describe('onay zorunlu duyuruyu düzenleme', () => {
+  async function ackedAnnouncement() {
+    as(MGR_A, ACCESS.MANAGER, STORE_A)
+    const id = await publish({ requires_ack: true })
+    as(EMP_A1, ACCESS.EMPLOYEE, STORE_A)
+    await ackPOST(req(`/api/announcements/${id}/ack`, 'POST'), ctx(id))
+    as(EMP_A2, ACCESS.EMPLOYEE, STORE_A)
+    await readPOST(req(`/api/announcements/${id}/read`, 'POST'), ctx(id))
+    as(MGR_A, ACCESS.MANAGER, STORE_A)
+    db().tables.notifications = []
+    return id
+  }
+
+  it('başlık/metin değişince onaylar sıfırlanır, yalnızca onaylamış olanlara bildirim gider; okundu korunur', async () => {
+    const id = await ackedAnnouncement()
+    const res = await detailPATCH(req(`/api/announcements/${id}`, 'PATCH', { body: 'Yeni metin' }), ctx(id))
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { reack: number }).reack).toBe(1)
+    const rows = db().tables.announcement_recipients.filter((r) => r.announcement_id === id)
+    expect(rows.every((r) => !r.ack_at)).toBe(true)
+    expect(rows.find((r) => r.employee_id === EMP_A1)?.read_at).toBeTruthy()
+    expect(notified(id)).toEqual([EMP_A1])
+    expect(db().tables.notifications[0].message).toBe('Duyuru güncellendi, lütfen tekrar onaylayın.')
+    expect(db().tables.announcements[0].edited_at).toBeTruthy()
+  })
+
+  it('yalnızca sabitleme/bitiş değişince onaylar korunur ve bildirim gitmez', async () => {
+    const id = await ackedAnnouncement()
+    await detailPATCH(req(`/api/announcements/${id}`, 'PATCH', { pinned: true }), ctx(id))
+    expect(db().tables.announcement_recipients.find((r) => r.employee_id === EMP_A1)?.ack_at).toBeTruthy()
+    expect(db().tables.notifications).toHaveLength(0)
+  })
+
+  it('aynı başlık/metinle PATCH onayları sıfırlamaz', async () => {
+    const id = await ackedAnnouncement()
+    await detailPATCH(req(`/api/announcements/${id}`, 'PATCH', { title: 'Başlık', body: 'Metin' }), ctx(id))
+    expect(db().tables.announcement_recipients.find((r) => r.employee_id === EMP_A1)?.ack_at).toBeTruthy()
+  })
+
+  it('detayda edited_at döner (düzenlenmemişse null)', async () => {
+    const id = await ackedAnnouncement()
+    const before = (await (await detailGET(req(`/api/announcements/${id}`), ctx(id))).json()) as { announcement: { edited_at: string | null } }
+    expect(before.announcement.edited_at ?? null).toBeNull()
+    await detailPATCH(req(`/api/announcements/${id}`, 'PATCH', { title: 'Başka' }), ctx(id))
+    const after = (await (await detailGET(req(`/api/announcements/${id}`), ctx(id))).json()) as { announcement: { edited_at: string | null } }
+    expect(after.announcement.edited_at).toBeTruthy()
+  })
+})
+
+describe('hatırlat: talep sonrası hata geri alma', () => {
+  it('bildirim gönderimi başarısız olursa last_reminded_at eski değerine döner', async () => {
+    as(MGR_A, ACCESS.MANAGER, STORE_A)
+    const id = await publish()
+    const prev = new Date(Date.now() - 8 * 3600_000).toISOString()
+    db().tables.announcements[0].last_reminded_at = prev
+    db().options.failOn = { 'notifications:insert': { message: 'boom', code: '500' } }
+    const res = await remindPOST(req(`/api/announcements/${id}/remind`, 'POST'), ctx(id))
+    expect(res.status).toBe(500)
+    expect(db().tables.announcements[0].last_reminded_at).toBe(prev)
+
+    // Hata sonrası hemen yeniden denenebilir
+    db().options.failOn = {}
+    expect((await remindPOST(req(`/api/announcements/${id}/remind`, 'POST'), ctx(id))).status).toBe(200)
+  })
+
+  it('hedef kalmadıysa talep geri alınır (null\'a döner)', async () => {
+    as(MGR_A, ACCESS.MANAGER, STORE_A)
+    const id = await publish()
+    db().tables.announcement_recipients.forEach((r) => { r.read_at = new Date().toISOString() })
+    const res = await remindPOST(req(`/api/announcements/${id}/remind`, 'POST'), ctx(id))
+    expect(res.status).toBe(400)
+    expect(db().tables.announcements[0].last_reminded_at ?? null).toBeNull()
+  })
+
+  it('hedefler talepten sonra okunur: başka istek talebi aldıysa (koşul tutmadı) bildirim gitmez', async () => {
+    as(MGR_A, ACCESS.MANAGER, STORE_A)
+    const id = await publish()
+    db().tables.notifications = []
+    // İlk istek kazanır, aynı saniyedeki ikinci istek atomik talepte (or koşulu) elenir
+    expect((await remindPOST(req(`/api/announcements/${id}/remind`, 'POST'), ctx(id))).status).toBe(200)
+    const n = db().tables.notifications.length
+    db().tables.announcements[0].last_reminded_at = new Date(Date.now() - 1000).toISOString()
+    expect((await remindPOST(req(`/api/announcements/${id}/remind`, 'POST'), ctx(id))).status).toBe(429)
+    expect(db().tables.notifications).toHaveLength(n)
+  })
+})
+
+describe('şirket geneli duyuru: mağaza izolasyonu', () => {
+  it('A mağazası yöneticisi şirket geneli duyuruyu PATCH/DELETE/remind edemez (403); B çalışanı görür', async () => {
+    as(ADMIN, ACCESS.ADMIN, STORE_A)
+    const id = await publish({ all_stores: true, title: 'Herkese' })
+
+    as(MGR_A, ACCESS.MANAGER, STORE_A)
+    expect((await detailPATCH(req(`/api/announcements/${id}`, 'PATCH', { title: 'x' }), ctx(id))).status).toBe(403)
+    expect((await detailDELETE(req(`/api/announcements/${id}`, 'DELETE'), ctx(id))).status).toBe(403)
+    expect((await remindPOST(req(`/api/announcements/${id}/remind`, 'POST'), ctx(id))).status).toBe(403)
+    expect(db().tables.announcements[0]).toMatchObject({ title: 'Herkese' })
+    expect(db().tables.announcements[0].deleted_at ?? null).toBeNull()
+
+    as(EMP_B1, ACCESS.EMPLOYEE, STORE_B)
+    const list = (await (await listGET(req('/api/announcements'))).json()) as { announcements: { id: string; can_manage: boolean }[]; unread_count: number }
+    expect(list.announcements.map((a) => a.id)).toEqual([id])
+    expect(list.announcements[0].can_manage).toBe(false)
+    expect(list.unread_count).toBe(1)
+    expect((await detailGET(req(`/api/announcements/${id}`), ctx(id))).status).toBe(200)
+  })
+})
+
+describe('liste: SQL filtreleri, pencere ve arşiv sayfalama', () => {
+  it('çalışanın kendi duyuruları, başkalarının 150+ duyurusu arasında kaybolmaz', async () => {
+    as(MGR_A, ACCESS.MANAGER, STORE_A)
+    const mineId = await publish({ title: 'Benim', target_roles: 'all' })
+    // Hedefi yöneticiler olan çok sayıda yeni duyuru (EMP_A1 alıcı değil)
+    for (let i = 0; i < 160; i++) {
+      db().tables.announcements.push({
+        id: uuid(5000 + i), store_id: STORE_A, title: `Y${i}`, body: 'b', pinned: false, requires_ack: false,
+        target_roles: 'managers', expires_at: null, created_by: MGR_A, deleted_at: null,
+        created_at: new Date(Date.now() + 1000 + i).toISOString(),
+      })
+    }
+    as(EMP_A1, ACCESS.EMPLOYEE, STORE_A)
+    const list = (await (await listGET(req('/api/announcements'))).json()) as { announcements: { id: string }[] }
+    expect(list.announcements.map((a) => a.id)).toEqual([mineId])
+  })
+
+  it('arşiv before imleciyle sayfalanır', async () => {
+    as(MGR_A, ACCESS.MANAGER, STORE_A)
+    const base = Date.now() - 100 * 86400_000
+    for (let i = 0; i < 35; i++) {
+      db().tables.announcements.push({
+        id: uuid(6000 + i), store_id: STORE_A, title: `A${i}`, body: 'b', pinned: false, requires_ack: false,
+        target_roles: 'all', expires_at: new Date(Date.now() - 1000).toISOString(), created_by: SM_A, deleted_at: null,
+        created_at: new Date(base + i * 1000).toISOString(),
+      })
+      db().tables.announcement_recipients.push({ announcement_id: uuid(6000 + i), employee_id: EMP_A1, read_at: null, ack_at: null, created_at: new Date(base + i * 1000).toISOString() })
+    }
+    as(EMP_A1, ACCESS.EMPLOYEE, STORE_A)
+    const p1 = (await (await listGET(req('/api/announcements?archive=1'))).json()) as { announcements: { id: string }[]; next_before: string | null }
+    expect(p1.announcements).toHaveLength(30)
+    expect(p1.next_before).toBeTruthy()
+    const p2 = (await (await listGET(req(`/api/announcements?archive=1&before=${encodeURIComponent(p1.next_before as string)}`))).json()) as { announcements: { id: string }[]; next_before: string | null }
+    expect(p2.announcements).toHaveLength(5)
+    expect(p2.next_before).toBeNull()
+    const ids = new Set([...p1.announcements, ...p2.announcements].map((a) => a.id))
+    expect(ids.size).toBe(35)
+  })
+})
+
+describe('sonradan katılanlar (addLateJoinerRecipient)', () => {
+  const addAnn = (over: Record<string, unknown>) => {
+    const id = uuid(7000 + db().tables.announcements.length)
+    db().tables.announcements.push({
+      id, store_id: STORE_A, title: 'T', body: 'B', pinned: false, requires_ack: false, target_roles: 'all',
+      expires_at: null, created_by: MGR_A, deleted_at: null, created_at: new Date().toISOString(), ...over,
+    })
+    return id
+  }
+  const NEW = uuid(40)
+  const addEmployee = (store: string, level: string = ACCESS.EMPLOYEE, extra: Record<string, unknown> = {}) =>
+    db().tables.employees.push({ ...emp(NEW, 'Yeni', store, level), ...extra })
+  const rec = () => db().tables.announcement_recipients.filter((r) => r.employee_id === NEW).map((r) => r.announcement_id).sort()
+  const notes = () => db().tables.notifications.filter((n) => n.employee_id === NEW)
+
+  it('yalnızca güncel ve (sabit veya onay zorunlu) duyurulara eklenir; tek bildirim gider', async () => {
+    const pinned = addAnn({ pinned: true, title: 'Sabit' })
+    addAnn({}) // sabit değil, onay yok
+    addAnn({ requires_ack: true, expires_at: new Date(Date.now() - 1000).toISOString() }) // süresi dolmuş
+    addAnn({ pinned: true, deleted_at: new Date().toISOString() }) // silinmiş
+    addAnn({ pinned: true, store_id: STORE_B }) // başka mağaza
+    addEmployee(STORE_A)
+    expect(await addLateJoinerRecipient(db() as never, NEW)).toBe(1)
+    expect(rec()).toEqual([pinned])
+    expect(notes()).toHaveLength(1)
+    expect(notes()[0]).toMatchObject({ type: 'announcement', title: 'Sabit', related_id: pinned })
+  })
+
+  it('şirket geneli ve onay zorunlu duyurular dahil; birden fazlaysa tek özet bildirim', async () => {
+    const wide = addAnn({ store_id: null, requires_ack: true })
+    const own = addAnn({ pinned: true })
+    addEmployee(STORE_B)
+    expect(await addLateJoinerRecipient(db() as never, NEW)).toBe(1) // B'de yalnızca şirket geneli
+    expect(rec()).toEqual([wide])
+    db().tables.announcement_recipients = []; db().tables.notifications = []
+    db().tables.employees.find((e) => e.id === NEW)!.store_id = STORE_A // transfer → A
+    expect(await addLateJoinerRecipient(db() as never, NEW)).toBe(2)
+    expect(rec()).toEqual([wide, own].sort())
+    expect(notes()).toHaveLength(1)
+    expect(notes()[0].title).toBe('2 duyuru sizi bekliyor')
+  })
+
+  it('hedef roller uymuyorsa eklenmez; kiosk ve pasif eklenmez; tekrar çağrı mükerrer üretmez', async () => {
+    const mgrOnly = addAnn({ pinned: true, target_roles: 'managers' })
+    addEmployee(STORE_A)
+    expect(await addLateJoinerRecipient(db() as never, NEW)).toBe(0)
+    db().tables.employees = db().tables.employees.filter((e) => e.id !== NEW)
+
+    addEmployee(STORE_A, ACCESS.KIOSK)
+    expect(await addLateJoinerRecipient(db() as never, NEW)).toBe(0)
+    db().tables.employees = db().tables.employees.filter((e) => e.id !== NEW)
+
+    addEmployee(STORE_A, ACCESS.EMPLOYEE, { active: false })
+    expect(await addLateJoinerRecipient(db() as never, NEW)).toBe(0)
+    db().tables.employees = db().tables.employees.filter((e) => e.id !== NEW)
+
+    addEmployee(STORE_A, ACCESS.MANAGER)
+    expect(await addLateJoinerRecipient(db() as never, NEW)).toBe(1)
+    expect(rec()).toEqual([mgrOnly])
+    expect(await addLateJoinerRecipient(db() as never, NEW)).toBe(0)
+    expect(notes()).toHaveLength(1)
+  })
+
+  it('POST /api/employees yeni çalışanı sabit duyurulara ekler', async () => {
+    const pinned = addAnn({ pinned: true })
+    as(SM_A, ACCESS.STORE_MANAGER, STORE_A)
+    const res = await employeesPOST(req('/api/employees', 'POST', { full_name: 'Yeni Kişi', role_id: uuid(99), employment_type: 'full_time' }))
+    expect(res.status).toBe(201)
+    const created = ((await res.json()) as { employee: { id: string } }).employee.id
+    expect(db().tables.announcement_recipients.some((r) => r.announcement_id === pinned && r.employee_id === created)).toBe(true)
+    expect(db().tables.notifications.some((n) => n.employee_id === created && n.type === 'announcement')).toBe(true)
+  })
+
+  it('PATCH /api/employees/[id] transferi, yeni mağazanın sabit duyurularına ekler', async () => {
+    const inB = addAnn({ pinned: true, store_id: STORE_B })
+    as(ADMIN, ACCESS.ADMIN, STORE_A)
+    const res = await employeePATCH(req(`/api/employees/${EMP_A2}`, 'PATCH', { store_id: STORE_B }), ctx(EMP_A2))
+    expect(res.status).toBe(200)
+    expect(db().tables.announcement_recipients.some((r) => r.announcement_id === inB && r.employee_id === EMP_A2)).toBe(true)
   })
 })
