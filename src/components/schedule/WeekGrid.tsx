@@ -5,8 +5,10 @@
  * haftalık saat sütunu ve "Mağazada" alt satırı. Masaüstünde tablo kendi içinde kayar
  * (başlık ve alt satır görünür kalır). Satırlar rol gruplarına ayrılır.
  * compact=true → mobil hafta görünümü (başlangıç saatli mini hücreler, gruplama yok).
+ * onCellPaint verilirse editör modu: hücreye tıklamak (masaüstünde basılı tutup sürüklemek) onu boyar;
+ * kaydedilmemiş hücreler kesikli çerçeveyle işaretlenir.
  */
-import { Fragment } from 'react'
+import { Fragment, useEffect, useRef } from 'react'
 import { Store } from 'lucide-react'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
@@ -51,6 +53,10 @@ export interface WeekGridProps {
   compact?: boolean
   /** Salt okunur görünümde oturumdaki çalışanın satırı ("Siz") */
   meId?: string
+  /** Editör modu: hücreyi seçili taşla boyar (onCellClick yerine) */
+  onCellPaint?: (emp: EmployeeWithRole, date: string) => void
+  /** Editör modu: kaydedilmemiş hücreler (`employee_id:YYYY-MM-DD`) */
+  pendingKeys?: ReadonlySet<string>
 }
 
 /** O gün mağazada çalışan kişi sayısı (izin / tatil hariç) */
@@ -65,8 +71,22 @@ export function workingCount(entries: WeeklyScheduleEntry[], day: string, leave:
 export function WeekGrid(props: WeekGridProps) {
   const {
     entries, weekDays, todayStr, holidayMap, statsMap, approvedLeaveMap, restDayMap,
-    availabilityMap, config, onCellClick, readOnly, compact, meId,
+    availabilityMap, config, onCellClick, readOnly, compact, meId, onCellPaint, pendingKeys,
   } = props
+  const editing = !!onCellPaint
+
+  // Fareyle sürükleyerek boyama: basılıyken üzerinden geçilen hücreler de boyanır
+  const dragging = useRef(false)
+  useEffect(() => {
+    if (!editing) return
+    const stop = () => { dragging.current = false }
+    window.addEventListener('pointerup', stop)
+    window.addEventListener('pointercancel', stop)
+    return () => {
+      window.removeEventListener('pointerup', stop)
+      window.removeEventListener('pointercancel', stop)
+    }
+  }, [editing])
 
   const groups = ROLE_GROUPS
     .map((g) => ({ ...g, entries: entries.filter((e) => roleGroupOf(e.employee.roles) === g.key) }))
@@ -119,12 +139,39 @@ export function WeekGrid(props: WeekGridProps) {
             isRestDay: restDayMap.has(key),
             availStatus: getAvailStatus(emp.id, d, availabilityMap, asgn?.start_time, asgn?.end_time),
             dailyOver: stats ? (stats.dailyMins[d] ?? 0) > config.maxDailyWorkHours * 60 : false,
-            onClick: () => onCellClick(emp, d),
+            onClick: () => (onCellPaint ? onCellPaint(emp, d) : onCellClick(emp, d)),
             readOnly,
           }
+          const pending = pendingKeys?.has(key) ?? false
+          // Fare: basınca boya, basılıyken girilen hücreyi boya. Dokunma / klavye onClick ile boyar
+          // (aynı taşla tekrar boyamak etkisiz olduğundan farede onClick'in ikinci kez çalışması sorun değil).
+          const paintHandlers = onCellPaint ? {
+            onPointerDown: (e: React.PointerEvent) => {
+              if (e.pointerType !== 'mouse' || e.button !== 0) return
+              dragging.current = true
+              onCellPaint(emp, d)
+            },
+            onPointerEnter: (e: React.PointerEvent) => {
+              if (e.pointerType === 'mouse' && dragging.current) onCellPaint(emp, d)
+            },
+          } : undefined
           return (
-            <td key={d} className={cn('border-b', compact ? 'p-0.5' : 'p-1', dayCol(i))}>
+            <td
+              key={d}
+              data-pending={pending || undefined}
+              className={cn('border-b', compact ? 'p-0.5' : 'p-1', dayCol(i), editing && 'relative')}
+              {...paintHandlers}
+            >
               {compact ? <MiniShiftCell {...cellProps} /> : <ShiftCell {...cellProps} />}
+              {pending && (
+                <span
+                  aria-hidden
+                  className={cn(
+                    'pointer-events-none absolute rounded-md border-2 border-dashed border-primary/70',
+                    compact ? 'inset-0.5' : 'inset-1'
+                  )}
+                />
+              )}
             </td>
           )
         })}
@@ -146,7 +193,7 @@ export function WeekGrid(props: WeekGridProps) {
     <Card className="gap-0 overflow-hidden py-0 shadow-xs">
       <div data-no-pull-refresh className={cn('overflow-auto overscroll-x-contain', !compact && SCROLL_AREA)}>
         <table
-          className="w-full table-fixed border-separate border-spacing-0 text-sm"
+          className={cn('w-full table-fixed border-separate border-spacing-0 text-sm', editing && 'select-none')}
           style={compact ? undefined : { minWidth: NAME_W + SUM_W + weekDays.length * DAY_MIN_W }}
         >
           <colgroup>
