@@ -30,7 +30,7 @@ export function NotificationsPage() {
   const handleSelect = (n: Notification) => {
     if (!n.is_read) markAsRead(n.id)
     // İlgili sayfaya git (hedef bildirimler sayfasıysa yalnızca okundu işaretlenir)
-    const href = notificationLink(n.type)
+    const href = notificationLink(n.type, n.related_id)
     if (href !== '/notifications') router.push(href)
   }
 

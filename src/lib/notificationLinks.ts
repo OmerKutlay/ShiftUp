@@ -36,6 +36,8 @@ export const NOTIFICATION_LINKS: Record<NotificationType, string> = {
   // Mola bitiş hatırlatması çalışana gider → moladan dönüş okutulan sayfa
   attendance_break_ending: '/my-schedule',
   // Test bildirimi → anlık bildirim ayarının bulunduğu Daha fazla sayfası
+  // Duyuru → Duyurular sayfası
+  announcement: '/announcements',
   push_test: '/more',
 }
 
@@ -43,6 +45,8 @@ export const NOTIFICATION_LINKS: Record<NotificationType, string> = {
 export const DEFAULT_NOTIFICATION_LINK = '/notifications'
 
 /** Bildirim tipinin hedef sayfası (bilinmeyen tip → /notifications) */
-export function notificationLink(type: string): string {
+export function notificationLink(type: string, relatedId?: string | null): string {
+  // Duyuru bildirimi ilgili duyurunun detayını açar (push'ta statik adres: /announcements)
+  if (type === 'announcement' && relatedId) return `/announcements?id=${encodeURIComponent(relatedId)}`
   return (NOTIFICATION_LINKS as Record<string, string>)[type] ?? DEFAULT_NOTIFICATION_LINK
 }

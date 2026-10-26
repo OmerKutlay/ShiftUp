@@ -41,7 +41,7 @@ export function NotificationPanel({
     if (!n.is_read) onMarkAsRead(n.id)
     onClose()
     // İlgili sayfaya git (izin → /leave, hatırlatma → /my-schedule …)
-    router.push(notificationLink(n.type))
+    router.push(notificationLink(n.type, n.related_id))
   }
 
   const groups = groupNotificationsByDay(notifications)
