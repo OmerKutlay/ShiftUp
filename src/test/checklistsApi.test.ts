@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { NextRequest } from 'next/server'
-import { ACCESS } from '@/lib/auth/roles'
+import { ACCESS, type AccessLevel } from '@/lib/auth/roles'
 import { createFakeDb, type FakeDb } from './helpers/fakeSupabase'
 
 const STORE_A = '00000000-0000-0000-0003-00000000000a'
@@ -24,7 +24,7 @@ const NOW = new Date('2026-10-28T09:00:00+03:00')
 const TODAY = '2026-10-28'
 
 const base = { email: null, role_id: null, role_name: null, active: true }
-const emp = (id: string, store: string, level = ACCESS.EMPLOYEE) => ({
+const emp = (id: string, store: string, level: AccessLevel = ACCESS.EMPLOYEE) => ({
   ...base, id, full_name: `Kişi ${id.slice(0, 2)}`, access_level: level, home_store_id: store, store_id: store,
 })
 
