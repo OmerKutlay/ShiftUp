@@ -15,6 +15,7 @@ export const NOTIFICATION_LINKS: Record<NotificationType, string> = {
   shift_reminder: '/my-schedule',
   shift_changed: '/my-schedule',
   schedule_published: '/my-schedule',
+  store_norm_set: '/schedule',
   leave_submitted: '/leave',
   leave_approved: '/leave',
   leave_rejected: '/leave',

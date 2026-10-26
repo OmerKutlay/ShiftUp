@@ -2,6 +2,7 @@
 
 import { Component, type ReactNode, type ErrorInfo } from 'react'
 import { AlertTriangle, RotateCw } from 'lucide-react'
+import { reportClientError } from '@/lib/api/clientErrors'
 import { Button } from '@/components/ui/button'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 
@@ -35,6 +36,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('[ErrorBoundary]', error, info.componentStack)
+    reportClientError('error-boundary', error)
   }
 
   handleReset = () => {

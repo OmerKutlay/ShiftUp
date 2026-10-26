@@ -21,6 +21,7 @@ export const NOTIFICATION_META: Record<NotificationType, NotificationMeta> = {
   shift_reminder:              { Icon: Clock,         tone: 'neutral', label: 'Vardiya hatırlatması', short: 'Vardiya' },
   shift_changed:               { Icon: CalendarClock, tone: 'info',    label: 'Vardiya değişikliği',  short: 'Vardiya' },
   schedule_published:          { Icon: CalendarRange, tone: 'brand',   label: 'Haftalık plan',        short: 'Plan' },
+  store_norm_set:              { Icon: Gauge,         tone: 'info',    label: 'Aylık norm saati',     short: 'Norm' },
   leave_submitted:             { Icon: CalendarPlus,  tone: 'info',    label: 'İzin talebi',          short: 'İzin talebi' },
   leave_approved:              { Icon: CircleCheck,   tone: 'success', label: 'İzin onaylandı',       short: 'Onaylandı' },
   leave_rejected:              { Icon: CalendarX,     tone: 'danger',  label: 'İzin reddedildi',      short: 'Reddedildi' },

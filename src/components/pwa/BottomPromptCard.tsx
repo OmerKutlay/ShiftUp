@@ -31,7 +31,7 @@ export function BottomPromptCard({ titleId, title, media, children, actions, onC
       role="dialog"
       aria-labelledby={titleId}
       className={cn(
-        'fixed right-[calc(12px+env(safe-area-inset-right))] left-[calc(12px+env(safe-area-inset-left))] z-[1399] mx-auto max-w-md',
+        'print-hide fixed right-[calc(12px+env(safe-area-inset-right))] left-[calc(12px+env(safe-area-inset-left))] z-[1399] mx-auto max-w-md',
         'flex flex-col gap-4 rounded-xl border bg-card p-4 text-card-foreground shadow-lg',
         'animate-in fade-in-0 slide-in-from-bottom-4 duration-300',
         className

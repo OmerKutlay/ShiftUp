@@ -9,6 +9,8 @@ export type NotificationType =
   | 'shift_changed'
   /** Haftalık plan aktarıldı ve çalışanın vardiyaları değişti (POST /api/workforce/apply) */
   | 'schedule_published'
+  /** Admin mağazanın aylık norm saatini belirledi (PUT /api/stores/norm) */
+  | 'store_norm_set'
   | 'leave_submitted'
   | 'leave_approved'
   | 'leave_rejected'
