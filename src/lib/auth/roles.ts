@@ -108,6 +108,22 @@ export function canManageRole(
   return roleRank(targetLevel) < actor
 }
 
+/**
+ * actor, hedef yetki seviyesindeki bir çalışanın talebine/kaydına karar verebilir mi
+ * (izin ve mesai onayı, doğrudan mesai girişi, devam düzeltmesi)?
+ * Admin herkesi; diğerleri kendinden yüksek yetkili birinin kaydına karar veremez. Eşit seviye
+ * serbesttir: yönetici kendi talebini onaylayamadığı için talebi başka bir yönetici onaylar.
+ */
+export function canReviewRole(
+  actorLevel: AccessLevel | null | undefined,
+  targetLevel: AccessLevel | null | undefined
+): boolean {
+  if (actorLevel === ACCESS.ADMIN) return true
+  const actor = roleRank(actorLevel)
+  if (actor < 0) return false
+  return roleRank(targetLevel) <= actor
+}
+
 /** Yönetimsel işlemler (Yönetici ve üstü) */
 export const MANAGER_ROLES: AccessLevel[] = [
   ACCESS.ADMIN,

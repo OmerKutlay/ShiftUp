@@ -11,8 +11,18 @@ import { createAdminClient } from '@/lib/supabaseAdmin'
 import type { CreateLeaveRequestPayload, LeaveType } from '@/types/leave'
 import { LEAVE_TYPE_LABELS } from '@/types/leave'
 import { createNotification, notifyManagers } from '@/lib/notificationRepository'
-import { requireAuth, canAccessEmployee, MANAGER_ROLES, requireMinRole, ACCESS, hasRole, forbidden } from '@/lib/auth'
-import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/apiErrors'
+import {
+  requireAuth,
+  canAccessEmployee,
+  MANAGER_ROLES,
+  requireMinRole,
+  ACCESS,
+  hasRole,
+  forbidden,
+  forbidIfOutranked,
+} from '@/lib/auth'
+import { checkRateLimit } from '@/lib/rateLimiter'
+import { badRequest, conflict, notFound, readJson, serverError, tooManyRequests } from '@/lib/apiErrors'
 import { isUuid, isValidDate } from '@/lib/validation'
 import { turkeyToday, addDaysToDateString } from '@/lib/dateUtils'
 import { removePlannedShiftsInRange } from '@/lib/leaveService'
@@ -26,6 +36,9 @@ const EMPLOYEE_LEAVE_TYPES: LeaveType[] = ['annual', 'sick', 'personal', 'unpaid
 const VALID_STATUSES = ['pending', 'approved', 'rejected']
 /** Geriye dönük hastalık izni en fazla bu kadar gün öncesine açılabilir */
 const MAX_SICK_BACKDATE_DAYS = 30
+/** Kişi başına saatlik izin talebi sınırı (haftalık tatil hariç) */
+const CREATE_RATE_LIMIT = 20
+const CREATE_RATE_WINDOW_MS = 60 * 60 * 1000
 
 // ─── GET ────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
@@ -79,7 +92,12 @@ export async function GET(req: NextRequest) {
       const selfId = auth.employee.id
       requests = requests
         .filter((r) => r.employee_id === selfId || r.status === 'approved')
-        .map((r) => (r.employee_id === selfId ? r : { ...r, reason: null, reviewer_note: null }))
+        // Başkasının hastalık izni sağlık verisidir (KVKK özel nitelikli) — tür "diğer" olarak gösterilir
+        .map((r) =>
+          r.employee_id === selfId
+            ? r
+            : { ...r, reason: null, reviewer_note: null, leave_type: r.leave_type === 'sick' ? 'other' : r.leave_type }
+        )
     }
 
     return NextResponse.json({ requests })
@@ -117,6 +135,12 @@ export async function POST(req: NextRequest) {
     }
     if (!isWeeklyRest && !EMPLOYEE_LEAVE_TYPES.includes(body.leave_type)) {
       return forbidden('Bu izin tipini kendiniz oluşturamazsınız.')
+    }
+    // Her talep yöneticilere (push) bildirim gönderir: aç-sil döngüsüyle bildirim yağdırılmasın.
+    // Haftalık tatil hariç — yönetici haftalık planda tüm çalışanlara toplu atar.
+    if (!isWeeklyRest) {
+      const rate = await checkRateLimit(`leave_create:${actorId}`, CREATE_RATE_LIMIT, CREATE_RATE_WINDOW_MS)
+      if (!rate.allowed) return tooManyRequests()
     }
     if (!isValidDate(body.start_date)) return badRequest('start_date YYYY-MM-DD formatında olmalıdır.')
     if (!isValidDate(body.end_date)) return badRequest('end_date YYYY-MM-DD formatında olmalıdır.')
@@ -300,6 +324,10 @@ export async function DELETE(req: NextRequest) {
     // Çalışan yalnızca kendi bekleyen talebini geri çekebilir
     if (!isManager && !(existing.employee_id === auth.employee.id && existing.status === 'pending')) {
       return forbidden('Yalnızca kendi bekleyen talebinizi geri çekebilirsiniz.')
+    }
+    if (existing.employee_id !== auth.employee.id) {
+      const outranked = await forbidIfOutranked(auth.employee, existing.employee_id)
+      if (outranked) return outranked
     }
 
     const { error } = await admin.from('leave_requests').delete().eq('id', id)

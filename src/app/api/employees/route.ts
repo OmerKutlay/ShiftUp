@@ -31,9 +31,16 @@ export async function GET(req: NextRequest) {
       if (activeParam === 'false') employees = employees.filter((e) => !e.active)
     }
 
-    // Standart çalışan diğerlerinin iletişim/kimlik bilgilerini görmez
+    // Standart çalışan diğerlerinin iletişim/kimlik ve özlük bilgilerini (doğum tarihi vb.) görmez
     if (!hasRole(auth.employee.access_level, MANAGER_ROLES)) {
-      employees = employees.map((e) => ({ ...e, email: null, auth_user_id: null }))
+      employees = employees.map((e) => ({
+        ...e,
+        email: null,
+        auth_user_id: null,
+        birth_date: null,
+        hire_date: null,
+        overtime_consent_at: null,
+      }))
     }
 
     return NextResponse.json({ employees })

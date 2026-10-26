@@ -140,7 +140,7 @@ async function processQr(req: NextRequest, trace: RequestTrace): Promise<NextRes
     const kioskQr = isKioskQr(body.qr_data)
     let classicAction: QrActionType | null = null
     if (!kioskQr) {
-      const { token: qrToken } = await validateAndConsumeToken(body.qr_data)
+      const { token: qrToken } = await validateAndConsumeToken(body.qr_data, { employeeId, storeId })
       trace.step('classic_consume')
       // Token'daki employee ile session eşleşmeli (başkası adına okutma engeli)
       if (qrToken.employee_id && qrToken.employee_id !== employeeId) {
@@ -234,7 +234,7 @@ async function processQr(req: NextRequest, trace: RequestTrace): Promise<NextRes
     trace.step('error', { error: err instanceof Error ? err.name : 'unknown', code: (err as { code?: string } | null)?.code ?? null })
     if (err instanceof QrTokenError) {
       if (err.code === 'DB_ERROR') return serverError('POST /api/qr/process', err)
-      return NextResponse.json({ error: err.message, code: err.code }, { status: err.code === 'QR_EXPIRED' ? 410 : err.code === 'QR_USED' ? 409 : err.code === 'QR_WRONG_STORE' ? 403 : 400 })
+      return NextResponse.json({ error: err.message, code: err.code }, { status: err.code === 'QR_EXPIRED' ? 410 : err.code === 'QR_USED' ? 409 : err.code === 'QR_WRONG_STORE' || err.code === 'QR_NOT_OWNER' ? 403 : 400 })
     }
     if (err instanceof LocationError) {
       return NextResponse.json({ error: err.message, code: err.code }, { status: 403 })

@@ -11,7 +11,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
-import { requireMinRole, ACCESS, forbidden } from '@/lib/auth'
+import { requireMinRole, ACCESS, forbidden, forbidIfOutranked } from '@/lib/auth'
 import { createNotification } from '@/lib/notificationRepository'
 import { applyTimeCorrection, checkCorrectionViolations, CrossStoreShiftError } from '@/lib/timeCorrectionService'
 import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/apiErrors'
@@ -59,6 +59,8 @@ export async function POST(req: NextRequest) {
     if (request.employee_id === reviewer.id) {
       return forbidden('Kendi mesai düzeltme talebinizi inceleyemezsiniz.')
     }
+    const outranked = await forbidIfOutranked(reviewer, request.employee_id)
+    if (outranked) return outranked
     if (request.status !== 'pending') {
       return conflict(`Bu talep zaten ${request.status === 'approved' ? 'onaylanmış' : 'reddedilmiş'}.`, 'ALREADY_REVIEWED')
     }

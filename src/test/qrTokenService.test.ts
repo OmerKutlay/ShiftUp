@@ -227,4 +227,32 @@ describe('qrTokenService — validateAndConsumeToken', () => {
 
     await expect(validateAndConsumeToken(qrData)).rejects.toThrow('QR aksiyon tipi uyumsuz.')
   })
+
+  it('kiosk kodu (employee_id yok) klasik yoldan tüketilemez', async () => {
+    const db = createFakeDb({ qr_tokens: [makeTokenRecord({ employee_id: null, action_type: null })] })
+    mockCreateAdminClient.mockReturnValue(db)
+
+    await expect(validateAndConsumeToken(makeQrData())).rejects.toThrow('QR kod bulunamadı')
+    expect(db.tables.qr_tokens[0].used_at).toBeNull()
+  })
+
+  it('başkasının kodu okutulduğunda token tüketilmez', async () => {
+    const db = createFakeDb({ qr_tokens: [makeTokenRecord()] })
+    mockCreateAdminClient.mockReturnValue(db)
+
+    await expect(
+      validateAndConsumeToken(makeQrData(), { employeeId: 'emp-999', storeId: 'store-A' })
+    ).rejects.toMatchObject({ code: 'QR_NOT_OWNER' })
+    expect(db.tables.qr_tokens[0].used_at).toBeNull()
+  })
+
+  it('başka mağazada okutulan kod tüketilmez', async () => {
+    const db = createFakeDb({ qr_tokens: [makeTokenRecord()] })
+    mockCreateAdminClient.mockReturnValue(db)
+
+    await expect(
+      validateAndConsumeToken(makeQrData(), { employeeId: 'emp-001', storeId: 'store-B' })
+    ).rejects.toMatchObject({ code: 'QR_WRONG_STORE' })
+    expect(db.tables.qr_tokens[0].used_at).toBeNull()
+  })
 })

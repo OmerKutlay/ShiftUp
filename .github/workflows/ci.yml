@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+# İş akışı yalnızca kodu okur; GITHUB_TOKEN'a yazma yetkisi verilmez
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true

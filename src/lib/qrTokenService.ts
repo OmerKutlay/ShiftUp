@@ -75,7 +75,16 @@ export interface ValidatedToken {
   payload: QrPayload
 }
 
-export async function validateAndConsumeToken(rawQrData: string): Promise<ValidatedToken> {
+/**
+ * Okutan kişi — verilirse sahiplik ve mağaza token TÜKETİLMEDEN önce doğrulanır; böylece başkasının
+ * kodunu (ör. ekran görüntüsünden) okutmaya çalışan biri o kodu geçersiz kılamaz.
+ */
+export interface QrScanner {
+  employeeId: string
+  storeId: string
+}
+
+export async function validateAndConsumeToken(rawQrData: string, scanner?: QrScanner): Promise<ValidatedToken> {
   // 1. Parse
   let rawPayload: Record<string, unknown>
   try {
@@ -112,6 +121,19 @@ export async function validateAndConsumeToken(rawQrData: string): Promise<Valida
   if (!tokenRow) throw new QrTokenError('QR kod bulunamadı veya geçersiz.', 'QR_INVALID')
 
   const record = tokenRow as QrToken
+
+  // Kiosk kodları (employee_id NULL) yalnızca kiosk akışında tüketilir; klasik yoldan okutulursa
+  // yeni kod yayınlanmadan tükenir ve kiosk ekranı geçersiz bir kod göstermeye devam ederdi
+  if (!record.employee_id) throw new QrTokenError('QR kod bulunamadı veya geçersiz.', 'QR_INVALID')
+
+  if (scanner) {
+    if (record.employee_id !== scanner.employeeId) {
+      throw new QrTokenError('Bu QR kodu size ait değil. Başkası adına okutamazsınız.', 'QR_NOT_OWNER')
+    }
+    if (record.store_id && record.store_id !== scanner.storeId) {
+      throw new QrTokenError('Bu QR kodu başka bir mağazaya ait.', 'QR_WRONG_STORE')
+    }
+  }
 
   if (record.used_at) throw new QrTokenError('Bu QR kod daha önce kullanılmış.', 'QR_USED')
   if (new Date(record.expires_at) <= new Date()) throw new QrTokenError('QR kodun süresi dolmuş.', 'QR_EXPIRED')

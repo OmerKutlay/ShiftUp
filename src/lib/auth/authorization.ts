@@ -10,7 +10,8 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentEmployee, type SessionEmployee } from './session'
-import { isKioskRole, roleAtLeast, type AccessLevel } from './roles'
+import { accessLevelOf, canReviewRole, isKioskRole, roleAtLeast, type AccessLevel } from './roles'
+import { createAdminClient } from '@/lib/supabaseAdmin'
 import { isEmployeeInStore } from '@/lib/storeScope'
 import { STORE_CHANGED_CODE, STORE_HEADER } from '@/lib/storeHeader'
 
@@ -171,6 +172,32 @@ export async function canAccessEmployee(
   return {
     response: forbidden('Yalnızca kendi verilerinize erişebilirsiniz.'),
   }
+}
+
+// ─── Hierarchy guard ─────────────────────────────────────────
+
+/**
+ * Yönetici, hedef çalışanın talebine/kaydına karar verebilir mi (bkz. canReviewRole)?
+ * Kendinden yüksek yetkili birinin kaydıysa (ör. Yönetici → Müdür'ün izni) 403 yanıtı, değilse null.
+ * Hedefin mağaza kontrolü çağıranın sorumluluğundadır.
+ *
+ * Kullanım:
+ *   const denied = await forbidIfOutranked(employee, request.employee_id)
+ *   if (denied) return denied
+ */
+export async function forbidIfOutranked(
+  actor: SessionEmployee,
+  targetEmployeeId: string
+): Promise<NextResponse | null> {
+  const { data, error } = await createAdminClient()
+    .from('employees')
+    .select('roles ( access_level )')
+    .eq('id', targetEmployeeId)
+    .maybeSingle()
+  if (error) throw error
+  const targetLevel = accessLevelOf((data as { roles?: unknown } | null)?.roles)
+  if (canReviewRole(actor.access_level, targetLevel)) return null
+  return forbidden('Sizden yüksek yetkili bir çalışanın kaydı hakkında işlem yapamazsınız.')
 }
 
 // ─── Utility ─────────────────────────────────────────────────

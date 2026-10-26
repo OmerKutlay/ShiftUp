@@ -25,6 +25,7 @@ export {
   roleAtLeast,
   roleRank,
   canManageRole,
+  canReviewRole,
   isKioskRole,
   KIOSK_ROLE_ID,
   NOT_KIOSK_FILTER,
@@ -41,6 +42,7 @@ export {
   requireRole,
   requireMinRole,
   canAccessEmployee,
+  forbidIfOutranked,
   unauthorized,
   forbidden,
 } from './authorization'

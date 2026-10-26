@@ -21,6 +21,13 @@ describe('safeNextPath', () => {
     expect(safeNextPath('?next=https://evil.example')).toBe('/')
     expect(safeNextPath('?next=//evil.example')).toBe('/')
     expect(safeNextPath('?next=/%5Cevil.example')).toBe('/')
+    // Tarayıcı sekme / satır sonunu siler: '/\t/evil' → '//evil'
+    expect(safeNextPath('?next=/%09/evil.example')).toBe('/')
+    expect(safeNextPath('?next=/%0A/evil.example')).toBe('/')
+  })
+
+  it('sorgu parametreleri korunur', () => {
+    expect(safeNextPath('?next=%2Fworkforce%3Ftab%3Dswap')).toBe('/workforce?tab=swap')
   })
 
   it('/login ve /api hedefleri yok sayılır', () => {
