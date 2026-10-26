@@ -4,7 +4,6 @@
  * Sayfa 1 "Puantaj": (mağaza adı verilmişse üstte başlık satırı) çalışan × gün kod tablosu + toplam sütunları
  * Sayfa 2 "Açıklama": kod listesi ve hesaplama notları
  */
-import ExcelJS from 'exceljs'
 import { monthDays, TIMESHEET_CODE_LABELS, type TimesheetRow, type TimesheetCode } from '@/lib/timesheet'
 import { ANNUAL_OVERTIME_CAP_HOURS } from '@/lib/laborLaw'
 import type { PublicHoliday } from '@/types/holiday'
@@ -47,6 +46,8 @@ export async function buildTimesheetWorkbook(
   holidays: PublicHoliday[],
   storeName?: string
 ): Promise<Buffer> {
+  // Ağır kütüphane: worker açılışında değil, yalnızca puantaj üretilirken yüklenir
+  const ExcelJS = (await import('exceljs')).default
   const wb = new ExcelJS.Workbook()
   wb.creator = 'ShiftUp'
   wb.created = new Date()
