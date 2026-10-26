@@ -34,7 +34,7 @@ const ALL_TYPES = {
   attendance_missed_clock_in: true,
   attendance_missed_clock_out: true,
   attendance_break_ending: true,
-  store_norm_set: true,
+  announcement: true,
   push_test: true,
 } satisfies Record<NotificationType, true>
 
