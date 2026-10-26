@@ -9,8 +9,6 @@
 --
 -- Saklama süreleri (gerekçe):
 --   qr_tokens        süresi dolmuş / kullanılmış, 2 günden eski  → tek kullanımlık, doğrulaması saniyeler içinde biter
---   qr_scan_uses     3 günden eski                              → TOTP adım tekrar-oynatma koruması; adım penceresi dakikalar
---   kiosk_keys       süresi dolmuş/iptal edilmiş, 30 günden eski → kimlik doğrulama sırrı; gereksiz tutulmamalı
 --   rate_limits      süresi dolmuş, 1 günden eski               → fırsatçı temizlik (%1) yetmez, garanti altına alınır
 --   notifications    okunmuş 90 gün, okunmamış 180 gün          → okunmamış bile 6 ayda anlamını yitirir
 --   app_errors       30 gün                                     → hata ayıklama için yeterli, büyümeyi sınırlar
@@ -58,10 +56,6 @@ BEGIN
     SELECT * FROM (VALUES
       ('qr_tokens',     'public.qr_tokens',
         $c$ (expires_at < now() - interval '2 days') OR (used_at IS NOT NULL AND used_at < now() - interval '2 days') $c$),
-      ('qr_scan_uses',  'public.qr_scan_uses',
-        $c$ created_at < now() - interval '3 days' $c$),
-      ('kiosk_keys',    'public.kiosk_keys',
-        $c$ COALESCE(revoked_at, expires_at) < now() - interval '30 days' $c$),
       ('rate_limits',   'public.rate_limits',
         $c$ reset_at < now() - interval '1 day' $c$),
       ('notifications_read',   'public.notifications',
