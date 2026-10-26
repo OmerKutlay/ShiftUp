@@ -5,6 +5,10 @@
 export type NotificationType =
   /** Vardiya başlamadan ~1 saat önce çalışana (pg_cron → scan_shift_reminders) */
   | 'shift_reminder'
+  /** Yönetici çalışanın vardiyasını ekledi / saatini değiştirdi / kaldırdı (src/lib/shiftNotifications.ts) */
+  | 'shift_changed'
+  /** Haftalık plan aktarıldı ve çalışanın vardiyaları değişti (POST /api/workforce/apply) */
+  | 'schedule_published'
   | 'leave_submitted'
   | 'leave_approved'
   | 'leave_rejected'

@@ -7,6 +7,8 @@
  */
 export const NOTIFICATION_LINKS: Record<string, string> = {
   shift_reminder: '/my-schedule',
+  shift_changed: '/my-schedule',
+  schedule_published: '/my-schedule',
   leave_submitted: '/leave',
   leave_approved: '/leave',
   leave_rejected: '/leave',
@@ -35,5 +37,5 @@ export function notificationLink(type: string): string {
 
 /** Zamana duyarlı tipler — push servisi gecikmeden iletsin (Urgency: high) */
 export function isUrgentType(type: string): boolean {
-  return type === 'shift_reminder' || type.startsWith('attendance_')
+  return type === 'shift_reminder' || type === 'shift_changed' || type.startsWith('attendance_')
 }

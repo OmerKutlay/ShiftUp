@@ -12,6 +12,7 @@ import { isUuid, isValidTime } from '@/lib/validation'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { logAudit } from '@/lib/auditLog'
 import { checkAssignmentRules } from '@/lib/shiftAssignmentRules'
+import { notifyShiftChange } from '@/lib/shiftNotifications'
 import type { UpdateShiftAssignmentPayload } from '@/types/schedule'
 
 type Ctx = { params: Promise<{ id: string }> }
@@ -90,6 +91,8 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       note: violations.length > 0 ? `İhlaller onaylandı: ${violations.join(' | ')}` : null,
     })
 
+    await notifyShiftChange(createAdminClient(), auth.employee.id, { kind: 'updated', shift: assignment, before: shift })
+
     return NextResponse.json({ assignment })
   } catch (err) {
     if (err instanceof ShiftConflictError) return conflict(err.message, 'SHIFT_CONFLICT')
@@ -117,6 +120,8 @@ export async function DELETE(req: NextRequest, { params }: Ctx) {
       entityId: id,
       before: shift,
     })
+
+    await notifyShiftChange(createAdminClient(), auth.employee.id, { kind: 'deleted', shift })
 
     return NextResponse.json({ success: true })
   } catch (err) {
