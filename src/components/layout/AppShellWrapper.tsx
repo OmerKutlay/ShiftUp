@@ -3,7 +3,7 @@
 /**
  * AppShellWrapper — Pathname'e göre AppShell'i koşullu gösterir.
  * /login gibi public sayfalar ve tam ekran kiosk (/qr-kiosk) AppShell'siz render edilir.
- * /gizlilik oturumsuz da açılır: oturum varsa kabukla, yoksa kabuksuz gösterilir.
+ * /gizlilik oturumsuz da açılır: kabuksuz yalnızca oturum kesin yokken (signed-out); yüklenirken / sunucuya ulaşılamazken kabukla.
  */
 import { usePathname } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
@@ -14,11 +14,11 @@ const SHELL_WHEN_SIGNED_IN = ['/gizlilik']
 
 export function AppShellWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
-  const { status } = useAuth()
+  const { status, sessionCheck } = useAuth()
 
   if (
     NO_SHELL_PATHS.includes(pathname) ||
-    (SHELL_WHEN_SIGNED_IN.includes(pathname) && status !== 'authenticated')
+    (SHELL_WHEN_SIGNED_IN.includes(pathname) && status === 'unauthenticated' && sessionCheck?.result !== 'unreachable')
   ) {
     return <>{children}</>
   }

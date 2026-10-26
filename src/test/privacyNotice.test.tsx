@@ -29,6 +29,17 @@ describe('PrivacyNotice', () => {
     expect(text).toContain('m.5/2-c')
   })
 
+  it('toplanma yöntemi, m.11/1-f bildirimi, m.9 mekanizmaları ve ç sebebinin İş K. m.41 dayanağı yer alır', () => {
+    render(<PrivacyNotice />)
+    const text = screen.getByTestId('privacy-notice').textContent ?? ''
+    expect(text).toContain('toplanma yöntemi')
+    expect(text).toContain('üçüncü kişilere bildirilmesini')
+    expect(text).toContain('7499')
+    expect(text).toContain('İş Kanunu m.41')
+    expect(text).not.toContain('taahhütname')
+    expect(text).not.toContain('şirket bu aktarımın')
+  })
+
   it('resolveCompany eksik alanları bildirir', () => {
     expect(resolveCompany({ legal_name: 'X' }).missing).toEqual(['address', 'kvkk_email'])
   })

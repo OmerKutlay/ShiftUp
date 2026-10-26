@@ -184,7 +184,7 @@ export function KvkkPanel() {
         <AlertTitle>Aydınlatma metni bir şablondur</AlertTitle>
         <AlertDescription>
           Yayına almadan önce şirketin hukuk müşaviri tarafından gözden geçirilmelidir (saklama süreleri, yurt dışı
-          aktarım dayanağı). Konum yalnızca QR okutulduğunda alınır ve ham koordinat saklanmaz.{' '}
+          aktarım dayanağı). Yurt dışı aktarımda standart sözleşme imzalandıysa 5 iş günü içinde Kurum&apos;a bildirilmelidir. Konum yalnızca QR okutulduğunda alınır ve ham koordinat saklanmaz.{' '}
           <Link href={PRIVACY_PATH} prefetch={false} className="inline-flex items-center gap-1 underline underline-offset-2">
             Metni görüntüle <ExternalLink className="size-3.5" aria-hidden />
           </Link>

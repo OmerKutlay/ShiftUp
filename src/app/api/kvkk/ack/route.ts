@@ -2,7 +2,7 @@
  * GET  /api/kvkk/ack — oturumdaki çalışanın aydınlatma metni onay durumu
  * POST /api/kvkk/ack — "Okudum, bilgilendirildim" teyidi (güncel sürüm için)
  *
- * Bu bir RIZA değil, bilgilendirme teyididir (bkz. @/lib/kvkk). Kiosk hesabı hariç her çalışan
+ * Bu bir RIZA değil, bilgilendirme teyididir (bkz. @/lib/kvkk). Kiosk hesabı requireAuth tarafından reddedilir (403); her çalışan
  * yalnızca kendi kaydını günceller; işlem denetim kaydına yazılır.
  */
 import { NextRequest, NextResponse } from 'next/server'

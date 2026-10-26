@@ -42,6 +42,7 @@ export function KvkkPrompt({ onVisibleChange }: { onVisibleChange?: (visible: bo
   const visible = eligible && !!data && !data.acknowledged && !hidden
   useEffect(() => {
     onVisibleChange?.(visible)
+    return () => onVisibleChange?.(false)
   }, [visible, onVisibleChange])
   if (!visible || !data) return null
 

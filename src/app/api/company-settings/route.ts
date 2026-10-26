@@ -9,7 +9,7 @@ import { createAdminClient } from '@/lib/supabaseAdmin'
 import { requireMinRole, ACCESS } from '@/lib/auth'
 import { badRequest, readJson, serverError } from '@/lib/apiErrors'
 import { logAudit } from '@/lib/auditLog'
-import { loadCompanySettings } from '@/lib/companySettings'
+import { invalidateCompanySettingsCache, loadCompanySettings } from '@/lib/companySettings'
 import { COMPANY_FIELD_LIMITS, type CompanySettings } from '@/lib/kvkk'
 
 export async function GET(req: NextRequest) {
@@ -47,6 +47,7 @@ export async function PUT(req: NextRequest) {
       .upsert({ id: true, ...next, updated_by: auth.employee.id, updated_at: new Date().toISOString() }, { onConflict: 'id' })
     if (error) return serverError('PUT /api/company-settings', error)
 
+    invalidateCompanySettingsCache()
     await logAudit({
       actorId: auth.employee.id,
       storeId: auth.employee.store_id,

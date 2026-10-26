@@ -8,7 +8,7 @@
  */
 
 /** Güncel aydınlatma metni sürümü (metin içeriği değişince artırılır) */
-export const KVKK_NOTICE_VERSION = '2026-10-28'
+export const KVKK_NOTICE_VERSION = '2026-10-27'
 
 export interface CompanySettings {
   legal_name: string | null

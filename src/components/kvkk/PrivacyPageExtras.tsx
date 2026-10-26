@@ -18,7 +18,8 @@ export function PrivacyAdminNote({ company }: { company: Partial<CompanySettings
       <p className="font-medium">Yönetici notu (çalışanlara görünmez)</p>
       <p className="text-muted-foreground">
         Bu metin bir şablondur; yayına almadan önce şirketin hukuk müşaviri tarafından gözden geçirilmelidir
-        (özellikle saklama süreleri ve yurt dışı aktarım dayanağı).
+        (özellikle saklama süreleri ve yurt dışı aktarım dayanağı). Yurt dışı aktarımda standart sözleşme imzalandıysa
+        imzadan itibaren 5 iş günü içinde Kurum&apos;a bildirilmelidir.
         {missing.length > 0 && ' Şirket bilgileri henüz eksik: Ayarlar › KVKK bölümünden girin.'}
       </p>
     </div>
