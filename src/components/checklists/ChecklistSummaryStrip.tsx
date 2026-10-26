@@ -5,15 +5,14 @@
  * "Kontrol listeleri: Açılış ✓ 09:52 · Kapanış 2/9" → /checklists. Veri yüklenemezse hiçbir şey çizmez.
  */
 import Link from 'next/link'
-import useSWR from 'swr'
 import { ListChecks } from 'lucide-react'
 
-import { CHECKLISTS_TODAY_KEY, fetchTodayChecklists } from '@/lib/api/checklists'
+import { useTodayChecklists } from './useTodayChecklists'
 import { cn } from '@/lib/utils'
 import { clock, progress } from './format'
 
 export function ChecklistSummaryStrip() {
-  const { data } = useSWR(CHECKLISTS_TODAY_KEY, fetchTodayChecklists, { refreshInterval: 60_000, shouldRetryOnError: false })
+  const { data } = useTodayChecklists()
   if (!data || data.runs.length === 0) return null
 
   return (

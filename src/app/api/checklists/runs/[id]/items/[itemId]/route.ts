@@ -7,7 +7,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, roleAtLeast, ACCESS } from '@/lib/auth'
 import { badRequest, readJson } from '@/lib/apiErrors'
-import { turkeyToday } from '@/lib/dateUtils'
 import { isUuid } from '@/lib/validation'
 import { setItemDone } from '@/lib/checklistRepository'
 import { checklistErrorResponse, tickRateLimited } from '@/lib/checklistApi'
@@ -33,7 +32,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       done: body.done,
       actor: { id: employee.id, isManager: roleAtLeast(employee.access_level, ACCESS.MANAGER) },
       storeId: employee.store_id,
-      today: turkeyToday(),
     })
     return NextResponse.json(result)
   } catch (err) {

@@ -6,6 +6,7 @@
  */
 import { addDaysToDateString, dayOfWeekFromDateString } from '@/lib/dateUtils'
 import { isValidTime } from '@/lib/validation'
+import type { AccessLevel } from '@/lib/auth/roles'
 import type { ChecklistKind, ChecklistTemplateInput } from '@/types/checklist'
 
 export const CHECKLIST_KINDS: readonly ChecklistKind[] = ['opening', 'closing', 'custom']
@@ -125,16 +126,60 @@ export function canTickChecklist({ isManager, hasShiftTodayInStore }: { isManage
   return isManager || hasShiftTodayInStore
 }
 
-/** Geri alma: yalnızca aynı gün; işareti koyan kişi ya da yönetici */
+/** Dünün uygulaması sabah bu saate (Istanbul) kadar düzenlenebilir (SQL: set_checklist_item ile aynı) */
+export const YESTERDAY_EDIT_UNTIL_HOUR = 6
+
+/** Istanbul'da şu an için 'YYYY-MM-DD' ve saat (sabit UTC+3) */
+function istanbulNow(nowMs: number): { date: string; hour: number } {
+  const d = new Date(nowMs + 3 * 3_600_000)
+  return { date: d.toISOString().slice(0, 10), hour: d.getUTCHours() }
+}
+
+/** Bugünün uygulaması her zaman; dünün uygulaması yalnızca 06:00'a kadar düzenlenebilir */
+export function isRunEditable(runDate: string, nowMs: number): boolean {
+  const { date, hour } = istanbulNow(nowMs)
+  if (runDate === date) return true
+  return runDate === addDaysToDateString(date, -1) && hour < YESTERDAY_EDIT_UNTIL_HOUR
+}
+
+/** Bugünün Istanbul tarihi; dünün uygulamaları hâlâ düzenlenebiliyorsa dünün tarihi (yoksa null) */
+export function activeRunDates(nowMs: number): { today: string; yesterday: string | null } {
+  const { date, hour } = istanbulNow(nowMs)
+  return { today: date, yesterday: hour < YESTERDAY_EDIT_UNTIL_HOUR ? addDaysToDateString(date, -1) : null }
+}
+
+/** Geri alma: düzenleme penceresinde; işareti koyan kişi ya da yönetici */
 export function canUntickItem(args: {
   isManager: boolean
   actorId: string
   doneBy: string | null
   runDate: string
-  today: string
+  nowMs: number
 }): boolean {
-  if (args.runDate !== args.today) return false
+  if (!isRunEditable(args.runDate, args.nowMs)) return false
   return args.isManager || (args.doneBy != null && args.doneBy === args.actorId)
+}
+
+export interface ShiftLike {
+  work_date: string
+  start_time: string
+  end_time: string
+  is_on_leave?: boolean | null
+}
+
+/**
+ * Vardiya işaretleme hakkı verir mi? İzinli değilse: bugünkü vardiya (gün boyu); dünkü vardiya
+ * yalnızca gece yarısını geçiyorsa (bitiş <= başlangıç) ve henüz bitmediyse.
+ */
+export function shiftGrantsTick(shift: ShiftLike, nowMs: number): boolean {
+  if (shift.is_on_leave === true) return false
+  const { date } = istanbulNow(nowMs)
+  if (shift.work_date === date) return true
+  if (shift.work_date !== addDaysToDateString(date, -1)) return false
+  const start = shift.start_time.slice(0, 5)
+  const end = shift.end_time.slice(0, 5)
+  if (end > start) return false // gece yarısını geçmiyor
+  return nowMs < Date.parse(`${date}T${end}:00+03:00`)
 }
 
 // ─── Gecikme ─────────────────────────────────────────────────
@@ -157,4 +202,17 @@ export function isRunOverdue(
 /** Geçmiş görünümü başlangıç tarihi (bugün dahil son n gün) */
 export function historyFrom(today: string, days = 30): string {
   return addDaysToDateString(today, -(days - 1))
+}
+
+/**
+ * Gecikme bildirimi alıcısı mı? Aktif admin (şirket geneli) ya da listenin mağazasının
+ * Müdür / Yönetici'si. SQL: scan_checklist_overdue ile aynı kural (scan_missed_attendance ile uyumlu).
+ */
+export function isOverdueRecipient(
+  e: { active: boolean; access_level: AccessLevel | null; store_id: string },
+  runStoreId: string
+): boolean {
+  if (!e.active) return false
+  if (e.access_level === 'admin') return true
+  return e.store_id === runStoreId && (e.access_level === 'store_manager' || e.access_level === 'manager')
 }

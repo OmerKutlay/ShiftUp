@@ -4,9 +4,8 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, roleAtLeast, ACCESS } from '@/lib/auth'
-import { turkeyToday } from '@/lib/dateUtils'
-import { canTickChecklist } from '@/lib/checklistRules'
-import { fetchTodayRuns, hasShiftTodayInStore } from '@/lib/checklistRepository'
+import { activeRunDates, canTickChecklist } from '@/lib/checklistRules'
+import { fetchTodayRuns, hasTickableShift } from '@/lib/checklistRepository'
 import { checklistErrorResponse } from '@/lib/checklistApi'
 
 export async function GET(req: NextRequest) {
@@ -15,14 +14,14 @@ export async function GET(req: NextRequest) {
   const { employee } = auth
 
   try {
-    const today = turkeyToday()
+    const nowMs = Date.now()
     const isManager = roleAtLeast(employee.access_level, ACCESS.MANAGER)
     const [runs, hasShift] = await Promise.all([
-      fetchTodayRuns(employee.store_id, today),
-      isManager ? Promise.resolve(false) : hasShiftTodayInStore(employee.id, employee.store_id, today),
+      fetchTodayRuns(employee.store_id, nowMs),
+      isManager ? Promise.resolve(false) : hasTickableShift(employee.id, employee.store_id, nowMs),
     ])
     return NextResponse.json({
-      date: today,
+      date: activeRunDates(nowMs).today,
       runs,
       can_tick: canTickChecklist({ isManager, hasShiftTodayInStore: hasShift }),
       is_manager: isManager,

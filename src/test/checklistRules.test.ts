@@ -4,8 +4,9 @@
  * işaretleme / geri alma yetkisi, gecikme, şablon doğrulama, iyimser güncelleme.
  */
 import { describe, it, expect } from 'vitest'
+import type { AccessLevel } from '@/lib/auth/roles'
 import {
-  ChecklistValidationError, appliesOnDate, canTickChecklist, canUntickItem, dueInstantMs, historyFrom,
+  ChecklistValidationError, isOverdueRecipient, activeRunDates, isRunEditable, shiftGrantsTick, appliesOnDate, canTickChecklist, canUntickItem, dueInstantMs, historyFrom,
   isRunComplete, isRunOverdue, parseTemplateInput, templatesMissingRun, type PlannableTemplate,
 } from '@/lib/checklistRules'
 import { applyItemToggle, moveItem } from '@/components/checklists/format'
@@ -50,12 +51,44 @@ describe('yetki', () => {
     expect(canTickChecklist({ isManager: false, hasShiftTodayInStore: true })).toBe(true)
     expect(canTickChecklist({ isManager: false, hasShiftTodayInStore: false })).toBe(false)
   })
-  it('geri alma: aynı gün + işaretleyen ya da yönetici', () => {
-    const base = { actorId: 'me', doneBy: 'me', runDate: '2026-10-26', today: '2026-10-26' }
+  it('geri alma: düzenleme penceresinde + işaretleyen ya da yönetici', () => {
+    const base = { actorId: 'me', doneBy: 'me', runDate: '2026-10-26', nowMs: at('2026-10-26', '12:00') }
     expect(canUntickItem({ ...base, isManager: false })).toBe(true)
     expect(canUntickItem({ ...base, isManager: false, doneBy: 'other' })).toBe(false)
     expect(canUntickItem({ ...base, isManager: true, doneBy: 'other' })).toBe(true)
-    expect(canUntickItem({ ...base, isManager: true, today: '2026-10-27' })).toBe(false)
+    expect(canUntickItem({ ...base, isManager: true, nowMs: at('2026-10-27', '12:00') })).toBe(false)
+  })
+})
+
+const at = (date: string, hhmm: string) => Date.parse(`${date}T${hhmm}:00+03:00`)
+
+describe('gece yarısı: düzenleme penceresi (dün 06:00\'a kadar)', () => {
+  it('bugün her zaman; dün yalnızca 06:00\'dan önce; öncesi/sonrası değil', () => {
+    expect(isRunEditable('2026-10-27', at('2026-10-27', '00:05'))).toBe(true)
+    expect(isRunEditable('2026-10-26', at('2026-10-27', '00:05'))).toBe(true)
+    expect(isRunEditable('2026-10-26', at('2026-10-27', '05:59'))).toBe(true)
+    expect(isRunEditable('2026-10-26', at('2026-10-27', '06:00'))).toBe(false)
+    expect(isRunEditable('2026-10-25', at('2026-10-27', '01:00'))).toBe(false)
+    expect(isRunEditable('2026-10-28', at('2026-10-27', '01:00'))).toBe(false)
+  })
+  it('Istanbul gününü kullanır (UTC 21:30 = ertesi gün 00:30)', () => {
+    expect(activeRunDates(Date.parse('2026-10-26T21:30:00Z'))).toEqual({ today: '2026-10-27', yesterday: '2026-10-26' })
+    expect(activeRunDates(at('2026-10-27', '12:00'))).toEqual({ today: '2026-10-27', yesterday: null })
+  })
+})
+
+describe('gece yarısını geçen vardiya işaretleme hakkı verir', () => {
+  const shift = (over: Record<string, unknown>) => ({ work_date: '2026-10-26', start_time: '16:00:00', end_time: '01:00:00', is_on_leave: false, ...over })
+  it('dünkü vardiya gece yarısını geçiyor ve bitmediyse evet; bittiyse hayır', () => {
+    expect(shiftGrantsTick(shift({}), at('2026-10-27', '00:30'))).toBe(true)
+    expect(shiftGrantsTick(shift({}), at('2026-10-27', '01:00'))).toBe(false)
+    expect(shiftGrantsTick(shift({}), at('2026-10-27', '01:30'))).toBe(false)
+  })
+  it('dünkü vardiya gece yarısını geçmiyorsa hayır; izinliyse hayır; bugünkü evet', () => {
+    expect(shiftGrantsTick(shift({ start_time: '09:00:00', end_time: '18:00:00' }), at('2026-10-27', '00:30'))).toBe(false)
+    expect(shiftGrantsTick(shift({ is_on_leave: true }), at('2026-10-27', '00:30'))).toBe(false)
+    expect(shiftGrantsTick(shift({ work_date: '2026-10-27' }), at('2026-10-27', '08:00'))).toBe(true)
+    expect(shiftGrantsTick(shift({ work_date: '2026-10-25' }), at('2026-10-27', '00:30'))).toBe(false)
   })
 })
 
@@ -123,5 +156,18 @@ describe('iyimser güncelleme ve sıralama', () => {
     expect(moveItem([1, 2, 3], 2, 1)).toEqual([1, 3, 2])
     const l = [1, 2]
     expect(moveItem(l, 0, -1)).toBe(l)
+  })
+})
+
+describe('gecikme bildirimi alıcıları', () => {
+  const e = (access_level: AccessLevel | null, store_id = 'A', active = true) => ({ active, access_level, store_id })
+  it('mağazanın müdür/yöneticisi ve tüm aktif adminler; diğerleri değil', () => {
+    expect(isOverdueRecipient(e('manager'), 'A')).toBe(true)
+    expect(isOverdueRecipient(e('store_manager'), 'A')).toBe(true)
+    expect(isOverdueRecipient(e('admin', 'B'), 'A')).toBe(true) // başka mağazaya bağlı admin de
+    expect(isOverdueRecipient(e('manager', 'B'), 'A')).toBe(false)
+    expect(isOverdueRecipient(e('employee'), 'A')).toBe(false)
+    expect(isOverdueRecipient(e('admin', 'A', false), 'A')).toBe(false)
+    expect(isOverdueRecipient(e(null), 'A')).toBe(false)
   })
 })

@@ -5,12 +5,13 @@
  * İşaretleme SWR ile iyimser güncellenir; hata olursa geri alınır ve toast gösterilir.
  */
 import { useState } from 'react'
-import useSWR, { useSWRConfig } from 'swr'
+import { useSWRConfig } from 'swr'
 import { Clock, ListChecks, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
 
 import type { ChecklistRun, TodayChecklistsResponse } from '@/types/checklist'
-import { CHECKLISTS_TODAY_KEY, fetchTodayChecklists, setChecklistItemDone } from '@/lib/api/checklists'
+import { CHECKLISTS_TODAY_KEY, setChecklistItemDone } from '@/lib/api/checklists'
+import { useTodayChecklists } from './useTodayChecklists'
 import { useAuth } from '@/context/AuthContext'
 import { cn } from '@/lib/utils'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -25,7 +26,7 @@ import { applyItemToggle, clock, progress } from './format'
 export function TodayChecklists() {
   const { employee } = useAuth()
   const { mutate } = useSWRConfig()
-  const { data, error, mutate: reload } = useSWR(CHECKLISTS_TODAY_KEY, fetchTodayChecklists, { refreshInterval: 60_000 })
+  const { data, error, mutate: reload } = useTodayChecklists()
   const [openId, setOpenId] = useState<string | null>(null)
   const openRun = data?.runs.find((r) => r.id === openId) ?? null
 
@@ -98,7 +99,7 @@ export function TodayChecklists() {
   return (
     <>
       <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {data.runs.map((run) => <li key={run.id}><RunCard run={run} onOpen={() => setOpenId(run.id)} /></li>)}
+        {data.runs.map((run) => <li key={run.id}><RunCard run={run} previousDay={run.run_date !== data.date} onOpen={() => setOpenId(run.id)} /></li>)}
       </ul>
       <ChecklistRunSheet
         run={openRun}
@@ -112,7 +113,7 @@ export function TodayChecklists() {
   )
 }
 
-function RunCard({ run, onOpen }: { run: ChecklistRun; onOpen: () => void }) {
+function RunCard({ run, previousDay, onOpen }: { run: ChecklistRun; previousDay: boolean; onOpen: () => void }) {
   const { done, total } = progress(run)
   const complete = !!run.completed_at
   return (
@@ -135,6 +136,7 @@ function RunCard({ run, onOpen }: { run: ChecklistRun; onOpen: () => void }) {
         {run.due_time && (
           <span className="inline-flex items-center gap-1 tabular-nums"><Clock className="size-3.5" aria-hidden />Son saat {run.due_time}</span>
         )}
+        {previousDay && <Badge tone="neutral">Dün</Badge>}
         {complete && <Badge tone="success">Tamamlandı {clock(run.completed_at)}</Badge>}
         {run.overdue && <Badge tone="danger">Gecikti</Badge>}
         {!complete && !run.overdue && done > 0 && <Badge tone="info">Devam ediyor</Badge>}

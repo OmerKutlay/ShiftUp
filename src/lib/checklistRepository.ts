@@ -5,17 +5,21 @@
  * mağazaya ait olduğu doğrulanmadan işlenmez (service role RLS'yi bypass eder).
  * Uygulamalar tembel oluşur (ensureTodayRuns) — SQL tarafındaki ensure_checklist_runs() ile
  * aynı mantık; ikisi de UNIQUE(template_id, run_date) / UNIQUE(run_id, position) ile idempotent.
+ * Çok adımlı yazmalar (şablon + maddeleri, tik + tamamlanma) tek işlemlik SQL fonksiyonlarıdır
+ * (save_checklist_template / set_checklist_item).
  */
 import { db } from '@/lib/db'
 import {
   ChecklistValidationError,
+  activeRunDates,
   canTickChecklist,
-  canUntickItem,
-  isRunComplete,
+  isRunEditable,
   isRunOverdue,
   parseTemplateInput,
+  shiftGrantsTick,
   templatesMissingRun,
   MAX_NOTE,
+  OVERDUE_GRACE_MINS,
   type PlannableTemplate,
 } from '@/lib/checklistRules'
 import type {
@@ -45,6 +49,14 @@ export class ChecklistForbiddenError extends Error {
 type Row = Record<string, unknown>
 
 const hhmm = (t: unknown): string | null => (typeof t === 'string' ? t.slice(0, 5) : null)
+
+/** SQL fonksiyonlarının hata kodlarını (P0002 yok, 42501 yetki, 22023 geçersiz) API hatalarına çevirir */
+function throwRpcError(error: { code?: string; message: string }, fallback: string): never {
+  if (error.code === 'P0002') throw new ChecklistNotFoundError(error.message)
+  if (error.code === '42501') throw new ChecklistForbiddenError(error.message)
+  if (error.code === '22023') throw new ChecklistValidationError(error.message)
+  throw new Error(`${fallback}: ${error.message}`)
+}
 
 // ============================================================
 // Şablonlar
@@ -102,13 +114,28 @@ export async function fetchTemplate(id: string, storeId: string): Promise<Checkl
   return toTemplate(data as Row, items)
 }
 
-async function writeItems(templateId: string, items: ChecklistTemplateInput['items']): Promise<void> {
-  const del = await db.from('checklist_template_items').delete().eq('template_id', templateId)
-  if (del.error) throw new Error(`Maddeler güncellenemedi: ${del.error.message}`)
-  const ins = await db
-    .from('checklist_template_items')
-    .insert(items.map((it, position) => ({ template_id: templateId, position, text: it.text, required: it.required })))
-  if (ins.error) throw new Error(`Maddeler eklenemedi: ${ins.error.message}`)
+/** Şablonu (ve verildiyse maddelerini) tek işlemde yazar — SQL: save_checklist_template */
+async function saveTemplate(
+  templateId: string | null,
+  storeId: string,
+  actorId: string,
+  input: ChecklistTemplateInput,
+  replaceItems: boolean
+): Promise<string> {
+  const { data, error } = await db.rpc('save_checklist_template', {
+    p_template_id: templateId,
+    p_store_id: storeId,
+    p_actor: actorId,
+    p_name: input.name,
+    p_kind: input.kind,
+    p_weekdays: input.weekdays,
+    p_due_time: input.due_time,
+    p_active: input.active,
+    p_items: replaceItems ? input.items : null,
+    p_grace_mins: OVERDUE_GRACE_MINS,
+  })
+  if (error) throwRpcError(error, 'Kontrol listesi kaydedilemedi')
+  return data as string
 }
 
 export async function createTemplate(
@@ -116,22 +143,7 @@ export async function createTemplate(
   storeId: string,
   actorId: string
 ): Promise<ChecklistTemplate> {
-  const { data, error } = await db
-    .from('checklist_templates')
-    .insert({
-      store_id: storeId,
-      name: input.name,
-      kind: input.kind,
-      weekdays: input.weekdays,
-      due_time: input.due_time,
-      active: input.active,
-      created_by: actorId,
-    })
-    .select('id')
-    .single()
-  if (error || !data) throw new Error(`Kontrol listesi oluşturulamadı: ${error?.message}`)
-  const id = (data as Row).id as string
-  await writeItems(id, input.items)
+  const id = await saveTemplate(null, storeId, actorId, input, true)
   const created = await fetchTemplate(id, storeId)
   if (!created) throw new Error('Kontrol listesi oluşturuldu ancak okunamadı.')
   return created
@@ -141,7 +153,8 @@ export async function createTemplate(
 export async function updateTemplate(
   id: string,
   patch: Record<string, unknown>,
-  storeId: string
+  storeId: string,
+  actorId: string
 ): Promise<{ before: ChecklistTemplate; after: ChecklistTemplate }> {
   const before = await fetchTemplate(id, storeId)
   if (!before) throw new ChecklistNotFoundError('Kontrol listesi bulunamadı.')
@@ -156,20 +169,7 @@ export async function updateTemplate(
     ...patch,
   })
 
-  const { error } = await db
-    .from('checklist_templates')
-    .update({
-      name: input.name,
-      kind: input.kind,
-      weekdays: input.weekdays,
-      due_time: input.due_time,
-      active: input.active,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', id)
-    .eq('store_id', storeId)
-  if (error) throw new Error(`Kontrol listesi güncellenemedi: ${error.message}`)
-  if (patch.items !== undefined) await writeItems(id, input.items)
+  await saveTemplate(id, storeId, actorId, input, patch.items !== undefined)
 
   const after = await fetchTemplate(id, storeId)
   if (!after) throw new ChecklistNotFoundError('Kontrol listesi bulunamadı.')
@@ -180,12 +180,25 @@ export async function updateTemplate(
 // Günlük uygulamalar
 // ============================================================
 
+const RUN_COLUMNS = 'id, template_id, run_date, name, kind, due_time, completed_at, completed_by, note'
+
+async function readRuns(storeId: string, dates: string[]): Promise<Row[]> {
+  const { data, error } = await db.from('checklist_runs').select(RUN_COLUMNS).eq('store_id', storeId).in('run_date', dates)
+  if (error) throw new Error(`Kontrol listesi uygulamaları yüklenemedi: ${error.message}`)
+  return (data ?? []) as Row[]
+}
+
 /**
- * Bugünün uygulamalarını oluşturur (yoksa). Idempotent: UNIQUE(template_id, run_date) üzerinde
- * ignoreDuplicates upsert; madde kopyaları hiç maddesi olmayan uygulamalara eklenir
- * (UNIQUE(run_id, position) → yarışta kaybeden de aynı sonucu üretir).
+ * Bugünün uygulamalarını oluşturur (yoksa) ve görünür uygulamaları (bugün + 06:00'a kadar dün) döner.
+ * Idempotent: UNIQUE(template_id, run_date) üzerinde ignoreDuplicates upsert. Maddesi olmayan şablon
+ * için uygulama oluşmaz. Son saat + tolerans oluşturma anında geçmişse uygulama baştan "bildirildi"
+ * işaretlenir (şablon gün içinde sonradan eklendi → yanlış gecikme alarmı yok; SQL ile aynı kural).
+ * Eksik uygulama yoksa tek ek sorgu bile atılmaz (şablonlar + uygulamalar = 2 okuma).
  */
-export async function ensureTodayRuns(storeId: string, today: string): Promise<void> {
+export async function ensureTodayRuns(storeId: string, nowMs: number): Promise<Row[]> {
+  const { today, yesterday } = activeRunDates(nowMs)
+  const dates = yesterday ? [yesterday, today] : [today]
+
   const tpl = await db
     .from('checklist_templates')
     .select('id, store_id, name, kind, weekdays, due_time, active')
@@ -201,44 +214,41 @@ export async function ensureTodayRuns(storeId: string, today: string): Promise<v
     due_time: hhmm(r.due_time),
     active: r.active as boolean,
   }))
-  if (templates.length === 0) return
 
-  const existing = await db.from('checklist_runs').select('id, template_id').eq('store_id', storeId).eq('run_date', today)
-  if (existing.error) throw new Error(`Kontrol listesi uygulamaları yüklenemedi: ${existing.error.message}`)
-  const existingRuns = (existing.data ?? []) as Row[]
+  const runs = await readRuns(storeId, dates)
+  const have = new Set(runs.filter((r) => r.run_date === today).map((r) => r.template_id as string))
+  const missing = templatesMissingRun(templates, have, today)
+  if (missing.length === 0) return runs
 
-  const missing = templatesMissingRun(templates, new Set(existingRuns.map((r) => r.template_id as string)), today)
-  if (missing.length > 0) {
-    const up = await db.from('checklist_runs').upsert(
-      missing.map((t) => ({
-        store_id: storeId, template_id: t.id, run_date: today, name: t.name, kind: t.kind, due_time: t.due_time,
-      })),
-      { onConflict: 'template_id,run_date', ignoreDuplicates: true }
-    )
-    if (up.error) throw new Error(`Kontrol listesi uygulaması oluşturulamadı: ${up.error.message}`)
-  }
+  const tItems = await fetchTemplateItems(missing.map((t) => t.id))
+  const creatable = missing.filter((t) => tItems.some((i) => i.template_id === t.id))
+  if (creatable.length === 0) return runs
 
-  // Madde kopyası: uygulamaları yeniden oku, maddesi olmayanları doldur
-  const runsRes = await db.from('checklist_runs').select('id, template_id').eq('store_id', storeId).eq('run_date', today)
-  if (runsRes.error) throw new Error(`Kontrol listesi uygulamaları yüklenemedi: ${runsRes.error.message}`)
-  const runs = (runsRes.data ?? []) as Row[]
-  if (runs.length === 0) return
-  const runIds = runs.map((r) => r.id as string)
-  const itemsRes = await db.from('checklist_run_items').select('run_id').in('run_id', runIds)
-  if (itemsRes.error) throw new Error(`Liste maddeleri yüklenemedi: ${itemsRes.error.message}`)
-  const filled = new Set(((itemsRes.data ?? []) as Row[]).map((r) => r.run_id as string))
-  const empty = runs.filter((r) => !filled.has(r.id as string))
-  if (empty.length === 0) return
+  const nowIso = new Date(nowMs).toISOString()
+  const rows = creatable.map((t) => ({
+    store_id: storeId, template_id: t.id, run_date: today, name: t.name, kind: t.kind, due_time: t.due_time,
+    overdue_notified_at: isRunOverdue({ run_date: today, due_time: t.due_time, completed_at: null }, nowMs) ? nowIso : null,
+  }))
+  const up = await db
+    .from('checklist_runs')
+    .upsert(rows, { onConflict: 'template_id,run_date', ignoreDuplicates: true })
+    .select(RUN_COLUMNS)
+  if (up.error) throw new Error(`Kontrol listesi uygulaması oluşturulamadı: ${up.error.message}`)
+  const inserted = (up.data ?? []) as Row[]
 
-  const tItems = await fetchTemplateItems(empty.map((r) => r.template_id as string))
-  const rows = empty.flatMap((r) =>
+  // Madde kopyası yalnızca bu istekte oluşan uygulamalara (başkası oluşturduysa o doldurur)
+  const itemRows = inserted.flatMap((r) =>
     tItems
       .filter((i) => i.template_id === r.template_id)
       .map((i) => ({ run_id: r.id, position: i.position, text: i.text, required: i.required }))
   )
-  if (rows.length === 0) return
-  const ins = await db.from('checklist_run_items').upsert(rows, { onConflict: 'run_id,position', ignoreDuplicates: true })
-  if (ins.error) throw new Error(`Liste maddeleri kopyalanamadı: ${ins.error.message}`)
+  if (itemRows.length > 0) {
+    const ins = await db.from('checklist_run_items').upsert(itemRows, { onConflict: 'run_id,position', ignoreDuplicates: true })
+    if (ins.error) throw new Error(`Liste maddeleri kopyalanamadı: ${ins.error.message}`)
+  }
+
+  // Yarışı kaybettiysek (başkası oluşturdu) güncel listeyi yeniden oku
+  return inserted.length < rows.length ? readRuns(storeId, dates) : [...runs, ...inserted]
 }
 
 async function employeeNames(ids: (string | null)[], storeId: string): Promise<Map<string, string>> {
@@ -249,17 +259,13 @@ async function employeeNames(ids: (string | null)[], storeId: string): Promise<M
   return new Map(((data ?? []) as Row[]).map((e) => [e.id as string, e.full_name as string]))
 }
 
-/** Bugünün uygulamaları (maddeleriyle). Önce eksik uygulamaları oluşturur. */
-export async function fetchTodayRuns(storeId: string, today: string, nowMs = Date.now()): Promise<ChecklistRun[]> {
-  await ensureTodayRuns(storeId, today)
-
-  const runsRes = await db
-    .from('checklist_runs')
-    .select('id, template_id, run_date, name, kind, due_time, completed_at, completed_by, note')
-    .eq('store_id', storeId)
-    .eq('run_date', today)
-  if (runsRes.error) throw new Error(`Kontrol listesi uygulamaları yüklenemedi: ${runsRes.error.message}`)
-  const runs = (runsRes.data ?? []) as Row[]
+/**
+ * Görünür uygulamalar (maddeleriyle): bugünküler + gece 06:00'a kadar dünün TAMAMLANMAMIŞ olanları.
+ * Önce eksik uygulamaları oluşturur.
+ */
+export async function fetchTodayRuns(storeId: string, nowMs = Date.now()): Promise<ChecklistRun[]> {
+  const { today } = activeRunDates(nowMs)
+  const runs = (await ensureTodayRuns(storeId, nowMs)).filter((r) => r.run_date === today || !r.completed_at)
   if (runs.length === 0) return []
 
   const itemsRes = await db
@@ -267,7 +273,28 @@ export async function fetchTodayRuns(storeId: string, today: string, nowMs = Dat
     .select('id, run_id, position, text, required, done_at, done_by')
     .in('run_id', runs.map((r) => r.id as string))
   if (itemsRes.error) throw new Error(`Liste maddeleri yüklenemedi: ${itemsRes.error.message}`)
-  const items = (itemsRes.data ?? []) as Row[]
+  let items = (itemsRes.data ?? []) as Row[]
+
+  // Yarışta oluşmuş ama maddeleri henüz kopyalanmamış uygulamayı tamamla (idempotent)
+  const filled = new Set(items.map((i) => i.run_id as string))
+  const empty = runs.filter((r) => !filled.has(r.id as string))
+  if (empty.length > 0) {
+    const tItems = await fetchTemplateItems(empty.map((r) => r.template_id as string))
+    const rows = empty.flatMap((r) =>
+      tItems.filter((i) => i.template_id === r.template_id)
+        .map((i) => ({ run_id: r.id, position: i.position, text: i.text, required: i.required }))
+    )
+    if (rows.length > 0) {
+      const ins = await db.from('checklist_run_items').upsert(rows, { onConflict: 'run_id,position', ignoreDuplicates: true })
+      if (ins.error) throw new Error(`Liste maddeleri kopyalanamadı: ${ins.error.message}`)
+      const again = await db
+        .from('checklist_run_items')
+        .select('id, run_id, position, text, required, done_at, done_by')
+        .in('run_id', empty.map((r) => r.id as string))
+      if (again.error) throw new Error(`Liste maddeleri yüklenemedi: ${again.error.message}`)
+      items = [...items, ...((again.data ?? []) as Row[])]
+    }
+  }
 
   const names = await employeeNames([...items.map((i) => i.done_by as string | null), ...runs.map((r) => r.completed_by as string | null)], storeId)
 
@@ -298,28 +325,39 @@ export async function fetchTodayRuns(storeId: string, today: string, nowMs = Dat
         }))
       return { ...run, items: runItems, overdue: isRunOverdue(run, nowMs) }
     })
-    .sort((a, b) => kindRank(a.kind) - kindRank(b.kind) || a.name.localeCompare(b.name, 'tr'))
+    .sort((a, b) => a.run_date.localeCompare(b.run_date) || kindRank(a.kind) - kindRank(b.kind) || a.name.localeCompare(b.name, 'tr'))
 }
 
 const kindRank = (k: ChecklistKind) => (k === 'opening' ? 0 : k === 'custom' ? 1 : 2)
 
-/** Çalışanın bugün bu mağazada (izinli olmayan) vardiyası var mı? */
-export async function hasShiftTodayInStore(employeeId: string, storeId: string, today: string): Promise<boolean> {
+/**
+ * Çalışanın bu mağazada işaretleme hakkı veren vardiyası var mı? (bugün izinli olmayan vardiya ya da
+ * dünden başlayıp gece yarısını geçen ve henüz bitmemiş vardiya)
+ */
+export async function hasTickableShift(employeeId: string, storeId: string, nowMs = Date.now()): Promise<boolean> {
+  const { today, yesterday } = activeRunDates(nowMs)
+  const dates = yesterday ? [yesterday, today] : [today]
+  // Dün yalnızca 06:00'a kadar anlamlı (gece vardiyası); sonrasında sadece bugün
   const { data, error } = await db
     .from('shift_assignments')
-    .select('id, is_on_leave')
+    .select('work_date, start_time, end_time, is_on_leave')
     .eq('employee_id', employeeId)
     .eq('store_id', storeId)
-    .eq('work_date', today)
+    .in('work_date', dates)
   if (error) throw new Error(`Vardiya sorgulanamadı: ${error.message}`)
-  return ((data ?? []) as Row[]).some((s) => s.is_on_leave !== true)
+  return ((data ?? []) as Row[]).some((s) =>
+    shiftGrantsTick(
+      { work_date: s.work_date as string, start_time: String(s.start_time ?? ''), end_time: String(s.end_time ?? ''), is_on_leave: s.is_on_leave as boolean | null },
+      nowMs
+    )
+  )
 }
 
 /** Uygulama bu mağazaya ait mi? Değilse ChecklistNotFoundError */
 async function getRunInStore(runId: string, storeId: string): Promise<Row> {
   const { data, error } = await db
     .from('checklist_runs')
-    .select('id, store_id, run_date, completed_at, completed_by')
+    .select('id, store_id, run_date')
     .eq('id', runId)
     .eq('store_id', storeId)
     .maybeSingle()
@@ -333,19 +371,18 @@ interface Actor {
   isManager: boolean
 }
 
-/** Bugün için işaretleme yetkisini doğrular (yönetici ya da bugün bu mağazada vardiyası olan) */
-async function assertCanTick(actor: Actor, storeId: string, today: string): Promise<void> {
-  const hasShift = actor.isManager ? false : await hasShiftTodayInStore(actor.id, storeId, today)
+/** İşaretleme yetkisini doğrular (yönetici ya da bu mağazada geçerli vardiyası olan) */
+async function assertCanTick(actor: Actor, storeId: string, nowMs: number): Promise<void> {
+  const hasShift = actor.isManager ? false : await hasTickableShift(actor.id, storeId, nowMs)
   if (!canTickChecklist({ isManager: actor.isManager, hasShiftTodayInStore: hasShift })) {
     throw new ChecklistForbiddenError('Kontrol listesini yalnızca bugün bu mağazada vardiyası olanlar işaretleyebilir.')
   }
 }
 
 /**
- * Maddeyi işaretler / geri alır. Yalnızca bugünün uygulaması düzenlenir.
- * İşaretleme: yönetici ya da bugün bu mağazada vardiyası olan çalışan.
- * Geri alma: işareti koyan kişi ya da yönetici (aynı gün).
- * Sonrasında uygulamanın tamamlanma durumu yeniden hesaplanır.
+ * Maddeyi işaretler / geri alır. Düzenleme penceresi: bugünün uygulaması; dünün uygulaması 06:00'a kadar.
+ * İşaretleme: yönetici ya da geçerli vardiyası olan çalışan (burada denetlenir). Geri alma sahipliği,
+ * pencere ve tamamlanma durumunun yeniden hesabı tek işlemde SQL'de yapılır (set_checklist_item).
  */
 export async function setItemDone(args: {
   runId: string
@@ -353,84 +390,44 @@ export async function setItemDone(args: {
   done: boolean
   actor: Actor
   storeId: string
-  today: string
-  nowIso?: string
+  nowMs?: number
 }): Promise<{ item: { id: string; done_at: string | null; done_by: string | null }; completed_at: string | null; completed_by: string | null }> {
-  const { runId, itemId, done, actor, storeId, today } = args
+  const { runId, itemId, done, actor, storeId } = args
+  const nowMs = args.nowMs ?? Date.now()
   const run = await getRunInStore(runId, storeId)
-  if (run.run_date !== today) {
-    throw new ChecklistForbiddenError('Yalnızca bugünün kontrol listeleri düzenlenebilir.')
+  if (!isRunEditable(run.run_date as string, nowMs)) {
+    throw new ChecklistForbiddenError('Bu kontrol listesi artık düzenlenemez.')
   }
+  if (done) await assertCanTick(actor, storeId, nowMs)
 
-  const itemRes = await db
-    .from('checklist_run_items')
-    .select('id, run_id, required, done_at, done_by')
-    .eq('id', itemId)
-    .eq('run_id', runId)
-    .maybeSingle()
-  if (itemRes.error) throw new Error(`Madde yüklenemedi: ${itemRes.error.message}`)
-  if (!itemRes.data) throw new ChecklistNotFoundError('Madde bulunamadı.')
-  const item = itemRes.data as Row
-
-  const nowIso = args.nowIso ?? new Date().toISOString()
-  if (done) {
-    await assertCanTick(actor, storeId, today)
-    if (!item.done_at) {
-      const upd = await db.from('checklist_run_items').update({ done_at: nowIso, done_by: actor.id }).eq('id', itemId)
-      if (upd.error) throw new Error(`Madde işaretlenemedi: ${upd.error.message}`)
-    }
-  } else if (item.done_at) {
-    const allowed = canUntickItem({
-      isManager: actor.isManager, actorId: actor.id, doneBy: (item.done_by as string | null) ?? null,
-      runDate: run.run_date as string, today,
-    })
-    if (!allowed) throw new ChecklistForbiddenError('Bu işareti yalnızca işaretleyen kişi ya da bir yönetici geri alabilir.')
-    const upd = await db.from('checklist_run_items').update({ done_at: null, done_by: null }).eq('id', itemId)
-    if (upd.error) throw new Error(`İşaret geri alınamadı: ${upd.error.message}`)
-  }
-
-  // Tamamlanma durumunu yeniden hesapla
-  const all = await db.from('checklist_run_items').select('id, required, done_at').eq('run_id', runId)
-  if (all.error) throw new Error(`Liste maddeleri yüklenemedi: ${all.error.message}`)
-  const complete = isRunComplete(((all.data ?? []) as Row[]).map((i) => ({ required: i.required as boolean, done_at: (i.done_at as string | null) ?? null })))
-
-  let completed_at = (run.completed_at as string | null) ?? null
-  let completed_by = (run.completed_by as string | null) ?? null
-  if (complete && !completed_at) {
-    completed_at = nowIso
-    completed_by = actor.id
-  } else if (!complete && completed_at) {
-    completed_at = null
-    completed_by = null
-  }
-  if (completed_at !== ((run.completed_at as string | null) ?? null)) {
-    const upd = await db.from('checklist_runs').update({ completed_at, completed_by }).eq('id', runId).eq('store_id', storeId)
-    if (upd.error) throw new Error(`Liste durumu güncellenemedi: ${upd.error.message}`)
-  }
-
-  const fresh = await db.from('checklist_run_items').select('id, done_at, done_by').eq('id', itemId).single()
-  const f = (fresh.data ?? { id: itemId, done_at: null, done_by: null }) as Row
-  return {
-    item: { id: itemId, done_at: (f.done_at as string | null) ?? null, done_by: (f.done_by as string | null) ?? null },
-    completed_at,
-    completed_by,
-  }
+  const { data, error } = await db.rpc('set_checklist_item', {
+    p_run_id: runId,
+    p_item_id: itemId,
+    p_store_id: storeId,
+    p_done: done,
+    p_actor: actor.id,
+    p_is_manager: actor.isManager,
+  })
+  if (error) throwRpcError(error, 'Madde güncellenemedi')
+  const r = data as { done_at: string | null; done_by: string | null; completed_at: string | null; completed_by: string | null }
+  return { item: { id: itemId, done_at: r.done_at, done_by: r.done_by }, completed_at: r.completed_at, completed_by: r.completed_by }
 }
 
-/** Bugünün uygulamasına serbest not yazar (aynı işaretleme yetkisi) */
+/** Uygulamaya serbest not yazar (aynı düzenleme penceresi ve işaretleme yetkisi) */
 export async function setRunNote(args: {
   runId: string
   note: string | null
   actor: Actor
   storeId: string
-  today: string
+  nowMs?: number
 }): Promise<string | null> {
-  const { runId, actor, storeId, today } = args
+  const { runId, actor, storeId } = args
+  const nowMs = args.nowMs ?? Date.now()
   const note = args.note?.trim() ? args.note.trim() : null
   if (note && note.length > MAX_NOTE) throw new ChecklistValidationError(`Not en fazla ${MAX_NOTE} karakter olabilir.`)
   const run = await getRunInStore(runId, storeId)
-  if (run.run_date !== today) throw new ChecklistForbiddenError('Yalnızca bugünün kontrol listeleri düzenlenebilir.')
-  await assertCanTick(actor, storeId, today)
+  if (!isRunEditable(run.run_date as string, nowMs)) throw new ChecklistForbiddenError('Bu kontrol listesi artık düzenlenemez.')
+  await assertCanTick(actor, storeId, nowMs)
   const upd = await db.from('checklist_runs').update({ note }).eq('id', runId).eq('store_id', storeId)
   if (upd.error) throw new Error(`Not kaydedilemedi: ${upd.error.message}`)
   return note

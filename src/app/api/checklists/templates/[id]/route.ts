@@ -27,7 +27,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (Object.keys(patch).length === 0) return badRequest('Güncellenecek alan yok.')
 
   try {
-    const { before, after } = await updateTemplate(id, patch, employee.store_id)
+    const { before, after } = await updateTemplate(id, patch, employee.store_id, employee.id)
     await logAudit({
       actorId: employee.id,
       storeId: employee.store_id,

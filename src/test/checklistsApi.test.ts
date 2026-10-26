@@ -7,6 +7,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { NextRequest } from 'next/server'
 import { ACCESS, type AccessLevel } from '@/lib/auth/roles'
+import { isRunComplete, isRunEditable } from '@/lib/checklistRules'
 import { createFakeDb, type FakeDb } from './helpers/fakeSupabase'
 
 const STORE_A = '00000000-0000-0000-0003-00000000000a'
@@ -40,6 +41,51 @@ vi.mock('@/lib/rateLimiter', () => ({
 }))
 
 let db: FakeDb
+
+// SQL fonksiyonlarının (supabase/migrations/20261028150100_checklists.sql) bellek içi karşılıkları:
+// aynı kuralları checklistRules.ts üzerinden uygular; hata kodları SQL ile aynıdır.
+type RpcArgs = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
+const rpcState = { override: null as null | { code: string; message: string } }
+const RPC = {
+  set_checklist_item: (a: RpcArgs, d: FakeDb) => {
+    if (rpcState.override) return { error: rpcState.override }
+    const run = d.tables.checklist_runs.find((r) => r.id === a.p_run_id && r.store_id === a.p_store_id)
+    if (!run) return { error: { code: 'P0002', message: 'Kontrol listesi bulunamadı.' } }
+    if (!isRunEditable(run.run_date as string, Date.now())) return { error: { code: '42501', message: 'Bu kontrol listesi artık düzenlenemez.' } }
+    const item = d.tables.checklist_run_items.find((i) => i.id === a.p_item_id && i.run_id === a.p_run_id)
+    if (!item) return { error: { code: 'P0002', message: 'Madde bulunamadı.' } }
+    const now = new Date().toISOString()
+    if (a.p_done) {
+      if (!item.done_at) Object.assign(item, { done_at: now, done_by: a.p_actor })
+    } else if (item.done_at) {
+      if (!a.p_is_manager && item.done_by !== a.p_actor) return { error: { code: '42501', message: 'Bu işareti yalnızca işaretleyen kişi ya da bir yönetici geri alabilir.' } }
+      Object.assign(item, { done_at: null, done_by: null })
+    }
+    const complete = isRunComplete(d.tables.checklist_run_items.filter((i) => i.run_id === run.id) as { required: boolean; done_at: string | null }[])
+    if (complete && !run.completed_at) Object.assign(run, { completed_at: now, completed_by: a.p_actor })
+    else if (!complete && run.completed_at) Object.assign(run, { completed_at: null, completed_by: null })
+    return { data: { done_at: item.done_at ?? null, done_by: item.done_by ?? null, completed_at: run.completed_at ?? null, completed_by: run.completed_by ?? null } }
+  },
+  save_checklist_template: (a: RpcArgs, d: FakeDb) => {
+    if (rpcState.override) return { error: rpcState.override }
+    let t
+    if (a.p_template_id === null) {
+      t = { id: crypto.randomUUID(), store_id: a.p_store_id, created_by: a.p_actor }
+      d.tables.checklist_templates.push(t)
+    } else {
+      t = d.tables.checklist_templates.find((x) => x.id === a.p_template_id && x.store_id === a.p_store_id)
+      if (!t) return { error: { code: 'P0002', message: 'Kontrol listesi bulunamadı.' } }
+    }
+    Object.assign(t, { name: a.p_name, kind: a.p_kind, weekdays: a.p_weekdays, due_time: a.p_due_time, active: a.p_active })
+    if (a.p_items !== null) {
+      d.tables.checklist_template_items = d.tables.checklist_template_items.filter((i) => i.template_id !== t.id)
+      ;(a.p_items as { text: string; required: boolean }[]).forEach((it, position) =>
+        d.tables.checklist_template_items.push({ id: crypto.randomUUID(), template_id: t.id, position, text: it.text, required: it.required }))
+    }
+    return { data: t.id }
+  },
+}
+
 const UNIQUE = {
   checklist_runs: [['template_id', 'run_date']],
   checklist_run_items: [['run_id', 'position']],
@@ -73,7 +119,7 @@ function seed(extra: Record<string, Record<string, unknown>[]> = {}) {
     checklist_runs: [],
     checklist_run_items: [],
     ...extra,
-  }, { unique: UNIQUE })
+  }, { unique: UNIQUE, rpc: RPC })
   state.db = db
 }
 
@@ -103,6 +149,7 @@ beforeEach(() => {
   vi.setSystemTime(NOW)
   vi.clearAllMocks()
   state.rate.allowed = true
+  rpcState.override = null
   seed()
   asUser(emp(EMP_A, STORE_A))
 })
@@ -363,5 +410,147 @@ describe('şablon API yetkisi ve mağaza izolasyonu', () => {
     const body = (await (await GET(new NextRequest('http://localhost/api/checklists/history'))).json()) as { runs: { template_id: string; total: number }[] }
     expect(body.runs).toHaveLength(1)
     expect(body.runs[0]).toMatchObject({ template_id: TPL_A, total: 3 })
+  })
+})
+
+// ============================================================
+// Gece yarısı, yanlış alarm, atomik yazma, okuma maliyeti
+// ============================================================
+const RUN_Y = '55555555-5555-4555-8555-555555555555'
+const ITEM_Y = '66666666-6666-4666-8666-666666666666'
+const yesterdayRun = (over: Record<string, unknown> = {}) => ({
+  checklist_runs: [{ id: RUN_Y, store_id: STORE_A, template_id: TPL_A, run_date: '2026-10-28', name: 'Kapanış', kind: 'closing', due_time: '23:50:00', completed_at: null, ...over }],
+  checklist_run_items: [{ id: ITEM_Y, run_id: RUN_Y, position: 0, text: 'Kasa say', required: true, done_at: null }],
+})
+const nightShifts = () => ({
+  shift_assignments: [
+    { id: 'n1', employee_id: EMP_A, store_id: STORE_A, work_date: '2026-10-28', start_time: '16:00:00', end_time: '01:00:00', is_on_leave: false },
+    { id: 'n2', employee_id: EMP_A2, store_id: STORE_A, work_date: '2026-10-28', start_time: '09:00:00', end_time: '18:00:00', is_on_leave: false },
+  ],
+})
+
+describe('gece yarısı kenarı', () => {
+  it('dünün uygulaması 06:00 a kadar düzenlenebilir, sonra salt okunur (yönetici)', async () => {
+    seed(yesterdayRun())
+    asUser(emp(MGR_A, STORE_A, ACCESS.MANAGER))
+    vi.setSystemTime(new Date('2026-10-29T05:59:00+03:00'))
+    expect((await tick(RUN_Y, ITEM_Y, true)).status).toBe(200)
+    await tick(RUN_Y, ITEM_Y, false)
+    vi.setSystemTime(new Date('2026-10-29T06:00:00+03:00'))
+    expect((await tick(RUN_Y, ITEM_Y, true)).status).toBe(403)
+  })
+
+  it('gece yarısını geçen dünkü vardiya işaretleme hakkı verir', async () => {
+    seed({ ...yesterdayRun(), ...nightShifts() })
+    vi.setSystemTime(new Date('2026-10-29T00:30:00+03:00'))
+    asUser(emp(EMP_A, STORE_A))
+    expect((await tick(RUN_Y, ITEM_Y, true)).status).toBe(200)
+  })
+
+  it('gündüz vardiyalı çalışan dünün listesini işaretleyemez; gece vardiyası bitince de işaretleyemez', async () => {
+    seed({ ...yesterdayRun(), ...nightShifts() })
+    vi.setSystemTime(new Date('2026-10-29T00:30:00+03:00'))
+    asUser(emp(EMP_A2, STORE_A))
+    expect((await tick(RUN_Y, ITEM_Y, true)).status).toBe(403)
+    vi.setSystemTime(new Date('2026-10-29T01:30:00+03:00'))
+    asUser(emp(EMP_A, STORE_A))
+    expect((await tick(RUN_Y, ITEM_Y, true)).status).toBe(403)
+  })
+
+  it('Bugün görünümü 06:00 a kadar dünün tamamlanmamış listesini içerir; sonra ve tamamlanmışsa içermez', async () => {
+    seed(yesterdayRun())
+    asUser(emp(MGR_A, STORE_A, ACCESS.MANAGER))
+    vi.setSystemTime(new Date('2026-10-29T00:10:00+03:00'))
+    let runs = (await today()).body.runs
+    expect(runs.map((r) => r.id)).toContain(RUN_Y)
+    expect(runs.find((r) => r.id === RUN_Y)?.overdue).toBe(true) // 23:50 + 15 dk geçti
+
+    db.tables.checklist_runs.find((r) => r.id === RUN_Y)!.completed_at = '2026-10-29T00:01:00+03:00'
+    runs = (await today()).body.runs
+    expect(runs.map((r) => r.id)).not.toContain(RUN_Y)
+
+    db.tables.checklist_runs.find((r) => r.id === RUN_Y)!.completed_at = null
+    vi.setSystemTime(new Date('2026-10-29T06:30:00+03:00'))
+    expect((await today()).body.runs.map((r) => r.id)).not.toContain(RUN_Y)
+  })
+})
+
+describe('yanlış gecikme alarmı yok', () => {
+  it('son saat + 15 dk geçtikten sonra oluşan uygulama baştan bildirildi işaretlenir', async () => {
+    vi.setSystemTime(new Date('2026-10-28T10:30:00+03:00'))
+    await today()
+    expect(db.tables.checklist_runs[0].overdue_notified_at).toBeTruthy()
+  })
+
+  it('son saatten önce oluşan uygulama bildirilebilir kalır; son saatsiz şablon asla işaretlenmez', async () => {
+    await today() // 09:00
+    expect(db.tables.checklist_runs[0].overdue_notified_at).toBeNull()
+
+    seed({
+      checklist_templates: [
+        { id: TPL_A, store_id: STORE_A, name: 'Açılış', kind: 'opening', weekdays: [3], due_time: '10:00:00', active: true },
+        { id: TPL_B, store_id: STORE_A, name: 'Temizlik', kind: 'custom', weekdays: [3], due_time: null, active: true },
+      ],
+      checklist_template_items: [
+        { id: 'x1', template_id: TPL_A, position: 0, text: 'a', required: true },
+        { id: 'x2', template_id: TPL_B, position: 0, text: 'b', required: true },
+      ],
+    })
+    vi.setSystemTime(new Date('2026-10-28T23:00:00+03:00'))
+    await today()
+    const byTpl = (id: string) => db.tables.checklist_runs.find((r) => r.template_id === id)!
+    expect(byTpl(TPL_A).overdue_notified_at).toBeTruthy()
+    expect(byTpl(TPL_B).overdue_notified_at).toBeNull()
+  })
+})
+
+describe('atomik yazma ve madde şartı', () => {
+  it('maddesi olmayan şablon için uygulama oluşturulmaz', async () => {
+    seed({ checklist_template_items: [] })
+    const { body } = await today()
+    expect(body.runs).toHaveLength(0)
+    expect(db.tables.checklist_runs).toHaveLength(0)
+  })
+
+  it('şablon güncelleme tek bir RPC çağrısıdır; kısmi güncelleme maddelere dokunmaz (p_items null)', async () => {
+    asUser(emp(MGR_A, STORE_A, ACCESS.MANAGER))
+    const spy = vi.spyOn(db, 'rpc')
+    const id = await import('@/app/api/checklists/templates/[id]/route')
+    const items = [{ text: 'İkinci', required: false }, { text: 'Birinci', required: true }]
+    const res = await id.PATCH(json('/x', 'PATCH', { items }), { params: Promise.resolve({ id: TPL_A }) })
+    expect(res.status).toBe(200)
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(spy).toHaveBeenCalledWith('save_checklist_template', expect.objectContaining({ p_template_id: TPL_A, p_store_id: STORE_A, p_items: items }))
+    spy.mockClear()
+    await id.PATCH(json('/x', 'PATCH', { active: false }), { params: Promise.resolve({ id: TPL_A }) })
+    expect(spy).toHaveBeenCalledWith('save_checklist_template', expect.objectContaining({ p_items: null }))
+  })
+
+  it('RPC hataları API hatasına çevrilir (yok 404, yetki 403, geçersiz 400, diğer 500)', async () => {
+    const run = (await today()).body.runs[0]
+    asUser(emp(MGR_A, STORE_A, ACCESS.MANAGER))
+    const id = await import('@/app/api/checklists/templates/[id]/route')
+    const patch = () => id.PATCH(json('/x', 'PATCH', { active: false }), { params: Promise.resolve({ id: TPL_A }) })
+    rpcState.override = { code: 'P0002', message: 'yok' }
+    expect((await patch()).status).toBe(404)
+    rpcState.override = { code: '22023', message: 'geçersiz' }
+    expect((await patch()).status).toBe(400)
+    rpcState.override = { code: 'XX000', message: 'boom' }
+    expect((await patch()).status).toBe(500)
+    rpcState.override = { code: '42501', message: 'yetki' }
+    expect((await tick(run.id, run.items[0].id, true)).status).toBe(403)
+  })
+})
+
+describe('okuma maliyeti', () => {
+  it('eksik uygulama yokken Bugün okuması ek şablon/uygulama okuması yapmaz', async () => {
+    await today() // oluştur
+    const spy = vi.spyOn(db, 'from')
+    await today()
+    const tables = spy.mock.calls.map((c) => c[0])
+    expect(tables.filter((t) => t === 'checklist_runs')).toHaveLength(1)
+    expect(tables.filter((t) => t === 'checklist_templates')).toHaveLength(1)
+    expect(tables.filter((t) => t === 'checklist_template_items')).toHaveLength(0)
+    expect(tables.filter((t) => t === 'checklist_run_items')).toHaveLength(1)
   })
 })
