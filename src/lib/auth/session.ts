@@ -10,11 +10,14 @@
  * Dönen tip: SessionEmployee | null
  * null → unauthenticated
  *
+ * Aktif mağaza (store_id) burada belirlenir — bkz. @/lib/storeScope.
+ *
  * NOT: 'next/headers' dynamic import kullanılır — top-level import
  * Next.js'in modülü Client Component chain'i olarak işaretlemesine yol açar.
  */
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { IS_DEV_AUTH, DEV_SESSION_COOKIE } from '@/lib/authConfig'
+import { ACTIVE_STORE_COOKIE, resolveActiveStoreId } from '@/lib/storeScope'
 import { verifyDevSession } from './devSession'
 import { isSessionExpired } from './sessionAge'
 import { accessLevelOf, type AccessLevel } from './roles'
@@ -29,7 +32,16 @@ export interface SessionEmployee {
   /** Yetki seviyesi (roles.access_level) — tüm yetki kontrolleri bununla yapılır */
   access_level: AccessLevel | null
   active: boolean
+  /** Çalışanın kayıtlı olduğu (ana) mağaza */
+  home_store_id: string
+  /**
+   * Aktif mağaza — tüm veri erişimi bununla sınırlanır.
+   * Admin için seçili mağaza (ACTIVE_STORE_COOKIE), diğerleri için ana mağaza.
+   */
+  store_id: string
 }
+
+type CookieReader = { cookies: { get(name: string): { value: string } | undefined } }
 
 const EMPLOYEE_SELECT = `
   id,
@@ -37,6 +49,7 @@ const EMPLOYEE_SELECT = `
   email,
   role_id,
   active,
+  store_id,
   roles ( name, access_level )
 ` as const
 
@@ -50,26 +63,20 @@ const EMPLOYEE_SELECT = `
  */
 export async function getCurrentEmployee(
   // NextRequest veya undefined — undefined ise next/headers cookies() kullanılır
-  req?: { cookies: { get(name: string): { value: string } | undefined } }
+  req?: CookieReader
 ): Promise<SessionEmployee | null> {
   try {
     const admin = createAdminClient()
+    const readCookie = async (name: string): Promise<string | undefined> => {
+      if (req) return req.cookies.get(name)?.value
+      // next/headers dynamic import — top-level import yapmak modülü bozar
+      const { cookies } = await import('next/headers')
+      return (await cookies()).get(name)?.value
+    }
 
     if (IS_DEV_AUTH) {
-      // Dev: cookie'den employeeId oku
-      let cookieVal: string | undefined
-
-      if (req) {
-        cookieVal = req.cookies.get(DEV_SESSION_COOKIE)?.value
-      } else {
-        // next/headers dynamic import — top-level import yapmak modülü bozar
-        const { cookies } = await import('next/headers')
-        const cookieStore = await cookies()
-        cookieVal = cookieStore.get(DEV_SESSION_COOKIE)?.value
-      }
-
-      // İmzalı çerez — değiştirilmiş / süresi dolmuş çerez reddedilir
-      const session = verifyDevSession(cookieVal)
+      // Dev: imzalı çerezden employeeId oku — değiştirilmiş / süresi dolmuş çerez reddedilir
+      const session = verifyDevSession(await readCookie(DEV_SESSION_COOKIE))
       if (!session) return null
       const employeeId = session.employeeId
 
@@ -81,7 +88,7 @@ export async function getCurrentEmployee(
 
       if (!data || !data.active) return null
 
-      return mapToSessionEmployee(data)
+      return withActiveStore(admin, mapToSessionEmployee(data), await readCookie(ACTIVE_STORE_COOKIE))
     }
 
     // Production: Supabase Auth
@@ -105,10 +112,23 @@ export async function getCurrentEmployee(
 
     if (!data || !data.active) return null
 
-    return mapToSessionEmployee(data)
+    return withActiveStore(admin, mapToSessionEmployee(data), await readCookie(ACTIVE_STORE_COOKIE))
   } catch {
     return null
   }
+}
+
+async function withActiveStore(
+  admin: ReturnType<typeof createAdminClient>,
+  employee: SessionEmployee,
+  requestedStoreId: string | undefined
+): Promise<SessionEmployee> {
+  const storeId = await resolveActiveStoreId(admin, {
+    homeStoreId: employee.home_store_id,
+    accessLevel: employee.access_level,
+    requestedStoreId,
+  })
+  return { ...employee, store_id: storeId }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -123,5 +143,7 @@ function mapToSessionEmployee(data: any): SessionEmployee {
     role_name: (roles?.name as string | undefined) ?? null,
     access_level: accessLevelOf(roles),
     active: data.active as boolean,
+    home_store_id: data.store_id as string,
+    store_id: data.store_id as string,
   }
 }
