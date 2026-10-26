@@ -7,7 +7,7 @@
  * (hafta gezgini, Bugün, Hafta/Gün, rol filtresi, vardiya türü lejantı) → kart içinde haftalık
  * tablo ya da günün zaman çizelgesi. Yönetici hücreye tıklayıp vardiya atar; çalışan salt okunur görür.
  *
- * Editör modu ("Düzenle"): tablonun üstünde taş paleti açılır; seçili taş (Açılış, Kapanış, Full…,
+ * Editör modu ("Vardiya ekle"): tablonun üstünde taş paleti açılır; seçili taş (Açılış, Kapanış, Full…,
  * özel saat, Tatil, Sil) tıklanan her hücreye diyalog açmadan uygulanır. Değişiklikler taslak
  * olarak birikir ve "Kaydet" ile topluca yazılır.
  */
@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { addWeeks, format, subWeeks } from 'date-fns'
 import { tr } from 'date-fns/locale'
-import { CircleAlert, Info, Paintbrush, Plus, Trash2, Users } from 'lucide-react'
+import { CircleAlert, Info, Plus, Trash2, Users } from 'lucide-react'
 import { toast } from 'sonner'
 
 import type { EmployeeWithRole } from '@/types/employee'
@@ -50,7 +50,6 @@ import {
 import { ShiftKindLegend, weeklyLimitMins } from './ScheduleCells'
 import { MobileDayBoard } from './MobileDayBoard'
 import { WeekGrid, WeekGridSkeleton } from './WeekGrid'
-import { AddShiftMenu } from './AddShiftMenu'
 import { EDITOR_BAR_COMPACT_HEIGHT, ScheduleEditorBar } from './ScheduleEditorBar'
 import {
   ERASE_STONE, REST_STONE, applyDrafts, cellKey, customStone, paintCell, sameAsOriginal, saveSteps, splitKey,
@@ -620,13 +619,6 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
       minLabelWidth={isMobile ? 120 : 136}
     />
   )
-  const addMenuProps = {
-    entries: scheduleEntries,
-    weekDays,
-    restDayMap,
-    approvedLeaveMap,
-    onPick: openAssignDialog,
-  }
 
   const description = hasData && !isMobile
     ? `${weekRange} · ${scheduleEntries.length} kişi · ${summary.shifts} vardiya · ${fmtHoursTr(summary.mins).replace(' s', ' saat')}`
@@ -651,18 +643,10 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
           </Tooltip>
         ) : undefined}
         actions={hasData && !readOnly && !isMobile && !editing ? (
-          <>
-            <Button variant="outline" onClick={startEditing}>
-              <Paintbrush />
-              Düzenle
-            </Button>
-            <AddShiftMenu {...addMenuProps} day={view === 'day' ? selectedDay : undefined}>
-              <Button>
-                <Plus />
-                Vardiya ekle
-              </Button>
-            </AddShiftMenu>
-          </>
+          <Button onClick={startEditing}>
+            <Plus />
+            Vardiya ekle
+          </Button>
         ) : undefined}
       />
 
@@ -671,11 +655,6 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
         <div className="flex items-center gap-2 [&>:first-child]:flex-1">
           {weekStepper}
           {hasData && !editing && viewToggle}
-          {hasData && !readOnly && !editing && (
-            <Button variant="outline" size="icon" aria-label="Düzenle" onClick={startEditing}>
-              <Paintbrush />
-            </Button>
-          )}
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
@@ -779,7 +758,8 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
       )}
 
       {hasData && view === 'week' && isMobile && (
-        <div className="flex flex-col gap-2">
+        // Yüzen "Vardiya ekle" düğmesi lejantı örtmesin
+        <div className={`flex flex-col gap-2${!readOnly && !editing ? ' pb-16' : ''}`}>
           <ShiftKindLegend kinds={presentKinds} />
           <p className="text-xs text-muted-foreground">
             {editing
@@ -791,17 +771,16 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
         </div>
       )}
 
-      {/* Mobil gün görünümü: seçili güne vardiya ekle — önce o gün boşta olanlar */}
-      {hasData && view === 'day' && isMobile && !readOnly && (
-        <AddShiftMenu {...addMenuProps} day={selectedDay} side="top">
-          <Button
-            size="lg"
-            className="fixed right-[calc(1rem+env(safe-area-inset-right))] z-40 rounded-full px-5 shadow-lg"
-            style={{ bottom: `calc(${BOTTOM_NAV_OVERLAY_OFFSET}px + var(--safe-bottom))` }}
-          >
-            <Plus /> Vardiya ekle
-          </Button>
-        </AddShiftMenu>
+      {/* Mobil: yüzen "Vardiya ekle" editör modunu açar */}
+      {hasData && isMobile && !readOnly && !editing && (
+        <Button
+          size="lg"
+          className="fixed right-[calc(1rem+env(safe-area-inset-right))] z-40 rounded-full px-5 shadow-lg"
+          style={{ bottom: `calc(${BOTTOM_NAV_OVERLAY_OFFSET}px + var(--safe-bottom))` }}
+          onClick={startEditing}
+        >
+          <Plus /> Vardiya ekle
+        </Button>
       )}
 
       {/* Atama diyaloğu — yalnızca yönetici */}

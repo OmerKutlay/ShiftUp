@@ -311,9 +311,12 @@ describe('WeeklySchedulePage — editör modu', () => {
   async function openEditor() {
     renderPage()
     await waitFor(() => screen.getByText('Ahmet Kaya'))
-    await userEvent.click(screen.getByRole('button', { name: 'Düzenle' }))
+    await userEvent.click(headerAddButton())
     return screen.getByRole('toolbar', { name: 'Plan editörü' })
   }
+  /** Boş hücreler de "Vardiya ekle" etiketli; editörü açan düğme tablonun dışındaki */
+  const headerAddButton = () =>
+    screen.getAllByRole('button', { name: 'Vardiya ekle' }).find((b) => !b.closest('table'))!
   const emptyCells = () => within(screen.getByRole('table')).getAllByRole('button', { name: 'Vardiya ekle' })
 
   it('seçili taş tıklanan her kutuya diyalog açmadan uygulanır, "Kaydet" topluca yazar', async () => {
@@ -334,7 +337,7 @@ describe('WeeklySchedulePage — editör modu', () => {
 
     await userEvent.click(within(bar).getByRole('button', { name: 'Kaydet' }))
 
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Düzenle' })).toBeInTheDocument())
+    await waitFor(() => expect(headerAddButton()).toBeInTheDocument())
     expect(scheduleRepo.createShiftAssignment).toHaveBeenCalledTimes(3)
     expect(vi.mocked(scheduleRepo.createShiftAssignment).mock.calls.map(([p]) => [p.work_date, p.shift_template_id])).toEqual([
       ['2026-09-28', 'tpl-001'], ['2026-09-29', 'tpl-001'], ['2026-09-30', 'tpl-002'],
