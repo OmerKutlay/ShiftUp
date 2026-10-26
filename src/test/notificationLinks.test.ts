@@ -34,7 +34,7 @@ const ALL_TYPES = {
   attendance_missed_clock_in: true,
   attendance_missed_clock_out: true,
   attendance_break_ending: true,
-  announcement: true,
+  checklist_overdue: true,
   push_test: true,
 } satisfies Record<NotificationType, true>
 

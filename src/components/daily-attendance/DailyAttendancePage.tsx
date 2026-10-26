@@ -26,6 +26,7 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/in
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { ChecklistSummaryStrip } from '@/components/checklists'
 import { AttendanceStatusChip } from './AttendanceStatusChip'
 import { AttendanceTimeline, TimelineAxis, TimelineLegend } from './AttendanceTimeline'
 import { EmployeeAttendanceRow } from './EmployeeAttendanceRow'
@@ -229,6 +230,8 @@ export function DailyAttendancePage() {
           </Button>
         }
       />
+
+      <ChecklistSummaryStrip />
 
       {error && (
         <Alert variant="destructive">
