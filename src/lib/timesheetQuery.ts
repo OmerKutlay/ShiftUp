@@ -64,7 +64,8 @@ export async function fetchStoreReportEmployees<T extends { id: string; active: 
 export async function queryTimesheet(
   admin: SupabaseClient,
   storeId: string,
-  month: string
+  month: string,
+  opts: { includeHireDate?: boolean } = {}
 ): Promise<{ rows: TimesheetRow[]; holidays: PublicHoliday[] }> {
   const { from, to } = timesheetDataRange(month)
 
@@ -102,7 +103,7 @@ export async function queryTimesheet(
   const withData = new Set(shifts.map((s) => s.employee_id))
   type EmpRow = Omit<TimesheetEmployee, 'role_name'> & { active: boolean; roles?: { name: string } | { name: string }[] | null }
   const empRows = await fetchStoreReportEmployees<EmpRow>(
-    admin, storeId, 'id, full_name, employment_type, overtime_consent_at, active, roles ( name )', withData
+    admin, storeId, `id, full_name, employment_type, overtime_consent_at, active${opts.includeHireDate ? ', hire_date' : ''}, roles ( name )`, withData
   )
   const employees: TimesheetEmployee[] = empRows
     .map(({ roles, active: _active, ...rest }) => ({ ...rest, role_name: unwrapJoin(roles)?.name ?? '' }))

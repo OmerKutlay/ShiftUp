@@ -180,6 +180,49 @@ CI (`.github/workflows/ci.yml`) her PR'da typecheck, lint, test ve build çalı�
   (haftalık 45 / yıllık 270 saat) ise çalışanın tüm mağazalardaki vardiyalarını toplar — sınır
   işveren düzeyindedir. Vardiya atamadaki yasal kontroller de çalışanın tüm vardiyalarına bakar.
 
+## Raporlar › Bordro puantajı
+
+Muhasebeye (Logo, Mikro, Netsis, Luca, Zirve…) verilecek aylık özet. Belirli bir yazılıma özel değil,
+tek ve sade bir düzen: muhasebeci sütunları kendi programına eşler ya da elle girer.
+`GET /api/reports/payroll?month=YYYY-MM[&format=xlsx|csv]` — Müdür Yardımcısı+, aktif mağaza,
+kullanıcı başına 10 indirme / 10 dk, her indirme denetim kaydına (`report.payroll.export`) yazılır.
+Format verilmezse JSON (ekran önizlemesi). Hesap `src/lib/payrollTimesheet.ts`; çalışılan saat ve fazla
+mesai mevcut puantaj hesabından (`timesheet.ts`) gelir, yeniden hesaplanmaz.
+
+**Excel** ("Puantaj" + "Açıklamalar" sayfaları) gün kodlarını da içerir; **CSV** (UTF-8 BOM, `;` ayraç,
+ondalık virgül) yalnızca toplamlardır. Sütunlar:
+
+| Sütun | Anlamı |
+|---|---|
+| Sicil No, TC Kimlik No | **Boş gelir** — KVKK gereği saklanmaz; muhasebe doldurur |
+| Ad Soyad | Çalışan |
+| Çalışılan Gün | Giriş-çıkış kaydı olan gün sayısı |
+| Normal Saat | Net çalışma − fazla mesai |
+| Fazla Mesai Saat (%50) | Haftalık (Pzt–Paz) 45 saati aşan net süre, Pazar'ı o ayda olan haftalar |
+| Genel Tatil Çalışılan Gün / Saat | Tam gün resmi tatilde çalışma (GTÇ); saat, normal saatin içindedir |
+| Gece Çalışması Saat | 20:00–06:00 arası |
+| Hafta Tatili / Genel Tatil (Çalışılmadı) / Yıllık İzin / Mazeret İzni | Ücretli günler (prim gününe dahil) |
+| Raporlu Gün / Ücretsiz İzin / Devamsız Gün | Eksik gün nedenleri |
+| Eksik Gün, Eksik Gün Nedeni Kodu | SGK kodu: rapor `01`, devamsızlık `15`, ücretsiz izin `21`; birden fazla neden `12` |
+| SGK Prim Günü | İşte olunan gün (30 esaslı) − eksik gün |
+
+Gün kodları (Excel): `Ç` çalıştı, `HT` hafta tatili, `GT` genel tatil, `GTÇ` genel tatilde çalıştı,
+`Yİ` yıllık izin, `R` rapor, `Üİ` ücretsiz izin, `M` mazeret/diğer izin, `D` devamsız, `P` planlı (henüz olmadı).
+SGK eksik gün nedeni listesi (01–29) "Açıklamalar" sayfasındadır; kaynak:
+<https://www.alomaliye.com/2020/06/22/eksik-gunlerde-kullanilacak-sgk-kodlari/> (SGK Genelgesi 2020/20).
+
+Kurallar ve sınırlar:
+
+- Ay 30 gün kabul edilir; tam çalışılan ayda 28/29/31 günlük de olsa prim günü 30'dur. 31 günlük ayda
+  31. gün eksik gün sayılmaz. Ay içi işe girişte 31 günlük ayda `min(30, 32 − giriş günü)`, diğer
+  aylarda `31 − giriş günü` (işe giriş tarihi çalışan kaydından okunur).
+- Rapor günleri bu raporda eksik gün sayılır (eski "Aylık puantaj" SGK sütunu yalnızca ücretsiz izin ve
+  devamsızlığı düşer).
+- İşten çıkış tarihi tutulmadığından ay içinde ayrılanların eksik günü (kod 16) elle girilmelidir.
+- Fazla mesai bu mağazadaki vardiyalardan hesaplanır (puantaj mağaza bazlıdır); birden fazla mağazada
+  çalışanın işveren düzeyindeki haftalık toplamı için Raporlar › Fazla çalışma'ya bakın.
+- Ay bitmeden alınan çıktı geçicidir; gelecek günler eksik sayılmaz.
+
 ## İş Kanunu kuralları
 
 `src/lib/laborLaw.ts` — günlük 11 saat net (Md. 63), haftalık 45 saat ve fazla çalışma (Md. 41),

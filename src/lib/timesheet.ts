@@ -40,6 +40,8 @@ export interface TimesheetEmployee {
   role_name: string
   employment_type: 'full_time' | 'part_time'
   overtime_consent_at?: string | null
+  /** İşe giriş tarihi — yalnızca bordro puantajı için (queryTimesheet includeHireDate) */
+  hire_date?: string | null
 }
 
 export interface TimesheetShift {

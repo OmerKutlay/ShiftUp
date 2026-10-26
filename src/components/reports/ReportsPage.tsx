@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { AttendanceReportsPage } from './AttendanceReportsPage'
 import { TimesheetPanel } from './TimesheetPanel'
 import { OvertimePanel } from './OvertimePanel'
+import { PayrollPanel } from './PayrollPanel'
 
 export function ReportsPage() {
   return (
@@ -19,10 +20,12 @@ export function ReportsPage() {
           <TabsTrigger value="attendance">Devam raporu</TabsTrigger>
           <TabsTrigger value="timesheet">Aylık puantaj</TabsTrigger>
           <TabsTrigger value="overtime">Fazla çalışma</TabsTrigger>
+          <TabsTrigger value="payroll">Bordro puantajı</TabsTrigger>
         </TabsList>
         <TabsContent value="attendance"><AttendanceReportsPage embedded /></TabsContent>
         <TabsContent value="timesheet"><TimesheetPanel /></TabsContent>
         <TabsContent value="overtime"><OvertimePanel /></TabsContent>
+        <TabsContent value="payroll"><PayrollPanel /></TabsContent>
       </Tabs>
     </Page>
   )
