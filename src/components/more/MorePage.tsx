@@ -5,7 +5,7 @@
  * sayfalar (gruplu ItemGroup), tema seçimi ve çıkış. Liste navItems'tan gelir; rol filtresi yan menüyle aynıdır.
  */
 import Link from 'next/link'
-import { ChevronRight, LogIn, LogOut } from 'lucide-react'
+import { ChevronRight, LogIn, LogOut, ShieldCheck } from 'lucide-react'
 
 import { useAuth } from '@/context/AuthContext'
 import { getMoreItems, groupNavItems } from '@/components/layout/navItems'
@@ -74,6 +74,24 @@ export function MorePage() {
           </ItemGroup>
         </section>
       ))}
+
+      <ItemGroup className="overflow-hidden rounded-xl border bg-card shadow-xs">
+        <div role="listitem">
+          <Item asChild size="sm" className="min-h-14 rounded-none">
+            <Link href="/gizlilik" prefetch={false} className="select-none">
+              <ItemMedia variant="icon" className="size-9 rounded-md bg-background text-muted-foreground">
+                <ShieldCheck />
+              </ItemMedia>
+              <ItemContent>
+                <ItemTitle>Aydınlatma metni (KVKK)</ItemTitle>
+              </ItemContent>
+              <ItemActions>
+                <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
+              </ItemActions>
+            </Link>
+          </Item>
+        </div>
+      </ItemGroup>
 
       <section aria-labelledby="more-theme" className="flex flex-col gap-2">
         <h2 id="more-theme" className="px-1 text-sm font-medium text-muted-foreground">

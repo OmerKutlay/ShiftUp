@@ -75,7 +75,7 @@ interface AuthContextValue {
 }
 
 /** Oturumsuz açılabilen sayfalar — oturum düştüğünde buralardan /login'e yönlendirilmez */
-const PUBLIC_PAGES = ['/login', '/offline']
+const PUBLIC_PAGES = ['/login', '/offline', '/gizlilik']
 
 /** /api/auth/me ağ hatası / 5xx'te (ör. Cloudflare soğuk başlangıç 503) ek deneme bekleme süreleri (ms) */
 const ME_RETRY_DELAYS = [500, 1500]

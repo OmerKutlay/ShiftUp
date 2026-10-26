@@ -13,7 +13,7 @@
  *    ilgili roller girebilir (diğerleri /my-schedule'a yönlendirilir).
  *    API route'ları kendi yetki kontrolünü yapar (requireAuth / requireMinRole).
  *
- * Public path'ler: /login, /api/auth/*, cron, static dosyalar
+ * Public path'ler: /login, /gizlilik (KVKK aydınlatma metni), /api/auth/*, cron, static dosyalar
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { DEV_SESSION_COOKIE, IS_DEV_AUTH } from '@/lib/authConfig'
@@ -22,7 +22,7 @@ import { isSessionExpired } from '@/lib/auth/sessionAge'
 import { isKioskRole, roleAtLeast, accessLevelOf, ACCESS, type AccessLevel } from '@/lib/auth/roles'
 import { startTrace } from '@/lib/requestTrace'
 
-const PUBLIC_PATHS = ['/login', '/offline']
+const PUBLIC_PATHS = ['/login', '/offline', '/gizlilik']
 const PUBLIC_API_PREFIX = '/api/auth/'
 // Cron çağrısı oturumsuz gelir; route kendi içinde CRON_SECRET / rol kontrolü yapar
 const CRON_API_PATHS = ['/api/attendance/alerts/scan']

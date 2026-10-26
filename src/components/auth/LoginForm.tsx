@@ -17,6 +17,7 @@
  *   → Supabase Auth server'da çalışır, client'ta asla
  */
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
 import { Bug, CircleAlert, Mail, MailCheck } from 'lucide-react'
@@ -418,6 +419,11 @@ export function LoginForm({ authMode }: Props) {
 
         <p className="px-6 text-center text-xs text-muted-foreground">
           Giriş sorunu yaşıyorsanız mağaza yöneticinize başvurun.
+        </p>
+        <p className="px-6 text-center text-xs">
+          <Link href="/gizlilik" prefetch={false} className="text-muted-foreground underline underline-offset-4 hover:text-foreground">
+            Kişisel verilerin işlenmesi — aydınlatma metni
+          </Link>
         </p>
       </div>
     </div>

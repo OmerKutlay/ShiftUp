@@ -37,6 +37,7 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
+import { LocationNotice } from '@/components/kvkk/LocationNotice'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { cn } from '@/lib/utils'
 
@@ -423,10 +424,7 @@ export function AttendanceScanPage() {
                 )
               })}
 
-              <p className="flex items-center justify-center gap-1.5 pt-1 text-xs text-muted-foreground">
-                <MapPin className="size-3.5" aria-hidden />
-                QR okutulduktan sonra konumunuz doğrulanır
-              </p>
+              <LocationNotice />
             </section>
           )}
         </>
@@ -459,10 +457,7 @@ export function AttendanceScanPage() {
               </Alert>
             )}
 
-            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <MapPin className="size-3.5" aria-hidden />
-              QR tarandıktan sonra konum doğrulaması yapılır
-            </p>
+            <LocationNotice />
             <Button variant="outline" onClick={handleBackToSelect} className="w-full">
               Amacı değiştir
             </Button>
