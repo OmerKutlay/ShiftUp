@@ -15,7 +15,7 @@ vi.mock('@/lib/attendanceAlerts', async (orig) => ({
 }))
 
 const SHIFT: ShiftRow = {
-  id: 'shift-001', employee_id: 'emp-001', work_date: '2026-09-28', start_time: '09:00', end_time: '18:00', is_on_leave: false,
+  id: 'shift-001', employee_id: 'emp-001', store_id: 'store-A', work_date: '2026-09-28', start_time: '09:00', end_time: '18:00', is_on_leave: false,
 }
 
 function makeRecord(overrides: Partial<AttendanceRecord> = {}): AttendanceRecord {

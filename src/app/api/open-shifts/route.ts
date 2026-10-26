@@ -3,8 +3,10 @@
  * POST  /api/open-shifts   — yönetimsel: open shift oluştur
  * PATCH /api/open-shifts   — yönetimsel: open shift güncelle / iptal et / yeniden aç
  *
+ * Hepsi aktif mağaza kapsamındadır (open_shifts.store_id); bildirim hedefleri de yalnızca o mağazanın çalışanlarıdır.
+ *
  * GET:   requireAuth (tüm authenticated kullanıcılar görebilir)
- * POST:  requireMinRole(Müdür Yardımcısı) → aktif 'Çalışan' rolündekilere toplu bildirim
+ * POST:  requireMinRole(Müdür Yardımcısı) → mağazanın aktif 'Çalışan' rolündekilerine toplu bildirim
  * PATCH: requireMinRole(Müdür Yardımcısı) — yalnızca open ↔ cancelled geçişi;
  *        doldurulmuş (filled) vardiya değiştirilemez.
  */
@@ -39,6 +41,7 @@ export async function GET(req: NextRequest) {
     let query = admin
       .from('open_shifts')
       .select(`*, filled_by_employee:employees!filled_by(id, full_name)`)
+      .eq('store_id', auth.employee.store_id)
       .order('work_date')
       .order('start_time')
 
@@ -82,6 +85,7 @@ export async function POST(req: NextRequest) {
     const { data, error } = await admin
       .from('open_shifts')
       .insert({
+        store_id: auth.employee.store_id,
         work_date: body.work_date,
         start_time: body.start_time.slice(0, 5),
         end_time: body.end_time.slice(0, 5),
@@ -104,6 +108,7 @@ export async function POST(req: NextRequest) {
       const { data: employees } = await admin
         .from('employees')
         .select('id, roles(name, access_level)')
+        .eq('store_id', auth.employee.store_id)
         .eq('active', true)
 
       const targets = (employees ?? []).filter((emp) => {
@@ -151,6 +156,7 @@ export async function PATCH(req: NextRequest) {
       .from('open_shifts')
       .select('id, status')
       .eq('id', body.id)
+      .eq('store_id', auth.employee.store_id)
       .maybeSingle()
     if (curErr) return serverError('PATCH /api/open-shifts', curErr)
     if (!current) return notFound('Açık vardiya bulunamadı.')
@@ -166,6 +172,7 @@ export async function PATCH(req: NextRequest) {
       .from('open_shifts')
       .update(patch)
       .eq('id', body.id)
+      .eq('store_id', auth.employee.store_id)
       .eq('status', current.status)
       .select()
       .maybeSingle()

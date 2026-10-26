@@ -4,6 +4,7 @@
  * Hata durumunda sunucunun { error, code } gövdesini taşıyan ApiError fırlatır;
  * bileşenler err.message'ı doğrudan kullanıcıya gösterebilir.
  */
+import { STORE_CHANGED_CODE, STORE_CHANGED_EVENT, STORE_HEADER } from '@/lib/storeHeader'
 
 export class ApiError extends Error {
   constructor(
@@ -33,22 +34,36 @@ function isPlatformLimitError(res: Response): boolean {
 /** Bir API isteği 401 döndüğünde window'a yayılan olay; AuthProvider oturumu yeniden doğrular */
 export const UNAUTHORIZED_EVENT = 'shiftup:unauthorized'
 
+/** Sekmenin gösterdiği aktif mağaza — yazma isteklerine eklenir (bkz. @/lib/storeHeader) */
+let requestStoreId: string | null = null
+
+/** AuthProvider oturumdaki aktif mağazayı bildirir */
+export function setRequestStoreId(storeId: string | null) {
+  requestStoreId = storeId
+}
+
 export async function apiFetch<T>(
   url: string,
   init: Omit<RequestInit, 'body'> & { body?: unknown } = {}
 ): Promise<T> {
   const { body, headers, ...rest } = init
+  // Yalnızca okuma istekleri tekrarlanır: yarıda kesilen bir yazma tekrar uygulanmamalı
+  const method = (rest.method ?? 'GET').toUpperCase()
+  const retryable = method === 'GET' || method === 'HEAD'
+  const extra: Record<string, string> = {}
+  if (body !== undefined) extra['Content-Type'] = 'application/json'
+  // Yazma isteği sekmenin mağazasını taşır; sunucu farklı mağazadaysa uygulamaz (409)
+  if (!retryable && requestStoreId) extra[STORE_HEADER] = requestStoreId
+
   const doFetch = () =>
     fetch(url, {
       credentials: 'same-origin',
       ...rest,
-      headers: body !== undefined ? { 'Content-Type': 'application/json', ...headers } : headers,
+      headers: Object.keys(extra).length > 0
+        ? { ...extra, ...(headers as Record<string, string> | undefined) }
+        : headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
     })
-
-  // Yalnızca okuma istekleri tekrarlanır: yarıda kesilen bir yazma tekrar uygulanmamalı
-  const method = (rest.method ?? 'GET').toUpperCase()
-  const retryable = method === 'GET' || method === 'HEAD'
 
   let res = await doFetch()
   for (const delay of LIMIT_RETRY_DELAYS) {
@@ -67,6 +82,9 @@ export async function apiFetch<T>(
   }
 
   const json = (await res.json().catch(() => ({}))) as Record<string, unknown>
+  if (res.status === 409 && json.code === STORE_CHANGED_CODE && typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(STORE_CHANGED_EVENT))
+  }
   if (!res.ok) {
     throw new ApiError(
       typeof json.error === 'string' ? json.error : 'İstek başarısız oldu.',

@@ -36,6 +36,7 @@ function makeTokenRecord(overrides: Partial<QrToken> = {}): QrToken {
     token: 'a'.repeat(64),
     action_type: 'clock_in',
     employee_id: 'emp-001',
+    store_id: 'store-A',
     expires_at: expires.toISOString(),
     used_at: null,
     created_at: now.toISOString(),
@@ -93,6 +94,19 @@ describe('qrTokenService — generateQrToken', () => {
     const parsed = JSON.parse(result.qr_data) as { token: string; action: string }
     expect(parsed.token).toBe(record.token)
     expect(parsed.action).toBe('clock_in')
+  })
+
+  it('token mağaza kimliğiyle kaydedilir', async () => {
+    const insert = vi.fn().mockReturnThis()
+    mockAdminFrom([{
+      insert,
+      select: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValue({ data: makeTokenRecord(), error: null }),
+    }])
+
+    await generateQrToken('emp-001', 'clock_in', 60, 'store-A')
+
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({ employee_id: 'emp-001', store_id: 'store-A' }))
   })
 
   it('DB hatası QrTokenError fırlatır', async () => {

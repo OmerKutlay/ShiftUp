@@ -17,6 +17,8 @@ import { toast } from 'sonner'
 
 import type { CreateEmployeePayload, EmployeeWithRole, EmploymentType, UpdateEmployeePayload } from '@/types/employee'
 import { createEmployee, fetchEmployees, fetchRoles, updateEmployee } from '@/lib/api/employees'
+import { STORES_KEY, fetchStores } from '@/lib/api/stores'
+import { useAuth } from '@/context/AuthContext'
 import { ACCESS_LABELS, isKioskRole } from '@/lib/auth/roles'
 import { cn } from '@/lib/utils'
 import { ROLE_GROUPS, compareRoles, roleGroupOf, type RoleGroupKey } from '@/components/schedule/scheduleHelpers'
@@ -99,6 +101,10 @@ function RowActions({ employee, onEdit, onDelete }: {
 export function EmployeesPage() {
   const employeesQ = useSWR('employees:all', fetchEmployees)
   const rolesQ = useSWR('roles', fetchRoles)
+  // Yalnızca Admin: çalışanın mağazasını seçer / başka mağazaya taşır
+  const { store: storeCtx } = useAuth()
+  const canPickStore = !!storeCtx?.can_switch
+  const storesQ = useSWR(canPickStore ? STORES_KEY : null, fetchStores)
   const employees = useMemo(() => employeesQ.data ?? [], [employeesQ.data])
   const roles = rolesQ.data ?? []
   const isFirstLoad = !employeesQ.data && !employeesQ.error
@@ -139,7 +145,13 @@ export function EmployeesPage() {
         await createEmployee(payload as CreateEmployeePayload)
       }
       setDialogOpen(false)
-      toast.success(editTarget ? 'Değişiklikler kaydedildi' : `${payload.full_name ?? 'Çalışan'} eklendi`)
+      // Transfer sonrası çalışan bu mağazanın listesinden çıkar (load() ile yenilenir)
+      const transferred = !!editTarget && !!payload.store_id && payload.store_id !== editTarget.store_id
+      toast.success(
+        transferred
+          ? `${editTarget.full_name} taşındı`
+          : editTarget ? 'Değişiklikler kaydedildi' : `${payload.full_name ?? 'Çalışan'} eklendi`
+      )
       await load()
     } finally {
       setSaving(false)
@@ -444,6 +456,8 @@ export function EmployeesPage() {
         employee={editTarget}
         roles={roles}
         loading={saving}
+        stores={canPickStore ? storesQ.data?.stores : undefined}
+        defaultStoreId={storeCtx?.active.id}
       />
 
       <EmployeeDeleteDialog

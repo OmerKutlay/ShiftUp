@@ -24,6 +24,7 @@ export interface QrToken {
   token: string
   action_type: QrActionType | null  // kiosk token: null
   employee_id: string | null        // kiosk token: null
+  store_id: string | null           // kiosk token: mağaza (zorunlu); klasik token: üretildiği mağaza
   expires_at: string
   used_at: string | null
   created_at: string

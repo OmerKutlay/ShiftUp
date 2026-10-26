@@ -483,8 +483,9 @@ BEGIN
     ) AS s(off, ti, ostatus, role_needed, descr)
   LOOP
     t := LEAST(spec.ti, n_tpl);
-    INSERT INTO open_shifts (work_date, start_time, end_time, role_needed, description, status, created_at, updated_at)
-    VALUES (v_today + spec.off, tpl_s[t], tpl_e[t], spec.role_needed, spec.descr, spec.ostatus::open_shift_status,
+    -- Çoklu mağaza: dummy veri ana mağazaya yazılır
+    INSERT INTO open_shifts (store_id, work_date, start_time, end_time, role_needed, description, status, created_at, updated_at)
+    VALUES ('00000000-0000-0000-0003-000000000001', v_today + spec.off, tpl_s[t], tpl_e[t], spec.role_needed, spec.descr, spec.ostatus::open_shift_status,
             LEAST(pg_temp.tr_ts(v_today + spec.off - 6, '15:00'), v_now - INTERVAL '3 hours'),
             LEAST(pg_temp.tr_ts(v_today + spec.off - 2, '15:00'), v_now - INTERVAL '1 hour'))
     RETURNING id INTO v_id;
@@ -505,8 +506,8 @@ BEGIN
     WHERE sa.work_date BETWEEN v_today - 40 AND v_today + 10 AND EXTRACT(ISODOW FROM sa.work_date) IN (5, 6, 7)
     ORDER BY md5(sa.id::text) LIMIT 6
   LOOP
-    INSERT INTO open_shifts (work_date, start_time, end_time, role_needed, description, status, filled_by, filled_assignment_id, created_at, updated_at)
-    VALUES (rec.work_date, rec.start_time, rec.end_time, 'Çalışan',
+    INSERT INTO open_shifts (store_id, work_date, start_time, end_time, role_needed, description, status, filled_by, filled_assignment_id, created_at, updated_at)
+    VALUES ((SELECT store_id FROM shift_assignments WHERE id = rec.id), rec.work_date, rec.start_time, rec.end_time, 'Çalışan',
             (ARRAY['Hafta sonu ek kasa ihtiyacı.', 'Hastalık nedeniyle boşalan vardiya.', 'İndirim günü yoğunluğu.'])[pg_temp.rnd(1, 3)],
             'filled', rec.employee_id, rec.id,
             LEAST(pg_temp.tr_ts(rec.work_date - 5, '14:00'), v_now - INTERVAL '3 hours'),

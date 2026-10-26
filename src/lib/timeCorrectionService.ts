@@ -26,6 +26,8 @@ import type { EmploymentType } from '@/types/employee'
 export interface ApplyParams {
   admin: SupabaseClient
   employeeId: string
+  /** Çalışanın mağazası — gerekirse oluşturulan vardiya bu mağazaya yazılır */
+  storeId: string
   date: string         // 'YYYY-MM-DD'
   startTime: string    // 'HH:MM'
   endTime: string      // 'HH:MM' (startTime'dan küçükse ertesi gün)
@@ -67,7 +69,20 @@ function overlapMins(aS: string, aE: string, bS: string, bE: string): number {
   return Math.max(0, Math.min(e1, e2) - Math.max(s1, s2))
 }
 
-interface ShiftRow { id: string; work_date: string; start_time: string; end_time: string }
+interface ShiftRow { id: string; work_date: string; start_time: string; end_time: string; store_id?: string }
+
+/**
+ * Çalışanın o gün başka bir mağazada vardiyası var (ör. mağaza değiştirmeden önceki bir gün).
+ * Düzeltme o vardiyanın devam kaydını değiştireceği için reddedilir; çalışan günde tek vardiya
+ * alabildiğinden (uq_shift_employee_day) bu mağazada yeni vardiya da açılamaz.
+ */
+export class CrossStoreShiftError extends Error {
+  readonly code = 'SHIFT_IN_OTHER_STORE'
+  constructor() {
+    super('Çalışanın bu tarihte başka bir mağazada vardiyası var; düzeltme o mağazada yapılmalıdır.')
+    this.name = 'CrossStoreShiftError'
+  }
+}
 
 /** O günün vardiyalarından düzeltmeyle en çok örtüşeni (yoksa ilkini) seçer */
 function pickShift(shifts: ShiftRow[], startTime: string, endTime: string): ShiftRow | null {
@@ -86,8 +101,8 @@ function pickShift(shifts: ShiftRow[], startTime: string, endTime: string): Shif
  */
 export async function checkCorrectionViolations(
   params: ApplyParams
-): Promise<{ errors: WorkingTimeViolation[]; warnings: WorkingTimeViolation[] }> {
-  const { admin, employeeId, date, startTime, endTime } = params
+): Promise<{ errors: WorkingTimeViolation[]; warnings: WorkingTimeViolation[]; otherStoreShift: boolean }> {
+  const { admin, employeeId, storeId, date, startTime, endTime } = params
   const weekDays = getWeekDays(new Date(`${date}T12:00:00`))
   const weekStart = weekDays[0]
   const weekEnd = weekDays[6]
@@ -95,7 +110,7 @@ export async function checkCorrectionViolations(
   const [{ data: shifts, error }, { data: emp }] = await Promise.all([
     admin
       .from('shift_assignments')
-      .select('id, work_date, start_time, end_time')
+      .select('id, work_date, start_time, end_time, store_id')
       .eq('employee_id', employeeId)
       .gte('work_date', addDaysToDateString(weekStart, -1))
       .lte('work_date', addDaysToDateString(weekEnd, 1)),
@@ -103,8 +118,12 @@ export async function checkCorrectionViolations(
   ])
   if (error) throw error
 
+  // Yasal süre kuralları çalışanın tüm mağazalardaki vardiyalarına bakar; düzeltilecek vardiya
+  // ise yalnızca bu mağazanınkidir
   const all = (shifts ?? []) as ShiftRow[]
-  const target = pickShift(all.filter((s) => s.work_date === date), startTime, endTime)
+  const dayShifts = all.filter((s) => s.work_date === date)
+  const otherStoreShift = dayShifts.some((s) => s.store_id !== undefined && s.store_id !== storeId)
+  const target = pickShift(dayShifts.filter((s) => s.store_id === undefined || s.store_id === storeId), startTime, endTime)
 
   const result = validateShiftAssignment({
     newDate: date,
@@ -117,32 +136,35 @@ export async function checkCorrectionViolations(
     config: getWorkingTimeConfig(),
     employment_type: ((emp?.employment_type ?? 'full_time') as EmploymentType),
   })
-  return { errors: result.errors, warnings: result.warnings }
+  return { errors: result.errors, warnings: result.warnings, otherStoreShift }
 }
 
 /**
  * Düzeltmeyi uygular. DB hatasında fırlatır (çağıran route isteği geri alır).
  */
 export async function applyTimeCorrection(params: ApplyParams): Promise<ApplyResult> {
-  const { admin, employeeId, date, startTime, endTime } = params
+  const { admin, employeeId, storeId, date, startTime, endTime } = params
   const start = startTime.slice(0, 5)
   const end = endTime.slice(0, 5)
 
   // ── 1. Vardiya (plan) — korunur; yoksa oluşturulur ─────────
   const { data: dayShifts, error: shErr } = await admin
     .from('shift_assignments')
-    .select('id, work_date, start_time, end_time')
+    .select('id, work_date, start_time, end_time, store_id')
     .eq('employee_id', employeeId)
     .eq('work_date', date)
   if (shErr) throw shErr
 
-  let shift = pickShift((dayShifts ?? []) as ShiftRow[], start, end)
+  const rows = (dayShifts ?? []) as ShiftRow[]
+  if (rows.some((s) => s.store_id !== undefined && s.store_id !== storeId)) throw new CrossStoreShiftError()
+  let shift = pickShift(rows, start, end)
   let createdShift = false
   if (!shift) {
     const { data: created, error: insErr } = await admin
       .from('shift_assignments')
       .insert({
         employee_id: employeeId,
+        store_id: storeId,
         shift_template_id: null,
         work_date: date,
         start_time: start,

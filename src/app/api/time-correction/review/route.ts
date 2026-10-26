@@ -13,10 +13,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { requireMinRole, ACCESS, forbidden } from '@/lib/auth'
 import { createNotification } from '@/lib/notificationRepository'
-import { applyTimeCorrection, checkCorrectionViolations } from '@/lib/timeCorrectionService'
+import { applyTimeCorrection, checkCorrectionViolations, CrossStoreShiftError } from '@/lib/timeCorrectionService'
 import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/apiErrors'
 import { isUuid } from '@/lib/validation'
 import { logAudit } from '@/lib/auditLog'
+import { employeeStoreId } from '@/lib/storeScope'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 
@@ -51,6 +52,10 @@ export async function POST(req: NextRequest) {
     if (reqErr) return serverError('POST /api/time-correction/review', reqErr)
     if (!request) return notFound('Talep bulunamadı.')
 
+    // Başka mağazanın talebi görünmez (404)
+    const storeId = await employeeStoreId(request.employee_id)
+    if (!storeId || storeId !== reviewer.store_id) return notFound('Talep bulunamadı.')
+
     if (request.employee_id === reviewer.id) {
       return forbidden('Kendi mesai düzeltme talebinizi inceleyemezsiniz.')
     }
@@ -65,8 +70,9 @@ export async function POST(req: NextRequest) {
     let violationMessages: string[] = []
     if (body.status === 'approved') {
       const v = await checkCorrectionViolations({
-        admin, employeeId: request.employee_id, date: request.date, startTime: start, endTime: end,
+        admin, employeeId: request.employee_id, storeId, date: request.date, startTime: start, endTime: end,
       })
+      if (v.otherStoreShift) return conflict(new CrossStoreShiftError().message, 'SHIFT_IN_OTHER_STORE')
       violationMessages = v.errors.map((x) => x.message)
       if (violationMessages.length > 0 && body.acknowledge_violations !== true) {
         return NextResponse.json(
@@ -103,12 +109,14 @@ export async function POST(req: NextRequest) {
         const applied = await applyTimeCorrection({
           admin,
           employeeId: request.employee_id,
+          storeId,
           date: request.date,
           startTime: start,
           endTime: end,
         })
         await logAudit({
           actorId: reviewer.id,
+          storeId,
           action: 'time_correction.approved',
           entityType: 'attendance_record',
           entityId: applied.attendanceRecordId,
@@ -125,6 +133,7 @@ export async function POST(req: NextRequest) {
     } else {
       await logAudit({
         actorId: reviewer.id,
+        storeId,
         action: 'time_correction.rejected',
         entityType: 'time_correction_request',
         entityId: request.id,

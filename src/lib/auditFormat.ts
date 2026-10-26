@@ -51,6 +51,9 @@ const ACTION_LABELS: Record<string, string> = {
   'employee.update': 'Çalışan bilgileri güncellendi',
   'employee.delete': 'Çalışan silindi',
   'workforce.apply': 'Haftalık plan yayınlandı',
+  'store.create': 'Mağaza oluşturuldu',
+  'store.update': 'Mağaza güncellendi',
+  'employee.transfer': 'Çalışan mağaza değiştirdi',
   'store_location.create': 'Mağaza konumu eklendi',
   'store_location.update': 'Mağaza konumu güncellendi',
   'holiday.upsert': 'Resmi tatil kaydedildi',
@@ -67,6 +70,7 @@ const GROUP_LABELS: Record<string, string> = {
   shift: 'Vardiya işlemi',
   employee: 'Çalışan işlemi',
   workforce: 'Planlama işlemi',
+  store: 'Mağaza işlemi',
   store_location: 'Mağaza konumu işlemi',
   holiday: 'Resmi tatil işlemi',
   report: 'Rapor işlemi',
@@ -247,6 +251,7 @@ export function auditSummary(log: AuditLogLike): string | null {
         parts.push(m.charAt(0).toLocaleUpperCase('tr-TR') + m.slice(1))
       }
       break
+    case 'store':
     case 'store_location':
       parts.push(typeof a.name === 'string' ? a.name : null)
       break

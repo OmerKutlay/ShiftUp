@@ -9,6 +9,9 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
+    // Route testleri modülü her testte yeniden yükler (vi.resetModules); paralel koşuda ilk yükleme
+    // birkaç saniye sürebilir — varsayılan 5 sn aralıklı zaman aşımı veriyordu
+    testTimeout: 15_000,
     // e2e/: Playwright testleri (npm run test:e2e)
     exclude: [...configDefaults.exclude, 'e2e/**', 'scripts/ui-studio/**', 'playwright-report/**', 'test-results/**'],
     coverage: {

@@ -16,6 +16,17 @@ vi.mock('@/lib/api/employees', () => ({
   activateEmployee: vi.fn(),
 }))
 
+vi.mock('@/lib/api/stores', () => ({
+  STORES_KEY: '/api/stores',
+  fetchStores: vi.fn(),
+}))
+
+// Admin (can_switch) mağaza alanını görür; diğerleri görmez
+let mockStoreCtx: { active: { id: string; name: string }; home_store_id: string; can_switch: boolean } | null = null
+vi.mock('@/context/AuthContext', () => ({
+  useAuth: () => ({ store: mockStoreCtx }),
+}))
+
 // jsdom'da yok; Radix RadioGroup / Switch (useSize) kullanıyor
 globalThis.ResizeObserver ??= class {
   observe() {}
@@ -31,6 +42,7 @@ vi.mock('next/navigation', () => ({
 
 import { EmployeesPage } from '@/components/employees/EmployeesPage'
 import * as repo from '@/lib/api/employees'
+import * as storesApi from '@/lib/api/stores'
 
 // ============================================================
 // Helpers
@@ -55,6 +67,7 @@ function makeEmployee(overrides: Partial<EmployeeWithRole> = {}): EmployeeWithRo
     email: null,
     role_id: 'role-001',
     active: true,
+    store_id: 'store-a',
     employment_type: 'full_time',
     auth_user_id: null,
     created_at: '2026-09-28T00:00:00Z',
@@ -193,5 +206,91 @@ describe('EmployeesPage — pasif çalışan', () => {
       const passiveChips = screen.getAllByText(/^Pasif$/)
       expect(passiveChips.length).toBeGreaterThanOrEqual(1)
     })
+  })
+})
+
+describe('EmployeesPage — mağaza (çoklu mağaza)', () => {
+  const stores = [
+    { id: 'store-a', name: 'Kadıköy', active: true, created_at: '', updated_at: '', employee_count: 3 },
+    { id: 'store-b', name: 'Beşiktaş', active: true, created_at: '', updated_at: '', employee_count: 2 },
+    { id: 'store-c', name: 'Kapalı Şube', active: false, created_at: '', updated_at: '', employee_count: 0 },
+  ]
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockStoreCtx = null
+    vi.mocked(storesApi.fetchStores).mockResolvedValue({ stores, active_store_id: 'store-a' })
+    vi.mocked(repo.fetchRoles).mockResolvedValue([makeRole()])
+  })
+
+  const asAdmin = () => {
+    mockStoreCtx = { active: { id: 'store-a', name: 'Kadıköy' }, home_store_id: 'store-a', can_switch: true }
+  }
+
+  it('Admin olmayanda Mağaza alanı yok', async () => {
+    vi.mocked(repo.fetchEmployees).mockResolvedValue([])
+    renderPage()
+    await userEvent.click(await screen.findByRole('button', { name: /yeni çalışan/i }))
+    await screen.findByRole('heading', { name: 'Çalışan ekle' })
+    expect(screen.queryByRole('combobox', { name: /mağaza/i })).not.toBeInTheDocument()
+    expect(storesApi.fetchStores).not.toHaveBeenCalled()
+  })
+
+  it('Admin yeni çalışanı aktif mağaza varsayılanıyla ekler', async () => {
+    asAdmin()
+    vi.mocked(repo.fetchEmployees).mockResolvedValue([])
+    vi.mocked(repo.createEmployee).mockResolvedValue(makeEmployee({ id: 'emp-new' }))
+    renderPage()
+    await userEvent.click(await screen.findByRole('button', { name: /yeni çalışan/i }))
+
+    const storeSelect = await screen.findByRole('combobox', { name: /mağaza/i })
+    expect(storeSelect).toHaveTextContent('Kadıköy')
+
+    await userEvent.type(screen.getByRole('textbox', { name: /ad soyad/i }), 'Yeni Kişi')
+    await userEvent.click(screen.getByRole('combobox', { name: /sistem rolü/i }))
+    await userEvent.click(await screen.findByRole('option', { name: /kasiyer/i }))
+    await userEvent.click(screen.getByRole('button', { name: /^ekle$/i }))
+
+    await waitFor(() =>
+      expect(repo.createEmployee).toHaveBeenCalledWith(expect.objectContaining({ store_id: 'store-a' }))
+    )
+  })
+
+  it('Admin mağaza değiştirince onay sonrası transfer eder; pasif mağaza listelenmez', async () => {
+    asAdmin()
+    vi.mocked(repo.fetchEmployees).mockResolvedValue([makeEmployee()])
+    vi.mocked(repo.updateEmployee).mockResolvedValue(makeEmployee({ store_id: 'store-b' }))
+    renderPage()
+    await screen.findByText('Ahmet Kaya')
+    await userEvent.click(screen.getByRole('button', { name: /ahmet kaya işlemleri/i }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: /düzenle/i }))
+
+    await userEvent.click(await screen.findByRole('combobox', { name: /mağaza/i }))
+    expect(screen.queryByRole('option', { name: /kapalı şube/i })).not.toBeInTheDocument()
+    await userEvent.click(await screen.findByRole('option', { name: 'Beşiktaş' }))
+    await userEvent.click(screen.getByRole('button', { name: /^kaydet$/i }))
+
+    // Onay istenir; onaylanmadan kayıt yapılmaz
+    expect(await screen.findByText(/Beşiktaş mağazasına taşınacak/)).toBeInTheDocument()
+    expect(repo.updateEmployee).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('button', { name: /taşı ve kaydet/i }))
+
+    await waitFor(() =>
+      expect(repo.updateEmployee).toHaveBeenCalledWith('emp-001', expect.objectContaining({ store_id: 'store-b' }))
+    )
+  })
+
+  it('Mağaza değişmediyse transfer onayı istenmez ve store_id gönderilmez', async () => {
+    asAdmin()
+    vi.mocked(repo.fetchEmployees).mockResolvedValue([makeEmployee()])
+    vi.mocked(repo.updateEmployee).mockResolvedValue(makeEmployee())
+    renderPage()
+    await screen.findByText('Ahmet Kaya')
+    await userEvent.click(screen.getByRole('button', { name: /ahmet kaya işlemleri/i }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: /düzenle/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /^kaydet$/i }))
+
+    await waitFor(() => expect(repo.updateEmployee).toHaveBeenCalled())
+    expect(vi.mocked(repo.updateEmployee).mock.calls[0][1]).not.toHaveProperty('store_id')
   })
 })

@@ -28,11 +28,13 @@ function generateSecureToken(): string {
 
 /**
  * Klasik QR token üretir (employee bazlı, geriye dönük uyumluluk).
+ * storeId: çalışanın mağazası (kayıt/denetim için token'a yazılır).
  */
 export async function generateQrToken(
   employeeId: string,
   actionType: QrActionType,
-  ttlSeconds: number = DEFAULT_TTL_SECONDS
+  ttlSeconds: number = DEFAULT_TTL_SECONDS,
+  storeId: string | null = null
 ): Promise<GenerateQrResponse> {
   const admin = createAdminClient()
   const token = generateSecureToken()
@@ -40,7 +42,7 @@ export async function generateQrToken(
 
   const { data, error } = await admin
     .from('qr_tokens')
-    .insert({ token, action_type: actionType, employee_id: employeeId, expires_at: expiresAt })
+    .insert({ token, action_type: actionType, employee_id: employeeId, store_id: storeId, expires_at: expiresAt })
     .select()
     .single()
 

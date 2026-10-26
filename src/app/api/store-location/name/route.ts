@@ -1,6 +1,7 @@
 /**
  * GET /api/store-location/name — aktif mağazanın yalnızca adı (yan menü başlığı).
- * Giriş yapmış her çalışana açık; konum / yarıçap bilgisi dönmez.
+ * Ad `stores` tablosundan gelir (konumun etiketinden değil). Giriş yapmış her çalışana
+ * (kiosk dahil) açık; konum / yarıçap bilgisi dönmez.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
@@ -13,10 +14,9 @@ export async function GET(req: NextRequest) {
 
   try {
     const { data, error } = await createAdminClient()
-      .from('store_locations')
+      .from('stores')
       .select('name')
-      .eq('active', true)
-      .limit(1)
+      .eq('id', auth.employee.store_id)
       .maybeSingle()
     if (error) return serverError('GET /api/store-location/name', error)
     return NextResponse.json({ name: data?.name ?? null })

@@ -2,6 +2,8 @@
  * POST /api/workforce/apply
  *
  * Onaylanmış taslak planı Weekly Schedule'a (shift_assignments) yazar.
+ * Yalnızca AKTİF MAĞAZANIN planı etkilenir: silme/ekleme store_id ile sınırlıdır, taslaktaki
+ * çalışanlar ve şablonlar bu mağazadan olmalıdır (aksi halde 400), diğer mağazaların haftası dokunulmaz.
  * Haftanın mevcut planı YENİ PLANLA DEĞİŞTİRİLİR (üst üste yazılmaz):
  *   - Giriş/çıkış kaydı olan ve bugünden önceki günlerin vardiyaları korunur; taslaktaki aynı çalışan+gün atlanır.
  *   - İzinli işaretli (is_on_leave) vardiyalar korunur.
@@ -37,6 +39,7 @@ import { completedYears, minorWorkViolations } from '@/lib/laborLaw'
 import { netWorkMins } from '@/lib/workingTimeService'
 import type { EmploymentType } from '@/types/employee'
 import { NOT_KIOSK_FILTER } from '@/lib/auth/roles'
+import { storeEmployeeIds } from '@/lib/storeScope'
 
 const MAX_ASSIGNMENTS = 500
 
@@ -76,24 +79,30 @@ export async function POST(req: NextRequest) {
     }
 
     const admin = createAdminClient()
+    const storeId = auth.employee.store_id
+    // İzinler çalışana bağlıdır: yalnızca bu mağazanın çalışanları (haftalık tatil silme/yazma dahil)
+    const storeEmpIds = await storeEmployeeIds(storeId)
 
     // ── Veri ────────────────────────────────────────────────────
     const [existingRes, empsRes, leavesRes, neighborRes] = await Promise.all([
       admin
         .from('shift_assignments')
         .select('*, attendance_records ( id )')
+        .eq('store_id', storeId)
         .gte('work_date', weekStart)
         .lte('work_date', weekEnd),
-      admin.from('employees').select('id, full_name, active, employment_type, birth_date, roles ( planning_group )').or(NOT_KIOSK_FILTER),
+      admin.from('employees').select('id, full_name, active, employment_type, birth_date, roles ( planning_group )').eq('store_id', storeId).or(NOT_KIOSK_FILTER),
       admin
         .from('leave_requests')
         .select('id, employee_id, leave_type, start_date, end_date, reason, status, reviewed_at, reviewed_by')
+        .in('employee_id', storeEmpIds)
         .in('status', ['pending', 'approved'])
         .lte('start_date', weekEnd)
         .gte('end_date', weekStart),
       admin
         .from('shift_assignments')
         .select('id, employee_id, work_date, start_time, end_time, is_on_leave')
+        .eq('store_id', storeId)
         .or(`and(work_date.gte.${addDaysToDateString(weekStart, -6)},work_date.lt.${weekStart}),work_date.eq.${addDaysToDateString(weekEnd, 1)}`),
     ])
     for (const r of [existingRes, empsRes, leavesRes, neighborRes]) {
@@ -118,6 +127,17 @@ export async function POST(req: NextRequest) {
       if (!emp) return badRequest('Planda bilinmeyen bir çalışan var.')
       if (!emp.active) return conflict(`${emp.full_name} aktif değil; plana eklenemez.`)
     }
+    // Şablonlar da aktif mağazaya ait olmalı (başka mağazanın şablonu sızdırılmaz)
+    const templateIds = [...new Set(assignments.map((a) => a.shift_template_id).filter((t): t is string => !!t))]
+    if (templateIds.length > 0) {
+      const { data: tpls, error: tplErr } = await admin
+        .from('shift_templates')
+        .select('id')
+        .eq('store_id', storeId)
+        .in('id', templateIds)
+      if (tplErr) return serverError('POST /api/workforce/apply', tplErr)
+      if ((tpls ?? []).length !== templateIds.length) return badRequest('Geçersiz vardiya şablonu.')
+    }
 
     // Korunacak / silinecek mevcut vardiyalar
     const keepKeys = new Set<string>()
@@ -140,7 +160,7 @@ export async function POST(req: NextRequest) {
 
     // Taslak içi tekrarlar ve korunan günler elenir
     const seen = new Set(keepKeys)
-    const rows: Array<PlanShift & { shift_template_id: string | null; is_on_leave: boolean }> = []
+    const rows: Array<PlanShift & { shift_template_id: string | null; is_on_leave: boolean; store_id: string }> = []
     let skipped = 0
     for (const a of assignments) {
       const key = `${a.employee_id}::${a.work_date}`
@@ -153,6 +173,7 @@ export async function POST(req: NextRequest) {
         start_time:        a.start_time.slice(0, 5),
         end_time:          a.end_time.slice(0, 5),
         is_on_leave:       false,
+        store_id:          storeId,
       })
     }
 
@@ -258,7 +279,7 @@ export async function POST(req: NextRequest) {
 
     // 3) Eski plan silinir (tek ifade → ya hepsi ya hiçbiri)
     if (deleteIds.length > 0) {
-      const { error: delErr } = await admin.from('shift_assignments').delete().in('id', deleteIds)
+      const { error: delErr } = await admin.from('shift_assignments').delete().in('id', deleteIds).eq('store_id', storeId)
       if (delErr) {
         await rollbackRests()
         return serverError('POST /api/workforce/apply delete', delErr, 'Eski plan silinemedi, mevcut plan değiştirilmedi.')
@@ -278,6 +299,7 @@ export async function POST(req: NextRequest) {
 
     await logAudit({
       actorId: auth.employee.id,
+      storeId,
       action: 'workforce.apply',
       entityType: 'week_plan',
       entityId: null,

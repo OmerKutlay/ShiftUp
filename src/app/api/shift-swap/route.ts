@@ -6,8 +6,9 @@
  *   1. Çalışan talep açar → hedef çalışan kabul eder (target_accepted_at)
  *   2. Müdür Yardımcısı+ onaylar (/api/shift-swap/review) → takas uygulanır
  *
- * GET:  çalışan yalnızca tarafı olduğu talepleri; yönetici tümünü görür
- * POST: requester_id SESSION'dan alınır
+ * GET:  çalışan yalnızca tarafı olduğu talepleri; yönetici aktif mağazanın tüm taleplerini görür
+ * POST: requester_id SESSION'dan alınır; talep eden vardiya, hedef çalışan ve hedef vardiya
+ *       aynı (aktif) mağazada olmalıdır — aksi halde 404
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
@@ -17,6 +18,7 @@ import { requireAuth, MANAGER_ROLES, hasRole, forbidden } from '@/lib/auth'
 import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/apiErrors'
 import { isUuid } from '@/lib/validation'
 import { turkeyToday } from '@/lib/dateUtils'
+import { storeEmployeeIds } from '@/lib/storeScope'
 
 const VALID_STATUSES = ['pending', 'approved', 'rejected', 'cancelled']
 
@@ -46,8 +48,13 @@ export async function GET(req: NextRequest) {
 
     if (status) query = query.eq('status', status)
 
-    // Manager+ tümünü görür; çalışan yalnızca tarafı olduğu talepleri (id session'dan, UUID)
-    if (!isManager) {
+    if (isManager) {
+      // Manager+ aktif mağazanın taleplerini görür (talep eden mağazadadır)
+      const storeIds = await storeEmployeeIds(currentEmployee.store_id)
+      if (storeIds.length === 0) return NextResponse.json({ swap_requests: [] })
+      query = query.in('requester_id', storeIds)
+    } else {
+      // Çalışan yalnızca tarafı olduğu talepleri (id session'dan, UUID)
       query = query.or(`requester_id.eq.${currentEmployee.id},target_id.eq.${currentEmployee.id}`)
     }
 
@@ -81,34 +88,36 @@ export async function POST(req: NextRequest) {
 
     const admin = createAdminClient()
     const today = turkeyToday()
+    // Takas tek mağaza içindedir: aktif mağaza dışındaki her kayıt "bulunamadı" sayılır
+    const storeId = currentEmployee.store_id
 
     const { data: shift, error: shErr } = await admin
       .from('shift_assignments')
-      .select('id, employee_id, work_date')
+      .select('id, employee_id, work_date, store_id')
       .eq('id', body.requester_shift_id)
       .maybeSingle()
     if (shErr) return serverError('POST /api/shift-swap', shErr)
-    if (!shift) return notFound('Vardiya bulunamadı.')
+    if (!shift || shift.store_id !== storeId) return notFound('Vardiya bulunamadı.')
     if (shift.employee_id !== requesterId) return forbidden('Bu vardiya size ait değil.')
     if (shift.work_date < today) return badRequest('Geçmiş vardiya için takas talebi oluşturulamaz.')
 
     const { data: target, error: tErr } = await admin
       .from('employees')
-      .select('id, full_name, active')
+      .select('id, full_name, active, store_id')
       .eq('id', body.target_id)
       .maybeSingle()
     if (tErr) return serverError('POST /api/shift-swap', tErr)
-    if (!target) return notFound('Hedef çalışan bulunamadı.')
+    if (!target || target.store_id !== storeId) return notFound('Hedef çalışan bulunamadı.')
     if (!target.active) return badRequest('Hedef çalışan aktif değil.')
 
     if (body.target_shift_id) {
       const { data: targetShift, error: tsErr } = await admin
         .from('shift_assignments')
-        .select('id, employee_id, work_date')
+        .select('id, employee_id, work_date, store_id')
         .eq('id', body.target_shift_id)
         .maybeSingle()
       if (tsErr) return serverError('POST /api/shift-swap', tsErr)
-      if (!targetShift) return notFound('Hedef vardiya bulunamadı.')
+      if (!targetShift || targetShift.store_id !== storeId) return notFound('Hedef vardiya bulunamadı.')
       if (targetShift.employee_id !== body.target_id) return badRequest('Hedef vardiya seçilen çalışana ait değil.')
       if (targetShift.work_date < today) return badRequest('Geçmiş bir vardiya ile takas yapılamaz.')
     }

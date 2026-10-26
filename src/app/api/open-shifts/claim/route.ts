@@ -2,6 +2,8 @@
  * POST /api/open-shifts/claim
  *
  * Oturumdaki çalışan açık vardiyayı kendi adına üstlenir (employee_id session'dan).
+ * Açık vardiya çalışanın kendi mağazasına ait olmalı (başka mağaza → 404); oluşan vardiya
+ * açık vardiyanın mağazasına yazılır, mağaza yöneticilerine bildirilir.
  *
  * Kurallar (sunucuda): vardiya açık ve geçmişte değil; pozisyon belirtilmişse çalışanın
  * pozisyonu eşleşmeli; onaylı izin günü değil; komşu günlerle çakışma yok; tüm haftanın
@@ -37,8 +39,9 @@ export async function POST(req: NextRequest) {
 
     const { data: openShift, error: osErr } = await admin
       .from('open_shifts')
-      .select('id, status, work_date, start_time, end_time, role_needed')
+      .select('id, store_id, status, work_date, start_time, end_time, role_needed')
       .eq('id', body.open_shift_id)
+      .eq('store_id', currentEmployee.home_store_id)
       .maybeSingle()
     if (osErr) return serverError('POST /api/open-shifts/claim', osErr)
     if (!openShift) return notFound('Açık vardiya bulunamadı.')
@@ -88,6 +91,7 @@ export async function POST(req: NextRequest) {
     const { data: newAssignment, error: assignErr } = await admin
       .from('shift_assignments')
       .insert({
+        store_id:          openShift.store_id,
         employee_id:       employeeId,
         shift_template_id: null,
         work_date:         openShift.work_date,
@@ -114,6 +118,7 @@ export async function POST(req: NextRequest) {
     try {
       await notifyManagers(
         admin,
+        openShift.store_id,
         {
           type: 'open_shift_claimed',
           title: 'Açık vardiya alındı',

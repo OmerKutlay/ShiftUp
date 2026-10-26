@@ -13,8 +13,9 @@ vi.mock('@/lib/auth/session', () => ({ getCurrentEmployee: vi.fn(async () => sta
 vi.mock('@/lib/attendanceRepository', () => ({ fetchDailyShifts: vi.fn(async () => []) }))
 
 import { GET } from '@/app/api/attendance/daily/route'
+import { fetchDailyShifts } from '@/lib/attendanceRepository'
 
-const base = { email: null, role_id: null, role_name: null, active: true }
+const base = { email: null, role_id: null, role_name: null, active: true, home_store_id: 'store-A', store_id: 'store-A' }
 const employee = { ...base, id: 'emp-1', full_name: 'Ahmet', access_level: ACCESS.EMPLOYEE }
 const manager = { ...base, id: 'mgr-1', full_name: 'Ayşe', access_level: ACCESS.MANAGER }
 const kiosk = { ...base, id: 'kiosk-1', full_name: 'Kiosk', access_level: ACCESS.KIOSK }
@@ -41,6 +42,12 @@ describe('GET /api/attendance/daily', () => {
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ date: turkeyToday(), entries: [] })
     expect((await get(`?date=${turkeyToday()}`)).status).toBe(200)
+  })
+
+  it('liste yalnızca oturumun aktif mağazası için istenir', async () => {
+    state.employee = { ...manager, home_store_id: 'store-A', store_id: 'store-B' } // admin başka mağazaya geçmiş gibi
+    await get()
+    expect(fetchDailyShifts).toHaveBeenLastCalledWith(turkeyToday(), 'store-B')
   })
 
   it('çalışan başka günü göremez, yönetici görebilir', async () => {

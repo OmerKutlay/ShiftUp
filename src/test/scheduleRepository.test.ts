@@ -24,6 +24,8 @@ import { db as supabase } from '@/lib/db'
 // ============================================================
 // Helpers
 // ============================================================
+const STORE = '00000000-0000-0000-0003-000000000001'
+
 function makeAssignment(overrides: Partial<ShiftAssignmentWithDetails> = {}): ShiftAssignmentWithDetails {
   return {
     id: 'asgn-001',
@@ -107,7 +109,7 @@ describe('scheduleRepository — fetchWeeklyAssignments', () => {
     ;(supabase.from as ReturnType<typeof vi.fn>).mockReturnValueOnce(
       buildChain({ data: asgns, error: null })
     )
-    const result = await fetchWeeklyAssignments(new Date('2026-09-28'))
+    const result = await fetchWeeklyAssignments(new Date('2026-09-28'), STORE)
     expect(result).toHaveLength(1)
   })
 
@@ -115,7 +117,7 @@ describe('scheduleRepository — fetchWeeklyAssignments', () => {
     ;(supabase.from as ReturnType<typeof vi.fn>).mockReturnValueOnce(
       buildChain({ data: null, error: { message: 'DB hatası' } })
     )
-    await expect(fetchWeeklyAssignments(new Date())).rejects.toThrow('Haftalık plan yüklenemedi')
+    await expect(fetchWeeklyAssignments(new Date(), STORE)).rejects.toThrow('Haftalık plan yüklenemedi')
   })
 })
 
@@ -129,7 +131,8 @@ describe('scheduleRepository — createShiftAssignment', () => {
     await expect(
       createShiftAssignment(
         { employee_id: 'emp-001', shift_template_id: 'tpl-001', work_date: '2026-09-28', start_time: '09:00', end_time: '18:00' },
-        false // inactive
+        false,
+        STORE
       )
     ).rejects.toThrow('Pasif çalışana yeni vardiya atanamaz.')
   })
@@ -142,7 +145,8 @@ describe('scheduleRepository — createShiftAssignment', () => {
     await expect(
       createShiftAssignment(
         { employee_id: 'emp-001', shift_template_id: 'tpl-001', work_date: '2026-09-28', start_time: '09:00', end_time: '18:00' },
-        true
+        true,
+        STORE
       )
     ).rejects.toThrow(ShiftConflictError)
   })
@@ -164,7 +168,8 @@ describe('scheduleRepository — createShiftAssignment', () => {
 
     const result = await createShiftAssignment(
       { employee_id: 'emp-001', shift_template_id: 'tpl-001', work_date: '2026-09-28', start_time: '09:00', end_time: '18:00' },
-      true
+      true,
+      STORE
     )
     expect(result.id).toBe('new-asgn')
   })
@@ -179,7 +184,8 @@ describe('scheduleRepository — createShiftAssignment', () => {
     await expect(
       createShiftAssignment(
         { employee_id: 'emp-001', shift_template_id: null, work_date: '2026-09-28', start_time: '05:00', end_time: '12:00' },
-        true
+        true,
+        STORE
       )
     ).rejects.toThrow(ShiftConflictError)
   })
@@ -191,7 +197,8 @@ describe('scheduleRepository — createShiftAssignment', () => {
     await expect(
       createShiftAssignment(
         { employee_id: 'emp-001', shift_template_id: null, work_date: '2026-09-28', start_time: '09:00', end_time: '18:00' },
-        true
+        true,
+        STORE
       )
     ).rejects.toThrow('onaylı izinde')
   })
@@ -214,7 +221,7 @@ describe('scheduleRepository — updateShiftAssignment', () => {
 
     const result = await updateShiftAssignment('asgn-001', 'emp-001', '2026-09-28', {
       shift_template_id: 'tpl-002',
-    })
+    }, STORE)
     expect(result.id).toBe('asgn-001')
   })
 
@@ -230,7 +237,7 @@ describe('scheduleRepository — updateShiftAssignment', () => {
       updateShiftAssignment('asgn-001', 'emp-001', '2026-09-28', {
         start_time: '16:00',
         end_time: '23:00',
-      })
+      }, STORE)
     ).rejects.toThrow(ShiftConflictError)
   })
 })
@@ -244,17 +251,17 @@ describe('scheduleRepository — deleteShiftAssignment', () => {
   it('vardiya kaldırılabiliyor', async () => {
     ;(supabase.from as ReturnType<typeof vi.fn>).mockReturnValueOnce({
       delete: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockResolvedValue({ error: null }),
+      eq: vi.fn().mockReturnValueOnce({ eq: vi.fn().mockResolvedValue({ error: null }) }),
     })
-    await expect(deleteShiftAssignment('asgn-001')).resolves.toBeUndefined()
+    await expect(deleteShiftAssignment('asgn-001', STORE)).resolves.toBeUndefined()
   })
 
   it('hata durumunda fırlatır', async () => {
     ;(supabase.from as ReturnType<typeof vi.fn>).mockReturnValueOnce({
       delete: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockResolvedValue({ error: { message: 'silinemedi' } }),
+      eq: vi.fn().mockReturnValueOnce({ eq: vi.fn().mockResolvedValue({ error: { message: 'silinemedi' } }) }),
     })
-    await expect(deleteShiftAssignment('asgn-001')).rejects.toThrow('Vardiya silinemedi')
+    await expect(deleteShiftAssignment('asgn-001', STORE)).rejects.toThrow('Vardiya silinemedi')
   })
 })
 

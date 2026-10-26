@@ -63,16 +63,25 @@ export async function resolveActiveStoreId(
   return data ? requestedStoreId : homeStoreId
 }
 
+/** PostgREST tek yanıtta en fazla bu kadar satır döner (max_rows) — sayfalanarak okunur */
+const PAGE_SIZE = 1000
+
 /** Mağazanın çalışan id'leri (varsayılan: pasifler dahil — geçmiş kayıtlar için) */
 export async function storeEmployeeIds(
   storeId: string,
   { activeOnly = false }: { activeOnly?: boolean } = {}
 ): Promise<string[]> {
-  let query = createAdminClient().from('employees').select('id').eq('store_id', storeId)
-  if (activeOnly) query = query.eq('active', true)
-  const { data, error } = await query
-  if (error) throw error
-  return (data ?? []).map((r: { id: string }) => r.id)
+  const admin = createAdminClient()
+  const ids: string[] = []
+  for (let from = 0; ; from += PAGE_SIZE) {
+    let query = admin.from('employees').select('id').eq('store_id', storeId)
+    if (activeOnly) query = query.eq('active', true)
+    const { data, error } = await query.order('id').range(from, from + PAGE_SIZE - 1)
+    if (error) throw error
+    const page = (data ?? []) as { id: string }[]
+    ids.push(...page.map((r) => r.id))
+    if (page.length < PAGE_SIZE) return ids
+  }
 }
 
 /** Çalışanın mağazası (yoksa null) */

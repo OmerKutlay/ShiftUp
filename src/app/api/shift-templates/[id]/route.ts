@@ -3,8 +3,8 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { requireMinRole, ACCESS } from '@/lib/auth'
-import { updateShiftTemplate, ShiftTemplateValidationError } from '@/lib/shiftTemplateRepository'
-import { badRequest, readJson, serverError } from '@/lib/apiErrors'
+import { updateShiftTemplate, ShiftTemplateValidationError, ShiftTemplateNotFoundError } from '@/lib/shiftTemplateRepository'
+import { badRequest, notFound, readJson, serverError } from '@/lib/apiErrors'
 import { isUuid, pick } from '@/lib/validation'
 import type { UpdateShiftTemplatePayload } from '@/types/shiftTemplate'
 
@@ -27,10 +27,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (Object.keys(payload).length === 0) return badRequest('Güncellenecek alan yok.')
 
   try {
-    const template = await updateShiftTemplate(id, payload)
+    const template = await updateShiftTemplate(id, payload, auth.employee.store_id)
     return NextResponse.json({ template })
   } catch (err) {
     if (err instanceof ShiftTemplateValidationError) return badRequest(err.message)
+    if (err instanceof ShiftTemplateNotFoundError) return notFound('Şablon bulunamadı.')
     return serverError('PATCH /api/shift-templates/[id]', err)
   }
 }

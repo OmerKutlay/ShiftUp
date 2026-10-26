@@ -23,24 +23,27 @@ const ASSIGNMENT_DETAIL_SELECT = `
 // ============================================================
 
 /**
- * Bir haftalık tüm shift_assignments'ı getirir.
+ * Bir haftalık shift_assignments'ı getirir (yalnızca verilen mağazanın).
  * employee ve shift_template bilgileriyle join edilir.
  */
 export async function fetchWeeklyAssignments(
-  weekDate: Date
+  weekDate: Date,
+  storeId: string
 ): Promise<ShiftAssignmentWithDetails[]> {
   const { start, end } = getWeekRange(weekDate)
-  return fetchAssignmentsInRange(format(start, 'yyyy-MM-dd'), format(end, 'yyyy-MM-dd'))
+  return fetchAssignmentsInRange(format(start, 'yyyy-MM-dd'), format(end, 'yyyy-MM-dd'), storeId)
 }
 
-/** [startDate, endDate] aralığındaki tüm vardiyalar (dahil) */
+/** [startDate, endDate] aralığındaki mağaza vardiyaları (dahil) */
 export async function fetchAssignmentsInRange(
   startDate: string,
-  endDate: string
+  endDate: string,
+  storeId: string
 ): Promise<ShiftAssignmentWithDetails[]> {
   const { data, error } = await db
     .from('shift_assignments')
     .select(ASSIGNMENT_DETAIL_SELECT)
+    .eq('store_id', storeId)
     .gte('work_date', startDate)
     .lte('work_date', endDate)
     .order('work_date', { ascending: true })
@@ -168,10 +171,14 @@ async function checkNotOnLeave(employeeId: string, workDate: string): Promise<vo
 // Mutations
 // ============================================================
 
-/** Yeni vardiya atar. Pasif çalışan guard + çakışma + izin kontrolü içerir. */
+/**
+ * Yeni vardiya atar. Pasif çalışan guard + çakışma + izin kontrolü içerir.
+ * storeId: çalışanın mağazası (çağıran, çalışanın bu mağazada olduğunu doğrulamış olmalı).
+ */
 export async function createShiftAssignment(
   payload: CreateShiftAssignmentPayload,
-  employeeActive: boolean
+  employeeActive: boolean,
+  storeId: string
 ): Promise<ShiftAssignmentWithDetails> {
   if (!employeeActive) {
     throw new Error('Pasif çalışana yeni vardiya atanamaz.')
@@ -183,6 +190,7 @@ export async function createShiftAssignment(
   const { data, error } = await db
     .from('shift_assignments')
     .insert({
+      store_id: storeId,
       employee_id: payload.employee_id,
       shift_template_id: payload.shift_template_id,
       work_date: payload.work_date,
@@ -201,12 +209,13 @@ export async function createShiftAssignment(
   return data as unknown as ShiftAssignmentWithDetails
 }
 
-/** Mevcut vardiyayı günceller (template değiştirme). Çakışma kontrolü içerir. */
+/** Mevcut vardiyayı günceller (template değiştirme). Çakışma kontrolü içerir; yalnızca verilen mağazanın kaydı. */
 export async function updateShiftAssignment(
   id: string,
   employeeId: string,
   workDate: string,
-  payload: UpdateShiftAssignmentPayload
+  payload: UpdateShiftAssignmentPayload,
+  storeId: string
 ): Promise<ShiftAssignmentWithDetails> {
   if (payload.start_time && payload.end_time) {
     await checkConflict(employeeId, workDate, payload.start_time, payload.end_time, id)
@@ -216,6 +225,7 @@ export async function updateShiftAssignment(
     .from('shift_assignments')
     .update(payload)
     .eq('id', id)
+    .eq('store_id', storeId)
     .select(ASSIGNMENT_DETAIL_SELECT)
     .single()
 
@@ -227,11 +237,12 @@ export async function updateShiftAssignment(
  * Vardiyayı siler. Devam kaydı olan vardiya silinemez (FK RESTRICT → 23503);
  * böylece fiilen çalışılmış saatler kaybolmaz.
  */
-export async function deleteShiftAssignment(id: string): Promise<void> {
+export async function deleteShiftAssignment(id: string, storeId: string): Promise<void> {
   const { error } = await db
     .from('shift_assignments')
     .delete()
     .eq('id', id)
+    .eq('store_id', storeId)
 
   if (error) {
     if (error.code === '23503') {

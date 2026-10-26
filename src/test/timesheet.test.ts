@@ -166,6 +166,28 @@ describe('timesheetExcel', () => {
   })
 })
 
+describe('timesheetExcel — mağaza adı', () => {
+  it('storeFileSlug Türkçe karakterleri ASCII yapar', async () => {
+    const { storeFileSlug } = await import('@/lib/timesheetExcel')
+    expect(storeFileSlug('Kadıköy Şube')).toBe('kadikoy-sube')
+    expect(storeFileSlug('İstinye Park / AVM')).toBe('istinye-park-avm')
+    expect(storeFileSlug('???')).toBe('magaza')
+  })
+
+  it('mağaza adı verilince üstte başlık satırı olur, tablo bir satır aşağı kayar', { timeout: 30_000 }, async () => {
+    const { buildTimesheetWorkbook } = await import('@/lib/timesheetExcel')
+    const ExcelJS = (await import('exceljs')).default
+    const [row] = buildTimesheet({ month: '2026-10', employees: [EMP], holidays: [], today: '2026-10-31', shifts: [worked('2026-10-05')], leaves: [] })
+    const buf = await buildTimesheetWorkbook('2026-10', [row], [], 'Kadıköy Şube')
+    const wb = new ExcelJS.Workbook()
+    await wb.xlsx.load(buf as unknown as ArrayBuffer)
+    const ws = wb.getWorksheet('Puantaj')!
+    expect(String(ws.getRow(1).getCell(1).value)).toContain('Kadıköy Şube')
+    expect(ws.getRow(2).getCell(1).value).toBe('Çalışan')
+    expect(ws.getRow(4).getCell(2 + 5).value).toBe('Ç')
+  })
+})
+
 describe('overtime — yıllık özet', () => {
   it('haftalık fazla çalışmaları toplar, sınır ve onay durumunu hesaplar', async () => {
     const { summarizeOvertime, mondayOf, overtimeYearRange } = await import('@/lib/overtime')

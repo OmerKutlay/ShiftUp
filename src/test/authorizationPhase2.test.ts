@@ -70,17 +70,36 @@ describe('canAccessEmployee — self vs other', () => {
     if ('response' in result) expect(result.response.status).toBe(403)
   })
 
-  it('Mağaza Müdürü başka employee ID ile erişebilir', async () => {
+  it('Mağaza Müdürü kendi mağazasındaki başka employee ID ile erişebilir', async () => {
     vi.doMock('@/lib/auth/session', () => ({
       getCurrentEmployee: vi.fn().mockResolvedValue({
         id: 'emp-003', full_name: 'Müdür', email: null,
         role_id: null, access_level: ACCESS.STORE_MANAGER, active: true,
+        home_store_id: 'store-a', store_id: 'store-a',
       }),
     }))
+    vi.doMock('@/lib/storeScope', () => ({ isEmployeeInStore: vi.fn().mockResolvedValue(true) }))
     const { canAccessEmployee } = await import('@/lib/auth/authorization')
     const req = { cookies: { get: vi.fn() } } as never
     const result = await canAccessEmployee(req, 'emp-001', MANAGER_ROLES)
     expect('employee' in result).toBe(true)
+  })
+
+  it('Mağaza Müdürü başka mağazanın çalışanına erişemez → 404', async () => {
+    vi.doMock('@/lib/auth/session', () => ({
+      getCurrentEmployee: vi.fn().mockResolvedValue({
+        id: 'emp-003', full_name: 'Müdür', email: null,
+        role_id: null, access_level: ACCESS.STORE_MANAGER, active: true,
+        home_store_id: 'store-a', store_id: 'store-a',
+      }),
+    }))
+    const isEmployeeInStore = vi.fn().mockResolvedValue(false)
+    vi.doMock('@/lib/storeScope', () => ({ isEmployeeInStore }))
+    const { canAccessEmployee } = await import('@/lib/auth/authorization')
+    const req = { cookies: { get: vi.fn() } } as never
+    const result = await canAccessEmployee(req, 'emp-009', MANAGER_ROLES)
+    expect('response' in result && result.response.status).toBe(404)
+    expect(isEmployeeInStore).toHaveBeenCalledWith('emp-009', 'store-a')
   })
 })
 

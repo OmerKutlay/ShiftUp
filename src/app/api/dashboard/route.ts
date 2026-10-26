@@ -1,7 +1,8 @@
 /**
  * GET /api/dashboard
  * Genel Bakış ekranı özet istatistikleri (Müdür Yardımcısı+).
- * "Bugün" Türkiye saatine göredir.
+ * "Bugün" Türkiye saatine göredir. Tüm sayılar ve listeler aktif mağaza kapsamındadır:
+ * çalışanlar mağazaya kayıtlı olanlar, vardiyalar shift_assignments.store_id, izinler mağaza çalışanlarınındır.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
@@ -10,6 +11,7 @@ import { serverError } from '@/lib/apiErrors'
 import { formatInTimeZone, turkeyToday } from '@/lib/dateUtils'
 import { NOT_KIOSK_FILTER } from '@/lib/auth/roles'
 import { roleNameOf } from '@/lib/roleJoin'
+import { storeEmployeeIds } from '@/lib/storeScope'
 
 interface TodayShift {
   id: string
@@ -37,11 +39,14 @@ export async function GET(req: NextRequest) {
   try {
     const admin = createAdminClient()
     const today = turkeyToday()
+    const storeId = auth.employee.store_id
+    const storeEmpIds = await storeEmployeeIds(storeId)
 
     const [employeesResult, todayShiftsResult, pendingLeavesResult] = await Promise.all([
       admin
         .from('employees')
         .select('id', { count: 'exact', head: true })
+        .eq('store_id', storeId)
         .eq('active', true)
         .or(NOT_KIOSK_FILTER),
       admin
@@ -50,12 +55,17 @@ export async function GET(req: NextRequest) {
           id, employee_id, start_time, end_time, is_on_leave,
           employees ( id, full_name, roles ( name ) )
         `)
+        .eq('store_id', storeId)
         .eq('work_date', today)
         .order('start_time'),
-      admin
+      // Mağazada çalışan yoksa .in([]) yerine boş sonuç
+      storeEmpIds.length === 0
+        ? Promise.resolve({ data: [], count: 0, error: null })
+        : admin
         .from('leave_requests')
         .select('id, employee_id, leave_type, start_date, end_date, employees!employee_id(full_name, roles(name))', { count: 'exact' })
         .eq('status', 'pending')
+        .in('employee_id', storeEmpIds)
         .order('created_at', { ascending: true })
         .limit(5),
     ])

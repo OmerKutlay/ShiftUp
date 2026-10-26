@@ -6,10 +6,10 @@ import { db } from '@/lib/db'
 import type { AttendanceRecord, DailyShiftEntry } from '@/types/attendance'
 
 /**
- * Fetch all shift assignments for a given date (YYYY-MM-DD, Europe/Istanbul),
+ * Fetch all shift assignments of a store for a given date (YYYY-MM-DD, Europe/Istanbul),
  * joined with employee and attendance data.
  */
-export async function fetchDailyShifts(dateStr: string): Promise<DailyShiftEntry[]> {
+export async function fetchDailyShifts(dateStr: string, storeId: string): Promise<DailyShiftEntry[]> {
   const { data: assignments, error: assignError } = await db
     .from('shift_assignments')
     .select(`
@@ -32,6 +32,7 @@ export async function fetchDailyShifts(dateStr: string): Promise<DailyShiftEntry
         updated_at
       )
     `)
+    .eq('store_id', storeId)
     .eq('work_date', dateStr)
     .order('start_time', { ascending: true })
 

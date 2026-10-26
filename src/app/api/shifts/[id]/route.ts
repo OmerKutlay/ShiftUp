@@ -9,6 +9,7 @@ import { updateShiftAssignment, deleteShiftAssignment } from '@/lib/scheduleRepo
 import { ShiftConflictError } from '@/types/schedule'
 import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/apiErrors'
 import { isUuid, isValidTime } from '@/lib/validation'
+import { isTemplateInStore } from '@/lib/shiftTemplateRepository'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { logAudit } from '@/lib/auditLog'
 import { checkAssignmentRules } from '@/lib/shiftAssignmentRules'
@@ -17,12 +18,14 @@ import type { UpdateShiftAssignmentPayload } from '@/types/schedule'
 
 type Ctx = { params: Promise<{ id: string }> }
 
-async function loadShift(id: string) {
+/** Vardiyayı yalnızca aktif mağazada arar (başka mağazanın vardiyası → null) */
+async function loadShift(id: string, storeId: string) {
   const admin = createAdminClient()
   const { data, error } = await admin
     .from('shift_assignments')
     .select('id, employee_id, work_date, start_time, end_time, shift_template_id')
     .eq('id', id)
+    .eq('store_id', storeId)
     .maybeSingle()
   if (error) throw error
   return data
@@ -57,9 +60,14 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   }
   if (Object.keys(payload).length === 0) return badRequest('Güncellenecek alan yok.')
 
+  const storeId = auth.employee.store_id
+
   try {
-    const shift = await loadShift(id)
+    const shift = await loadShift(id, storeId)
     if (!shift) return notFound('Vardiya bulunamadı.')
+    if (payload.shift_template_id && !(await isTemplateInStore(payload.shift_template_id, storeId))) {
+      return badRequest('Geçersiz vardiya şablonu.')
+    }
 
     let violations: string[] = []
     if (payload.start_time && payload.end_time) {
@@ -79,10 +87,11 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       }
     }
 
-    const assignment = await updateShiftAssignment(id, shift.employee_id, shift.work_date, payload)
+    const assignment = await updateShiftAssignment(id, shift.employee_id, shift.work_date, payload, storeId)
 
     await logAudit({
       actorId: auth.employee.id,
+      storeId,
       action: 'shift.update',
       entityType: 'shift_assignment',
       entityId: id,
@@ -107,14 +116,17 @@ export async function DELETE(req: NextRequest, { params }: Ctx) {
   const { id } = await params
   if (!isUuid(id)) return badRequest('Geçersiz vardiya ID.')
 
+  const storeId = auth.employee.store_id
+
   try {
-    const shift = await loadShift(id)
+    const shift = await loadShift(id, storeId)
     if (!shift) return notFound('Vardiya bulunamadı.')
 
-    await deleteShiftAssignment(id)
+    await deleteShiftAssignment(id, storeId)
 
     await logAudit({
       actorId: auth.employee.id,
+      storeId,
       action: 'shift.delete',
       entityType: 'shift_assignment',
       entityId: id,

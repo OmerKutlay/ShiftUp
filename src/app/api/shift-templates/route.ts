@@ -1,6 +1,6 @@
 /**
- * GET  /api/shift-templates?active=true — vardiya şablonları (oturum gerektirir)
- * POST /api/shift-templates             — yeni şablon (Müdür Yardımcısı+)
+ * GET  /api/shift-templates?active=true — aktif mağazanın vardiya şablonları (oturum gerektirir)
+ * POST /api/shift-templates             — aktif mağazaya yeni şablon (Müdür Yardımcısı+)
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, requireMinRole, ACCESS } from '@/lib/auth'
@@ -20,8 +20,8 @@ export async function GET(req: NextRequest) {
   try {
     const templates =
       req.nextUrl.searchParams.get('active') === 'true'
-        ? await fetchActiveShiftTemplates()
-        : await fetchShiftTemplates()
+        ? await fetchActiveShiftTemplates(auth.employee.store_id)
+        : await fetchShiftTemplates(auth.employee.store_id)
     return NextResponse.json({ templates })
   } catch (err) {
     return serverError('GET /api/shift-templates', err)
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
       end_time: String(body.end_time ?? ''),
       description: typeof body.description === 'string' ? body.description : null,
       active: typeof body.active === 'boolean' ? body.active : true,
-    })
+    }, auth.employee.store_id)
     return NextResponse.json({ template }, { status: 201 })
   } catch (err) {
     if (err instanceof ShiftTemplateValidationError) return badRequest(err.message)

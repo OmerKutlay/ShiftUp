@@ -1130,12 +1130,12 @@ function buildAuditLogs(ctx: Ctx): AuditRow[] {
 
 const LOCATIONS: StoreLocation[] = [
   {
-    id: seqId('51', 1), name: STORE_NAME, latitude: 40.990612, longitude: 29.029041,
+    id: seqId('51', 1), store_id: '00000000-0000-0000-0003-000000000001', name: STORE_NAME, latitude: 40.990612, longitude: 29.029041,
     allowed_radius_meters: 120, max_accuracy_meters: 60, active: true,
     created_at: '2026-09-28T08:00:00.000Z', updated_at: '2026-10-03T09:34:00.000Z',
   },
   {
-    id: seqId('51', 2), name: 'Moda Depo (eski)', latitude: 40.983921, longitude: 29.026433,
+    id: seqId('51', 2), store_id: '00000000-0000-0000-0003-000000000001', name: 'Moda Depo (eski)', latitude: 40.983921, longitude: 29.026433,
     allowed_radius_meters: 200, max_accuracy_meters: 80, active: false,
     created_at: '2026-09-28T08:00:00.000Z', updated_at: '2026-09-30T16:10:00.000Z',
   },

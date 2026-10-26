@@ -11,6 +11,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentEmployee, type SessionEmployee } from './session'
 import { isKioskRole, roleAtLeast, type AccessLevel } from './roles'
+import { isEmployeeInStore } from '@/lib/storeScope'
+import { STORE_CHANGED_CODE, STORE_HEADER } from '@/lib/storeHeader'
 
 // ─── Response helpers ────────────────────────────────────────
 
@@ -53,6 +55,20 @@ export async function requireAuth(
   }
   if (!allowKiosk && isKioskRole(employee.access_level)) {
     return { response: forbidden('Kiosk hesabı bu işlemi yapamaz.') }
+  }
+  // İstemci isteği hangi mağazayı görürken gönderdi? Admin başka sekmede mağaza değiştirdiyse
+  // aktif mağaza artık farklıdır — işlem yanlış mağazaya uygulanmasın (bkz. @/lib/storeHeader)
+  const claimedStore = req.headers?.get?.(STORE_HEADER)
+  if (claimedStore && claimedStore !== employee.store_id) {
+    return {
+      response: NextResponse.json(
+        {
+          error: 'Aktif mağaza başka bir sekmede değiştirildi. Sayfa yeni mağazaya göre yenilendi; işlemi tekrar deneyin.',
+          code: STORE_CHANGED_CODE,
+        },
+        { status: 409 }
+      ),
+    }
   }
   return { employee }
 }
@@ -114,8 +130,9 @@ export async function requireMinRole(
 
 /**
  * Employee'ın yalnızca kendi verisine erişip erişemeyeceğini kontrol eder.
- * Manager+ rolleri tüm employee verilerine erişebilir.
+ * Manager+ rolleri aktif mağazadaki tüm employee verilerine erişebilir.
  * Standart Çalışan sadece kendi verilerine erişebilir.
+ * Başka mağazanın çalışanı için 404 döner (varlığı sızdırılmaz).
  *
  * @param req - NextRequest
  * @param targetEmployeeId - Erişilmek istenen employee ID'si
@@ -138,8 +155,16 @@ export async function canAccessEmployee(
   // Kendi verisine her zaman erişebilir
   if (employee.id === targetEmployeeId) return { employee }
 
-  // Manager+ rolleri tüm employee verilerine erişebilir
+  // Manager+ rolleri aktif mağazanın çalışanlarına erişebilir
   if (employee.access_level && managerRoles.includes(employee.access_level)) {
+    if (!(await isEmployeeInStore(targetEmployeeId, employee.store_id))) {
+      return {
+        response: NextResponse.json(
+          { error: 'Çalışan bulunamadı.', code: 'EMPLOYEE_NOT_FOUND' },
+          { status: 404 }
+        ),
+      }
+    }
     return { employee }
   }
 

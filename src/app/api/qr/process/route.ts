@@ -3,10 +3,14 @@
  *
  * QR token'ı doğrular ve oturumdaki çalışanın devam kaydını günceller.
  *
+ * Mağaza: çalışan kendi (ana) mağazasında okutur (home_store_id). Kiosk kodu bu mağazaya ait
+ *   olmalıdır — başka mağazanın kodu reddedilir (QR_WRONG_STORE) ve tüketilmez. Konum, çalışanın
+ *   mağazasının aktif konumuna göre doğrulanır; yeni kod o mağazanın kanalına yayınlanır.
+ *
  * Employee belirleme:
  *   - Kiosk QR ("SU2.…", tek kullanımlık): employee session'dan alınır. Çalışan/vardiya
  *     kontrollerinden sonra atomik tüketilir — aynı anda okutanlardan yalnızca ilki kazanır —
- *     ve yeni kod Realtime Broadcast ile kiosk ekranlarına yayınlanır.
+ *     ve yeni kod Realtime Broadcast ile mağazanın kiosk ekranlarına yayınlanır.
  *   - Klasik QR: token'daki employee_id ile session eşleşmeli (spoofing önlemi)
  *
  * Action belirleme:
@@ -76,6 +80,8 @@ async function processQr(req: NextRequest, trace: RequestTrace): Promise<NextRes
   trace.step('auth', { ok: !('response' in auth) })
   if ('response' in auth) return auth.response
   const { employee: sessionEmployee } = auth
+  // Çalışan kendi mağazasında okutur; kiosk kodu, geofence ve yayın bu mağazaya göre çalışır
+  const storeId = sessionEmployee.home_store_id
 
   try {
     const body = await readJson<Partial<ProcessBody>>(req)
@@ -104,7 +110,10 @@ async function processQr(req: NextRequest, trace: RequestTrace): Promise<NextRes
       if (loc.latitude < -90 || loc.latitude > 90 || loc.longitude < -180 || loc.longitude > 180) {
         return NextResponse.json({ error: 'Geçersiz GPS koordinatları.', code: 'LOCATION_VALIDATION_FAILED' }, { status: 400 })
       }
-      const geofenceResult = await validateLocationServerSide({ latitude: loc.latitude, longitude: loc.longitude, accuracy: loc.accuracy })
+      const geofenceResult = await validateLocationServerSide(
+        { latitude: loc.latitude, longitude: loc.longitude, accuracy: loc.accuracy },
+        storeId
+      )
       trace.step('geofence', { allowed: geofenceResult.allowed })
       if (!geofenceResult.allowed) {
         return NextResponse.json(
@@ -140,6 +149,13 @@ async function processQr(req: NextRequest, trace: RequestTrace): Promise<NextRes
           { status: 403 }
         )
       }
+      // Mağazaya bağlı üretilmiş kod başka mağazada geçerli değildir
+      if (qrToken.store_id && qrToken.store_id !== storeId) {
+        return NextResponse.json(
+          { error: 'Bu QR kodu başka bir mağazaya ait.', code: 'QR_WRONG_STORE' },
+          { status: 403 }
+        )
+      }
       classicAction = qrToken.action_type
     }
 
@@ -160,6 +176,14 @@ async function processQr(req: NextRequest, trace: RequestTrace): Promise<NextRes
     }
 
     const { shift, record } = await findCurrentShift(admin, employeeId)
+    // Mağaza değiştiren çalışanın eski mağazadaki (ör. gece yarısını geçen) vardiyası bu mağazanın
+    // kiosk'u ve konumuyla kapatılamaz
+    if (shift.store_id !== storeId) {
+      return NextResponse.json(
+        { error: 'Bu vardiya başka bir mağazaya ait; o mağazanın kiosk kodunu okutun.', code: 'SHIFT_IN_OTHER_STORE' },
+        { status: 409 }
+      )
+    }
     const currentStatus = (record?.status ?? 'shift_waiting') as AttendanceStatus
     trace.step('shift', { attendance_status: currentStatus })
 
@@ -176,9 +200,9 @@ async function processQr(req: NextRequest, trace: RequestTrace): Promise<NextRes
 
     // Kiosk kodunu tüket (ilk okutan kazanır) → yeni kodu ekranlara yayınla
     if (kioskQr) {
-      await consumeKioskQr(admin, body.qr_data)
+      await consumeKioskQr(admin, body.qr_data, storeId)
       trace.step('kiosk_consume')
-      await rotateAndBroadcastKioskQr(admin)
+      await rotateAndBroadcastKioskQr(admin, storeId)
       trace.step('kiosk_rotate')
     }
 
@@ -210,7 +234,7 @@ async function processQr(req: NextRequest, trace: RequestTrace): Promise<NextRes
     trace.step('error', { error: err instanceof Error ? err.name : 'unknown', code: (err as { code?: string } | null)?.code ?? null })
     if (err instanceof QrTokenError) {
       if (err.code === 'DB_ERROR') return serverError('POST /api/qr/process', err)
-      return NextResponse.json({ error: err.message, code: err.code }, { status: err.code === 'QR_EXPIRED' ? 410 : err.code === 'QR_USED' ? 409 : 400 })
+      return NextResponse.json({ error: err.message, code: err.code }, { status: err.code === 'QR_EXPIRED' ? 410 : err.code === 'QR_USED' ? 409 : err.code === 'QR_WRONG_STORE' ? 403 : 400 })
     }
     if (err instanceof LocationError) {
       return NextResponse.json({ error: err.message, code: err.code }, { status: 403 })

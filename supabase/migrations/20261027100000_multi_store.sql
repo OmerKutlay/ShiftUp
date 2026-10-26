@@ -46,7 +46,7 @@ INSERT INTO public.stores (id, name)
 SELECT
   '00000000-0000-0000-0003-000000000001',
   COALESCE(
-    (SELECT btrim(name) FROM public.store_locations WHERE active ORDER BY created_at LIMIT 1),
+    (SELECT left(NULLIF(btrim(name), ''), 120) FROM public.store_locations WHERE active ORDER BY created_at LIMIT 1),
     'Ana Mağaza'
   )
 ON CONFLICT (id) DO NOTHING;
@@ -59,7 +59,8 @@ ALTER TABLE public.open_shifts       ADD COLUMN IF NOT EXISTS store_id UUID REFE
 ALTER TABLE public.store_locations   ADD COLUMN IF NOT EXISTS store_id UUID REFERENCES public.stores(id) ON DELETE RESTRICT;
 ALTER TABLE public.qr_tokens         ADD COLUMN IF NOT EXISTS store_id UUID REFERENCES public.stores(id) ON DELETE CASCADE;
 ALTER TABLE public.public_holidays   ADD COLUMN IF NOT EXISTS store_id UUID REFERENCES public.stores(id) ON DELETE CASCADE;
-ALTER TABLE public.audit_logs        ADD COLUMN IF NOT EXISTS store_id UUID REFERENCES public.stores(id) ON DELETE SET NULL;
+-- Denetim kaydı değiştirilemez (trigger) → SET NULL yerine varsayılan (NO ACTION): kaydı olan mağaza silinemez
+ALTER TABLE public.audit_logs        ADD COLUMN IF NOT EXISTS store_id UUID REFERENCES public.stores(id);
 
 UPDATE public.employees         SET store_id = '00000000-0000-0000-0003-000000000001' WHERE store_id IS NULL;
 UPDATE public.shift_assignments SET store_id = '00000000-0000-0000-0003-000000000001' WHERE store_id IS NULL;

@@ -5,8 +5,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { canAccessEmployee, requireAuth, MANAGER_ROLES } from '@/lib/auth'
-import { badRequest, serverError } from '@/lib/apiErrors'
+import { badRequest, notFound, serverError } from '@/lib/apiErrors'
 import { isUuid } from '@/lib/validation'
+import { isEmployeeInStore } from '@/lib/storeScope'
 import { getAnnualLeaveBalance } from '@/lib/annualLeaveService'
 
 export async function GET(req: NextRequest) {
@@ -17,6 +18,10 @@ export async function GET(req: NextRequest) {
     const access = await canAccessEmployee(req, requested, MANAGER_ROLES)
     if ('response' in access) return access.response
     employeeId = requested
+    // Başkasının bakiyesi yalnızca aktif mağazanın çalışanı için
+    if (requested !== access.employee.id && !(await isEmployeeInStore(requested, access.employee.store_id))) {
+      return notFound('Çalışan bulunamadı.', 'EMPLOYEE_NOT_FOUND')
+    }
   } else {
     const auth = await requireAuth(req)
     if ('response' in auth) return auth.response

@@ -1,8 +1,10 @@
 /**
  * GET /api/reports/attendance?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD[&employee_id=xxx]
  *
- * Yönetici devam raporu — tüm çalışanların vardiya + attendance verileri.
+ * Yönetici devam raporu — aktif mağazada çalışılan vardiyalar + attendance verileri.
  * En az Müdür Yardımcısı yetkisi gerekir; veri admin client ile okunur.
+ * employee_id verilirse yalnızca o çalışanın bu mağazadaki vardiyaları döner (başka mağazanın
+ * çalışanı için boş liste).
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
@@ -28,7 +30,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const rows = await queryAttendanceReport(createAdminClient(), filters)
+    const rows = await queryAttendanceReport(createAdminClient(), auth.employee.store_id, filters)
     return NextResponse.json({ rows })
   } catch (err) {
     return serverError('GET /api/reports/attendance', err, 'Rapor yüklenemedi.')

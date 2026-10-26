@@ -4,34 +4,60 @@
  * SettingsPage — Ayarlar (Mağaza Müdürü+): mağaza konumu, resmi tatil takvimi, denetim kaydı ve
  * anlık bildirimler. shadcn "settings" kalıbı: sekmeler → her sekmede başlıklı kartlar.
  */
-import { useState } from 'react'
-import { Bell, CalendarDays, History, MapPin } from 'lucide-react'
+import { Suspense, useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { Bell, CalendarDays, History, MapPin, Store } from 'lucide-react'
 import { Page, PageHeader } from '@/components/common'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PushPermissionCard } from '@/components/pwa/PushPermissionCard'
 import { PushDiagnosticsPanel } from '@/components/pwa/PushDiagnosticsPanel'
+import { StoresPanel } from '@/components/stores/StoresPanel'
+import { useAuth } from '@/context/AuthContext'
+import { ACCESS } from '@/lib/auth/roles'
 import { StoreLocationPage } from './StoreLocationPage'
 import { HolidaysPanel } from './HolidaysPanel'
 import { AuditLogPanel } from './AuditLogPanel'
 
-type SettingsTab = 'location' | 'holidays' | 'audit' | 'notifications'
+type SettingsTab = 'location' | 'stores' | 'holidays' | 'audit' | 'notifications'
 
 /** Sekme etiketi: masaüstünde ikon + tam ad, dar ekranda kısa ad (dört sekme 390px'e sığsın) */
-const TABS: { value: SettingsTab; icon: React.ReactNode; label: string; short: string }[] = [
+const TABS: { value: SettingsTab; icon: React.ReactNode; label: string; short: string; adminOnly?: boolean }[] = [
   { value: 'location', icon: <MapPin />, label: 'Mağaza konumu', short: 'Konum' },
+  { value: 'stores', icon: <Store />, label: 'Mağazalar', short: 'Mağazalar', adminOnly: true },
   { value: 'holidays', icon: <CalendarDays />, label: 'Resmi tatiller', short: 'Tatiller' },
   { value: 'audit', icon: <History />, label: 'Denetim kaydı', short: 'Denetim' },
   { value: 'notifications', icon: <Bell />, label: 'Bildirimler', short: 'Bildirimler' },
 ]
 
+/** URL'deki ?tab= değerini sekmeye uygular (ör. yan menüden "Mağazaları yönet" → ?tab=stores); Suspense içinde çalışır */
+function TabFromUrl({ onTab, isAdmin }: { onTab: (t: SettingsTab) => void; isAdmin: boolean }) {
+  const param = useSearchParams().get('tab')
+  useEffect(() => {
+    const t = TABS.find((x) => x.value === param)
+    if (t && (!t.adminOnly || isAdmin)) onTab(t.value)
+  }, [param, isAdmin, onTab])
+  return null
+}
+
 export function SettingsPage() {
   const [tab, setTab] = useState<SettingsTab>('location')
+  const { employee } = useAuth()
+  const isAdmin = employee?.roles?.access_level === ACCESS.ADMIN
+  const tabs = TABS.filter((t) => !t.adminOnly || isAdmin)
   return (
     <Page>
-      <PageHeader title="Ayarlar" description="Mağaza konumu, resmi tatiller, denetim kaydı ve bildirimler" />
+      <Suspense fallback={null}>
+        <TabFromUrl onTab={setTab} isAdmin={isAdmin} />
+      </Suspense>
+      <PageHeader
+        title="Ayarlar"
+        description={isAdmin
+          ? 'Mağazalar, mağaza konumu, resmi tatiller, denetim kaydı ve bildirimler'
+          : 'Mağaza konumu, resmi tatiller, denetim kaydı ve bildirimler'}
+      />
       <Tabs value={tab} onValueChange={(v) => setTab(v as SettingsTab)} className="gap-4 md:gap-6">
         <TabsList className="w-full justify-start overflow-x-auto sm:w-fit">
-          {TABS.map((t) => (
+          {tabs.map((t) => (
             <TabsTrigger key={t.value} value={t.value} className="sm:px-3">
               <span className="hidden sm:contents">{t.icon}</span>
               <span className="sm:hidden">{t.short}</span>
@@ -41,6 +67,7 @@ export function SettingsPage() {
         </TabsList>
         {/* Yalnızca açık sekme bağlanır: paneller kendi verisini bağlandığında yükler */}
         <TabsContent value="location"><StoreLocationPage embedded /></TabsContent>
+        {isAdmin && <TabsContent value="stores"><StoresPanel /></TabsContent>}
         <TabsContent value="holidays"><HolidaysPanel /></TabsContent>
         <TabsContent value="audit"><AuditLogPanel /></TabsContent>
         <TabsContent value="notifications">

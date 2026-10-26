@@ -43,6 +43,7 @@ function makeEmployee(overrides: Partial<EmployeeWithRole> = {}): EmployeeWithRo
     email: null,
     role_id: 'role-001',
     active: true,
+    store_id: 'store-a',
     employment_type: 'full_time',
     auth_user_id: null,
     created_at: '2026-09-28T00:00:00Z',
@@ -97,16 +98,29 @@ describe('employeeRepository — fetchEmployees', () => {
     ;(supabase.from as ReturnType<typeof vi.fn>).mockReturnValueOnce(
       buildChain({ data: emps, error: null })
     )
-    const result = await fetchEmployees()
+    const result = await fetchEmployees('store-a')
     expect(result).toHaveLength(2)
     expect(result[0].full_name).toBe('Ahmet Kaya')
+  })
+
+  it('yalnızca verilen mağazanın çalışanlarını sorgular (store_id filtresi)', async () => {
+    const eq = vi.fn()
+    const chain: Record<string, unknown> = {}
+    chain.select = vi.fn(() => chain)
+    chain.order = vi.fn(() => chain)
+    chain.eq = eq.mockImplementation(() => chain)
+    chain.then = (resolve: (v: unknown) => unknown) => resolve({ data: [], error: null })
+    ;(supabase.from as ReturnType<typeof vi.fn>).mockReturnValueOnce(chain)
+
+    await fetchEmployees('store-b')
+    expect(eq).toHaveBeenCalledWith('store_id', 'store-b')
   })
 
   it('boş liste döndürür (çalışan yok)', async () => {
     ;(supabase.from as ReturnType<typeof vi.fn>).mockReturnValueOnce(
       buildChain({ data: [], error: null })
     )
-    const result = await fetchEmployees()
+    const result = await fetchEmployees('store-a')
     expect(result).toHaveLength(0)
   })
 })
@@ -122,8 +136,23 @@ describe('employeeRepository — fetchActiveEmployees', () => {
     ;(supabase.from as ReturnType<typeof vi.fn>).mockReturnValueOnce(
       buildChain({ data: activeOnly, error: null })
     )
-    const result = await fetchActiveEmployees()
+    const result = await fetchActiveEmployees('store-a')
     expect(result.every((e) => e.active)).toBe(true)
+  })
+
+  it('aktif liste de mağaza filtresiyle sorgulanır', async () => {
+    const eq = vi.fn()
+    const chain: Record<string, unknown> = {}
+    chain.select = vi.fn(() => chain)
+    chain.or = vi.fn(() => chain)
+    chain.order = vi.fn(() => chain)
+    chain.eq = eq.mockImplementation(() => chain)
+    chain.then = (resolve: (v: unknown) => unknown) => resolve({ data: [], error: null })
+    ;(supabase.from as ReturnType<typeof vi.fn>).mockReturnValueOnce(chain)
+
+    await fetchActiveEmployees('store-b')
+    expect(eq).toHaveBeenCalledWith('store_id', 'store-b')
+    expect(eq).toHaveBeenCalledWith('active', true)
   })
 })
 
@@ -144,9 +173,10 @@ describe('employeeRepository — createEmployee', () => {
     const result = await createEmployee({
       full_name: 'Ahmet Kaya',
       email: 'ahmet.kaya@shiftup.test',
-        role_id: 'role-001',
+      role_id: 'role-001',
       active: true,
       employment_type: 'full_time',
+      store_id: 'store-a',
     })
 
     expect(result.id).toBe('emp-new')
@@ -160,7 +190,7 @@ describe('employeeRepository — createEmployee', () => {
       single: vi.fn().mockResolvedValue({ data: null, error: { message: 'unique ihlali' } }),
     })
     await expect(
-      createEmployee({ full_name: 'X', email: null, role_id: null, active: true, employment_type: 'full_time' })
+      createEmployee({ full_name: 'X', email: null, role_id: null, active: true, employment_type: 'full_time', store_id: 'store-a' })
     ).rejects.toThrow('Çalışan oluşturulamadı')
   })
 })
@@ -219,7 +249,7 @@ describe('employeeRepository — rol ilişkisi', () => {
       buildChain({ data: [empWithRole], error: null })
     )
 
-    const result = await fetchEmployees()
+    const result = await fetchEmployees('store-a')
     expect(result[0].roles?.name).toBe('Mağaza Müdürü')
   })
 })

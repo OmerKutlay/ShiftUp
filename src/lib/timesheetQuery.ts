@@ -1,5 +1,8 @@
 /**
  * timesheetQuery — puantaj için veri toplama (yalnızca server).
+ *
+ * Çoklu mağaza: yalnızca aktif mağazada çalışılan vardiyalar (shift_assignments.store_id)
+ * sayılır — başka mağazaya geçen çalışanın eski mağazadaki geçmişi eski mağazanın puantajında kalır.
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { buildTimesheet, timesheetDataRange, type TimesheetRow, type TimesheetShift, type TimesheetEmployee } from '@/lib/timesheet'
@@ -7,11 +10,12 @@ import { turkeyToday } from '@/lib/dateUtils'
 import type { PublicHoliday } from '@/types/holiday'
 import { NOT_KIOSK_FILTER } from '@/lib/auth/roles'
 import { unwrapJoin } from '@/lib/roleJoin'
+import { fetchHolidaysInRange } from '@/lib/holidayRepository'
 
 const PAGE = 1000
 
 /** PostgREST 1000 satır sınırını aşan aralıklar için sayfalı okuma */
-async function fetchAll<T>(build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>): Promise<T[]> {
+export async function fetchAll<T>(build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>): Promise<T[]> {
   const out: T[] = []
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await build(from, from + PAGE - 1)
@@ -23,15 +27,48 @@ async function fetchAll<T>(build: (from: number, to: number) => PromiseLike<{ da
   return out
 }
 
-export async function queryTimesheet(admin: SupabaseClient, month: string): Promise<{ rows: TimesheetRow[]; holidays: PublicHoliday[] }> {
+/**
+ * Mağaza raporlarının çalışan listesi: mağazanın aktif çalışanları + dönemde bu mağazada
+ * vardiyası olanlar (pasif olsalar da, başka mağazaya geçmiş olsalar da — geçmiş kayıt
+ * eski mağazada kalır). `select` en az `id, full_name, active` içermelidir.
+ */
+export async function fetchStoreReportEmployees<T extends { id: string; active: boolean; full_name: string }>(
+  admin: SupabaseClient,
+  storeId: string,
+  select: string,
+  shiftEmployeeIds: Set<string>
+): Promise<T[]> {
+  const { data, error } = await admin
+    .from('employees')
+    .select(select)
+    .eq('store_id', storeId)
+    .or(NOT_KIOSK_FILTER)
+    .order('full_name')
+  if (error) throw error
+  const own = (data ?? []) as unknown as T[]
+  const ownIds = new Set(own.map((e) => e.id))
+
+  // Bu mağazada vardiyası olup artık başka mağazada kayıtlı olanlar
+  const foreignIds = [...shiftEmployeeIds].filter((id) => !ownIds.has(id))
+  let foreign: T[] = []
+  if (foreignIds.length > 0) {
+    const res = await admin.from('employees').select(select).in('id', foreignIds).or(NOT_KIOSK_FILTER)
+    if (res.error) throw res.error
+    foreign = (res.data ?? []) as unknown as T[]
+  }
+
+  return [...own.filter((e) => e.active || shiftEmployeeIds.has(e.id)), ...foreign]
+    .sort((a, b) => a.full_name.localeCompare(b.full_name, 'tr'))
+}
+
+export async function queryTimesheet(
+  admin: SupabaseClient,
+  storeId: string,
+  month: string
+): Promise<{ rows: TimesheetRow[]; holidays: PublicHoliday[] }> {
   const { from, to } = timesheetDataRange(month)
 
-  const [employeesRes, holidaysRes] = await Promise.all([
-    admin.from('employees').select('id, full_name, employment_type, overtime_consent_at, active, roles ( name )').or(NOT_KIOSK_FILTER).order('full_name'),
-    admin.from('public_holidays').select('date, name, half_day').gte('date', from).lte('date', to),
-  ])
-  if (employeesRes.error) throw employeesRes.error
-  if (holidaysRes.error) throw holidaysRes.error
+  const holidays = await fetchHolidaysInRange(storeId, from, to)
 
   const shiftsRaw = await fetchAll<Record<string, unknown>>((a, b) =>
     admin
@@ -40,19 +77,12 @@ export async function queryTimesheet(admin: SupabaseClient, month: string): Prom
         id, employee_id, work_date, start_time, end_time, is_on_leave,
         attendance_records ( clock_in_at, clock_out_at, break_start_at, break_end_at, completed_break_minutes, status )
       `)
+      .eq('store_id', storeId)
       .gte('work_date', from)
       .lte('work_date', to)
       .order('id')
       .range(a, b) as unknown as PromiseLike<{ data: Record<string, unknown>[] | null; error: unknown }>
   )
-
-  const { data: leaves, error: leaveErr } = await admin
-    .from('leave_requests')
-    .select('employee_id, leave_type, start_date, end_date')
-    .eq('status', 'approved')
-    .lte('start_date', to)
-    .gte('end_date', from)
-  if (leaveErr) throw leaveErr
 
   const shifts: TimesheetShift[] = shiftsRaw.map((s) => {
     const recs = s.attendance_records as TimesheetShift['attendance'][] | TimesheetShift['attendance'] | null
@@ -68,19 +98,29 @@ export async function queryTimesheet(admin: SupabaseClient, month: string): Prom
     }
   })
 
-  // Aktif çalışanlar + ay içinde kaydı olan pasif çalışanlar
+  // Aktif çalışanlar + ay içinde bu mağazada kaydı olan pasif / başka mağazaya geçmiş çalışanlar
   const withData = new Set(shifts.map((s) => s.employee_id))
-  const employees: TimesheetEmployee[] = ((employeesRes.data ?? []) as unknown as Array<Omit<TimesheetEmployee, 'role_name'> & { active: boolean; roles?: { name: string } | { name: string }[] | null }>)
-    .filter((e) => e.active || withData.has(e.id))
+  type EmpRow = Omit<TimesheetEmployee, 'role_name'> & { active: boolean; roles?: { name: string } | { name: string }[] | null }
+  const empRows = await fetchStoreReportEmployees<EmpRow>(
+    admin, storeId, 'id, full_name, employment_type, overtime_consent_at, active, roles ( name )', withData
+  )
+  const employees: TimesheetEmployee[] = empRows
     .map(({ roles, active: _active, ...rest }) => ({ ...rest, role_name: unwrapJoin(roles)?.name ?? '' }))
 
-  const rows = buildTimesheet({
-    month,
-    employees,
-    shifts,
-    leaves: leaves ?? [],
-    holidays: (holidaysRes.data ?? []) as PublicHoliday[],
-    today: turkeyToday(),
-  })
-  return { rows, holidays: (holidaysRes.data ?? []) as PublicHoliday[] }
+  // İzinler yalnızca listedeki çalışanlar için okunur
+  let leaves: Array<{ employee_id: string; leave_type: string; start_date: string; end_date: string }> = []
+  if (employees.length > 0) {
+    const { data, error: leaveErr } = await admin
+      .from('leave_requests')
+      .select('employee_id, leave_type, start_date, end_date')
+      .eq('status', 'approved')
+      .in('employee_id', employees.map((e) => e.id))
+      .lte('start_date', to)
+      .gte('end_date', from)
+    if (leaveErr) throw leaveErr
+    leaves = data ?? []
+  }
+
+  const rows = buildTimesheet({ month, employees, shifts, leaves, holidays, today: turkeyToday() })
+  return { rows, holidays }
 }
