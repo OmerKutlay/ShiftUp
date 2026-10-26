@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { addWeeks, format, subWeeks } from 'date-fns'
 import { tr } from 'date-fns/locale'
-import { CircleAlert, Info, Plus, Trash2, Users } from 'lucide-react'
+import { CircleAlert, Info, Plus, Printer, Trash2, Users } from 'lucide-react'
 import { toast } from 'sonner'
 
 import type { EmployeeWithRole } from '@/types/employee'
@@ -642,11 +642,22 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
             </TooltipContent>
           </Tooltip>
         ) : undefined}
-        actions={hasData && !readOnly && !isMobile && !editing ? (
-          <Button onClick={startEditing}>
-            <Plus />
-            Vardiya ekle
-          </Button>
+        actions={hasData && !editing ? (
+          <>
+            {/* Aynı sekmede açılır: iOS ana ekran uygulamasında target=_blank tarayıcıya atar */}
+            <Button asChild variant="outline" size={isMobile ? 'icon' : 'default'}>
+              <Link href={`/schedule/print?week=${weekDays[0]}`} aria-label="Yazdır">
+                <Printer />
+                {!isMobile && 'Yazdır'}
+              </Link>
+            </Button>
+            {!readOnly && !isMobile && (
+              <Button onClick={startEditing}>
+                <Plus />
+                Vardiya ekle
+              </Button>
+            )}
+          </>
         ) : undefined}
       />
 

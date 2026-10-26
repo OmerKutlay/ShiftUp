@@ -213,3 +213,14 @@
   }
 }
 
+
+/* Haftalık plan çıktısı: yalnızca .print-sheet içeren sayfa A4 yatay basılır (adlandırılmış sayfa) */
+@page plan { size: A4 landscape; margin: 10mm; }
+.print-sheet { page: plan; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+@media print {
+  .print-hide, [data-sonner-toaster] { display: none !important; }
+  .print-root { background: #fff !important; min-height: 0 !important; }
+  .print-sheet { color: #000 !important; }
+  .print-sheet thead { display: table-header-group; }
+  .print-sheet tr { break-inside: avoid; page-break-inside: avoid; }
+}
