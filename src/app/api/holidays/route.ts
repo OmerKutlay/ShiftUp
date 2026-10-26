@@ -2,17 +2,18 @@
  * GET    /api/holidays?from=YYYY-MM-DD&to=YYYY-MM-DD
  *        → { holidays: [{ id, date, name, half_day, store_id }] }
  *        Aktif mağazada geçerli tatiller: ulusal (store_id null) + mağazanın yerel tatilleri;
- *        aynı günde yerel olan öncelikli. Oturum gerektirir.
+ *        aynı günde ulusal olan geçerli. Oturum gerektirir.
  * POST   /api/holidays  { date, name, half_day, scope?: 'national' | 'store' }
  *        Ekle/güncelle. scope 'store' (varsayılan): aktif mağazanın yerel tatili (Mağaza Müdürü+);
  *        scope 'national': tüm mağazalar için ulusal tatil (yalnızca Admin).
+ *        Ulusal tatil gününe yerel tatil eklenemez → 409 NATIONAL_HOLIDAY.
  * DELETE /api/holidays?date=YYYY-MM-DD[&scope=national|store]
  *        Aynı yetki kuralı; silinecek kayıt yoksa 404.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, requireMinRole, ACCESS, forbidden } from '@/lib/auth'
-import { fetchHolidaysInRange, upsertHoliday, deleteHoliday } from '@/lib/holidayRepository'
-import { badRequest, notFound, readJson, serverError } from '@/lib/apiErrors'
+import { fetchHolidaysInRange, upsertHoliday, deleteHoliday, NationalHolidayConflictError } from '@/lib/holidayRepository'
+import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/apiErrors'
 import { isValidDate } from '@/lib/validation'
 import { logAudit } from '@/lib/auditLog'
 import { canSwitchStore } from '@/lib/storeScope'
@@ -74,6 +75,7 @@ export async function POST(req: NextRequest) {
     })
     return NextResponse.json({ holiday }, { status: 201 })
   } catch (err) {
+    if (err instanceof NationalHolidayConflictError) return conflict(err.message, err.code)
     return serverError('POST /api/holidays', err)
   }
 }

@@ -172,12 +172,13 @@ CI (`.github/workflows/ci.yml`) her PR'da typecheck, lint, test ve build çalı�
   `kiosk-qr:<store_id>`), denetim kaydı. İzin, mesai düzeltme, takas ve uygunluk çalışanın
   mağazasından okunur.
 - **Resmi tatiller:** `store_id` boş = ulusal (tüm mağazalar, yalnızca Admin yönetir); dolu = o
-  mağazanın yerel tatili (Müdür+). Aynı güne ikisi de tanımlıysa yerel kayıt geçerlidir.
+  mağazanın yerel tatili (Müdür+). Ulusal tatil gününe yerel tatil eklenemez; ulusal kayıt her zaman
+  geçerlidir (tatil ücretini etkiler, mağaza değiştiremez).
 - **Bildirimler:** "giriş/çıkış okutulmadı", izin/düzeltme/takas talepleri yalnızca ilgili mağazanın
   yöneticilerine ve tüm adminlere gider.
-- **Bilinen sınır:** fazla çalışma raporu mağaza bazlıdır; ay içinde mağaza değiştiren çalışanın
-  yıllık/haftalık toplamı iki mağazada ayrı görünür (vardiya atamadaki yasal kontroller ise
-  çalışanın tüm vardiyalarına bakar).
+- **Puantaj / fazla çalışma:** puantaj mağaza bazlıdır (vardiyanın mağazası). Fazla çalışma raporu
+  (haftalık 45 / yıllık 270 saat) ise çalışanın tüm mağazalardaki vardiyalarını toplar — sınır
+  işveren düzeyindedir. Vardiya atamadaki yasal kontroller de çalışanın tüm vardiyalarına bakar.
 
 ## İş Kanunu kuralları
 

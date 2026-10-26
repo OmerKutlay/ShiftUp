@@ -154,6 +154,22 @@ describe('POST /api/holidays — yetkiler', () => {
     expect((await res.json()).holiday.store_id).toBeNull()
   })
 
+  it('ulusal tatil gününe mağazaya özel tatil eklenemez (409) ve hiçbir şey yazılmaz', async () => {
+    const { POST } = await mod(asManager, 'holidays')
+    const res = await POST(req('http://localhost/api/holidays', 'POST', { date: '2026-10-29', name: 'Yarım gün', half_day: true }))
+    expect(res.status).toBe(409)
+    expect((await res.json()).code).toBe('NATIONAL_HOLIDAY')
+    expect(db.tables.public_holidays).toHaveLength(3)
+  })
+
+  it('aynı günde yerel kayıt kalmışsa ulusal tatil geçerlidir', async () => {
+    db.tables.public_holidays.push({ id: 'h-old', store_id: STORE_A, date: '2026-10-29', name: 'Eski yerel', half_day: true })
+    const { GET } = await mod(asManager, 'holidays')
+    const { holidays } = await (await GET(req('http://localhost/api/holidays?from=2026-10-29&to=2026-10-29'))).json()
+    expect(holidays).toHaveLength(1)
+    expect(holidays[0]).toMatchObject({ id: 'h-nat', half_day: false, store_id: null })
+  })
+
   it('geçersiz scope reddedilir (400)', async () => {
     const { POST } = await mod(asAdmin, 'holidays')
     const res = await POST(req('http://localhost/api/holidays', 'POST', { date: '2026-12-31', name: 'X', scope: 'global' }))
@@ -270,6 +286,28 @@ describe('GET /api/reports/overtime', () => {
     expect(ids).toContain(E_A1)
     expect(ids).not.toContain(E_B1)
     expect(ids).not.toContain(E_MOVED) // artık B'de ve A'da çalışılmış (kayıtlı) vardiyası yok
+  })
+
+  it('fazla çalışma çalışanın tüm mağazalardaki vardiyalarından hesaplanır (yasal sınır işveren düzeyinde)', async () => {
+    // Can 5–10 Ekim haftasında 3 gün A'da, 3 gün B'de çalıştı: mağaza başına 45 saatin altında,
+    // toplamda üstünde → A'nın raporunda da fazla çalışma görünür
+    const att = (d: string) => ({
+      attendance_records: {
+        clock_in_at: `${d}T06:00:00Z`, clock_out_at: `${d}T15:00:00Z`,
+        break_start_at: null, break_end_at: null, completed_break_minutes: 60,
+      },
+    })
+    db.tables.shift_assignments = [
+      ...['2026-10-05', '2026-10-06', '2026-10-07'].map((d, i) => shift(`ma${i}`, E_MOVED, STORE_A, d, att(d))),
+      ...['2026-10-08', '2026-10-09', '2026-10-10'].map((d, i) => shift(`mb${i}`, E_MOVED, STORE_B, d, att(d))),
+    ]
+    const { GET } = await mod(asManager, 'overtime')
+    const { summaries } = (await (await GET(req('http://localhost/api/reports/overtime?year=2026'))).json()) as {
+      summaries: Array<{ employee_id: string; totalOvertimeMins: number }>
+    }
+    const can = summaries.find((s) => s.employee_id === E_MOVED)
+    expect(can).toBeDefined()
+    expect(can!.totalOvertimeMins).toBeGreaterThan(0)
   })
 })
 
