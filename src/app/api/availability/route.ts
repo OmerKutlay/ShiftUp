@@ -13,11 +13,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import type { CreateAvailabilityPayload, DayOfWeek } from '@/types/workforce'
 import { requireAuth, canAccessEmployee, MANAGER_ROLES, hasRole, forbidden } from '@/lib/auth'
-import { badRequest, notFound, readJson, serverError } from '@/lib/apiErrors'
+import { badRequest, notFound, readJson, serverError, tooManyRequests } from '@/lib/apiErrors'
+import { checkRateLimit } from '@/lib/rateLimiter'
 import { isUuid, isValidTime } from '@/lib/validation'
 import { isEmployeeInStore, storeEmployeeIds } from '@/lib/storeScope'
 
 const VALID_DAYS: DayOfWeek[] = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']
+const MAX_RECORDS_PER_EMPLOYEE = 50
+const RATE_LIMIT = 60
+const RATE_WINDOW_MS = 60 * 60 * 1000
 
 // ─── GET ─────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
@@ -91,7 +95,20 @@ export async function POST(req: NextRequest) {
       return notFound('Çalışan bulunamadı.')
     }
 
+    const rate = await checkRateLimit(`availability_create:${accessCheck.employee.id}`, RATE_LIMIT, RATE_WINDOW_MS)
+    if (!rate.allowed) return tooManyRequests()
+
     const admin = createAdminClient()
+    // Çalışan başına kayıt sayısı sınırlı — sınırsız ekleme tabloyu şişirir, planlayıcıyı yavaşlatır
+    const { count, error: countErr } = await admin
+      .from('employee_availability')
+      .select('id', { count: 'exact', head: true })
+      .eq('employee_id', body.employee_id)
+    if (countErr) return serverError('POST /api/availability', countErr)
+    if ((count ?? 0) >= MAX_RECORDS_PER_EMPLOYEE) {
+      return badRequest(`Bir çalışan için en fazla ${MAX_RECORDS_PER_EMPLOYEE} müsaitlik kaydı tutulabilir.`, 'LIMIT_REACHED')
+    }
+
     const { data, error } = await admin
       .from('employee_availability')
       .insert({

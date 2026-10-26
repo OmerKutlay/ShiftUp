@@ -16,10 +16,11 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
-import { requireAuth, MANAGER_ROLES, hasRole, forbidden } from '@/lib/auth'
+import { requireAuth, MANAGER_ROLES, hasRole, forbidden, forbidIfOutranked } from '@/lib/auth'
 import { createNotification, notifyManagers } from '@/lib/notificationRepository'
 import { applyTimeCorrection, checkCorrectionViolations, CrossStoreShiftError } from '@/lib/timeCorrectionService'
-import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/apiErrors'
+import { badRequest, conflict, notFound, readJson, serverError, tooManyRequests } from '@/lib/apiErrors'
+import { checkRateLimit } from '@/lib/rateLimiter'
 import { isUuid, isValidDate, isValidTime } from '@/lib/validation'
 import { turkeyToday, addDaysToDateString } from '@/lib/dateUtils'
 import { logAudit } from '@/lib/auditLog'
@@ -29,6 +30,9 @@ import { tr } from 'date-fns/locale'
 
 const MAX_BACKDATE_DAYS = 60
 const VALID_STATUSES = ['pending', 'approved', 'rejected', 'direct']
+/** Çalışan başına saatlik düzeltme talebi sınırı (yönetici doğrudan girişi hariç) */
+const CREATE_RATE_LIMIT = 10
+const CREATE_RATE_WINDOW_MS = 60 * 60 * 1000
 
 interface Body {
   direct?: boolean
@@ -146,6 +150,8 @@ export async function POST(req: NextRequest) {
       // Başka mağazanın çalışanı için mesai girilemez (404 — varlığı sızdırılmaz)
       if (!emp || emp.store_id !== currentEmployee.store_id) return notFound('Çalışan bulunamadı.')
       if (!emp.active) return badRequest('Pasif çalışan için mesai girilemez.')
+      const outranked = await forbidIfOutranked(currentEmployee, employeeId)
+      if (outranked) return outranked
       const storeId = emp.store_id as string
 
       const violations = await checkCorrectionViolations({ admin, employeeId, storeId, date, startTime: start, endTime: end })
@@ -219,6 +225,10 @@ export async function POST(req: NextRequest) {
     }
 
     // ── A) Çalışan normal talebi ────────────────────────────────
+    // Her talep tüm yöneticilere (push) bildirim gönderir: geçmiş günler için toplu talep yağdırılmasın
+    const rate = await checkRateLimit(`time_correction_create:${currentEmployee.id}`, CREATE_RATE_LIMIT, CREATE_RATE_WINDOW_MS)
+    if (!rate.allowed) return tooManyRequests()
+
     const { data: existing, error: dupErr } = await admin
       .from('manual_time_correction_requests')
       .select('id')

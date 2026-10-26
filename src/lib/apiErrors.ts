@@ -18,6 +18,10 @@ export function conflict(error: string, code = 'CONFLICT') {
   return NextResponse.json({ error, code }, { status: 409 })
 }
 
+export function tooManyRequests(error = 'Çok fazla istek. Lütfen biraz sonra tekrar deneyin.') {
+  return NextResponse.json({ error, code: 'RATE_LIMITED' }, { status: 429 })
+}
+
 /** Beklenmeyen DB/iç hata: detay loglanır, istemciye genel mesaj döner */
 export function serverError(context: string, err?: unknown, message = 'Sunucu hatası.') {
   const detail =

@@ -74,8 +74,15 @@ export async function checkRateLimit(key: string, limit: number, windowMs: numbe
   }
 }
 
-/** İstemci IP'si (proxy arkasında x-forwarded-for'un ilk değeri) */
+/**
+ * İstemci IP'si. Cloudflare'de cf-connecting-ip esas alınır: Cloudflare onu her istekte kendisi
+ * yazar. x-forwarded-for'un ilk değeri istemcinin gönderdiği başlıktan gelir (Cloudflare kendi
+ * değerini sona ekler) — ona güvenilseydi her istekte farklı IP yazılarak IP limiti atlatılırdı.
+ * x-forwarded-for yalnızca Cloudflare dışı (yerel geliştirme) ortam içindir.
+ */
 export function clientIp(req: { headers: { get(name: string): string | null } }): string {
+  const cf = req.headers.get('cf-connecting-ip')?.trim()
+  if (cf) return cf
   const fwd = req.headers.get('x-forwarded-for')
   if (fwd) return fwd.split(',')[0].trim()
   return req.headers.get('x-real-ip') ?? 'unknown'

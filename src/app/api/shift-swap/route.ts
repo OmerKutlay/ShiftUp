@@ -15,12 +15,16 @@ import { createAdminClient } from '@/lib/supabaseAdmin'
 import type { CreateSwapRequestPayload } from '@/types/workforce'
 import { createNotification } from '@/lib/notificationRepository'
 import { requireAuth, MANAGER_ROLES, hasRole, forbidden } from '@/lib/auth'
-import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/apiErrors'
+import { badRequest, conflict, notFound, readJson, serverError, tooManyRequests } from '@/lib/apiErrors'
+import { checkRateLimit } from '@/lib/rateLimiter'
 import { isUuid } from '@/lib/validation'
 import { turkeyToday } from '@/lib/dateUtils'
 import { storeEmployeeIds } from '@/lib/storeScope'
 
 const VALID_STATUSES = ['pending', 'approved', 'rejected', 'cancelled']
+/** Kişi başına saatlik takas teklifi sınırı */
+const CREATE_RATE_LIMIT = 20
+const CREATE_RATE_WINDOW_MS = 60 * 60 * 1000
 
 // ─── GET ─────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
@@ -85,6 +89,10 @@ export async function POST(req: NextRequest) {
     if (body.requester_note && (typeof body.requester_note !== 'string' || body.requester_note.length > 500)) {
       return badRequest('Not en fazla 500 karakter olabilir.')
     }
+
+    // Her teklif hedef çalışana (push) bildirim gönderir: aç-iptal döngüsüyle taciz edilmesin
+    const rate = await checkRateLimit(`swap_create:${requesterId}`, CREATE_RATE_LIMIT, CREATE_RATE_WINDOW_MS)
+    if (!rate.allowed) return tooManyRequests()
 
     const admin = createAdminClient()
     const today = turkeyToday()

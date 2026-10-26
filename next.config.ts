@@ -46,6 +46,8 @@ function resolveBuildId(): string {
 }
 
 const nextConfig: NextConfig = {
+  // "X-Powered-By: Next.js" başlığı gönderilmez (sürüm/çatı bilgisi saldırgana ipucu vermesin)
+  poweredByHeader: false,
   // Build anında koda gömülür (process.env.APP_BUILD_ID) — izlenen dosya değiştirilmez
   env: {
     APP_BUILD_ID: resolveBuildId(),

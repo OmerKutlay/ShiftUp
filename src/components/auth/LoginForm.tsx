@@ -70,10 +70,23 @@ interface Props {
  */
 export function safeNextPath(search: string): string {
   const next = new URLSearchParams(search).get('next')
-  if (!next || !next.startsWith('/') || next.startsWith('//') || next.startsWith('/\\')) return '/'
-  if (next === '/login' || next.startsWith('/login/') || next.startsWith('/api/')) return '/'
-  return next
+  if (!next || !next.startsWith('/')) return '/'
+  // Önek kontrolü yetmez: tarayıcı sekme/satır sonunu siler ve '\'yi '/' sayar ('/\t/evil.com' →
+  // '//evil.com'). Hedef tarayıcının çözeceği gibi çözülür; origin değişiyorsa reddedilir.
+  let url: URL
+  try {
+    url = new URL(next, NEXT_BASE)
+  } catch {
+    return '/'
+  }
+  if (url.origin !== NEXT_BASE) return '/'
+  const path = url.pathname
+  if (path === '/login' || path.startsWith('/login/') || path.startsWith('/api/')) return '/'
+  return `${path}${url.search}${url.hash}`
 }
+
+/** safeNextPath'in göreli yolu çözerken kullandığı sahte origin */
+const NEXT_BASE = 'https://app.invalid'
 
 export function LoginForm({ authMode }: Props) {
   const router = useRouter()

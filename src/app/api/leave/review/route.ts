@@ -11,7 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { createNotification } from '@/lib/notificationRepository'
-import { requireMinRole, ACCESS, forbidden } from '@/lib/auth'
+import { requireMinRole, ACCESS, forbidden, forbidIfOutranked } from '@/lib/auth'
 import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/apiErrors'
 import { isUuid } from '@/lib/validation'
 import { removePlannedShiftsInRange } from '@/lib/leaveService'
@@ -49,6 +49,8 @@ export async function POST(req: NextRequest) {
     if (existing.employee_id === auth.employee.id) {
       return forbidden('Kendi izin talebinizi onaylayamaz veya reddedemezsiniz.')
     }
+    const outranked = await forbidIfOutranked(auth.employee, existing.employee_id)
+    if (outranked) return outranked
     if (existing.status !== 'pending') {
       return conflict(`Bu talep zaten ${existing.status === 'approved' ? 'onaylanmış' : 'reddedilmiş'}.`, 'ALREADY_REVIEWED')
     }

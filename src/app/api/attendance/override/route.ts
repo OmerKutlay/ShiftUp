@@ -17,7 +17,7 @@ import { createAdminClient } from '@/lib/supabaseAdmin'
 import type { ManualAttendanceOverride } from '@/types/report'
 import type { AttendanceStatus } from '@/types/attendance'
 import { createNotification } from '@/lib/notificationRepository'
-import { requireMinRole, ACCESS, forbidden } from '@/lib/auth'
+import { requireMinRole, ACCESS, forbidden, forbidIfOutranked } from '@/lib/auth'
 import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/apiErrors'
 import { isUuid } from '@/lib/validation'
 import { validateOverrideState, type OverrideState } from '@/lib/attendanceOverride'
@@ -89,6 +89,8 @@ export async function POST(req: NextRequest) {
     if (existing.employee_id === auth.employee.id) {
       return forbidden('Kendi devam kaydınızı düzeltemezsiniz.')
     }
+    const outranked = await forbidIfOutranked(auth.employee, existing.employee_id)
+    if (outranked) return outranked
 
     // Son hali oluştur ve doğrula
     const next: OverrideState = {
