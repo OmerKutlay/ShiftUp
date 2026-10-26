@@ -123,6 +123,24 @@ describe('attendanceStateMachine — buildFieldPatch', () => {
     expect(patch.break_end_at).toBe(NOW)
   })
 
+  it('ikinci / üçüncü mola: önceki molalar silinmez, completed_break_minutes\'a eklenir', () => {
+    // 1. mola 06:00–06:20 (20 dk), şimdi (07:00) 2. mola başlıyor
+    const second = buildFieldPatch('working_after_break', 'start_break', NOW, {
+      break_start_at: '2026-09-28T06:00:00.000Z',
+      break_end_at: '2026-09-28T06:20:00.000Z',
+      completed_break_minutes: 0,
+    })
+    expect(second).toEqual({ status: 'on_break', break_start_at: NOW, break_end_at: null, completed_break_minutes: 20 })
+
+    // 2. mola 07:00–07:15 (15 dk), 3. mola 08:00'de → toplam 35 dk birikir
+    const third = buildFieldPatch('working_after_break', 'start_break', '2026-09-28T08:00:00.000Z', {
+      break_start_at: NOW,
+      break_end_at: '2026-09-28T07:15:00.000Z',
+      completed_break_minutes: 20,
+    })
+    expect(third.completed_break_minutes).toBe(35)
+  })
+
   it('clock_out patch: status=clocked_out, clock_out_at ayarlanır', () => {
     const patch = buildFieldPatch('working', 'clock_out', NOW)
     expect(patch.status).toBe('clocked_out')

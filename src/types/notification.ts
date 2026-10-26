@@ -20,6 +20,8 @@ export type NotificationType =
   | 'attendance_late_clock_out'
   | 'attendance_missed_clock_in'
   | 'attendance_missed_clock_out'
+  /** Molada olan çalışana: toplam mola 1 saate yaklaştı (pg_cron → scan_break_ending) */
+  | 'attendance_break_ending'
   /** Eski kurulum testi bildirimleri (endpoint kaldırıldı; mevcut kayıtlar için) */
   | 'push_test'
 

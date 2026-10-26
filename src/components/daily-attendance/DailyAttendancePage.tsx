@@ -152,7 +152,13 @@ export function DailyAttendancePage() {
       enableSorting: false,
       cell: ({ row }) => {
         const rec = row.original.entry.attendanceRecord
-        if (!rec?.break_start_at) return <span className="text-muted-foreground">—</span>
+        // break_start_at / break_end_at yalnızca son molayı tutar; öncekiler completed_break_minutes'ta
+        const prev = rec?.completed_break_minutes ?? 0
+        if (!rec?.break_start_at) {
+          return prev > 0
+            ? <span className="tabular-nums whitespace-nowrap">{formatDelay(prev)} toplam</span>
+            : <span className="text-muted-foreground">—</span>
+        }
         const from = new Date(rec.break_start_at).getTime()
         const to = rec.break_end_at ? new Date(rec.break_end_at).getTime() : now
         const mins = Math.max(0, Math.round((to - from) / 60_000))
@@ -162,6 +168,7 @@ export function DailyAttendancePage() {
             {rec.break_end_at
               ? <span className="text-xs text-muted-foreground">{formatDelay(mins)}</span>
               : <span className="text-xs text-warning">{formatDelay(mins)} · sürüyor</span>}
+            {prev > 0 && <span className="text-xs text-muted-foreground">Toplam {formatDelay(prev + mins)}</span>}
           </span>
         )
       },

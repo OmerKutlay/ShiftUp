@@ -33,6 +33,7 @@ export function buildDailyRows(entries: DailyShiftEntry[], now: number): DailyRo
     const parts = [
       rec?.clock_in_at && `giriş ${clock(rec.clock_in_at)}`,
       rec?.break_start_at && `mola ${clock(rec.break_start_at)}–${rec.break_end_at ? clock(rec.break_end_at) : 'sürüyor'}`,
+      !!rec?.completed_break_minutes && `önceki molalar ${rec.completed_break_minutes} dk`,
       rec?.clock_out_at && `çıkış ${clock(rec.clock_out_at)}`,
     ].filter(Boolean)
     return {

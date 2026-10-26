@@ -3,7 +3,7 @@
  * `short` dar panelde, `label` /notifications sayfasında kullanılır.
  */
 import {
-  BellRing, CalendarCheck, CalendarPlus, CalendarX, CircleCheck, Clock, TriangleAlert, Wrench,
+  BellRing, CalendarCheck, CalendarPlus, CalendarX, CircleCheck, Clock, Coffee, TriangleAlert, Wrench,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { BadgeTone } from '@/components/ui/badge'
@@ -34,7 +34,8 @@ export const NOTIFICATION_META: Record<NotificationType, NotificationMeta> = {
   attendance_late_clock_out:   { Icon: TriangleAlert, tone: 'warning', label: 'Geç çıkış',            short: 'Geç çıkış' },
   attendance_missed_clock_in:  { Icon: TriangleAlert, tone: 'danger',  label: 'Giriş okutulmadı',     short: 'Giriş yok' },
   attendance_missed_clock_out: { Icon: TriangleAlert, tone: 'danger',  label: 'Çıkış okutulmadı',     short: 'Çıkış yok' },
-  push_test:                   { Icon: BellRing,      tone: 'neutral', label: 'Test bildirimi',       short: 'Test' },
+  attendance_break_ending:     { Icon: Coffee,        tone: 'warning', label: 'Mola bitiyor',         short: 'Mola' },
+  push_test:                 { Icon: BellRing,      tone: 'neutral', label: 'Test bildirimi',       short: 'Test' },
 }
 
 /** Bilinmeyen (yeni eklenmiş) tür gelirse sayfa çökmesin */

@@ -31,6 +31,8 @@ export const NOTIFICATION_LINKS: Record<NotificationType, string> = {
   attendance_late_clock_out: '/',
   attendance_missed_clock_in: '/',
   attendance_missed_clock_out: '/',
+  // Mola bitiş hatırlatması çalışana gider → moladan dönüş okutulan sayfa
+  attendance_break_ending: '/my-schedule',
   // Test bildirimi → anlık bildirim ayarının bulunduğu Daha fazla sayfası
   push_test: '/more',
 }
