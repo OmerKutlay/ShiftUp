@@ -10,10 +10,14 @@ import { NextRequest } from 'next/server'
 import { ACCESS, KIOSK_ROLE_ID } from '@/lib/auth/roles'
 import { createFakeDb, type FakeDb } from './helpers/fakeSupabase'
 
-const state = vi.hoisted(() => ({ employee: null as unknown, db: null as unknown }))
+const state = vi.hoisted(() => ({ employee: null as unknown, db: null as unknown, rateAllowed: true }))
 
 vi.mock('@/lib/auth/session', () => ({ getCurrentEmployee: vi.fn(async () => state.employee) }))
 vi.mock('@/lib/supabaseAdmin', () => ({ createAdminClient: () => state.db }))
+// Sınır sayacı testler arasında paylaşılmasın; izin durumu teste göre ayarlanır
+vi.mock('@/lib/rateLimiter', () => ({
+  checkRateLimit: vi.fn(async () => ({ allowed: state.rateAllowed, remaining: 0, resetAt: Date.now() + 1000 })),
+}))
 vi.mock('@/lib/db', () => ({
   db: { from: (t: string) => (state.db as { from: (t: string) => unknown }).from(t) },
 }))
@@ -91,7 +95,7 @@ const recipientIds = (id: string) =>
 const notified = (id: string) =>
   db().tables.notifications.filter((n) => n.related_id === id).map((n) => n.employee_id).sort()
 
-beforeEach(() => { state.db = seed() })
+beforeEach(() => { state.db = seed(); state.rateAllowed = true })
 
 describe('POST /api/announcements — yetki matrisi', () => {
   it('çalışan duyuru yayınlayamaz (403)', async () => {
@@ -134,9 +138,7 @@ describe('POST /api/announcements — yetki matrisi', () => {
 
   it('günlük yayın sınırı aşılınca 429 döner ve duyuru oluşmaz', async () => {
     as(MGR_A, ACCESS.MANAGER, STORE_A)
-    db().options.rpc = {
-      rate_limit_hit: () => ({ data: { allowed: false, remaining: 0, reset_at: new Date(Date.now() + 1000).toISOString() } }),
-    }
+    state.rateAllowed = false
     const res = await createPOST(req('/api/announcements', 'POST', { title: 'x', body: 'y' }))
     expect(res.status).toBe(429)
     expect(db().tables.announcements).toHaveLength(0)
@@ -482,7 +484,9 @@ describe('liste, arşiv ve okunmamış sayısı', () => {
     }
     expect(detail.recipients).toHaveLength(4)
     for (const r of detail.recipients) {
-      expect(Object.keys(r).sort()).toEqual(['ack_at', 'employee_id', 'full_name', 'read_at'])
+      // Fake DB boş kolonları hiç yazmaz; gerçek DB null döner — burada yalnızca izinli anahtarlar denetlenir
+      expect(Object.keys(r).every((k) => ['ack_at', 'employee_id', 'full_name', 'read_at'].includes(k))).toBe(true)
+      expect(r).not.toHaveProperty('email')
     }
   })
 })

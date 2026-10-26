@@ -12,7 +12,6 @@ export const ANNOUNCEMENT_BODY_MAX = 4000
 export function normalizeBody(raw: string): string {
   return raw
     .replace(/\r\n?/g, '\n')
-    // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
     .trim()
 }
