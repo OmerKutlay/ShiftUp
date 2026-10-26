@@ -10,10 +10,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { addWeeks, format, subWeeks } from 'date-fns'
-import { ArrowLeft, Printer } from 'lucide-react'
+import { ArrowLeft, Printer, TriangleAlert } from 'lucide-react'
 
 import type { WeeklyScheduleEntry } from '@/types/schedule'
 import { useAuth } from '@/context/AuthContext'
+import { turkeyToday } from '@/lib/dateUtils'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 import { PeriodStepper } from '@/components/common'
@@ -25,9 +26,12 @@ import { formatPrintedAt, formatWeekRangeTr, parseWeekParam } from './printHelpe
 export function SchedulePrintPage({ week, auto }: { week?: string; auto?: boolean }) {
   const router = useRouter()
   const { store } = useAuth()
-  const currentWeek = useMemo(() => parseWeekParam(week) ?? new Date(), [week])
+  const parsedWeek = useMemo(() => parseWeekParam(week), [week])
+  const invalidWeek = !!week && !parsedWeek
+  // Varsayılan hafta Türkiye takvimine göre (sunucu ve istemci aynı günü görsün)
+  const currentWeek = useMemo(() => parsedWeek ?? new Date(`${turkeyToday()}T12:00:00`), [parsedWeek])
   const data = useWeeklySchedule(currentWeek, { readOnly: true })
-  const { weekDays, employees, assignments, isFirstLoad, error } = data
+  const { weekDays, employees, assignments, settled, failed } = data
   const [printedAt] = useState(() => formatPrintedAt(new Date()))
 
   const entries: WeeklyScheduleEntry[] = useMemo(() => {
@@ -51,7 +55,11 @@ export function SchedulePrintPage({ week, auto }: { week?: string; auto?: boolea
     return m
   }, [entries, assignments, weekDays])
 
-  const ready = !isFirstLoad && !error
+  // Tüm kaynaklar yüklenmeden (veri ya da hata) yazdırılamaz; izin/tatil hatası yalnızca uyarı verir
+  const loading = !(settled.assignments && settled.employees && settled.leaves && settled.holidays)
+  const error = failed.assignments || failed.employees ? data.error : null
+  const partial = failed.leaves || failed.holidays
+  const ready = !loading && !error
   const autoDone = useRef(false)
   useEffect(() => {
     if (!auto || !ready || autoDone.current) return
@@ -79,13 +87,23 @@ export function SchedulePrintPage({ week, auto }: { week?: string; auto?: boolea
         <Button className="ml-auto" onClick={() => window.print()} disabled={!ready || entries.length === 0}>
           <Printer /> Yazdır
         </Button>
+        {invalidWeek && (
+          <p role="status" className="w-full text-xs text-muted-foreground">
+            Geçersiz hafta bilgisi; bu hafta gösteriliyor.
+          </p>
+        )}
+        {ready && partial && (
+          <p role="alert" className="flex w-full items-center gap-1.5 text-xs text-warning">
+            <TriangleAlert className="size-3.5 shrink-0" aria-hidden /> İzin/tatil bilgisi yüklenemedi; çıktıda eksik olabilir.
+          </p>
+        )}
         <p className="w-full text-xs text-muted-foreground">
           Yazdırma penceresinde hedef olarak &quot;PDF olarak kaydet&quot; seçerek PDF alabilirsiniz. Sayfa A4 yatay ayarlanmıştır.
         </p>
       </div>
 
       <div className="mx-auto max-w-[1200px] px-4 pb-8 print:max-w-none print:p-0">
-        {isFirstLoad && !error && <div className="flex justify-center p-10"><Spinner /></div>}
+        {loading && !error && <div className="flex justify-center p-10"><Spinner /></div>}
         {error && <p role="alert" className="p-4 text-sm text-destructive">Plan yüklenemedi: {error}</p>}
         {ready && entries.length === 0 && <p className="p-4 text-sm text-muted-foreground">Bu hafta için aktif çalışan bulunamadı.</p>}
         {ready && entries.length > 0 && (

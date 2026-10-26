@@ -110,7 +110,7 @@ export function WeekPrintSheet({
             </GroupRows>
           ))}
         </tbody>
-        <tfoot className="bg-gray-200">
+        <tbody className="bg-gray-200">
           <tr className="break-inside-avoid">
             <td className={cn(CELL, 'font-semibold')}>Mağazada (kişi)</td>
             {weekDays.map((d) => (
@@ -120,7 +120,7 @@ export function WeekPrintSheet({
             ))}
             <td className={cn(CELL, 'text-center font-semibold tabular-nums')}>{hoursNumTr(totalMins)}</td>
           </tr>
-        </tfoot>
+        </tbody>
       </table>
       <p className="mt-1 text-[9px]">Saat: haftalık net çalışma saati (mola düşülmüş).</p>
     </section>

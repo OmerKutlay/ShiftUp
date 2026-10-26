@@ -112,6 +112,19 @@ export function useWeeklySchedule(currentWeek: Date, { readOnly = false } = {}) 
     holidayMap,
     /** Bu haftanın verisi henüz hiç gelmedi (skeleton göster) */
     isFirstLoad: !assignmentsQ.data && !assignmentsQ.error,
+    /** Kaynak bazında "yüklendi" (veri geldi ya da hata verdi) ve hata durumu — yazdırma sayfası kullanır */
+    settled: {
+      assignments: !!assignmentsQ.data || !!assignmentsQ.error,
+      employees: !!employeesQ.data || !!employeesQ.error,
+      leaves: !!leavesQ.data || !!leavesQ.error,
+      holidays: !!holidaysQ.data || !!holidaysQ.error,
+    },
+    failed: {
+      assignments: !!assignmentsQ.error,
+      employees: !!employeesQ.error,
+      leaves: !!leavesQ.error,
+      holidays: !!holidaysQ.error,
+    },
     error: error ? (error instanceof Error ? error.message : 'Yükleme hatası.') : null,
     reload,
   }
