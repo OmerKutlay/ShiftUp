@@ -165,5 +165,6 @@ export function pageMetaFor(
     .sort((a, b) => b.href.length - a.href.length)[0]
   if (match) return { title: match.label, group: NAV_GROUP_LABELS[match.group] }
   if (pathname === MORE_HREF) return { title: 'Daha fazla', group: null }
+  if (pathname === '/gizlilik') return { title: 'Aydınlatma metni', group: null }
   return { title: 'ShiftUp', group: null }
 }

@@ -149,6 +149,13 @@ CI (`.github/workflows/ci.yml`) her PR'da typecheck, lint, test ve build çalı�
   durum geçişleri iyimser kilitle (optimistic lock) yapılır.
 - **Denetim kaydı:** override, mesai düzeltme, izin/takas kararları ve çalışan yönetimi
   `audit_logs` tablosuna yazılır (değiştirilemez).
+- **KVKK:** `/gizlilik` (oturumsuz açılır) çalışan aydınlatma metnini gösterir; veri sorumlusu bilgisi
+  `company_settings` tablosundan (Ayarlar › KVKK, yalnızca Admin düzenler) gelir. Devam/konum verisinin
+  dayanağı rıza değil, iş sözleşmesi + İş Kanunu + meşru menfaattir (KVKK m.5/2-c, ç, f); çalışan yalnızca
+  "okudum, bilgilendirildim" der (`employees.kvkk_notice_ack_at/version`, `POST /api/kvkk/ack`, sürüm
+  `KVKK_NOTICE_VERSION`). Biyometrik veri işlenmez; konum yalnızca QR okutulurken alınır, ham koordinat
+  veritabanına yazılmaz (yalnızca mağazaya uzaklık/doğruluk). Metin bir şablondur, hukuk müşavirince gözden
+  geçirilmelidir.
 - **Mağaza yalıtımı:** bkz. [Çoklu mağaza](#çoklu-mağaza) — her sorgu oturumun aktif mağazasıyla
   sınırlanır; istemciden gelen her id'nin mağazaya ait olduğu doğrulanır.
 

@@ -100,6 +100,16 @@ describe('middleware — /login ile korumalı sayfalar aynı ölçütü kullanı
   })
 })
 
+describe('middleware — KVKK aydınlatma sayfası (/gizlilik) herkese açık', () => {
+  it('oturumsuz isteği /login a yönlendirmez ve oturum sorgusu yapmaz', async () => {
+    getUser.mockResolvedValue({ user: null })
+    const res = await middleware(req('/gizlilik'))
+    expect(res.status).toBe(200)
+    expect(location(res)).toBeNull()
+    expect(getUser).not.toHaveBeenCalled()
+  })
+})
+
 describe('middleware — mobil "Daha fazla" sayfası', () => {
   it('Çalışan /more, /notifications ve /workforce (Müsaitlik ve takas) sayfalarını açabilir', async () => {
     for (const path of ['/more', '/notifications', '/workforce']) {
