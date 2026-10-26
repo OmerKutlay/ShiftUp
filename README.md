@@ -211,17 +211,25 @@ Gün kodları (Excel): `Ç` çalıştı, `HT` hafta tatili, `GT` genel tatil, `G
 SGK eksik gün nedeni listesi (01–29) "Açıklamalar" sayfasındadır; kaynak:
 <https://www.alomaliye.com/2020/06/22/eksik-gunlerde-kullanilacak-sgk-kodlari/> (SGK Genelgesi 2020/20).
 
-Kurallar ve sınırlar:
+Kurallar ve sınırlar (02 ve 14 numaralı kodlar güncel listede yoktur; liste sgk.gov.tr ile doğrulanamadı, üçüncü taraf kaynaklara dayanır):
 
 - Ay 30 gün kabul edilir; tam çalışılan ayda 28/29/31 günlük de olsa prim günü 30'dur. 31 günlük ayda
-  31. gün eksik gün sayılmaz. Ay içi işe girişte 31 günlük ayda `min(30, 32 − giriş günü)`, diğer
-  aylarda `31 − giriş günü` (işe giriş tarihi çalışan kaydından okunur).
+  31. gün eksik gün sayılmaz (yalnızca işte olunan gün 30 iken; 3. gün ve sonrası girişte sayılır). İşte olunan
+  gün = takvim günü sayısı, en çok 30 (işe giriş tarihi çalışan kaydından okunur; işten çıkış tarihi
+  eklendiğinde aynı hesaba bağlanacak).
 - Rapor günleri bu raporda eksik gün sayılır (eski "Aylık puantaj" SGK sütunu yalnızca ücretsiz izin ve
   devamsızlığı düşer).
 - İşten çıkış tarihi tutulmadığından ay içinde ayrılanların eksik günü (kod 16) elle girilmelidir.
 - Fazla mesai bu mağazadaki vardiyalardan hesaplanır (puantaj mağaza bazlıdır); birden fazla mağazada
   çalışanın işveren düzeyindeki haftalık toplamı için Raporlar › Fazla çalışma'ya bakın.
 - Ay bitmeden alınan çıktı geçicidir; gelecek günler eksik sayılmaz.
+- Ay içinde mağaza değiştiren çalışan, çalıştığı her mağazanın dosyasında görünür; prim gününü iki dosyada
+  birleştirmek muhasebenin işidir.
+- Ay sınırını aşan haftanın fazla mesaisi, haftanın Pazar günü hangi aydaysa o aya yazılır. Normal saat
+  (net − fazla mesai) en az 0'dır.
+- İşe girişi ay sonundan sonra olan çalışan listelenmez. Ay içinde hiç kaydı (vardiya/izin/devam) olmayan
+  çalışan listelenir ama Not sütununda "Kontrol edin: ay içinde kayıt yok" yazar.
+- CSV'de eksik gün nedeni kodu `="01"` biçimindedir; Excel baştaki sıfırı atmasın diye.
 
 ## İş Kanunu kuralları
 

@@ -47,33 +47,28 @@ export async function GET(req: NextRequest) {
     if (storeErr) throw storeErr
     const storeName = (store as { name: string } | null)?.name ?? ''
     const slug = storeFileSlug(storeName)
+    const filename = `bordro-puantaj-${month}-${slug}.${format}`
+    const headers = { 'Cache-Control': 'no-store', 'Content-Disposition': `attachment; filename="${filename}"` }
 
+    let body: BodyInit
+    let contentType: string
+    if (format === 'csv') {
+      body = payrollToCsv(rows)
+      contentType = 'text/csv; charset=utf-8'
+    } else {
+      const generatedAt = new Intl.DateTimeFormat('tr-TR', {
+        timeZone: 'Europe/Istanbul', dateStyle: 'short', timeStyle: 'short',
+      }).format(new Date())
+      body = new Uint8Array(await buildPayrollWorkbook(month, rows, storeName || 'Mağaza', `${turkeyToday()} (${generatedAt})`))
+      contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    }
+
+    // Denetim kaydı dosya başarıyla üretildikten sonra yazılır (timesheet ile aynı)
     await logAudit({
       actorId: auth.employee.id, storeId, action: 'report.payroll.export', entityType: 'report', entityId: month,
       note: `${format} · ${rows.length} çalışan`,
     })
-
-    const headers = { 'Cache-Control': 'no-store' }
-    if (format === 'csv') {
-      return new NextResponse(payrollToCsv(rows), {
-        headers: {
-          ...headers,
-          'Content-Type': 'text/csv; charset=utf-8',
-          'Content-Disposition': `attachment; filename="bordro-puantaji-${slug}-${month}.csv"`,
-        },
-      })
-    }
-    const generatedAt = new Intl.DateTimeFormat('tr-TR', {
-      timeZone: 'Europe/Istanbul', dateStyle: 'short', timeStyle: 'short',
-    }).format(new Date())
-    const buffer = await buildPayrollWorkbook(month, rows, storeName || 'Mağaza', `${turkeyToday()} (${generatedAt})`)
-    return new NextResponse(new Uint8Array(buffer), {
-      headers: {
-        ...headers,
-        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': `attachment; filename="bordro-puantaji-${slug}-${month}.xlsx"`,
-      },
-    })
+    return new NextResponse(body, { headers: { ...headers, 'Content-Type': contentType } })
   } catch (err) {
     return serverError('GET /api/reports/payroll', err)
   }

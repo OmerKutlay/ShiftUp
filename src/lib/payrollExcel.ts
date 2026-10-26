@@ -97,10 +97,13 @@ export async function buildPayrollWorkbook(
     ['Normal saat', 'Net fiili çalışma (mola düşülmüş) − fazla mesai. Genel tatil çalışılan saat, normal saatin içinde ayrıca gösterilen bilgi sütunudur.'],
     ['Fazla mesai', `Pazartesi–Pazar haftasında 45 saati aşan net süre (İş K. Md. 41), %50 zamlı. Hafta, Pazar günü hangi aydaysa o aya yazılır. Yıllık üst sınır ${ANNUAL_OVERTIME_CAP_HOURS} saat. Bu rapor yalnızca bu mağazadaki vardiyaları sayar; birden fazla mağazada çalışanın işveren düzeyindeki toplamı için Raporlar > Fazla çalışma bakın.`],
     ['Genel tatil', 'Tam gün resmi tatilde çalışılan gün GTÇ, çalışılmayan gün GT. Yarım gün tatiller normal gün sayılır.'],
-    ['SGK prim günü', 'Ay 30 gün kabul edilir (28/29/31 çeken aylarda da tam ay = 30). Prim günü = işte olunan gün − eksik gün. 31 günlük ayda 31. gün eksik gün sayılmaz. Ay içinde işe girişte: 31 günlük ayda min(30, 32 − giriş günü), diğer aylarda 31 − giriş günü.'],
+    ['SGK prim günü', 'Ay 30 gün kabul edilir (28/29/31 çeken aylarda da tam ay = 30). Prim günü = işte olunan gün − eksik gün. İşte olunan gün = takvim günü sayısı (en çok 30). 31 günlük ayda 31. gün yalnızca işte olunan gün 30 iken (tam ay veya 1.–2. gün giriş) eksik gün sayılmaz; gün sütunları ise gerçek günleri gösterir.'],
     ['Eksik gün', 'Rapor (01), ücretsiz izin (21) ve devamsızlık (15) günleri. Hafta tatili, genel tatil, yıllık izin ve mazeret izni ücretli sayılır, eksik gün değildir. Birden fazla neden varsa kod 12 (Birden fazla).'],
     ['Sicil / TC No', 'ShiftUp bu bilgileri saklamaz (KVKK). Muhasebe bu iki sütunu kendi kayıtlarından doldurur.'],
     ['Sınırlar', 'İşten çıkış tarihi tutulmadığı için ay içinde ayrılanlar için eksik gün (16 Fesih tarihinde çalışmamıştır) elle girilmelidir. Ay tamamlanmadan alınan çıktıda gelecek günler (P) eksik sayılmaz; kesin bordro için ay sonunda yeniden indirin.'],
+    ['Mağaza değişikliği', 'Ay içinde mağaza değiştiren çalışan, çalıştığı her mağazanın dosyasında görünür (puantaj mağaza bazlıdır). Prim gününü iki dosyada toplayıp 30 ile sınırlamak muhasebenin işidir.'],
+    ['Hafta geçişi', 'Haftalık 45 saat üstü fazla mesai, haftanın Pazar günü hangi aydaysa o aya yazılır; ay sınırını aşan hafta tamamen bir aya düşer. Normal saat = net − fazla mesai, en az 0.'],
+    ['Kontrol edin', 'Ay içinde hiç vardiya, izin veya devam kaydı olmayan çalışan listelenir ama Not sütununda "Kontrol edin: ay içinde kayıt yok" yazar; prim günü doğrulanmalıdır. İşe girişi ay sonundan sonra olanlar listelenmez.'],
   ]
   for (const [k, v] of notes) {
     const row = legend.addRow([k, v])

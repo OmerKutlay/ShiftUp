@@ -114,6 +114,33 @@ describe('payroll — SGK prim günü ve eksik gün kodu', () => {
     expect(r.missingDays).toBe(0)
     expect(r.sgkDays).toBe(30)
   })
+  it('31. gün: giriş 3. gün ve sonrasında eksik gün sayılır, 1.–2. günde sayılmaz', () => {
+    const l = [leave('unpaid', '2026-10-31')]
+    const d3 = one({ employees: [{ ...EMP, hire_date: '2026-10-03' }], leaves: l })
+    expect(d3.employedDays).toBe(29)
+    expect(d3.missingDays).toBe(1)
+    expect(d3.sgkDays).toBe(28)
+    const d2 = one({ employees: [{ ...EMP, hire_date: '2026-10-02' }], leaves: l })
+    expect(d2.employedDays).toBe(30)
+    expect(d2.missingDays).toBe(0)
+    expect(d2.sgkDays).toBe(30)
+  })
+  it('işe girişi ay sonundan sonra olan çalışan listelenmez', () => {
+    const rows = buildPayrollTimesheet({
+      ...base, employees: [EMP, { ...EMP, id: 'e9', full_name: 'Gelecek', hire_date: '2026-11-01' }], shifts: [worked('2026-10-05')], leaves: [],
+    }).rows
+    expect(rows.map((r) => r.employeeId)).toEqual(['e1'])
+  })
+  it('ay içinde hiç kaydı olmayan çalışan listelenir ve kontrol notu alır', () => {
+    const r = one({})
+    expect(r.noRecords).toBe(true)
+    expect(r.notes).toContain('Kontrol edin: ay içinde kayıt yok')
+    expect(one({ shifts: [worked('2026-10-05')] }).noRecords).toBe(false)
+  })
+  it('işten çıkış tarihi bağlanabilir (employmentWindow / employedSgkDays)', () => {
+    expect(employedSgkDays('2026-10', null, '2026-10-20')).toBe(20)
+    expect(employedSgkDays('2026-10', '2026-11-05')).toBe(0)
+  })
   it('SGK kod listesi 01, 07, 12, 15, 21 içerir', () => {
     const codes = SGK_MISSING_DAY_CODES.map((c) => c.code)
     expect(codes).toEqual(expect.arrayContaining(['01', '07', '12', '15', '21']))
@@ -153,8 +180,8 @@ describe('payroll — CSV', () => {
     expect(csv).toContain("'=HYPERLINK(")
     expect(csv).toContain('"Veli; ""Can"""')
   })
-  it('eksik gün nedeni kodu 01 yazılır', () => {
-    expect(csv).toContain(';01;')
+  it('eksik gün nedeni kodu ="01" olarak yazılır (baştaki sıfır korunur)', () => {
+    expect(csv).toContain(';"=""01""";')
   })
 })
 
@@ -185,11 +212,15 @@ beforeEach(() => {
   })
 })
 
-async function call(employee: unknown, qs: string) {
+async function call(employee: unknown, qs: string, rateAllowed?: boolean) {
   vi.resetModules()
   vi.doMock('@/lib/auth/session', () => ({ getCurrentEmployee: vi.fn().mockResolvedValue(employee) }))
   vi.doMock('@/lib/supabaseAdmin', () => ({ createAdminClient: () => db }))
   vi.doMock('@/lib/db', () => ({ db }))
+  vi.doUnmock('@/lib/rateLimiter')
+  if (rateAllowed !== undefined) {
+    vi.doMock('@/lib/rateLimiter', () => ({ checkRateLimit: vi.fn().mockResolvedValue({ allowed: rateAllowed, remaining: 0, resetAt: 0 }) }))
+  }
   const { GET } = await import('@/app/api/reports/payroll/route')
   return GET(new NextRequest(`http://localhost/api/reports/payroll?${qs}`))
 }
@@ -213,12 +244,20 @@ describe('GET /api/reports/payroll', () => {
     const res = await call(asManager, 'month=2026-09&format=csv')
     expect(res.status).toBe(200)
     expect(res.headers.get('Content-Type')).toContain('text/csv')
-    expect(res.headers.get('Content-Disposition')).toBe('attachment; filename="bordro-puantaji-kadikoy-sube-2026-09.csv"')
+    expect(res.headers.get('Content-Disposition')).toBe('attachment; filename="bordro-puantaj-2026-09-kadikoy-sube.csv"')
     const text = await res.text()
     expect(text).toContain('Ayşe')
     expect(text).not.toContain('Berk')
     const log = db.tables.audit_logs.find((l) => l.action === 'report.payroll.export')
     expect(log?.store_id).toBe(STORE_A)
+  })
+  it('hız sınırı aşılınca 429 döner, dosya üretilmez ve denetim kaydı yazılmaz', { timeout: 30_000 }, async () => {
+    const res = await call(asManager, 'month=2026-09&format=csv', false)
+    expect(res.status).toBe(429)
+    expect((await res.json()).code).toBe('RATE_LIMITED')
+    expect(db.tables.audit_logs).toHaveLength(0)
+    // JSON önizleme hız sınırına takılmaz
+    expect((await call(asManager, 'month=2026-09', false)).status).toBe(200)
   })
   it('xlsx üretir', { timeout: 30_000 }, async () => {
     const res = await call(asManager, 'month=2026-09&format=xlsx')

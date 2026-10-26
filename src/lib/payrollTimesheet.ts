@@ -8,11 +8,16 @@
  * SGK eksik gün nedeni kodları (APHB / aylık prim ve hizmet belgesi, SGK Genelgesi 2020/20 listesi):
  * https://www.alomaliye.com/2020/06/22/eksik-gunlerde-kullanilacak-sgk-kodlari/
  * https://kolayik.com/blog/sgk-eksik-gun-nedenleri
- * (iki bağımsız kaynakta aynı liste; resmi kaynak: sgk.gov.tr eksik gün bildirim kılavuzu)
+ *
+ * Kodlar 02 ve 14 listede YOKTUR: alomaliye.com/2012/04/17/sgk-eksik-gun-nedenleri/ "02 ve 14 numaralı kodlar
+ * listede yer almaz" der; 2018 tarihli bir sayfada disiplin cezası 02 diye geçer ama diğer tüm kaynaklarda 03.
+ * 28/29 pandemi dönemine özeldir, güncel bildirimlerde kullanılmaz. sgk.gov.tr / e-Bildirge belgelerine
+ * erişilemedi (arama yalnızca üçüncü taraf siteler döndürdü) — liste resmi kaynakla doğrulanmadı.
  *
  * Prim günü kuralı (özet; ayrıntı README "Bordro puantajı"):
- *   - Ay 30 gün kabul edilir; 31 çeken aylarda 31. gün ayrıca prim günü yaratmaz, Şubat tam çalışılırsa 30 olur.
- *   - Ay içinde işe giriş: 31 günlük ayda min(30, 32 − giriş günü), diğer aylarda 31 − giriş günü.
+ *   - Ay 30 gün kabul edilir; Şubat tam çalışılırsa 30 olur.
+ *   - İşte olunan gün = takvim günü (çıkış − giriş + 1), en çok 30; ay başından beri çalışılıyorsa 30.
+ *     31 günlük ayda 31. gün yalnızca işte olunan gün 30 iken eksik gün sayılmaz (giriş 3. gün ve sonrası: sayılır).
  *   - Prim günü = işte olunan gün − eksik gün. Eksik gün: rapor (01), ücretsiz izin (21), devamsızlık (15).
  *     Ücretli izin, hafta tatili, resmi tatil prim gününe dahildir.
  *   - Birden fazla farklı nedenle eksik gün varsa neden kodu 12 (Birden fazla).
@@ -105,6 +110,8 @@ export interface PayrollRow {
   /** SGK eksik gün nedeni kodu ('' = eksik gün yok); birden fazla neden → '12' */
   missingReasonCode: string
   sgkDays: number
+  /** Ay içinde hiç vardiya, izin veya devam kaydı yok — prim günü doğrulanmalı */
+  noRecords: boolean
   notes: string[]
 }
 
@@ -115,12 +122,48 @@ export interface PayrollTimesheet {
 
 const hours = (mins: number) => Math.round((mins / 60) * 100) / 100
 
-/** İşe giriş günü (ay içindeyse) → SGK'ya göre işte olunan gün; aksi halde tam ay = 30 */
-export function employedSgkDays(month: string, hireDate: string | null | undefined): number {
-  if (!hireDate || hireDate.slice(0, 7) !== month) return 30
+
+/** İşte olunan aralık: ay içindeki ilk ve son gün (1-tabanlı); işe giriş/çıkış bu aralığı daraltır */
+export interface EmploymentWindow {
+  /** Ayın kaçıncı günü işe başlandı (1 = ay başından beri) */
+  fromDay: number
+  /** Ayın kaçıncı günü son çalışma günü (ay sonu = ayın gün sayısı) */
+  toDay: number
+}
+
+/**
+ * Ay içinde işte olunan aralık. endDate (işten çıkış) şimdilik kimse vermiyor; employees.termination_date
+ * eklendiğinde buraya bağlanır — çıkış ayında SGK 16 "Fesih tarihinde çalışmamıştır" eksik günü de
+ * bu aralık dışındaki günlerden türetilmelidir (bkz. employedSgkDays). null = ayın tamamı.
+ * Ay dışında (işe giriş ay sonundan sonra / çıkış ay başından önce) → null.
+ */
+export function employmentWindow(
+  month: string,
+  hireDate: string | null | undefined,
+  endDate?: string | null
+): EmploymentWindow | null {
   const len = monthDays(month).length
-  const d = Number(hireDate.slice(8, 10))
-  return len === 31 ? Math.min(30, 32 - d) : 31 - d
+  const first = `${month}-01`
+  const last = `${month}-${String(len).padStart(2, '0')}`
+  if (hireDate && hireDate > last) return null
+  if (endDate && endDate < first) return null
+  const fromDay = hireDate && hireDate > first ? Number(hireDate.slice(8, 10)) : 1
+  const toDay = endDate && endDate < last ? Number(endDate.slice(8, 10)) : len
+  return { fromDay, toDay: Math.max(fromDay, toDay) }
+}
+
+/**
+ * SGK'ya göre işte olunan gün (prim günü tavanı): ay 30 gün kabul edilir.
+ *   - tam ay → 30 (Şubat dahil: ay sonuna kadar çalışılan Şubat 30 sayılır)
+ *   - aksi halde takvim günü sayısı (toDay − fromDay + 1), en çok 30
+ * Pencere yoksa (ay dışı) → 0.
+ */
+export function employedSgkDays(month: string, hireDate: string | null | undefined, endDate?: string | null): number {
+  const w = employmentWindow(month, hireDate, endDate)
+  if (!w) return 0
+  const len = monthDays(month).length
+  const to = len < 30 && w.toDay === len ? 30 : w.toDay
+  return Math.min(30, to - w.fromDay + 1)
 }
 
 /** Eksik gün sayısından SGK prim günü ve neden kodu (saf; testlerde doğrudan denenir) */
@@ -135,60 +178,81 @@ export function sgkSummary(employedDays: number, reasons: { rest: number; unpaid
   }
 }
 
-/** buildTimesheet satırlarını bordro satırlarına çevirir */
+export const NO_RECORDS_NOTE = 'Kontrol edin: ay içinde kayıt yok'
+
+/**
+ * buildTimesheet satırlarını bordro satırlarına çevirir.
+ * Gün sayaçlarının hepsi tek döngüden gelir (ekranda görünen gün sayıları gerçek günlerdir);
+ * yalnızca "Eksik Gün" 31 günlük ayda tam çalışılan (işte olunan = 30) çalışanın 31. gününü saymaz.
+ * İşe girişi ay sonundan sonra olan çalışanlar listeye alınmaz.
+ */
 export function toPayrollRows(month: string, rows: TimesheetRow[]): PayrollRow[] {
   const days = monthDays(month)
   const len = days.length
-  return rows.map((r) => {
+  const out: PayrollRow[] = []
+  for (const r of rows) {
     const hire = r.employee.hire_date ?? null
-    const hiredThisMonth = !!hire && hire.slice(0, 7) === month
-    const beforeHire = (d: string) => hiredThisMonth && d < hire!
-    // Gün kodları — işe girişten önceki günler boş; o günlerdeki sayaçlar tutarlı olsun diye ayrıca sayılır
-    const out: Record<string, PayrollDayCode> = {}
-    let holidayWorkedMins = 0
-    let holidayRest = 0
-    const counts = { rest: 0, unpaid: 0, absent: 0 }
-    for (const d of days) {
-      if (beforeHire(d)) { out[d] = ''; continue }
-      const c = r.days[d] ?? ''
-      out[d] = c === '' ? '' : DAY_CODE[c]
-      if (c === 'RTÇ') holidayWorkedMins += r.dayMins[d] ?? 0
-      if (c === 'RT') holidayRest++
-      // 31 günlük ayda 31. gün prim günü yaratmadığı için eksik gün de sayılmaz
-      const countable = !(len === 31 && d.endsWith('-31'))
-      if (countable && c === 'Rİ') counts.rest++
-      if (countable && c === 'Üİ') counts.unpaid++
-      if (countable && c === 'D') counts.absent++
-    }
+    const window = employmentWindow(month, hire)
+    if (!window) continue
     const employed = employedSgkDays(month, hire)
-    const sgk = sgkSummary(employed, counts)
+    // 31. gün yalnızca işte olunan gün 30'a tamamlanmışken prim günü yaratmaz
+    const skip31 = len === 31 && employed === 30
+
+    const codes: Record<string, PayrollDayCode> = {}
+    const t = { worked: 0, rest: 0, holiday: 0, annual: 0, sick: 0, unpaid: 0, excuse: 0, absent: 0, holidayWorked: 0 }
+    let holidayWorkedMins = 0
+    const missing = { rest: 0, unpaid: 0, absent: 0 }
+    let hasRecord = false
+    for (const d of days) {
+      const dayNo = Number(d.slice(8))
+      if (dayNo < window.fromDay) { codes[d] = ''; continue }
+      const c = r.days[d] ?? ''
+      codes[d] = c === '' ? '' : DAY_CODE[c]
+      if (c !== '' && c !== 'RT') hasRecord = true
+      const countsMissing = !(skip31 && dayNo === 31)
+      switch (c) {
+        case 'Ç': t.worked++; break
+        case 'RTÇ': t.worked++; t.holidayWorked++; holidayWorkedMins += r.dayMins[d] ?? 0; break
+        case 'HT': t.rest++; break
+        case 'RT': t.holiday++; break
+        case 'Yİ': t.annual++; break
+        case 'Mİ': t.excuse++; break
+        case 'Rİ': t.sick++; if (countsMissing) missing.rest++; break
+        case 'Üİ': t.unpaid++; if (countsMissing) missing.unpaid++; break
+        case 'D': t.absent++; if (countsMissing) missing.absent++; break
+      }
+    }
+    const sgk = sgkSummary(employed, missing)
     const notes: string[] = []
     if (r.overtimeWithoutConsent) notes.push('Fazla çalışma için yazılı onay kayıtlı değil')
-    if (hiredThisMonth) notes.push(`Ay içinde işe giriş (${hire})`)
-    return {
+    if (window.fromDay > 1) notes.push(`Ay içinde işe giriş (${hire})`)
+    if (!hasRecord) notes.push(NO_RECORDS_NOTE)
+    out.push({
       employeeId: r.employee.id,
       fullName: r.employee.full_name,
       sicilNo: '',
       tcKimlikNo: '',
-      days: out,
-      workedDays: r.workedDays,
+      days: codes,
+      workedDays: t.worked,
       normalHours: hours(Math.max(0, r.workedMins - r.overtimeMins)),
       overtimeHours: hours(r.overtimeMins),
       holidayWorkedHours: hours(holidayWorkedMins),
-      holidayWorkedDays: r.holidayWorkedDays,
+      holidayWorkedDays: t.holidayWorked,
       nightHours: hours(r.nightMins),
-      weeklyRestDays: r.leaveDays['HT'],
-      holidayRestDays: holidayRest,
-      annualLeaveDays: r.leaveDays['Yİ'],
-      sickDays: r.leaveDays['Rİ'],
-      unpaidDays: r.leaveDays['Üİ'],
-      excuseDays: r.leaveDays['Mİ'],
-      absentDays: r.absentDays,
+      weeklyRestDays: t.rest,
+      holidayRestDays: t.holiday,
+      annualLeaveDays: t.annual,
+      sickDays: t.sick,
+      unpaidDays: t.unpaid,
+      excuseDays: t.excuse,
+      absentDays: t.absent,
       employedDays: employed,
       ...sgk,
+      noRecords: !hasRecord,
       notes,
-    }
-  })
+    })
+  }
+  return out
 }
 
 /** Ay + mağaza verisinden bordro puantajı (buildTimesheet parametreleriyle aynı) */
@@ -215,16 +279,28 @@ function csvCell(v: string): string {
   return /[;"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
 
+/**
+ * Baştaki sıfırı korunacak sabit kod hücresi: Excel ="01" ifadesini metin 01 olarak gösterir.
+ * Yalnızca bizim ürettiğimiz sabit 2 haneli SGK kodları verilir (kullanıcı girdisi asla) — bu yüzden
+ * enjeksiyon kaçışından geçmez; biçim doğrulanır.
+ */
+export function csvTextCode(code: string): string {
+  if (code === '') return ''
+  if (!/^\d{2}$/.test(code)) throw new Error('Geçersiz kod')
+  return `"=""${code}"""`
+}
+
 /** UTF-8 BOM'lu, `;` ayraçlı, yalnızca toplamlar içeren CSV (gün kodu sütunları yok) */
 export function payrollToCsv(rows: PayrollRow[]): string {
   const lines = [PAYROLL_CSV_HEADERS.join(';')]
   for (const r of rows) {
-    lines.push([
+    const cells = [
       r.sicilNo, r.tcKimlikNo, r.fullName, r.workedDays, num(r.normalHours), num(r.overtimeHours),
       r.holidayWorkedDays, num(r.holidayWorkedHours), num(r.nightHours), r.weeklyRestDays,
       r.holidayRestDays, r.annualLeaveDays, r.sickDays, r.unpaidDays, r.excuseDays,
-      r.absentDays, r.missingDays, r.missingReasonCode, r.sgkDays, r.notes.join(' | '),
-    ].map((c) => csvCell(String(c))).join(';'))
+      r.absentDays, r.missingDays, null, r.sgkDays, r.notes.join(' | '),
+    ].map((c) => (c === null ? csvTextCode(r.missingReasonCode) : csvCell(String(c))))
+    lines.push(cells.join(';'))
   }
   return '﻿' + lines.join('\r\n') + '\r\n'
 }

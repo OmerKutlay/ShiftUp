@@ -7,7 +7,8 @@
 import { useMemo, useState } from 'react'
 import useSWR from 'swr'
 import { Download, FileSpreadsheet, TriangleAlert } from 'lucide-react'
-import { apiFetch } from '@/lib/api/http'
+import { toast } from 'sonner'
+import { apiDownload, apiFetch, ApiError } from '@/lib/api/http'
 import type { PayrollRow } from '@/lib/payrollTimesheet'
 import { PeriodStepper, TableSkeleton } from '@/components/common'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -26,15 +27,40 @@ export function PayrollPanel() {
   )
   const rows = useMemo(() => data?.rows ?? [], [data])
   const ready = !!data && rows.length > 0
-  const link = (format: 'xlsx' | 'csv') => `/api/reports/payroll?month=${month}&format=${format}`
   const num = 'px-3 text-right tabular-nums'
 
-  const button = (format: 'xlsx' | 'csv', label: string, icon: React.ReactNode) =>
-    ready ? (
-      <Button variant="outline" asChild><a href={link(format)}>{icon} {label}</a></Button>
-    ) : (
-      <Button variant="outline" disabled>{icon} {label}</Button>
-    )
+  const [downloading, setDownloading] = useState<'xlsx' | 'csv' | null>(null)
+
+  // a[href] ile gezinmek hata durumunda ham JSON'a götürür (standalone PWA'da geri dönüş yok): blob olarak indirilir
+  const download = async (format: 'xlsx' | 'csv') => {
+    setDownloading(format)
+    try {
+      const { blob, filename } = await apiDownload(`/api/reports/payroll?month=${month}&format=${format}`)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename ?? `bordro-puantaj-${month}.${format}`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 10_000)
+    } catch (err) {
+      const status = err instanceof ApiError ? err.status : undefined
+      toast.error(
+        status === 429 ? 'Çok fazla indirme isteği. Lütfen birkaç dakika sonra tekrar deneyin.'
+          : status && status >= 500 ? 'Dosya şu an hazırlanamadı. Lütfen tekrar deneyin.'
+          : err instanceof Error ? err.message : 'İndirme başarısız oldu.'
+      )
+    } finally {
+      setDownloading(null)
+    }
+  }
+
+  const button = (format: 'xlsx' | 'csv', label: string, icon: React.ReactNode) => (
+    <Button variant="outline" disabled={!ready || downloading !== null} onClick={() => void download(format)}>
+      {icon} {downloading === format ? 'Hazırlanıyor…' : label}
+    </Button>
+  )
 
   return (
     <div className="flex flex-col gap-4 md:gap-6">
@@ -97,6 +123,7 @@ export function PayrollPanel() {
                 <TableRow key={r.employeeId} className="group border-0 hover:bg-transparent">
                   <TableCell className="sticky left-0 z-10 h-10 border-b bg-background px-4 font-medium group-hover:bg-muted">
                     <span className="block max-w-56 truncate">{r.fullName}</span>
+                    {r.noRecords && <span className="block text-xs font-normal text-warning">Kontrol edin: ay içinde kayıt yok</span>}
                   </TableCell>
                   <TableCell className={`${num} border-b`}>{fmt(r.workedDays)}</TableCell>
                   <TableCell className={`${num} border-b`}>{fmt(r.normalHours)}</TableCell>
