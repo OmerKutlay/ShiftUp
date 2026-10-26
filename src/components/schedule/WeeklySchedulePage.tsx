@@ -6,19 +6,23 @@
  * DESIGN_GUIDE iskeleti: PageHeader (özet + uyarı rozeti, "Vardiya ekle") → araç çubuğu
  * (hafta gezgini, Bugün, Hafta/Gün, rol filtresi, vardiya türü lejantı) → kart içinde haftalık
  * tablo ya da günün zaman çizelgesi. Yönetici hücreye tıklayıp vardiya atar; çalışan salt okunur görür.
+ *
+ * Editör modu ("Düzenle"): tablonun üstünde taş paleti açılır; seçili taş (Açılış, Kapanış, Full…,
+ * özel saat, Tatil, Sil) tıklanan her hücreye diyalog açmadan uygulanır. Değişiklikler taslak
+ * olarak birikir ve "Kaydet" ile topluca yazılır.
  */
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { addWeeks, format, subWeeks } from 'date-fns'
 import { tr } from 'date-fns/locale'
-import { CircleAlert, Info, Plus, Trash2, Users } from 'lucide-react'
+import { CircleAlert, Info, Paintbrush, Plus, Trash2, Users } from 'lucide-react'
 import { toast } from 'sonner'
 
 import type { EmployeeWithRole } from '@/types/employee'
 import type { ShiftAssignmentWithDetails, WeeklyScheduleEntry } from '@/types/schedule'
 import type { EmployeeAvailability } from '@/types/workforce'
 import { createShiftAssignment, updateShiftAssignment, deleteShiftAssignment } from '@/lib/api/schedule'
-import { ApiError } from '@/lib/api/http'
+import { ApiError, apiFetch } from '@/lib/api/http'
 import { getWorkingTimeConfig } from '@/lib/workingTimeConfig'
 import type { ShiftKind } from '@/lib/workforcePlanner'
 import { useAuth } from '@/context/AuthContext'
@@ -47,6 +51,11 @@ import { ShiftKindLegend, weeklyLimitMins } from './ScheduleCells'
 import { MobileDayBoard } from './MobileDayBoard'
 import { WeekGrid, WeekGridSkeleton } from './WeekGrid'
 import { AddShiftMenu } from './AddShiftMenu'
+import { EDITOR_BAR_COMPACT_HEIGHT, ScheduleEditorBar } from './ScheduleEditorBar'
+import {
+  ERASE_STONE, REST_STONE, applyDrafts, cellKey, customStone, paintCell, sameAsOriginal, saveSteps, splitKey,
+  templateStones, type CellDraft, type CellOriginal, type DraftMap, type EditorStone, type SaveStep, type ShiftStone,
+} from './scheduleEditor'
 
 const KIND_ORDER: ShiftKind[] = ['opening', 'mid', 'closing', 'full', 'custom']
 
@@ -60,6 +69,72 @@ function weekLabel(from: string, to: string): string {
   return a.getMonth() === b.getMonth()
     ? `${a.getDate()}–${format(b, 'd MMMM', { locale: tr })}`
     : `${format(a, 'd MMMM', { locale: tr })}–${format(b, 'd MMMM', { locale: tr })}`
+}
+
+// ─── Editör yardımcıları ──────────────────────────────────────
+
+/** Yöneticinin eklediği özel taşlar bu cihazda saklanır */
+const CUSTOM_STONES_KEY = 'shiftup:plan-editor-stones'
+
+function loadCustomStones(): ShiftStone[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = JSON.parse(window.localStorage.getItem(CUSTOM_STONES_KEY) ?? '[]') as unknown
+    if (!Array.isArray(raw)) return []
+    return raw
+      .filter((s): s is { label: string; start: string; end: string } =>
+        typeof s?.label === 'string' && typeof s?.start === 'string' && typeof s?.end === 'string')
+      .map((s) => customStone(s.label, s.start, s.end))
+  } catch {
+    return []
+  }
+}
+
+function storeCustomStones(stones: ShiftStone[]) {
+  try {
+    window.localStorage.setItem(
+      CUSTOM_STONES_KEY,
+      JSON.stringify(stones.map(({ label, start, end }) => ({ label, start, end })))
+    )
+  } catch { /* depolama kapalı: taşlar bu oturumla sınırlı kalır */ }
+}
+
+async function runSaveStep(step: SaveStep, acknowledge: boolean): Promise<void> {
+  const options = acknowledge ? { acknowledgeViolations: true } : undefined
+  switch (step.op) {
+    case 'createShift':
+      await createShiftAssignment(step.payload, undefined, options)
+      return
+    case 'updateShift':
+      await updateShiftAssignment(step.id, step.employeeId, step.date, step.payload, options)
+      return
+    case 'deleteShift':
+      await deleteShiftAssignment(step.id)
+      return
+    case 'deleteLeave':
+      await apiFetch(`/api/leave?id=${encodeURIComponent(step.leaveId)}`, { method: 'DELETE' })
+      return
+    case 'createRest':
+      await apiFetch('/api/leave', {
+        method: 'POST',
+        body: {
+          employee_id: step.employeeId,
+          leave_type: 'weekly_rest',
+          start_date: step.date,
+          end_date: step.date,
+          reason: 'Haftalık tatil',
+        },
+      })
+      return
+  }
+}
+
+/** Görevleri en fazla `limit` tanesi aynı anda çalışacak şekilde yürütür */
+async function runLimited(tasks: Array<() => Promise<void>>, limit: number): Promise<void> {
+  const queue = [...tasks]
+  await Promise.all(Array.from({ length: Math.min(limit, queue.length) }, async () => {
+    for (let task = queue.shift(); task; task = queue.shift()) await task()
+  }))
 }
 
 interface WeeklySchedulePageProps {
@@ -78,12 +153,13 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     weekDays,
     employees,
     templates,
-    assignments,
+    assignments: savedAssignments,
     availabilityMap,
     holidayMap,
-    approvedLeaveMap,
+    approvedLeaveMap: savedLeaveMap,
     leaveDayToId,
-    restDayMap,
+    restDayMap: savedRestDayMap,
+    multiDayLeaveIds,
     isFirstLoad,
     error,
     reload: load,
@@ -103,6 +179,65 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     leaveId: string
   } | null>(null)
   const [leaveDeleting, setLeaveDeleting] = useState(false)
+
+  // ── Editör modu ──
+  const [editing, setEditing] = useState(false)
+  const [drafts, setDrafts] = useState<DraftMap>(() => new Map())
+  const [customStones, setCustomStones] = useState<ShiftStone[]>(loadCustomStones)
+  const [stonePick, setStonePick] = useState<string | null>(null)
+  const [editorSaving, setEditorSaving] = useState(false)
+  const [saveProgress, setSaveProgress] = useState<{ done: number; total: number } | null>(null)
+
+  const shiftStones = useMemo(() => [...templateStones(templates), ...customStones], [templates, customStones])
+  const customIds = useMemo(() => new Set(customStones.map((s) => s.id)), [customStones])
+  const allStones: EditorStone[] = [...shiftStones, REST_STONE, ERASE_STONE]
+  const selectedStone = allStones.find((s) => s.id === stonePick) ?? shiftStones[0] ?? ERASE_STONE
+
+  const savedAssignmentMap = useMemo(
+    () => new Map(savedAssignments.map((a) => [cellKey(a.employee_id, a.work_date), a])),
+    [savedAssignments]
+  )
+
+  /** Hücrenin kayıtlı durumu; izinli, çok günlü tatil ve çalışılmış hücreler kilitli */
+  const originalOf = useCallback((key: string): CellOriginal => {
+    const assignment = savedAssignmentMap.get(key) ?? null
+    const leaveId = leaveDayToId.get(key) ?? null
+    const isRest = savedRestDayMap.has(key)
+    let locked: string | null = null
+    if ((savedLeaveMap.has(key) && !isRest) || assignment?.is_on_leave) locked = 'İzinli günler editörde değiştirilemez.'
+    else if (isRest && leaveId && multiDayLeaveIds.has(leaveId)) locked = 'Birden fazla günü kapsayan tatil editörde değiştirilemez.'
+    else if (assignment?.worked_minutes != null) locked = 'Çalışılmış vardiya değiştirilemez.'
+    return { assignment, restLeaveId: isRest ? leaveId : null, locked }
+  }, [savedAssignmentMap, leaveDayToId, savedRestDayMap, savedLeaveMap, multiDayLeaveIds])
+
+  // Kaydedilecek taslaklar: veri yenilenip kayıtlı hale gelenler ya da kilitlenenler düşer
+  const pendingDrafts: DraftMap = useMemo(() => {
+    if (!editing) return new Map()
+    return new Map([...drafts].filter(([key, draft]) => {
+      const orig = originalOf(key)
+      return !orig.locked && !sameAsOriginal(draft, orig)
+    }))
+  }, [editing, drafts, originalOf])
+  const pendingKeys = useMemo(() => new Set(pendingDrafts.keys()), [pendingDrafts])
+
+  // Tablo, özetler ve uyarılar taslaklar uygulanmış haliyle hesaplanır
+  const { assignments, restDayMap, approvedLeaveMap } = useMemo(
+    () => applyDrafts(
+      { assignments: savedAssignments, restDayMap: savedRestDayMap, approvedLeaveMap: savedLeaveMap },
+      pendingDrafts,
+      templates
+    ),
+    [savedAssignments, savedRestDayMap, savedLeaveMap, pendingDrafts, templates]
+  )
+
+  // Kaydedilmemiş değişiklik varken sayfadan ayrılmadan önce tarayıcı uyarır
+  const dirty = pendingDrafts.size > 0
+  useEffect(() => {
+    if (!dirty) return
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault() }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [dirty])
 
   // Assignment map: key = `${employee_id}:${work_date}`
   const assignmentMap = useMemo(() => {
@@ -264,6 +399,143 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     }
   }
 
+  // ── Editör eylemleri ──
+
+  const paintCellWithStone = (emp: EmployeeWithRole, date: string) => {
+    if (editorSaving) return
+    const key = cellKey(emp.id, date)
+    const orig = originalOf(key)
+    if (orig.locked) {
+      toast.info(orig.locked, { id: 'plan-editor-locked', description: `${emp.full_name} · ${longDate(date)}` })
+      return
+    }
+    setDrafts((prev) => paintCell(prev, key, selectedStone, orig))
+  }
+
+  const startEditing = () => {
+    setDrafts(new Map())
+    setEditing(true)
+  }
+
+  const closeEditor = () => {
+    setEditing(false)
+    setDrafts(new Map())
+  }
+
+  /** Kaydedilmemiş değişiklikler varsa silinmeden önce onay ister */
+  const confirmDiscard = async () =>
+    pendingDrafts.size === 0 || confirm({
+      title: 'Değişiklikler silinsin mi?',
+      message: `Kaydedilmemiş ${pendingDrafts.size} değişiklik kaybolacak.`,
+      confirmText: 'Değişiklikleri sil',
+      cancelText: 'Düzenlemeye dön',
+      tone: 'error',
+    })
+
+  const cancelEditing = async () => {
+    if (await confirmDiscard()) closeEditor()
+  }
+
+  /** Hafta değişince taslaklar geçerliliğini yitirir (yalnızca görüntülenen hafta yüklü) */
+  const changeWeek = async (next: Date, resetDay = false) => {
+    if (editing && !(await confirmDiscard())) return
+    setDrafts(new Map())
+    setCurrentWeek(next)
+    if (resetDay) setPickedDay(null)
+  }
+
+  const addCustomStone = (label: string, start: string, end: string) => {
+    const stone = customStone(label, start, end)
+    const next = [...customStones.filter((s) => s.id !== stone.id), stone]
+    setCustomStones(next)
+    storeCustomStones(next)
+    setStonePick(stone.id)
+  }
+
+  const removeCustomStone = (id: string) => {
+    const next = customStones.filter((s) => s.id !== id)
+    setCustomStones(next)
+    storeCustomStones(next)
+  }
+
+  const saveEditor = async () => {
+    const cells = [...pendingDrafts].sort(([a], [b]) => splitKey(a).date.localeCompare(splitKey(b).date))
+    if (cells.length === 0) { closeEditor(); return }
+
+    setEditorSaving(true)
+    const failed = new Map<string, string>()        // hücre → hata
+    const declined = new Set<string>()              // ihlal onaylanmadı, taslak kalır
+    const needsAck: Array<{ key: string; steps: SaveStep[]; violations: string[] }> = []
+    const cellLabel = (key: string) => {
+      const { employeeId, date } = splitKey(key)
+      const name = employees.find((e) => e.id === employeeId)?.full_name ?? ''
+      return `${name} · ${format(parseDay(date), 'd MMM EEE', { locale: tr })}`
+    }
+
+    const runCell = async (key: string, steps: SaveStep[], acknowledge: boolean) => {
+      for (let i = 0; i < steps.length; i++) {
+        try {
+          await runSaveStep(steps[i], acknowledge)
+        } catch (err) {
+          if (!acknowledge && err instanceof ApiError && err.code === 'WORKING_TIME_VIOLATION') {
+            const violations = (err.details.violations as string[] | undefined) ?? [err.message]
+            needsAck.push({ key, steps: steps.slice(i), violations })
+          } else {
+            failed.set(key, err instanceof Error ? err.message : 'Kaydedilemedi.')
+          }
+          return
+        }
+      }
+    }
+
+    // Aynı çalışanın günleri tarih sırasıyla (kurallar önceki günü görsün), çalışanlar paralel
+    const runAll = async (jobs: Array<{ key: string; steps: SaveStep[] }>, acknowledge: boolean) => {
+      let done = 0
+      setSaveProgress({ done, total: jobs.length })
+      const byEmployee = new Map<string, typeof jobs>()
+      for (const job of jobs) {
+        const id = splitKey(job.key).employeeId
+        byEmployee.set(id, [...(byEmployee.get(id) ?? []), job])
+      }
+      await runLimited([...byEmployee.values()].map((list) => async () => {
+        for (const job of list) {
+          await runCell(job.key, job.steps, acknowledge)
+          setSaveProgress({ done: ++done, total: jobs.length })
+        }
+      }), 4)
+    }
+
+    try {
+      await runAll(cells.map(([key, draft]: [string, CellDraft]) => ({ key, steps: saveSteps(key, draft, originalOf(key)) })), false)
+
+      if (needsAck.length > 0) {
+        const ok = await confirm({
+          title: 'İş Kanunu ihlali',
+          message: 'Bazı değişiklikler şu kuralları ihlal ediyor:',
+          items: needsAck.flatMap((n) => n.violations.map((v) => `${cellLabel(n.key)}: ${v}`)),
+          footer: 'Yine de kaydedilsin mi? Vazgeçerseniz bu hücreler kaydedilmemiş olarak kalır.',
+          confirmText: 'Yine de kaydet',
+        })
+        if (ok) await runAll(needsAck, true)
+        else needsAck.forEach((n) => declined.add(n.key))
+      }
+    } finally {
+      try { await load() } catch { /* tablo bir sonraki yenilemede güncellenir */ }
+      setSaveProgress(null)
+      setEditorSaving(false)
+    }
+
+    const kept = new Set([...failed.keys(), ...declined])
+    const saved = cells.length - kept.size
+    if (saved > 0) toast.success(`${saved} değişiklik kaydedildi`)
+    if (failed.size > 0) {
+      const [key, message] = [...failed][0]
+      toast.error(`${failed.size} değişiklik kaydedilemedi`, { description: `${cellLabel(key)}: ${message}` })
+    }
+    if (kept.size === 0) closeEditor()
+    else setDrafts((prev) => new Map([...prev].filter(([key]) => kept.has(key))))
+  }
+
   // Diyalogda seçilen günün müsaitlik kayıtları
   const dialogAvailability: EmployeeAvailability[] = useMemo(() => {
     if (!dialogEmployee || !dialogDate) return []
@@ -276,7 +548,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
 
   // Hafta / Gün görünümü — mobilde varsayılan "Gün", masaüstünde "Hafta"
   const [viewPick, setViewPick] = useState<'day' | 'week' | null>(null)
-  const view = viewPick ?? (isMobile ? 'day' : 'week')
+  const view = editing ? 'week' : viewPick ?? (isMobile ? 'day' : 'week')
   const [pickedDay, setPickedDay] = useState<string | null>(null)
   const selectedDay = pickedDay && weekDays.includes(pickedDay)
     ? pickedDay
@@ -326,7 +598,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
   const hour = new Date().getHours()
   const greeting = firstName ? `${hour < 12 ? 'Günaydın' : hour < 18 ? 'İyi günler' : 'İyi akşamlar'}, ${firstName}` : undefined
   const isThisWeek = weekDays.includes(todayStr)
-  const goToday = () => { setCurrentWeek(new Date()); setPickedDay(null) }
+  const goToday = () => changeWeek(new Date(), true)
 
   const viewToggle = (
     <SegmentedControl
@@ -341,8 +613,8 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
   const weekStepper = (
     <PeriodStepper
       label={<span className="tabular-nums">{weekRange}</span>}
-      onPrev={() => setCurrentWeek(subWeeks(currentWeek, 1))}
-      onNext={() => setCurrentWeek(addWeeks(currentWeek, 1))}
+      onPrev={() => changeWeek(subWeeks(currentWeek, 1))}
+      onNext={() => changeWeek(addWeeks(currentWeek, 1))}
       prevLabel="Önceki hafta"
       nextLabel="Sonraki hafta"
       minLabelWidth={isMobile ? 120 : 136}
@@ -378,13 +650,19 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
             </TooltipContent>
           </Tooltip>
         ) : undefined}
-        actions={hasData && !readOnly && !isMobile ? (
-          <AddShiftMenu {...addMenuProps} day={view === 'day' ? selectedDay : undefined}>
-            <Button>
-              <Plus />
-              Vardiya ekle
+        actions={hasData && !readOnly && !isMobile && !editing ? (
+          <>
+            <Button variant="outline" onClick={startEditing}>
+              <Paintbrush />
+              Düzenle
             </Button>
-          </AddShiftMenu>
+            <AddShiftMenu {...addMenuProps} day={view === 'day' ? selectedDay : undefined}>
+              <Button>
+                <Plus />
+                Vardiya ekle
+              </Button>
+            </AddShiftMenu>
+          </>
         ) : undefined}
       />
 
@@ -392,7 +670,12 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
       {isMobile ? (
         <div className="flex items-center gap-2 [&>:first-child]:flex-1">
           {weekStepper}
-          {hasData && viewToggle}
+          {hasData && !editing && viewToggle}
+          {hasData && !readOnly && !editing && (
+            <Button variant="outline" size="icon" aria-label="Düzenle" onClick={startEditing}>
+              <Paintbrush />
+            </Button>
+          )}
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
@@ -412,6 +695,24 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
           )}
           {hasData && view === 'week' && <ShiftKindLegend kinds={presentKinds} className="ml-auto" />}
         </div>
+      )}
+
+      {/* Editör modu: taş paleti */}
+      {hasData && editing && (
+        <ScheduleEditorBar
+          compact={isMobile}
+          stones={shiftStones}
+          customIds={customIds}
+          selectedId={selectedStone.id}
+          onSelect={setStonePick}
+          onAddCustom={addCustomStone}
+          onRemoveCustom={removeCustomStone}
+          pendingCount={pendingDrafts.size}
+          saving={editorSaving}
+          progress={saveProgress}
+          onCancel={cancelEditing}
+          onSave={saveEditor}
+        />
       )}
 
       {isFirstLoad && <WeekGridSkeleton rows={Math.min(Math.max(employees.length, 6), 10)} />}
@@ -465,15 +766,28 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
           statsMap={statsMap} approvedLeaveMap={approvedLeaveMap} restDayMap={restDayMap}
           availabilityMap={availabilityMap} config={config} onCellClick={openAssignDialog} readOnly={readOnly}
           meId={readOnly ? authEmployee?.id : undefined}
+          onCellPaint={editing ? paintCellWithStone : undefined}
+          pendingKeys={editing ? pendingKeys : undefined}
         />
+      )}
+
+      {hasData && editing && !isMobile && (
+        <p className="-mt-2 text-xs text-muted-foreground">
+          Taş seçin, ardından kutulara tıklayın; basılı tutup sürükleyerek birden çok kutuyu boyayabilirsiniz.
+          Kesikli çerçeveli kutular henüz kaydedilmedi.
+        </p>
       )}
 
       {hasData && view === 'week' && isMobile && (
         <div className="flex flex-col gap-2">
           <ShiftKindLegend kinds={presentKinds} />
           <p className="text-xs text-muted-foreground">
-            Kutudaki sayı başlangıç saatidir · kırmızı nokta: dinlenme / limit uyarısı
+            {editing
+              ? 'Taş seçip kutulara dokunun · kesikli çerçeve: kaydedilmedi'
+              : 'Kutudaki sayı başlangıç saatidir · kırmızı nokta: dinlenme / limit uyarısı'}
           </p>
+          {/* Sabit editör çubuğu son satırları örtmesin */}
+          {editing && <div aria-hidden style={{ height: EDITOR_BAR_COMPACT_HEIGHT }} />}
         </div>
       )}
 

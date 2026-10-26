@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event'
 import type { EmployeeWithRole } from '@/types/employee'
 import type { ShiftTemplate } from '@/types/shiftTemplate'
 import type { ShiftAssignmentWithDetails } from '@/types/schedule'
+import { ApiError } from '@/lib/api/http'
 
 // ============================================================
 // Mocks
@@ -299,6 +300,103 @@ describe('WeeklySchedulePage — vardiya atama', () => {
     await waitFor(() => {
       expect(scheduleRepo.fetchWeeklyAssignments).toHaveBeenCalled()
     })
+  })
+})
+
+describe('WeeklySchedulePage — editör modu', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const CLOSING = makeTemplate({ id: 'tpl-002', name: 'Kapanış', start_time: '14:00', end_time: '23:00' })
+
+  async function openEditor() {
+    renderPage()
+    await waitFor(() => screen.getByText('Ahmet Kaya'))
+    await userEvent.click(screen.getByRole('button', { name: 'Düzenle' }))
+    return screen.getByRole('toolbar', { name: 'Plan editörü' })
+  }
+  const emptyCells = () => within(screen.getByRole('table')).getAllByRole('button', { name: 'Vardiya ekle' })
+
+  it('seçili taş tıklanan her kutuya diyalog açmadan uygulanır, "Kaydet" topluca yazar', async () => {
+    vi.mocked(scheduleRepo.createShiftAssignment).mockResolvedValue(makeAssignment())
+    setupMocks([makeEmployee()], [makeTemplate(), CLOSING], [])
+    const bar = await openEditor()
+
+    // İlk şablon (Açılış) varsayılan taş
+    expect(within(bar).getByRole('radio', { name: 'Açılış 09:00–18:00' })).toHaveAttribute('aria-checked', 'true')
+    await userEvent.click(emptyCells()[0])
+    await userEvent.click(emptyCells()[0])   // sıradaki boş kutu (Salı)
+    await userEvent.click(within(bar).getByRole('radio', { name: 'Kapanış 14:00–23:00' }))
+    await userEvent.click(emptyCells()[0])   // Çarşamba
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(within(bar).getByText('3 değişiklik')).toBeInTheDocument()
+    expect(scheduleRepo.createShiftAssignment).not.toHaveBeenCalled()
+
+    await userEvent.click(within(bar).getByRole('button', { name: 'Kaydet' }))
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Düzenle' })).toBeInTheDocument())
+    expect(scheduleRepo.createShiftAssignment).toHaveBeenCalledTimes(3)
+    expect(vi.mocked(scheduleRepo.createShiftAssignment).mock.calls.map(([p]) => [p.work_date, p.shift_template_id])).toEqual([
+      ['2026-09-28', 'tpl-001'], ['2026-09-29', 'tpl-001'], ['2026-09-30', 'tpl-002'],
+    ])
+    expect(screen.queryByRole('toolbar', { name: 'Plan editörü' })).not.toBeInTheDocument()
+  })
+
+  it('dolu kutu yeni taşla güncellenir, "Sil" taşı vardiyayı kaldırır', async () => {
+    vi.mocked(scheduleRepo.updateShiftAssignment).mockResolvedValue(makeAssignment())
+    vi.mocked(scheduleRepo.deleteShiftAssignment).mockResolvedValue(undefined)
+    setupMocks([makeEmployee()], [makeTemplate(), CLOSING], [
+      makeAssignment(),
+      makeAssignment({ id: 'asgn-002', work_date: '2026-09-29' }),
+    ])
+    const bar = await openEditor()
+    const shiftCells = () => within(screen.getByRole('table')).getAllByText('09:00–18:00')
+
+    await userEvent.click(within(bar).getByRole('radio', { name: 'Kapanış 14:00–23:00' }))
+    await userEvent.click(shiftCells()[0])
+    await userEvent.click(within(bar).getByRole('radio', { name: 'Sil' }))
+    await userEvent.click(shiftCells()[0])
+    expect(within(bar).getByText('2 değişiklik')).toBeInTheDocument()
+
+    await userEvent.click(within(bar).getByRole('button', { name: 'Kaydet' }))
+    await waitFor(() => expect(scheduleRepo.deleteShiftAssignment).toHaveBeenCalledWith('asgn-002'))
+    expect(scheduleRepo.updateShiftAssignment).toHaveBeenCalledWith(
+      'asgn-001', 'emp-001', '2026-09-28',
+      { shift_template_id: 'tpl-002', start_time: '14:00', end_time: '23:00' },
+      undefined
+    )
+  })
+
+  it('İş Kanunu ihlali tek onayla yeniden gönderilir', async () => {
+    vi.mocked(scheduleRepo.createShiftAssignment)
+      .mockRejectedValueOnce(new ApiError('İhlal', 'WORKING_TIME_VIOLATION', 422, { violations: ['Günlük 11 saat aşıldı'] }))
+      .mockResolvedValue(makeAssignment())
+    setupMocks([makeEmployee()], [makeTemplate()], [])
+    const bar = await openEditor()
+
+    await userEvent.click(emptyCells()[0])
+    await userEvent.click(within(bar).getByRole('button', { name: 'Kaydet' }))
+
+    const alert = await screen.findByRole('alertdialog')
+    expect(within(alert).getByText(/Günlük 11 saat aşıldı/)).toBeInTheDocument()
+    await userEvent.click(within(alert).getByRole('button', { name: 'Yine de kaydet' }))
+
+    await waitFor(() => expect(scheduleRepo.createShiftAssignment).toHaveBeenCalledTimes(2))
+    expect(vi.mocked(scheduleRepo.createShiftAssignment).mock.calls[1][2]).toEqual({ acknowledgeViolations: true })
+  })
+
+  it('"Vazgeç" onaydan sonra taslakları siler, hiçbir şey kaydedilmez', async () => {
+    setupMocks([makeEmployee()], [makeTemplate()], [])
+    const bar = await openEditor()
+
+    await userEvent.click(emptyCells()[0])
+    expect(emptyCells()).toHaveLength(6)
+    await userEvent.click(within(bar).getByRole('button', { name: 'Vazgeç' }))
+    await userEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Değişiklikleri sil' }))
+
+    await waitFor(() => expect(screen.queryByRole('toolbar', { name: 'Plan editörü' })).not.toBeInTheDocument())
+    expect(emptyCells()).toHaveLength(7)
+    expect(scheduleRepo.createShiftAssignment).not.toHaveBeenCalled()
   })
 })
 
