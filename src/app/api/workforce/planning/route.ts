@@ -2,6 +2,7 @@
  * GET /api/workforce/planning?week=YYYY-MM-DD
  *
  * Haftalık workforce planning verisi — yalnızca MANAGER_ROLES erişebilir.
+ * Yalnızca aktif mağazanın çalışanları, vardiyaları ve açık vardiyaları döner.
  *
  * Döner:
  *   - Her employee için haftalık vardiya özeti
@@ -44,8 +45,9 @@ export async function GET(req: NextRequest) {
     const weekEnd = weekDays[6]
 
     const admin = createAdminClient()
+    const storeId = auth.employee.store_id
 
-    // Haftalık shift assignments (tüm çalışanlar)
+    // Haftalık shift assignments (aktif mağazanın çalışanları)
     const { data: assignments, error: assignErr } = await admin
       .from('shift_assignments')
       .select(`
@@ -57,6 +59,7 @@ export async function GET(req: NextRequest) {
         is_on_leave,
         employees ( id, full_name, employment_type )
       `)
+      .eq('store_id', storeId)
       .gte('work_date', weekStart)
       .lte('work_date', weekEnd)
       .order('work_date')
@@ -70,6 +73,7 @@ export async function GET(req: NextRequest) {
     const { data: employees, error: empErr } = await admin
       .from('employees')
       .select('id, full_name, role_id, active, employment_type')
+      .eq('store_id', storeId)
       .eq('active', true)
       .or(NOT_KIOSK_FILTER)
       .order('full_name')
@@ -82,6 +86,7 @@ export async function GET(req: NextRequest) {
     const { data: openShifts } = await admin
       .from('open_shifts')
       .select('id, work_date, start_time, end_time, role_needed, status')
+      .eq('store_id', storeId)
       .gte('work_date', weekStart)
       .lte('work_date', weekEnd)
       .eq('status', 'open')

@@ -50,6 +50,7 @@ function makeEmployee(overrides: Partial<EmployeeWithRole> = {}): EmployeeWithRo
     email: null,
     role_id: null,
     active: true,
+    store_id: 'store-a',
     employment_type: 'full_time',
     auth_user_id: null,
     created_at: '2026-09-28T00:00:00Z',

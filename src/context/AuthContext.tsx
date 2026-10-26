@@ -24,7 +24,9 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useSWRConfig } from 'swr'
 import type { Employee, Role } from '@/types/employee'
 import { runBeforeSignOut } from '@/lib/pwa/sessionEvents'
-import { UNAUTHORIZED_EVENT } from '@/lib/api/http'
+import { UNAUTHORIZED_EVENT, apiFetch, setRequestStoreId } from '@/lib/api/http'
+import { STORE_BROADCAST_CHANNEL, STORE_CHANGED_EVENT } from '@/lib/storeHeader'
+import type { StoreContextInfo } from '@/types/store'
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -49,13 +51,27 @@ export interface SessionCheck {
   at: number
 }
 
+/** /api/auth/me yanıtından çözümlenen oturum */
+interface MeSession {
+  employee: AuthEmployee | null
+  store: StoreContextInfo | null
+}
+
 interface AuthContextValue {
   status: AuthStatus
   employee: AuthEmployee | null
+  /** Aktif mağaza bağlamı (admin: seçilen mağaza; diğerleri: ana mağaza); oturum yoksa null */
+  store: StoreContextInfo | null
   sessionCheck: SessionCheck | null
   signOut: () => Promise<void>
   /** Employee bilgisini yeniden yükle */
   refreshEmployee: () => Promise<void>
+  /**
+   * Admin: aktif mağazayı değiştirir. Sunucu çerezi güncellenir, SWR önbelleğinin tamamı sıfırlanıp
+   * yeniden doğrulanır (veriler yeni mağazaya göre gelir) ve sunucu bileşenleri tazelenir.
+   * Hata olursa ApiError fırlatır.
+   */
+  switchStore: (storeId: string) => Promise<void>
 }
 
 /** Oturumsuz açılabilen sayfalar — oturum düştüğünde buralardan /login'e yönlendirilmez */
@@ -69,9 +85,11 @@ const ME_RETRY_DELAYS = [500, 1500]
 const AuthContext = createContext<AuthContextValue>({
   status: 'loading',
   employee: null,
+  store: null,
   sessionCheck: null,
   signOut: async () => {},
   refreshEmployee: async () => {},
+  switchStore: async () => {},
 })
 
 // ─── Provider ────────────────────────────────────────────────
@@ -79,6 +97,7 @@ const AuthContext = createContext<AuthContextValue>({
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('loading')
   const [employee, setEmployee] = useState<AuthEmployee | null>(null)
+  const [store, setStore] = useState<StoreContextInfo | null>(null)
   const [sessionCheck, setSessionCheck] = useState<SessionCheck | null>(null)
   const router = useRouter()
   const pathname = usePathname()
@@ -90,7 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => { mountedRef.current = false }
   }, [])
 
-  const fetchEmployee = useCallback(async (): Promise<AuthEmployee | null> => {
+  const fetchSession = useCallback(async (): Promise<MeSession | null> => {
     const record = (result: SessionCheck['result']) => {
       if (mountedRef.current) setSessionCheck({ result, at: Date.now() })
     }
@@ -102,10 +121,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return null
         }
         if (res.ok) {
-          const data = (await res.json()) as { employee: AuthEmployee | null }
+          const data = (await res.json()) as { employee: AuthEmployee | null; store?: StoreContextInfo | null }
           const emp = data.employee ?? null
           record(emp && emp.active ? 'authenticated' : 'signed-out')
-          return emp
+          return { employee: emp, store: data.store ?? null }
         }
       } catch { /* ağ hatası — aşağıda yeniden denenir */ }
       // Geçici sunucu hatası tek seferde "giriş yapılmadı" durumuna düşürmesin;
@@ -119,19 +138,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  const applySession = useCallback((session: MeSession | null) => {
+    const emp = session?.employee ?? null
+    if (emp && emp.active) {
+      setEmployee(emp)
+      setStore(session?.store ?? null)
+      setStatus('authenticated')
+    } else {
+      setEmployee(null)
+      setStore(null)
+      setStatus('unauthenticated')
+    }
+  }, [])
+
   // İlk yükleme — cookie session'dan employee'ı yükle
   useEffect(() => {
-    fetchEmployee().then((emp) => {
+    fetchSession().then((session) => {
       if (!mountedRef.current) return
-      if (emp && emp.active) {
-        setEmployee(emp)
-        setStatus('authenticated')
-      } else {
-        setEmployee(null)
-        setStatus('unauthenticated')
-      }
+      applySession(session)
     })
-  }, [fetchEmployee])
+  }, [fetchSession, applySession])
 
   const signOut = useCallback(async () => {
     // PWA temizliği (push aboneliği, çevrimdışı önbellek) — oturum hâlâ geçerliyken
@@ -144,6 +170,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await mutate(() => true, undefined, { revalidate: false })
     if (mountedRef.current) {
       setEmployee(null)
+      setStore(null)
       setStatus('unauthenticated')
     }
     router.replace('/login')
@@ -151,16 +178,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [mutate, router])
 
   const refreshEmployee = useCallback(async () => {
-    const emp = await fetchEmployee()
+    const session = await fetchSession()
     if (!mountedRef.current) return
-    if (emp && emp.active) {
-      setEmployee(emp)
-      setStatus('authenticated')
-    } else {
-      setEmployee(null)
-      setStatus('unauthenticated')
+    applySession(session)
+  }, [fetchSession, applySession])
+
+  /** Yeni mağaza bağlamını al, eski mağazanın verisini önbellekten at, mounted hook'ları yeniden doğrula */
+  const reloadStoreContext = useCallback(async () => {
+    await refreshEmployee()
+    await mutate(() => true, undefined, { revalidate: false })
+    await mutate(() => true)
+    router.refresh()
+  }, [mutate, refreshEmployee, router])
+
+  const switchStore = useCallback(async (storeId: string) => {
+    await apiFetch('/api/stores/active', { method: 'POST', body: { store_id: storeId } })
+    await reloadStoreContext()
+    // Aynı tarayıcıdaki diğer sekmeler de yeni mağazaya geçsin (çerez ortaktır)
+    try {
+      const channel = new BroadcastChannel(STORE_BROADCAST_CHANNEL)
+      channel.postMessage({ storeId })
+      channel.close()
+    } catch { /* BroadcastChannel yok — diğer sekme ilk yazmada 409 STORE_CHANGED ile yenilenir */ }
+  }, [reloadStoreContext])
+
+  // Yazma istekleri sekmenin gösterdiği mağazayı taşır (sunucu farklıysa 409 STORE_CHANGED)
+  useEffect(() => {
+    setRequestStoreId(store?.active.id ?? null)
+  }, [store])
+
+  // Başka sekmede mağaza değişti (yayın) ya da bir yazma 409 STORE_CHANGED aldı → bağlamı yenile
+  useEffect(() => {
+    let pending = false
+    const onStoreChanged = () => {
+      if (pending) return
+      pending = true
+      void reloadStoreContext().finally(() => { pending = false })
     }
-  }, [fetchEmployee])
+    window.addEventListener(STORE_CHANGED_EVENT, onStoreChanged)
+    let channel: BroadcastChannel | null = null
+    try {
+      channel = new BroadcastChannel(STORE_BROADCAST_CHANNEL)
+      channel.onmessage = onStoreChanged
+    } catch { /* desteklenmiyor */ }
+    return () => {
+      window.removeEventListener(STORE_CHANGED_EVENT, onStoreChanged)
+      channel?.close()
+    }
+  }, [reloadStoreContext])
 
   // Herhangi bir API isteği 401 alırsa oturumu yeniden doğrula (süresi dolmuş / iptal edilmiş oturum)
   useEffect(() => {
@@ -184,7 +249,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [sessionCheck, pathname, mutate])
 
   return (
-    <AuthContext.Provider value={{ status, employee, sessionCheck, signOut, refreshEmployee }}>
+    <AuthContext.Provider value={{ status, employee, store, sessionCheck, signOut, refreshEmployee, switchStore }}>
       {children}
     </AuthContext.Provider>
   )

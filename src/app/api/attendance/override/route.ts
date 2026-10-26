@@ -3,7 +3,7 @@
  * Yöneticinin devam kaydını manuel düzeltmesi (Müdür Yardımcısı+).
  *
  * - Kaydın düzeltme sonrası son hali tutarlı olmalı (durum ↔ saatler, kronolojik sıra).
- * - Yönetici kendi devam kaydını düzeltemez.
+ * - Yönetici kendi devam kaydını düzeltemez; yalnızca aktif mağazanın vardiyasına ait kaydı düzeltebilir.
  * - exception_note zorunludur ve mevcut nota EKLENİR (yuvarlama notu kaybolmaz).
  * - Mola alanları elle girilemez (400); mola otomatik hesaplanır. Molada unutulan kayıt kapatılırsa
  *   bitmemiş mola okutulmamış sayılır.
@@ -66,6 +66,7 @@ export async function POST(req: NextRequest) {
     }
 
     const admin = createAdminClient()
+    const storeId = auth.employee.store_id
 
     const { data: existing, error: fetchError } = await admin
       .from('attendance_records')
@@ -74,6 +75,16 @@ export async function POST(req: NextRequest) {
       .maybeSingle()
     if (fetchError) return serverError('POST /api/attendance/override', fetchError)
     if (!existing) return notFound('Attendance kaydı bulunamadı.', 'RECORD_NOT_FOUND')
+
+    // Kaydın vardiyası aktif mağazada olmalı (başka mağazanın kaydı → 404, varlığı sızdırılmaz)
+    const { data: shiftRow, error: shiftError } = await admin
+      .from('shift_assignments')
+      .select('id')
+      .eq('id', existing.shift_assignment_id)
+      .eq('store_id', storeId)
+      .maybeSingle()
+    if (shiftError) return serverError('POST /api/attendance/override', shiftError)
+    if (!shiftRow) return notFound('Attendance kaydı bulunamadı.', 'RECORD_NOT_FOUND')
 
     if (existing.employee_id === auth.employee.id) {
       return forbidden('Kendi devam kaydınızı düzeltemezsiniz.')
@@ -121,6 +132,7 @@ export async function POST(req: NextRequest) {
 
     await logAudit({
       actorId: auth.employee.id,
+      storeId,
       action: 'attendance.override',
       entityType: 'attendance_record',
       entityId: existing.id,

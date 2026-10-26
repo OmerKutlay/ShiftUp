@@ -4,6 +4,8 @@
  * Kural tabanlı haftalık vardiya taslağı (draft) üretir.
  * Veriyi DB'ye YAZMAZ — sadece hesaplar ve döner.
  * Yalnızca MANAGER_ROLES erişebilir.
+ * Yalnızca aktif mağazanın verisiyle çalışır: çalışanlar, şablonlar, vardiyalar, izinler,
+ * müsaitlik ve tatiller (ulusal + mağaza) o mağazaya göre filtrelenir.
  *
  * Body: { week: 'YYYY-MM-DD', seed?: number }
  * Response: PlannerResult (assignments, stats, warnings, hasHardViolation)
@@ -26,6 +28,8 @@ import type { DayOfWeek } from '@/types/workforce'
 import { isAutoWeeklyRest } from '@/types/leave'
 import { grossMins } from '@/lib/laborLaw'
 import { NOT_KIOSK_FILTER, isPlanningGroup, type PlanningGroup } from '@/lib/auth/roles'
+import { storeEmployeeIds } from '@/lib/storeScope'
+import { fetchHolidaysInRange } from '@/lib/holidayRepository'
 
 const DOW_MAP: Record<number, DayOfWeek> = {
   0: 'sunday', 1: 'monday', 2: 'tuesday', 3: 'wednesday',
@@ -50,27 +54,34 @@ export async function POST(req: NextRequest) {
     const prevWeekEnd   = addDaysToDateString(weekStart, -1)
 
     const admin = createAdminClient()
+    const storeId = auth.employee.store_id
+    // Müsaitlik ve izin tabloları çalışana bağlıdır: yalnızca bu mağazanın çalışanları
+    const storeEmpIds = await storeEmployeeIds(storeId)
 
     // ── Veri toplama (paralel) ────────────────────────────────
-    const [empsRes, tmplsRes, availsRes, leavesRes, prevRes, weekRes, holsRes] = await Promise.all([
+    const [empsRes, tmplsRes, availsRes, leavesRes, prevRes, weekRes, holidays] = await Promise.all([
       admin
         .from('employees')
         .select('id, full_name, employment_type, active, birth_date, roles ( planning_group )')
+        .eq('store_id', storeId)
         .eq('active', true)
         .or(NOT_KIOSK_FILTER)
         .order('full_name'),
       admin
         .from('shift_templates')
         .select('id, name, start_time, end_time')
+        .eq('store_id', storeId)
         .eq('active', true)
         .order('start_time'),
       admin
         .from('employee_availability')
-        .select('employee_id, day_of_week, start_time, end_time, is_available'),
+        .select('employee_id, day_of_week, start_time, end_time, is_available')
+        .in('employee_id', storeEmpIds),
       // Onaylı + bekleyen izinler (bu haftayla kesişen)
       admin
         .from('leave_requests')
         .select('employee_id, leave_type, reason, start_date, end_date, status')
+        .in('employee_id', storeEmpIds)
         .in('status', ['approved', 'pending'])
         .lte('start_date', weekEnd)
         .gte('end_date', weekStart),
@@ -78,17 +89,19 @@ export async function POST(req: NextRequest) {
       admin
         .from('shift_assignments')
         .select('employee_id, work_date, start_time, end_time, is_on_leave')
+        .eq('store_id', storeId)
         .gte('work_date', prevWeekStart)
         .lte('work_date', prevWeekEnd),
       // Bu haftanın vardiyaları: giriş/çıkış kaydı olanlar ve geçmiş günlerinkiler aktarımda korunur
       admin
         .from('shift_assignments')
         .select('employee_id, work_date, start_time, end_time, shift_template_id, is_on_leave, attendance_records ( id )')
+        .eq('store_id', storeId)
         .gte('work_date', weekStart)
         .lte('work_date', weekEnd),
-      admin.from('public_holidays').select('date, name, half_day').gte('date', weekStart).lte('date', weekEnd),
+      fetchHolidaysInRange(storeId, weekStart, weekEnd),
     ])
-    for (const r of [empsRes, tmplsRes, availsRes, leavesRes, prevRes, weekRes, holsRes]) {
+    for (const r of [empsRes, tmplsRes, availsRes, leavesRes, prevRes, weekRes]) {
       if (r.error) return serverError('POST /api/workforce/generate', r.error)
     }
 
@@ -245,7 +258,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Resmi tatil: tam gün → tüm vardiyalar; arife → 13:00 sonrasına taşan vardiyalar
-    for (const h of (holsRes.data ?? []) as Array<{ date: string; name: string; half_day: boolean }>) {
+    for (const h of holidays) {
       const names = result.assignments
         .filter((a) => a.work_date === h.date && (!h.half_day || a.end_time.slice(0, 5) > '13:00' || a.end_time.slice(0, 5) <= a.start_time.slice(0, 5)))
         .map((a) => a.employee_name)

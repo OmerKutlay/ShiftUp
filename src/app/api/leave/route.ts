@@ -1,5 +1,5 @@
 /**
- * GET    /api/leave          — İzin talepleri (employee join'li)
+ * GET    /api/leave          — Aktif mağazanın çalışanlarının izin talepleri (employee join'li)
  *        ?status=&employee_id=&from=YYYY-MM-DD&to=YYYY-MM-DD
  *        Yöneticiler tümünü görür. Standart çalışan kendi taleplerini + başkalarının
  *        yalnızca ONAYLI izinlerini (gerekçe/not gizli) görür.
@@ -18,6 +18,7 @@ import { turkeyToday, addDaysToDateString } from '@/lib/dateUtils'
 import { removePlannedShiftsInRange } from '@/lib/leaveService'
 import { getAnnualLeaveBalance, requestedLeaveDays } from '@/lib/annualLeaveService'
 import { logAudit } from '@/lib/auditLog'
+import { isEmployeeInStore, storeEmployeeIds } from '@/lib/storeScope'
 
 const VALID_LEAVE_TYPES: LeaveType[] = ['annual', 'sick', 'personal', 'unpaid', 'other', 'weekly_rest']
 /** Çalışanın kendi adına açabileceği tipler (weekly_rest sadece manager atayabilir) */
@@ -49,6 +50,10 @@ export async function GET(req: NextRequest) {
 
     const admin = createAdminClient()
 
+    // Mağaza kapsamı: yalnızca aktif mağazanın çalışanlarının talepleri
+    const storeIds = await storeEmployeeIds(auth.employee.store_id)
+    if (storeIds.length === 0) return NextResponse.json({ requests: [] })
+
     let query = admin
       .from('leave_requests')
       .select(`
@@ -56,6 +61,7 @@ export async function GET(req: NextRequest) {
         reason, status, reviewer_note, reviewed_at, created_at, updated_at,
         employees!employee_id ( id, full_name, roles ( name ) )
       `)
+      .in('employee_id', storeIds)
       .order('created_at', { ascending: false })
 
     if (statusFilter) query = query.eq('status', statusFilter)
@@ -93,14 +99,17 @@ export async function POST(req: NextRequest) {
     // Authorization: weekly_rest yalnızca manager+ atayabilir; diğerleri kendi adına veya manager+
     const isWeeklyRest = body.leave_type === 'weekly_rest'
     let actorId: string
+    let activeStoreId: string
     if (isWeeklyRest) {
       const managerAuth = await requireMinRole(req, ACCESS.MANAGER)
       if ('response' in managerAuth) return managerAuth.response
       actorId = managerAuth.employee.id
+      activeStoreId = managerAuth.employee.store_id
     } else {
       const accessCheck = await canAccessEmployee(req, body.employee_id, MANAGER_ROLES)
       if ('response' in accessCheck) return accessCheck.response
       actorId = accessCheck.employee.id
+      activeStoreId = accessCheck.employee.store_id
     }
 
     if (!body.leave_type || !VALID_LEAVE_TYPES.includes(body.leave_type)) {
@@ -134,11 +143,14 @@ export async function POST(req: NextRequest) {
 
     const { data: emp, error: empErr } = await admin
       .from('employees')
-      .select('id, full_name, active')
+      .select('id, full_name, active, store_id')
       .eq('id', body.employee_id)
       .maybeSingle()
     if (empErr) return serverError('POST /api/leave', empErr)
-    if (!emp) return notFound('Çalışan bulunamadı.', 'EMPLOYEE_NOT_FOUND')
+    // Başkası adına talep yalnızca aktif mağazanın çalışanı için (başka mağaza → 404)
+    if (!emp || (emp.id !== actorId && emp.store_id !== activeStoreId)) {
+      return notFound('Çalışan bulunamadı.', 'EMPLOYEE_NOT_FOUND')
+    }
     if (!emp.active) {
       return NextResponse.json({ error: 'Pasif çalışan izin talebi oluşturamaz.', code: 'EMPLOYEE_INACTIVE' }, { status: 403 })
     }
@@ -147,7 +159,7 @@ export async function POST(req: NextRequest) {
     if (body.leave_type === 'annual') {
       const balance = await getAnnualLeaveBalance(admin, body.employee_id)
       if (balance.known) {
-        const requested = await requestedLeaveDays(admin, body.start_date, body.end_date)
+        const requested = await requestedLeaveDays(emp.store_id, body.start_date, body.end_date)
         if (requested > balance.remainingDays) {
           const isManagerActor = actorId !== body.employee_id
           const allowExceed = (body as { allow_exceed?: boolean }).allow_exceed === true
@@ -210,6 +222,7 @@ export async function POST(req: NextRequest) {
       cleanup = await removePlannedShiftsInRange(admin, body.employee_id, body.start_date, body.end_date)
       await logAudit({
         actorId,
+        storeId: emp.store_id,
         action: 'leave.weekly_rest.assign',
         entityType: 'leave_request',
         entityId: data.id,
@@ -236,6 +249,7 @@ export async function POST(req: NextRequest) {
         })
         await notifyManagers(
           admin,
+          emp.store_id,
           {
             type: 'leave_submitted',
             title: 'Yeni izin talebi',
@@ -275,6 +289,14 @@ export async function DELETE(req: NextRequest) {
     if (exErr) return serverError('DELETE /api/leave', exErr)
     if (!existing) return notFound('İzin talebi bulunamadı.')
 
+    // Başka mağazanın çalışanının talebi görünmez (kendi talebi hariç)
+    if (
+      existing.employee_id !== auth.employee.id &&
+      !(await isEmployeeInStore(existing.employee_id, auth.employee.store_id))
+    ) {
+      return notFound('İzin talebi bulunamadı.')
+    }
+
     // Çalışan yalnızca kendi bekleyen talebini geri çekebilir
     if (!isManager && !(existing.employee_id === auth.employee.id && existing.status === 'pending')) {
       return forbidden('Yalnızca kendi bekleyen talebinizi geri çekebilirsiniz.')
@@ -285,6 +307,7 @@ export async function DELETE(req: NextRequest) {
 
     await logAudit({
       actorId: auth.employee.id,
+      storeId: auth.employee.store_id,
       action: 'leave.delete',
       entityType: 'leave_request',
       entityId: id,

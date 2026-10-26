@@ -13,6 +13,9 @@ import { createAdminClient } from '@/lib/supabaseAdmin'
 import { IS_DEV_AUTH, DEV_SESSION_COOKIE } from '@/lib/authConfig'
 import { verifyDevSession } from '@/lib/auth/devSession'
 import { isSessionExpired } from '@/lib/auth/sessionAge'
+import { accessLevelOf } from '@/lib/auth/roles'
+import { ACTIVE_STORE_COOKIE, canSwitchStore, resolveActiveStoreId } from '@/lib/storeScope'
+import type { StoreContextInfo } from '@/types/store'
 
 const EMPLOYEE_SELECT = `
   id,
@@ -20,6 +23,7 @@ const EMPLOYEE_SELECT = `
   email,
   role_id,
   active,
+  store_id,
   auth_user_id,
   created_at,
   updated_at,
@@ -57,7 +61,7 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ employee: null }, { status: 403 })
       }
 
-      return NextResponse.json({ employee })
+      return NextResponse.json({ employee, store: await storeContext(admin, employee, req) })
     }
 
     // ── Production: Supabase Auth cookie session ─────────────
@@ -87,9 +91,30 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ employee: null }, { status: 403 })
     }
 
-    return NextResponse.json({ employee })
+    return NextResponse.json({ employee, store: await storeContext(admin, employee, req) })
   } catch (err) {
     console.error('[GET /api/auth/me]', err)
     return NextResponse.json({ employee: null }, { status: 500 })
+  }
+}
+
+/** Aktif mağaza bağlamı (admin: çerezdeki seçim; diğerleri: ana mağaza) */
+async function storeContext(
+  admin: ReturnType<typeof createAdminClient>,
+  employee: { store_id: string; roles: unknown },
+  req: NextRequest
+): Promise<StoreContextInfo | null> {
+  const accessLevel = accessLevelOf(employee.roles)
+  const activeId = await resolveActiveStoreId(admin, {
+    homeStoreId: employee.store_id,
+    accessLevel,
+    requestedStoreId: req.cookies.get(ACTIVE_STORE_COOKIE)?.value,
+  })
+  const { data } = await admin.from('stores').select('id, name').eq('id', activeId).maybeSingle()
+  if (!data) return null
+  return {
+    active: data as { id: string; name: string },
+    home_store_id: employee.store_id,
+    can_switch: canSwitchStore(accessLevel),
   }
 }

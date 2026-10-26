@@ -1,6 +1,7 @@
 /**
  * GET /api/audit-logs?limit=50&before=<ISO>&entity_type=...&action=...
  * Denetim kaydı (salt okunur) — Mağaza Müdürü+. Yeniden eskiye, imleçli sayfalama.
+ * Yalnızca aktif mağazanın kayıtları (audit_logs.store_id) döner.
  *
  * Kayıtlar ham id'ler içerir; son kullanıcıya isim gösterebilmek için yanıt şunlarla zenginleştirilir:
  *   - her log için `subject_ids`: işlemin ilgili olduğu çalışan(lar)
@@ -104,6 +105,7 @@ export async function GET(req: NextRequest) {
     let query = admin
       .from('audit_logs')
       .select('id, action, entity_type, entity_id, before, after, note, created_at, actor:employees!actor_id ( id, full_name )')
+      .eq('store_id', auth.employee.store_id)
       .order('created_at', { ascending: false })
       .limit(limit)
     if (before) query = query.lt('created_at', before)

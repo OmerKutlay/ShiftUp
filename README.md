@@ -149,6 +149,36 @@ CI (`.github/workflows/ci.yml`) her PR'da typecheck, lint, test ve build çalı�
   durum geçişleri iyimser kilitle (optimistic lock) yapılır.
 - **Denetim kaydı:** override, mesai düzeltme, izin/takas kararları ve çalışan yönetimi
   `audit_logs` tablosuna yazılır (değiştirilemez).
+- **Mağaza yalıtımı:** bkz. [Çoklu mağaza](#çoklu-mağaza) — her sorgu oturumun aktif mağazasıyla
+  sınırlanır; istemciden gelen her id'nin mağazaya ait olduğu doğrulanır.
+
+## Çoklu mağaza
+
+`20261027100000_multi_store.sql` — `stores` tablosu; mevcut veri "ana mağaza"ya
+(`00000000-0000-0000-0003-000000000001`) taşınır.
+
+- **Çalışan:** her çalışanın tek bir ana mağazası vardır (`employees.store_id`). Mağaza değişikliği
+  (transfer) yalnızca Admin tarafından, çalışanın eski mağazada bugün veya sonrası için vardiyası
+  yoksa yapılır. Geçmiş vardiyalar `shift_assignments.store_id` ile eski mağazada kalır; puantaj ve
+  raporlar vardiyanın mağazasına göre hesaplanır.
+- **Yetki:** Admin şirket genelidir — mağaza açar/yeniden adlandırır/pasife alır (Ayarlar › Mağazalar)
+  ve yan menüdeki mağaza seçiciyle aktif mağazayı değiştirir (`shiftup_store` httpOnly çerezi,
+  `POST /api/stores/active`). Müdür, yönetici, çalışan ve kiosk yalnızca kendi mağazasını görür.
+- **Aktif mağaza** sunucuda çözülür (`src/lib/storeScope.ts`, `getCurrentEmployee` →
+  `SessionEmployee.store_id`); istemci mağaza parametresi göndermez. Mağaza değişince SWR önbelleği
+  tümüyle temizlenir.
+- **Mağazaya özel:** vardiyalar, vardiya şablonları (ad mağaza içinde tekil), açık vardiyalar, konum
+  (mağaza başına tek aktif geofence), kiosk QR'ı (mağaza başına tek aktif kod, Realtime kanalı
+  `kiosk-qr:<store_id>`), denetim kaydı. İzin, mesai düzeltme, takas ve uygunluk çalışanın
+  mağazasından okunur.
+- **Resmi tatiller:** `store_id` boş = ulusal (tüm mağazalar, yalnızca Admin yönetir); dolu = o
+  mağazanın yerel tatili (Müdür+). Ulusal tatil gününe yerel tatil eklenemez; ulusal kayıt her zaman
+  geçerlidir (tatil ücretini etkiler, mağaza değiştiremez).
+- **Bildirimler:** "giriş/çıkış okutulmadı", izin/düzeltme/takas talepleri yalnızca ilgili mağazanın
+  yöneticilerine ve tüm adminlere gider.
+- **Puantaj / fazla çalışma:** puantaj mağaza bazlıdır (vardiyanın mağazası). Fazla çalışma raporu
+  (haftalık 45 / yıllık 270 saat) ise çalışanın tüm mağazalardaki vardiyalarını toplar — sınır
+  işveren düzeyindedir. Vardiya atamadaki yasal kontroller de çalışanın tüm vardiyalarına bakar.
 
 ## İş Kanunu kuralları
 

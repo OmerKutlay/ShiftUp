@@ -32,8 +32,8 @@ export async function fetchRoles(): Promise<Role[]> {
 // Employees
 // ============================================================
 
-/** Tüm çalışanları rol bilgisiyle birlikte getirir */
-export async function fetchEmployees(): Promise<EmployeeWithRole[]> {
+/** Mağazanın tüm çalışanlarını (pasifler dahil) rol bilgisiyle birlikte getirir */
+export async function fetchEmployees(storeId: string): Promise<EmployeeWithRole[]> {
   const { data, error } = await db
     .from('employees')
     .select(`
@@ -42,6 +42,7 @@ export async function fetchEmployees(): Promise<EmployeeWithRole[]> {
       email,
       role_id,
       active,
+      store_id,
       employment_type,
       hire_date,
       birth_date,
@@ -59,14 +60,15 @@ export async function fetchEmployees(): Promise<EmployeeWithRole[]> {
         created_at
       )
     `)
+    .eq('store_id', storeId)
     .order('full_name', { ascending: true })
 
   if (error) throw new Error(`Çalışanlar yüklenemedi: ${error.message}`)
   return (data ?? []) as unknown as EmployeeWithRole[]
 }
 
-/** Sadece aktif çalışanları getirir (vardiya planı için) — kiosk cihaz hesapları hariç */
-export async function fetchActiveEmployees(): Promise<EmployeeWithRole[]> {
+/** Mağazanın aktif çalışanları (vardiya planı için) — kiosk cihaz hesapları hariç */
+export async function fetchActiveEmployees(storeId: string): Promise<EmployeeWithRole[]> {
   const { data, error } = await db
     .from('employees')
     .select(`
@@ -74,6 +76,7 @@ export async function fetchActiveEmployees(): Promise<EmployeeWithRole[]> {
       full_name,
       role_id,
       active,
+      store_id,
       employment_type,
       hire_date,
       birth_date,
@@ -90,6 +93,7 @@ export async function fetchActiveEmployees(): Promise<EmployeeWithRole[]> {
         created_at
       )
     `)
+    .eq('store_id', storeId)
     .eq('active', true)
     .or(NOT_KIOSK_FILTER)
     .order('full_name', { ascending: true })
@@ -107,6 +111,7 @@ export async function fetchEmployeeById(id: string): Promise<EmployeeWithRole | 
       full_name,
       role_id,
       active,
+      store_id,
       employment_type,
       hire_date,
       birth_date,
@@ -130,8 +135,10 @@ export async function fetchEmployeeById(id: string): Promise<EmployeeWithRole | 
   return data as unknown as EmployeeWithRole | null
 }
 
-/** Yeni çalışan oluşturur */
-export async function createEmployee(payload: CreateEmployeePayload): Promise<Employee> {
+/** Yeni çalışan oluşturur — mağaza (store_id) çağıran tarafından doğrulanmış olmalıdır */
+export async function createEmployee(
+  payload: CreateEmployeePayload & { store_id: string }
+): Promise<Employee> {
   const { data, error } = await db
     .from('employees')
     .insert(payload)
@@ -140,6 +147,18 @@ export async function createEmployee(payload: CreateEmployeePayload): Promise<Em
 
   if (error) throw new Error(`Çalışan oluşturulamadı: ${error.message}`)
   return data as Employee
+}
+
+/** Mağaza var ve aktif mi? (çalışan ekleme / transfer hedefi doğrulaması) */
+export async function isActiveStore(storeId: string): Promise<boolean> {
+  const { data, error } = await db
+    .from('stores')
+    .select('id')
+    .eq('id', storeId)
+    .eq('active', true)
+    .maybeSingle()
+  if (error) throw new Error(`Mağaza yüklenemedi: ${error.message}`)
+  return !!data
 }
 
 /**

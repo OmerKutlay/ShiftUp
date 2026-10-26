@@ -6,6 +6,9 @@
  *
  * Kart başlığında yıl seçimi + "Tatil ekle"; içerik DataTable (mobilde Item kartları).
  * Ekleme / düzenleme Dialog içinde; aynı tarih varsa sunucu kaydı günceller (upsert).
+ *
+ * Kapsam: "Ulusal" tatiller tüm mağazalar için geçerlidir (yalnızca Admin ekler / siler);
+ * "Mağazaya özel" tatiller yalnızca aktif mağazanındır (Mağaza Müdürü+).
  */
 import { useMemo, useState } from 'react'
 import useSWR from 'swr'
@@ -13,6 +16,8 @@ import { toast } from 'sonner'
 import { CalendarDays, CircleAlert, MoreHorizontal, Plus, SquarePen, Trash2 } from 'lucide-react'
 import { apiFetch } from '@/lib/api/http'
 import type { PublicHoliday } from '@/types/holiday'
+import { ACCESS } from '@/lib/auth/roles'
+import { useAuth } from '@/context/AuthContext'
 import { turkeyToday } from '@/lib/dateUtils'
 import { DataTable, DateField, StatusBadge, TableSkeleton, useConfirm, type ColumnDef } from '@/components/common'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -41,8 +46,11 @@ const weekdayFmt = new Intl.DateTimeFormat('tr-TR', { weekday: 'long' })
 
 const toDate = (iso: string) => new Date(`${iso}T12:00:00`)
 
-type HolidayForm = { date: string; name: string; half_day: boolean }
-const EMPTY_FORM: HolidayForm = { date: '', name: '', half_day: false }
+type HolidayScope = 'national' | 'store'
+type HolidayForm = { date: string; name: string; half_day: boolean; scope: HolidayScope }
+const EMPTY_FORM: HolidayForm = { date: '', name: '', half_day: false, scope: 'store' }
+
+const scopeOf = (h: PublicHoliday): HolidayScope => (h.store_id ? 'store' : 'national')
 
 // ─── Küçük parçalar ──────────────────────────────────────────
 
@@ -67,6 +75,12 @@ function KindBadge({ h }: { h: PublicHoliday }) {
   return h.half_day
     ? <StatusBadge tone="info" label="Yarım gün" />
     : <StatusBadge tone="warning" label="Tam gün" />
+}
+
+function ScopeBadge({ h }: { h: PublicHoliday }) {
+  return scopeOf(h) === 'national'
+    ? <StatusBadge tone="neutral" label="Ulusal" />
+    : <StatusBadge tone="brand" label="Mağazaya özel" />
 }
 
 function RowActions({ h, onEdit, onRemove }: { h: PublicHoliday; onEdit: () => void; onRemove: () => void }) {
@@ -94,11 +108,14 @@ function RowActions({ h, onEdit, onRemove }: { h: PublicHoliday; onEdit: () => v
 
 // ─── Ekle / düzenle ──────────────────────────────────────────
 
-function HolidayDialog({ open, initial, editing, onClose, onSave }: {
+function HolidayDialog({ open, initial, editing, isAdmin, storeName, onClose, onSave }: {
   open: boolean
   initial: HolidayForm
-  /** Düzenlemede tarih sabit: aynı tarih güncellenir */
+  /** Düzenlemede tarih ve kapsam sabit: aynı kayıt güncellenir */
   editing: boolean
+  /** Yalnızca Admin kapsam seçebilir (Ulusal / Bu mağaza) */
+  isAdmin: boolean
+  storeName?: string
   onClose: () => void
   onSave: (form: HolidayForm) => Promise<void>
 }) {
@@ -138,6 +155,29 @@ function HolidayDialog({ open, initial, editing, onClose, onSave }: {
                 <CircleAlert />
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
+            )}
+            {isAdmin && (
+              <Field>
+                <FieldLabel htmlFor="holiday-scope">Kapsam</FieldLabel>
+                <Select
+                  value={form.scope}
+                  onValueChange={(v) => setForm((f) => ({ ...f, scope: v as HolidayScope }))}
+                  disabled={editing}
+                >
+                  <SelectTrigger id="holiday-scope" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="store">Bu mağaza{storeName ? ` (${storeName})` : ''}</SelectItem>
+                    <SelectItem value="national">Ulusal (tüm mağazalar)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FieldDescription>
+                  {form.scope === 'national'
+                    ? 'Tüm mağazalarda geçerli resmi tatil.'
+                    : 'Yalnızca bu mağazada geçerli yerel tatil.'}
+                </FieldDescription>
+              </Field>
             )}
             <Field>
               <DateField
@@ -190,6 +230,10 @@ function HolidayDialog({ open, initial, editing, onClose, onSave }: {
 
 export function HolidaysPanel() {
   const confirm = useConfirm()
+  const { employee, store } = useAuth()
+  const isAdmin = employee?.roles?.access_level === ACCESS.ADMIN
+  // Ulusal tatili yalnızca Admin değiştirir; mağazaya özel tatili Mağaza Müdürü+ (bu sayfaya erişenler)
+  const canModify = (h: PublicHoliday) => scopeOf(h) === 'store' || isAdmin
   const today = turkeyToday()
   const year = Number(today.slice(0, 4))
   const [range] = useState({ from: `${year - 1}-01-01`, to: `${year + 1}-12-31` })
@@ -208,7 +252,8 @@ export function HolidaysPanel() {
   const fullDays = holidays.filter((h) => !h.half_day).length
 
   const save = async (form: HolidayForm) => {
-    await apiFetch('/api/holidays', { method: 'POST', body: form })
+    // Admin olmayanlar her zaman mağaza kapsamında ekler
+    await apiFetch('/api/holidays', { method: 'POST', body: { ...form, scope: isAdmin ? form.scope : 'store' } })
     toast.success(dialog?.editing ? 'Resmi tatil güncellendi' : 'Resmi tatil eklendi')
     setDialog(null)
     await mutate()
@@ -222,7 +267,7 @@ export function HolidaysPanel() {
       tone: 'error',
     }))) return
     try {
-      await apiFetch(`/api/holidays?date=${h.date}`, { method: 'DELETE' })
+      await apiFetch(`/api/holidays?date=${h.date}&scope=${scopeOf(h)}`, { method: 'DELETE' })
       toast.success(`${h.name} silindi`)
       await mutate()
     } catch (err) {
@@ -231,7 +276,13 @@ export function HolidaysPanel() {
   }
 
   const openNew = () => setDialog({ initial: EMPTY_FORM, editing: false })
-  const openEdit = (h: PublicHoliday) => setDialog({ initial: { date: h.date, name: h.name, half_day: h.half_day }, editing: true })
+  const openEdit = (h: PublicHoliday) =>
+    setDialog({ initial: { date: h.date, name: h.name, half_day: h.half_day, scope: scopeOf(h) }, editing: true })
+
+  const rowActions = (h: PublicHoliday) =>
+    canModify(h)
+      ? <RowActions h={h} onEdit={() => openEdit(h)} onRemove={() => void remove(h)} />
+      : null
 
   const columns: ColumnDef<PublicHoliday, unknown>[] = [
     {
@@ -268,12 +319,13 @@ export function HolidaysPanel() {
       },
     },
     { id: 'kind', header: 'Tür', enableSorting: false, cell: ({ row }) => <KindBadge h={row.original} /> },
+    { id: 'scope', header: 'Kapsam', enableSorting: false, cell: ({ row }) => <ScopeBadge h={row.original} /> },
     {
       id: 'actions',
       header: () => <span className="sr-only">İşlemler</span>,
       enableSorting: false,
       meta: { align: 'right', className: 'w-12 py-0' },
-      cell: ({ row }) => <RowActions h={row.original} onEdit={() => openEdit(row.original)} onRemove={() => void remove(row.original)} />,
+      cell: ({ row }) => rowActions(row.original),
     },
   ]
 
@@ -287,11 +339,14 @@ export function HolidaysPanel() {
             {h.name}
             {h === next && <Badge variant="secondary">Sıradaki</Badge>}
           </ItemTitle>
-          <ItemDescription>{weekdayFmt.format(toDate(h.date))}</ItemDescription>
+          <ItemDescription className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span>{weekdayFmt.format(toDate(h.date))}</span>
+            <ScopeBadge h={h} />
+          </ItemDescription>
         </ItemContent>
         <ItemActions>
           <KindBadge h={h} />
-          <RowActions h={h} onEdit={() => openEdit(h)} onRemove={() => void remove(h)} />
+          {rowActions(h)}
         </ItemActions>
       </Item>
     )
@@ -347,14 +402,14 @@ export function HolidaysPanel() {
             <AlertDescription>{error instanceof Error ? error.message : 'Bilinmeyen hata'}</AlertDescription>
           </Alert>
         )}
-        {isLoading && !data && <TableSkeleton rows={6} columns={3} />}
+        {isLoading && !data && <TableSkeleton rows={6} columns={4} />}
         {data && (
           <DataTable
             columns={columns}
             data={holidays}
             pageSize={0}
             initialSorting={[{ id: 'date', desc: false }]}
-            getRowId={(h) => h.date}
+            getRowId={(h) => `${scopeOf(h)}:${h.date}`}
             renderMobileItem={mobileItem}
             empty={empty}
           />
@@ -363,10 +418,12 @@ export function HolidaysPanel() {
 
       {dialog && (
         <HolidayDialog
-          key={`${dialog.editing}-${dialog.initial.date}`}
+          key={`${dialog.editing}-${dialog.initial.scope}-${dialog.initial.date}`}
           open
           initial={dialog.initial}
           editing={dialog.editing}
+          isAdmin={isAdmin}
+          storeName={store?.active.name}
           onClose={() => setDialog(null)}
           onSave={save}
         />

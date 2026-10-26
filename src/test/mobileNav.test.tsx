@@ -14,7 +14,7 @@ vi.mock('next/navigation', () => ({
 }))
 
 const signOut = vi.fn()
-let mockAuth: { status: string; employee: unknown } = { status: 'authenticated', employee: null }
+let mockAuth: { status: string; employee: unknown; store?: unknown } = { status: 'authenticated', employee: null }
 vi.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ ...mockAuth, signOut, refreshEmployee: vi.fn() }),
 }))
@@ -32,6 +32,7 @@ import {
 import { ACCESS, type AccessLevel } from '@/lib/auth/roles'
 import { MobileBottomNav } from '@/components/layout/MobileBottomNav'
 import { MorePage } from '@/components/more/MorePage'
+import { MobileTopBar } from '@/components/layout/MobileTopBar'
 import { dampenPull, decideGesture, PULL_THRESHOLD } from '@/components/layout/PullToRefresh'
 
 function asRole(level: AccessLevel, fullName = 'Ayşe Yılmaz') {
@@ -153,6 +154,30 @@ describe('MobileBottomNav', () => {
     mockAuth = { status: 'loading', employee: null }
     renderWithProviders(<MobileBottomNav />)
     expect(screen.queryAllByRole('link')).toHaveLength(0)
+  })
+})
+
+describe('MobileTopBar', () => {
+  beforeEach(() => {
+    mockPathname = '/schedule'
+  })
+
+  it('sayfa başlığının altında aktif mağaza adını gösterir; Admin olmayanda değiştirici yok', () => {
+    asRole(ACCESS.STORE_MANAGER)
+    mockAuth = {
+      ...mockAuth,
+      store: { active: { id: 's1', name: 'Kadıköy' }, home_store_id: 's1', can_switch: false },
+    }
+    renderWithProviders(<MobileTopBar />)
+    expect(screen.getByText('Kadıköy')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /mağaza değiştir/i })).not.toBeInTheDocument()
+  })
+
+  it('mağaza bağlamı yoksa yalnızca başlık gösterilir', () => {
+    asRole(ACCESS.EMPLOYEE)
+    renderWithProviders(<MobileTopBar />)
+    expect(screen.queryByText('Kadıköy')).not.toBeInTheDocument()
+    expect(screen.getByRole('banner')).toBeInTheDocument()
   })
 })
 

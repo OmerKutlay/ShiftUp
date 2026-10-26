@@ -2,6 +2,7 @@
 
 /**
  * StoreLocationPage — QR devam takibinde kullanılan mağaza konumu (geofence).
+ * Yalnızca aktif mağazanın konumlarını listeler/düzenler (mağaza başına tek aktif konum).
  *
  * Ayarlar › Mağaza konumu sekmesi: solda konum formu (Field), sağda kayıtlı konumlar (Item listesi).
  * Listeden "Düzenle" formu doldurur; kayıt sonrası form temizlenir ve sonuç toast ile bildirilir.
@@ -177,7 +178,7 @@ export function StoreLocationPage({ embedded = false }: { embedded?: boolean } =
     const radius = parseInt(form.allowed_radius_meters, 10)
     const accuracy = parseInt(form.max_accuracy_meters, 10)
 
-    if (!form.name.trim()) { setError('Mağaza adı zorunludur.'); return }
+    if (!form.name.trim()) { setError('Konum etiketi zorunludur.'); return }
     if (isNaN(lat)) { setError('Geçersiz enlem (latitude).'); return }
     if (isNaN(lon)) { setError('Geçersiz boylam (longitude).'); return }
     if (isNaN(radius) || radius < 10 || radius > 5000) { setError('Yarıçap 10–5000 m arası olmalı.'); return }
@@ -219,7 +220,7 @@ export function StoreLocationPage({ embedded = false }: { embedded?: boolean } =
       <CardHeader className="border-b px-4 py-5 md:px-6 [.border-b]:pb-5">
         <CardTitle>{isEditing ? 'Konumu düzenle' : 'Yeni konum'}</CardTitle>
         <CardDescription>
-          {isEditing ? form.name || 'Kayıtlı konum' : 'Çalışanlar QR okuturken bu noktaya olan uzaklıkları kontrol edilir.'}
+          {isEditing ? form.name || 'Kayıtlı konum' : 'Aktif mağazanın konumu. Çalışanlar QR okuturken bu noktaya olan uzaklıkları kontrol edilir.'}
         </CardDescription>
         {isEditing && (
           <CardAction>
@@ -247,12 +248,12 @@ export function StoreLocationPage({ embedded = false }: { embedded?: boolean } =
             )}
 
             <Field>
-              <FieldLabel htmlFor="store-name">Mağaza adı</FieldLabel>
+              <FieldLabel htmlFor="store-name">Konum etiketi</FieldLabel>
               <Input
                 id="store-name"
                 value={form.name}
                 onChange={(e) => updateField('name', e.target.value)}
-                placeholder="Örn: Kadıköy Mağazası"
+                placeholder="Örn: Ana giriş"
                 autoComplete="off"
               />
             </Field>
@@ -339,7 +340,7 @@ export function StoreLocationPage({ embedded = false }: { embedded?: boolean } =
             <Field orientation="horizontal" className="rounded-lg border p-4">
               <FieldContent>
                 <FieldLabel htmlFor="store-active">Aktif</FieldLabel>
-                <FieldDescription>QR doğrulamasında yalnızca aktif konumlar kullanılır.</FieldDescription>
+                <FieldDescription>QR doğrulamasında mağazanın yalnızca aktif konumu kullanılır; yeni bir konumu aktif yapmak mevcut aktif konumu pasifleştirir.</FieldDescription>
               </FieldContent>
               <Switch
                 id="store-active"
@@ -393,7 +394,7 @@ export function StoreLocationPage({ embedded = false }: { embedded?: boolean } =
           <EmptyHeader>
             <EmptyMedia variant="icon"><MapPin /></EmptyMedia>
             <EmptyTitle>Henüz konum yok</EmptyTitle>
-            <EmptyDescription>QR ile giriş-çıkış için mağazanın konumunu ekleyin.</EmptyDescription>
+            <EmptyDescription>QR ile giriş-çıkış için aktif mağazanın konumunu ekleyin.</EmptyDescription>
           </EmptyHeader>
         </Empty>
       )}
@@ -420,7 +421,7 @@ export function StoreLocationPage({ embedded = false }: { embedded?: boolean } =
   if (embedded) return content
   return (
     <Page>
-      <PageHeader title="Mağaza konumu" description="QR devam takibinde kullanılan geofence konumunu yönetin" />
+      <PageHeader title="Mağaza konumu" description="Aktif mağazanın QR devam takibinde kullanılan geofence konumunu yönetin" />
       {content}
     </Page>
   )

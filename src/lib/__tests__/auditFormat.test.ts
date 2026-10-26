@@ -11,6 +11,12 @@ describe('auditActionLabel', () => {
     expect(auditActionLabel('shift_swap.approved')).toBe('Vardiya takası onaylandı')
     expect(auditActionLabel('holiday.upsert')).toBe('Resmi tatil kaydedildi')
   })
+  it('mağaza işlemleri Türkçe başlık alır', () => {
+    expect(auditActionLabel('store.create')).toBe('Mağaza oluşturuldu')
+    expect(auditActionLabel('store.update')).toBe('Mağaza güncellendi')
+    expect(auditActionLabel('employee.transfer')).toBe('Çalışan mağaza değiştirdi')
+    expect(auditActionLabel('store.something_new')).toBe('Mağaza işlemi')
+  })
   it('bilinmeyen alt işlemde ham kodu değil grup adını gösterir', () => {
     expect(auditActionLabel('leave.something_new')).toBe('İzin işlemi')
     expect(auditActionLabel('totally.unknown')).toBe('Diğer işlem')

@@ -9,8 +9,9 @@ import { format } from 'date-fns'
 import { Mail, RefreshCw, TriangleAlert } from 'lucide-react'
 
 import type { CreateEmployeePayload, EmployeeWithRole, EmploymentType, Role, UpdateEmployeePayload } from '@/types/employee'
+import type { Store } from '@/types/store'
 import { ACCESS, ACCESS_LABELS } from '@/lib/auth/roles'
-import { DateField } from '@/components/common'
+import { DateField, useConfirm } from '@/components/common'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
@@ -36,10 +37,18 @@ interface Props {
   employee?: EmployeeWithRole | null
   roles: Role[]
   loading: boolean
+  /**
+   * Seçilebilir mağazalar — yalnızca Admin için verilir (boş/undefined → "Mağaza" alanı gösterilmez).
+   * Düzenlemede çalışanın mevcut mağazası pasif olsa da listede kalır.
+   */
+  stores?: Pick<Store, 'id' | 'name' | 'active'>[]
+  /** Yeni çalışanın varsayılan mağazası (şu an çalışılan mağaza) */
+  defaultStoreId?: string
 }
 
 interface FormState {
   full_name: string
+  store_id: string
   email: string
   role_id: string
   active: boolean
@@ -51,6 +60,7 @@ interface FormState {
 
 const EMPTY_FORM: FormState = {
   full_name: '',
+  store_id: '',
   email: '',
   role_id: '',
   active: true,
@@ -63,6 +73,7 @@ const EMPTY_FORM: FormState = {
 function toFormState(emp: EmployeeWithRole): FormState {
   return {
     full_name: emp.full_name,
+    store_id: emp.store_id ?? '',
     email: emp.email ?? '',
     role_id: emp.role_id ?? '',
     active: emp.active,
@@ -99,10 +110,13 @@ function isValidEmail(email: string): boolean {
 
 const EMPLOYMENT_TYPES = Object.keys(EMPLOYMENT_LABELS) as EmploymentType[]
 
-export function EmployeeFormDialog({ open, onClose, onSave, employee, roles, loading }: Props) {
+export function EmployeeFormDialog({ open, onClose, onSave, employee, roles, loading, stores, defaultStoreId }: Props) {
   const isEdit = !!employee
+  const confirm = useConfirm()
   // Diyalog her açılışta yeni `key` ile mount edilir (bkz. EmployeesPage) → form ilk değerden başlar
-  const [form, setForm] = useState<FormState>(() => (employee ? toFormState(employee) : EMPTY_FORM))
+  const [form, setForm] = useState<FormState>(() =>
+    employee ? toFormState(employee) : { ...EMPTY_FORM, store_id: defaultStoreId ?? '' }
+  )
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({})
   const [submitError, setSubmitError] = useState<string | null>(null)
 
@@ -137,6 +151,10 @@ export function EmployeeFormDialog({ open, onClose, onSave, employee, roles, loa
     .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name, 'tr'))
   const selectedRole = roles.find((r) => r.id === form.role_id)
 
+  // Mağaza alanı yalnızca Admin'e verilen listeyle görünür; pasif mağazalar yalnızca çalışan zaten oradaysa listelenir
+  const showStoreField = !!stores && stores.length > 0
+  const selectableStores = (stores ?? []).filter((s) => s.active || s.id === employee?.store_id)
+
   const handleRoleChange = (value: string) => {
     setForm((f) => ({ ...f, role_id: value }))
     setErrors((err) => ({ ...err, role_id: undefined }))
@@ -155,8 +173,21 @@ export function EmployeeFormDialog({ open, onClose, onSave, employee, roles, loa
     if (loading || !validate()) return
     setSubmitError(null)
     try {
+      // Mağaza değişikliği = transfer: kaydetmeden önce onay
+      const transferring = isEdit && showStoreField && !!form.store_id && form.store_id !== employee.store_id
+      if (transferring) {
+        const from = stores?.find((s) => s.id === employee.store_id)?.name ?? 'mevcut'
+        const to = stores?.find((s) => s.id === form.store_id)?.name ?? 'seçilen'
+        const ok = await confirm({
+          title: `${employee.full_name} taşınsın mı?`,
+          message: `${employee.full_name}, ${from} mağazasından ${to} mağazasına taşınacak. ${from} mağazasının listelerinde artık görünmeyecek.`,
+          confirmText: 'Taşı ve kaydet',
+        })
+        if (!ok) return
+      }
       const payload = {
         full_name: form.full_name.trim(),
+        ...(showStoreField && form.store_id && (!isEdit || transferring) ? { store_id: form.store_id } : {}),
         email: form.email.trim() || null,
         role_id: form.role_id,
         active: form.active,
@@ -258,6 +289,29 @@ export function EmployeeFormDialog({ open, onClose, onSave, employee, roles, loa
             <FieldSet className="gap-4">
               <FieldLegend>Rol ve çalışma tipi</FieldLegend>
               <FieldGroup className="gap-4">
+                {showStoreField && (
+                  <Field>
+                    <FieldLabel htmlFor="emp-store">Mağaza</FieldLabel>
+                    <Select value={form.store_id || undefined} onValueChange={(v) => setForm((f) => ({ ...f, store_id: v }))}>
+                      <SelectTrigger id="emp-store" className="w-full">
+                        <SelectValue placeholder="Mağaza seçin" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {selectableStores.map((s) => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {s.name}
+                            {!s.active && <span className="text-muted-foreground">· Pasif</span>}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FieldDescription>
+                      {isEdit
+                        ? 'Mağazayı değiştirirseniz çalışan seçilen mağazaya taşınır.'
+                        : 'Varsayılan olarak şu an çalışılan mağaza seçilidir.'}
+                    </FieldDescription>
+                  </Field>
+                )}
                 <Field data-invalid={!!errors.role_id || undefined}>
                   <FieldLabel htmlFor="emp-system-role">Sistem rolü</FieldLabel>
                   <Select value={form.role_id || undefined} onValueChange={handleRoleChange}>

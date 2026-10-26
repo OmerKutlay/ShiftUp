@@ -36,6 +36,8 @@ export interface Employee {
   email: string | null      // FAZ AUTH: login email
   role_id: string | null
   active: boolean
+  /** Çalışanın (ana) mağazası */
+  store_id: string
   employment_type: EmploymentType  // 'full_time' | 'part_time'
   auth_user_id: string | null  // FAZ AUTH: Supabase auth.users.id bağlantısı
   /** İşe giriş — yıllık izin hakkı (İş K. Md. 53) */
@@ -57,6 +59,8 @@ export interface EmployeeWithRole extends Employee {
 // Yeni çalışan oluşturma payload
 export interface CreateEmployeePayload {
   full_name: string
+  /** Yalnızca Admin başka mağazaya çalışan ekleyebilir; verilmezse aktif mağaza */
+  store_id?: string
   email: string | null      // FAZ AUTH: login email (benzersiz olmalı)
   role_id: string | null
   active: boolean
@@ -69,6 +73,8 @@ export interface CreateEmployeePayload {
 // Çalışan güncelleme payload
 export interface UpdateEmployeePayload {
   full_name?: string
+  /** Mağaza transferi — yalnızca Admin */
+  store_id?: string
   email?: string | null
   role_id?: string | null
   active?: boolean

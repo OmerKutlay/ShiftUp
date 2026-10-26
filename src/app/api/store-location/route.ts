@@ -1,6 +1,10 @@
 /**
- * GET  /api/store-location  — Mağaza konumlarını döner (Mağaza Müdürü+, Ayarlar sayfası)
- * POST /api/store-location  — Mağaza konumunu oluşturur veya günceller (Mağaza Müdürü+)
+ * GET  /api/store-location  — Aktif mağazanın konumlarını döner (Mağaza Müdürü+, Ayarlar sayfası)
+ * POST /api/store-location  — Aktif mağazanın konumunu oluşturur veya günceller (Mağaza Müdürü+)
+ *
+ * Mağaza başına yalnızca bir konum aktif olabilir (uq_store_locations_one_active): konum aktif
+ * kaydedilirken mağazanın diğer aktif konumları önce pasifleştirilir. Güncellemede konum
+ * aktif mağazaya ait olmalıdır (başka mağazanın konumu → 404).
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
@@ -20,6 +24,7 @@ export async function GET(req: NextRequest) {
     const { data, error } = await admin
       .from('store_locations')
       .select('*')
+      .eq('store_id', auth.employee.store_id)
       .order('created_at', { ascending: false })
 
     if (error) return serverError('GET /api/store-location', error)
@@ -67,6 +72,7 @@ export async function POST(req: NextRequest) {
     if (body.active !== undefined && typeof body.active !== 'boolean') return badRequest('active boolean olmalıdır.')
 
     const admin = createAdminClient()
+    const storeId = auth.employee.store_id
 
     const payload = {
       name: body.name.trim(),
@@ -78,12 +84,37 @@ export async function POST(req: NextRequest) {
       updated_at: new Date().toISOString(),
     }
 
+    // Güncellenecek konum aktif mağazaya ait olmalı
+    if (body.id) {
+      const { data: owned, error: ownedError } = await admin
+        .from('store_locations')
+        .select('id')
+        .eq('id', body.id)
+        .eq('store_id', storeId)
+        .maybeSingle()
+      if (ownedError) return serverError('POST /api/store-location', ownedError)
+      if (!owned) return notFound('Konum bulunamadı.')
+    }
+
+    // Aktif kaydedilecekse mağazanın diğer aktif konumunu önce pasifleştir (mağaza başına tek aktif)
+    if (payload.active) {
+      let deactivate = admin
+        .from('store_locations')
+        .update({ active: false, updated_at: payload.updated_at })
+        .eq('store_id', storeId)
+        .eq('active', true)
+      if (body.id) deactivate = deactivate.neq('id', body.id)
+      const { error: deactivateError } = await deactivate
+      if (deactivateError) return serverError('POST /api/store-location', deactivateError)
+    }
+
     let result: StoreLocation
     if (body.id) {
       const { data, error } = await admin
         .from('store_locations')
         .update(payload)
         .eq('id', body.id)
+        .eq('store_id', storeId)
         .select()
         .maybeSingle()
       if (error) return serverError('POST /api/store-location', error)
@@ -92,7 +123,7 @@ export async function POST(req: NextRequest) {
     } else {
       const { data, error } = await admin
         .from('store_locations')
-        .insert(payload)
+        .insert({ ...payload, store_id: storeId })
         .select()
         .single()
       if (error) return serverError('POST /api/store-location', error)
@@ -101,6 +132,7 @@ export async function POST(req: NextRequest) {
 
     await logAudit({
       actorId: auth.employee.id,
+      storeId,
       action: body.id ? 'store_location.update' : 'store_location.create',
       entityType: 'store_location',
       entityId: result.id,

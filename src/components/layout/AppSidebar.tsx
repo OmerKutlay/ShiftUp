@@ -6,15 +6,13 @@
  */
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import useSWR from 'swr'
 
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel, SidebarHeader, SidebarMenu,
   SidebarMenuButton, SidebarMenuItem, SidebarRail,
 } from '@/components/ui/sidebar'
-import { BrandMark } from '@/components/common/BrandMark'
+import { StoreSwitcher } from '@/components/stores/StoreSwitcher'
 import { useAuth } from '@/context/AuthContext'
-import { apiFetch } from '@/lib/api/http'
 import { NAV_ITEMS, filterNavItems, groupNavItems, isNavActive } from './navItems'
 import { NavUser } from './NavUser'
 
@@ -23,29 +21,11 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const { employee, status } = useAuth()
   const groups = status === 'loading' ? [] : groupNavItems(filterNavItems(NAV_ITEMS, employee?.roles?.access_level ?? null))
 
-  // Alt başlık: aktif mağazanın adı (yoksa genel etiket)
-  const { data: store } = useSWR(
-    status === 'authenticated' ? '/api/store-location/name' : null,
-    (url: string) => apiFetch<{ name: string | null }>(url),
-    { revalidateOnFocus: false },
-  )
-
   return (
     <Sidebar collapsible="icon" variant="inset" {...props}>
       <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="lg" asChild tooltip="ShiftUp">
-              <Link href="/" prefetch={false}>
-                <BrandMark size={32} />
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">ShiftUp</span>
-                  <span className="truncate text-xs text-muted-foreground">{store?.name ?? 'Vardiya yönetimi'}</span>
-                </div>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        {/* Aktif mağaza: Admin için değiştirici, diğerleri için yalnızca ad */}
+        <StoreSwitcher variant="sidebar" />
       </SidebarHeader>
 
       <SidebarContent>

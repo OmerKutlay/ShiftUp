@@ -14,6 +14,7 @@ import { LogIn } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { BrandMark } from '@/components/common/BrandMark'
+import { StoreSwitcher } from '@/components/stores/StoreSwitcher'
 import { NotificationBell } from '@/components/notifications/NotificationBell'
 import { ThemeSwitch } from '@/components/common/ThemeSwitch'
 import { useAuth } from '@/context/AuthContext'
@@ -33,7 +34,11 @@ export function MobileTopBar() {
     >
       <div className="flex items-center gap-3 px-4" style={{ height: MOBILE_TOP_BAR_HEIGHT }}>
         <BrandMark size={28} />
-        <p className="min-w-0 flex-1 truncate text-base font-semibold">{meta.title}</p>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-base font-semibold">{meta.title}</p>
+          {/* Aktif mağaza (küçük alt başlık); Admin için dokununca mağaza değiştirici açılır */}
+          {status === 'authenticated' && <StoreSwitcher variant="mobile" />}
+        </div>
         <ThemeSwitch />
         {status === 'authenticated' && employee && <NotificationBell employeeId={employee.id} />}
         {status === 'unauthenticated' && (

@@ -25,6 +25,7 @@ vi.mock('@/lib/auth', () => ({
     employee: {
       id: 'emp-001', full_name: 'Ahmet Kaya', email: null,
       role_id: null, access_level: 'employee', active: true,
+      home_store_id: 'store-A', store_id: 'store-A',
     },
   }),
 }))
@@ -32,6 +33,7 @@ vi.mock('@/lib/auth', () => ({
 vi.mock('@/lib/locationService', () => ({ validateLocationServerSide: vi.fn() }))
 
 import * as qrTokenService from '@/lib/qrTokenService'
+import { requireAuth } from '@/lib/auth'
 import * as supabaseAdminModule from '@/lib/supabaseAdmin'
 import * as locationServiceModule from '@/lib/locationService'
 import { POST } from '@/app/api/qr/process/route'
@@ -56,6 +58,7 @@ function makeQrToken(overrides: Partial<QrToken> = {}): QrToken {
     token: 'abc123',
     action_type: 'clock_in',
     employee_id: 'emp-001',
+    store_id: 'store-A',
     expires_at: new Date(Date.now() + 60000).toISOString(),
     used_at: null,
     created_at: new Date().toISOString(),
@@ -99,17 +102,26 @@ function setTurkeyTime(isoLocal: string) {
 
 let db: FakeDb
 
-function setupDb(opts: { shifts?: Record<string, unknown>[]; records?: Record<string, unknown>[]; employeeActive?: boolean } = {}) {
+function setupDb(opts: {
+  shifts?: Record<string, unknown>[]
+  records?: Record<string, unknown>[]
+  employeeActive?: boolean
+  /** Çalışanın (ve vardiyasının) mağazası; varsayılan store-A */
+  storeId?: string
+  /** Kiosk kodları (varsayılan: store-A'nın tek aktif kodu) */
+  kioskTokens?: Record<string, unknown>[]
+} = {}) {
+  const storeId = opts.storeId ?? 'store-A'
   db = createFakeDb(
     {
-      employees: [{ id: 'emp-001', full_name: 'Ahmet Kaya', active: opts.employeeActive ?? true }],
-      shift_assignments: opts.shifts ?? [
+      employees: [{ id: 'emp-001', full_name: 'Ahmet Kaya', active: opts.employeeActive ?? true, store_id: storeId }],
+      shift_assignments: (opts.shifts ?? [
         { id: 'shift-001', employee_id: 'emp-001', work_date: '2026-09-28', start_time: '09:00', end_time: '18:00', is_on_leave: false },
-      ],
+      ]).map((s) => ({ store_id: storeId, ...s })),
       attendance_records: opts.records ?? [],
       notifications: [],
-      qr_tokens: [{
-        id: 'kq-1', token: KIOSK_TOKEN, employee_id: null, action_type: null, used_at: null,
+      qr_tokens: opts.kioskTokens ?? [{
+        id: 'kq-1', token: KIOSK_TOKEN, store_id: 'store-A', employee_id: null, action_type: null, used_at: null,
         expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
       }],
     },
@@ -327,7 +339,9 @@ describe('/api/qr/process — kiosk QR (tek kullanımlık + Broadcast)', () => {
     expect(active).toHaveLength(1)
     expect(active[0].token).not.toBe(KIOSK_TOKEN)
 
-    expect(channel).toHaveBeenCalledWith('kiosk-qr', { config: { private: true } })
+    // Yeni kod çalışanın mağazasına bağlıdır ve o mağazanın kanalına yayınlanır
+    expect(active[0].store_id).toBe('store-A')
+    expect(channel).toHaveBeenCalledWith('kiosk-qr:store-A', { config: { private: true } })
     expect(httpSend).toHaveBeenCalledWith('qr', { qr_data: `SU2.${active[0].token}` })
   })
 
@@ -402,6 +416,98 @@ describe('/api/qr/process — kiosk QR (tek kullanımlık + Broadcast)', () => {
     const { status, body } = await post({})
     expect(status).toBe(422)
     expect(String(body.error)).toContain('önce başlatılamaz')
+  })
+})
+
+// ============================================================
+// Çoklu mağaza izolasyonu
+// ============================================================
+describe('/api/qr/process — mağaza izolasyonu', () => {
+  const KIOSK_TOKEN_B = 'm'.repeat(32)
+  const kioskTokenRow = (token: string, storeId: string) => ({
+    id: `kq-${storeId}`, token, store_id: storeId, employee_id: null, action_type: null, used_at: null,
+    expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+  })
+
+  /** Oturumdaki çalışan store-B'de kayıtlı */
+  function asStoreBEmployee() {
+    vi.mocked(requireAuth).mockResolvedValue({
+      employee: {
+        id: 'emp-001', full_name: 'Ahmet Kaya', email: null,
+        role_id: null, access_level: 'employee', active: true,
+        home_store_id: 'store-B', store_id: 'store-B',
+      },
+    } as never)
+  }
+  afterEach(() => {
+    vi.mocked(requireAuth).mockResolvedValue({
+      employee: {
+        id: 'emp-001', full_name: 'Ahmet Kaya', email: null,
+        role_id: null, access_level: 'employee', active: true,
+        home_store_id: 'store-A', store_id: 'store-A',
+      },
+    } as never)
+  })
+
+  it('başka mağazanın kiosk kodu reddedilir; kod tüketilmez, yayın ve kayıt olmaz', async () => {
+    asStoreBEmployee()
+    setupDb({ storeId: 'store-B', kioskTokens: [kioskTokenRow(KIOSK_TOKEN, 'store-A'), kioskTokenRow(KIOSK_TOKEN_B, 'store-B')] })
+
+    const { status, body } = await post({ qr_data: KIOSK_QR, intended_action: 'clock_in' })
+
+    expect(status).toBe(403)
+    expect(body.code).toBe('QR_WRONG_STORE')
+    expect(body.error).toBe('Bu QR kodu başka bir mağazaya ait.')
+    expect(db.tables.qr_tokens.find((t) => t.token === KIOSK_TOKEN)?.used_at).toBeNull()
+    expect(db.tables.attendance_records).toHaveLength(0)
+    expect(httpSend).not.toHaveBeenCalled()
+  })
+
+  it('başka mağazanın kullanılmış kodu da "başka mağaza" hatası verir (QR_USED değil)', async () => {
+    asStoreBEmployee()
+    setupDb({
+      storeId: 'store-B',
+      kioskTokens: [{ ...kioskTokenRow(KIOSK_TOKEN, 'store-A'), used_at: new Date().toISOString() }],
+    })
+    const { status, body } = await post({ qr_data: KIOSK_QR, intended_action: 'clock_in' })
+    expect(status).toBe(403)
+    expect(body.code).toBe('QR_WRONG_STORE')
+  })
+
+  it('kendi mağazasının kodu kabul edilir; yeni kod yalnızca o mağazanın kanalına yayınlanır', async () => {
+    asStoreBEmployee()
+    setupDb({ storeId: 'store-B', kioskTokens: [kioskTokenRow(KIOSK_TOKEN, 'store-A'), kioskTokenRow(KIOSK_TOKEN_B, 'store-B')] })
+
+    const { status } = await post({ qr_data: `SU2.${KIOSK_TOKEN_B}`, intended_action: 'clock_in' })
+
+    expect(status).toBe(200)
+    expect(channel).toHaveBeenCalledTimes(1)
+    expect(channel).toHaveBeenCalledWith('kiosk-qr:store-B', { config: { private: true } })
+    // store-A'nın aktif kodu dokunulmadan kalır
+    expect(db.tables.qr_tokens.find((t) => t.token === KIOSK_TOKEN)?.used_at).toBeNull()
+    const activeB = activeKioskTokens().filter((t) => t.store_id === 'store-B')
+    expect(activeB).toHaveLength(1)
+    expect(activeB[0].token).not.toBe(KIOSK_TOKEN_B)
+  })
+
+  it('geofence çalışanın mağazasının konumuna göre doğrulanır', async () => {
+    asStoreBEmployee()
+    setupDb({ storeId: 'store-B', kioskTokens: [kioskTokenRow(KIOSK_TOKEN_B, 'store-B')] })
+
+    await post({ qr_data: `SU2.${KIOSK_TOKEN_B}`, intended_action: 'clock_in' })
+
+    expect(locationServiceModule.validateLocationServerSide).toHaveBeenCalledWith(VALID_LOCATION, 'store-B')
+  })
+
+  it('başka mağazaya bağlı üretilmiş klasik QR reddedilir', async () => {
+    vi.mocked(qrTokenService.validateAndConsumeToken).mockResolvedValue({
+      token: makeQrToken({ store_id: 'store-B' }),
+      payload: { token: 'abc123', action: 'clock_in', employee_id: 'emp-001', exp: 9999999999 },
+    })
+    const { status, body } = await post({})
+    expect(status).toBe(403)
+    expect(body.code).toBe('QR_WRONG_STORE')
+    expect(db.tables.attendance_records).toHaveLength(0)
   })
 })
 

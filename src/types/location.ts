@@ -2,6 +2,7 @@
 
 export interface StoreLocation {
   id: string
+  store_id: string             // konumun ait olduğu mağaza (mağaza başına tek aktif konum)
   name: string
   latitude: number
   longitude: number

@@ -25,7 +25,8 @@ import {
 // ============================================================
 function makeStore(overrides: Partial<StoreLocation> = {}): StoreLocation {
   return {
-    id: 'store-001',
+    id: 'loc-001',
+    store_id: 'store-001',
     name: 'Demo Mağaza',
     latitude: 41.0082,
     longitude: 28.9784,
@@ -147,9 +148,25 @@ describe('locationService — fetchActiveStoreLocation', () => {
       })),
     })
 
-    const result = await fetchActiveStoreLocation()
-    expect(result.id).toBe('store-001')
+    const result = await fetchActiveStoreLocation('store-001')
+    expect(result.id).toBe('loc-001')
     expect(result.latitude).toBe(41.0082)
+  })
+
+  it('yalnızca verilen mağazanın aktif konumunu sorgular (store_id filtresi)', async () => {
+    const eq = vi.fn().mockReturnThis()
+    mockCreateAdminClient.mockReturnValue({
+      from: vi.fn(() => ({
+        select: vi.fn().mockReturnThis(),
+        eq,
+        limit: vi.fn().mockReturnThis(),
+        maybeSingle: vi.fn().mockResolvedValue({ data: makeStore(), error: null }),
+      })),
+    })
+
+    await fetchActiveStoreLocation('store-777')
+    expect(eq).toHaveBeenCalledWith('store_id', 'store-777')
+    expect(eq).toHaveBeenCalledWith('active', true)
   })
 
   it('aktif mağaza yoksa LocationError fırlatır', async () => {
@@ -162,8 +179,8 @@ describe('locationService — fetchActiveStoreLocation', () => {
       })),
     })
 
-    await expect(fetchActiveStoreLocation()).rejects.toThrow(LocationError)
-    await expect(fetchActiveStoreLocation()).rejects.toThrow('Aktif mağaza konumu tanımlanmamış.')
+    await expect(fetchActiveStoreLocation('store-001')).rejects.toThrow(LocationError)
+    await expect(fetchActiveStoreLocation('store-001')).rejects.toThrow('Aktif mağaza konumu tanımlanmamış.')
   })
 
   it('DB hatası LocationError fırlatır', async () => {
@@ -176,7 +193,7 @@ describe('locationService — fetchActiveStoreLocation', () => {
       })),
     })
 
-    await expect(fetchActiveStoreLocation()).rejects.toThrow(LocationError)
+    await expect(fetchActiveStoreLocation('store-001')).rejects.toThrow(LocationError)
   })
 })
 
@@ -197,7 +214,7 @@ describe('locationService — validateLocationServerSide', () => {
       })),
     })
 
-    const result = await validateLocationServerSide(COORDS_INSIDE)
+    const result = await validateLocationServerSide(COORDS_INSIDE, 'store-001')
     expect(result.allowed).toBe(true)
   })
 
@@ -212,7 +229,7 @@ describe('locationService — validateLocationServerSide', () => {
       })),
     })
 
-    const result = await validateLocationServerSide(COORDS_OUTSIDE)
+    const result = await validateLocationServerSide(COORDS_OUTSIDE, 'store-001')
     expect(result.allowed).toBe(false)
   })
 })

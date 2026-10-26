@@ -2,7 +2,7 @@
  * GET  /api/time-correction   — Talepleri listele
  * POST /api/time-correction   — Mesai düzeltme talebi oluştur
  *
- * GET:  Çalışan → kendi talepleri; Manager+ → tümü (status filtresi)
+ * GET:  Çalışan → kendi talepleri; Manager+ → aktif mağazanın tüm talepleri (status filtresi)
  *
  * POST iki mod:
  *   A) Çalışan (normal):  employee_id SESSION'dan, status='pending', yöneticilere bildirim
@@ -18,11 +18,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { requireAuth, MANAGER_ROLES, hasRole, forbidden } from '@/lib/auth'
 import { createNotification, notifyManagers } from '@/lib/notificationRepository'
-import { applyTimeCorrection, checkCorrectionViolations } from '@/lib/timeCorrectionService'
+import { applyTimeCorrection, checkCorrectionViolations, CrossStoreShiftError } from '@/lib/timeCorrectionService'
 import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/apiErrors'
 import { isUuid, isValidDate, isValidTime } from '@/lib/validation'
 import { turkeyToday, addDaysToDateString } from '@/lib/dateUtils'
 import { logAudit } from '@/lib/auditLog'
+import { storeEmployeeIds } from '@/lib/storeScope'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 
@@ -88,7 +89,14 @@ export async function GET(req: NextRequest) {
       `)
       .order('created_at', { ascending: false })
 
-    if (!isManager) query = query.eq('employee_id', currentEmployee.id)
+    if (isManager) {
+      // Mağaza kapsamı: yalnızca aktif mağazanın çalışanlarının talepleri
+      const storeIds = await storeEmployeeIds(currentEmployee.store_id)
+      if (storeIds.length === 0) return NextResponse.json({ requests: [] })
+      query = query.in('employee_id', storeIds)
+    } else {
+      query = query.eq('employee_id', currentEmployee.id)
+    }
     if (statusFilter) query = query.eq('status', statusFilter)
 
     const { data, error } = await query
@@ -131,14 +139,17 @@ export async function POST(req: NextRequest) {
 
       const { data: emp, error: empErr } = await admin
         .from('employees')
-        .select('id, active')
+        .select('id, active, store_id')
         .eq('id', employeeId)
         .maybeSingle()
       if (empErr) return serverError('POST /api/time-correction', empErr)
-      if (!emp) return notFound('Çalışan bulunamadı.')
+      // Başka mağazanın çalışanı için mesai girilemez (404 — varlığı sızdırılmaz)
+      if (!emp || emp.store_id !== currentEmployee.store_id) return notFound('Çalışan bulunamadı.')
       if (!emp.active) return badRequest('Pasif çalışan için mesai girilemez.')
+      const storeId = emp.store_id as string
 
-      const violations = await checkCorrectionViolations({ admin, employeeId, date, startTime: start, endTime: end })
+      const violations = await checkCorrectionViolations({ admin, employeeId, storeId, date, startTime: start, endTime: end })
+      if (violations.otherStoreShift) return conflict(new CrossStoreShiftError().message, 'SHIFT_IN_OTHER_STORE')
       if (violations.errors.length > 0 && body.acknowledge_violations !== true) {
         return NextResponse.json(
           {
@@ -169,7 +180,7 @@ export async function POST(req: NextRequest) {
       let applied
       try {
         applied = await applyTimeCorrection({
-          admin, employeeId, date, startTime: start, endTime: end,
+          admin, employeeId, storeId, date, startTime: start, endTime: end,
         })
       } catch (applyErr) {
         // Uygulanamayan doğrudan kaydı geri al
@@ -179,6 +190,7 @@ export async function POST(req: NextRequest) {
 
       await logAudit({
         actorId: currentEmployee.id,
+        storeId,
         action: 'time_correction.direct',
         entityType: 'attendance_record',
         entityId: applied.attendanceRecordId,
@@ -239,8 +251,10 @@ export async function POST(req: NextRequest) {
     }
 
     try {
+      // Talep sahibinin (ana) mağazasının yöneticileri + adminler
       await notifyManagers(
         admin,
+        currentEmployee.home_store_id,
         {
           type: 'time_correction_submitted',
           title: 'Yeni Mesai Düzeltme Talebi',

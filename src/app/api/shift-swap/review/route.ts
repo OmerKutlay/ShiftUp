@@ -21,11 +21,12 @@ import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/api
 import { isUuid } from '@/lib/validation'
 import { checkAssignmentRules, shiftsHaveAttendance } from '@/lib/shiftAssignmentRules'
 import { logAudit } from '@/lib/auditLog'
+import { areEmployeesInStore, employeeStoreId } from '@/lib/storeScope'
 
 type Action = 'accepted' | 'declined' | 'cancelled' | 'approved' | 'rejected'
 const ACTIONS: Action[] = ['accepted', 'declined', 'cancelled', 'approved', 'rejected']
 
-interface ShiftRow { id: string; employee_id: string; work_date: string; start_time: string; end_time: string }
+interface ShiftRow { id: string; employee_id: string; store_id: string; work_date: string; start_time: string; end_time: string }
 
 export async function POST(req: NextRequest) {
   const auth = await requireAuth(req)
@@ -56,6 +57,15 @@ export async function POST(req: NextRequest) {
       .maybeSingle()
     if (swapErr) return serverError('POST /api/shift-swap/review', swapErr)
     if (!swap) return notFound('Takas talebi bulunamadı.')
+
+    // Takasın mağazası = talep edenin mağazası. Taraflar kendi taleplerini işler; yönetici
+    // yalnızca aktif mağazanın taleplerini görür (başka mağaza → 404)
+    const swapStoreId = await employeeStoreId(swap.requester_id)
+    const isParty = swap.requester_id === currentEmployee.id || swap.target_id === currentEmployee.id
+    if (!swapStoreId || (!isParty && swapStoreId !== currentEmployee.store_id)) {
+      return notFound('Takas talebi bulunamadı.')
+    }
+
     if (swap.status !== 'pending') return conflict(`Bu talep zaten ${swap.status}.`)
 
     const now = new Date().toISOString()
@@ -85,6 +95,7 @@ export async function POST(req: NextRequest) {
         if (action === 'accepted') {
           await notifyManagers(
             admin,
+            swapStoreId,
             {
               type: 'shift_swap_submitted',
               title: 'Vardiya takası onay bekliyor',
@@ -140,7 +151,7 @@ export async function POST(req: NextRequest) {
       const ids = [swap.requester_shift_id, swap.target_shift_id].filter(Boolean) as string[]
       const { data: shifts, error: shErr } = await admin
         .from('shift_assignments')
-        .select('id, employee_id, work_date, start_time, end_time')
+        .select('id, employee_id, store_id, work_date, start_time, end_time')
         .in('id', ids)
       if (shErr) return serverError('POST /api/shift-swap/review', shErr)
 
@@ -149,7 +160,11 @@ export async function POST(req: NextRequest) {
       const tgtShift = swap.target_shift_id ? byId.get(swap.target_shift_id) : null
       if (
         !reqShift || reqShift.employee_id !== swap.requester_id ||
-        (swap.target_shift_id && (!tgtShift || tgtShift.employee_id !== swap.target_id))
+        (swap.target_shift_id && (!tgtShift || tgtShift.employee_id !== swap.target_id)) ||
+        // Vardiyalar ve taraflar hâlâ aynı (aktif) mağazada olmalı
+        reqShift.store_id !== swapStoreId ||
+        (tgtShift && tgtShift.store_id !== swapStoreId) ||
+        !(await areEmployeesInStore([swap.requester_id, swap.target_id], swapStoreId))
       ) {
         return conflict('Vardiyalar talep oluşturulduktan sonra değişmiş. Talebi reddedip yeniden oluşturun.')
       }
@@ -237,6 +252,7 @@ export async function POST(req: NextRequest) {
 
     await logAudit({
       actorId: currentEmployee.id,
+      storeId: swapStoreId,
       action: `shift_swap.${action}`,
       entityType: 'shift_swap_request',
       entityId: swap.id,

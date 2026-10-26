@@ -1,17 +1,19 @@
 /**
  * GET /api/kiosk/qr
  *
- * Güncel (tek kullanımlık) kiosk QR'ını döner. Kiosk ekranı bunu yalnızca açılışta ve
- * Realtime kanalı (yeniden) bağlandığında çağırır; sonraki kodlar "kiosk-qr" private
- * kanalından Broadcast ile gelir — periyodik istek yoktur.
+ * Aktif mağazanın güncel (tek kullanımlık) kiosk QR'ını döner. Kiosk ekranı bunu yalnızca
+ * açılışta ve Realtime kanalı (yeniden) bağlandığında çağırır; sonraki kodlar mağazanın
+ * "kiosk-qr:<store_id>" private kanalından Broadcast ile gelir — periyodik istek yoktur.
  *
- * Yetki: Kiosk rolü veya Müdür Yardımcısı+.
+ * Mağaza: kiosk hesabı / yönetici / müdür için kendi mağazası; admin için aktif mağaza.
+ * Yanıt: { qr_data, store_id, topic } — istemci `topic` kanalına abone olur.
+ * Yetki: Kiosk rolü veya Müdür Yardımcısı+ (SQL: can_view_kiosk_qr_topic ile aynı kural).
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, forbidden } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { checkRateLimit } from '@/lib/rateLimiter'
-import { canViewKioskQr, getOrCreateActiveKioskQr } from '@/lib/kioskQrService'
+import { canViewKioskQr, getOrCreateActiveKioskQr, kioskQrTopic } from '@/lib/kioskQrService'
 import { serverError } from '@/lib/apiErrors'
 import { startTrace, type RequestTrace } from '@/lib/requestTrace'
 
@@ -30,7 +32,8 @@ async function getKioskQr(req: NextRequest, trace: RequestTrace): Promise<NextRe
   const auth = await requireAuth(req, { allowKiosk: true })
   trace.step('auth', { ok: !('response' in auth) })
   if ('response' in auth) return auth.response
-  if (!canViewKioskQr(auth.employee.access_level)) return forbidden()
+  const storeId = auth.employee.store_id
+  if (!canViewKioskQr(auth.employee.access_level, auth.employee.home_store_id, storeId)) return forbidden()
 
   try {
     const rate = await checkRateLimit(`kiosk_qr:${auth.employee.id}`, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS)
@@ -38,9 +41,9 @@ async function getKioskQr(req: NextRequest, trace: RequestTrace): Promise<NextRe
     if (!rate.allowed) {
       return NextResponse.json({ error: 'Çok fazla istek.', code: 'RATE_LIMITED' }, { status: 429 })
     }
-    const qr = await getOrCreateActiveKioskQr(createAdminClient())
+    const qr = await getOrCreateActiveKioskQr(createAdminClient(), storeId)
     trace.step('active_qr')
-    return NextResponse.json(qr)
+    return NextResponse.json({ ...qr, store_id: storeId, topic: kioskQrTopic(storeId) })
   } catch (err) {
     return serverError('GET /api/kiosk/qr', err)
   }

@@ -12,6 +12,7 @@ function shift(overrides: Partial<{ id: string; work_date: string; start_time: s
   return {
     id: 's1',
     employee_id: 'e1',
+    store_id: 'store-A',
     work_date: '2026-10-12',
     start_time: '09:00:00',
     end_time: '17:00:00',
@@ -53,6 +54,14 @@ describe('findMissedAttendance', () => {
     expect(alerts).toHaveLength(1)
     expect(alerts[0].type).toBe('attendance_missed_clock_in')
     expect(alerts[0].employeeName).toBe('Ayşe Yılmaz')
+    // Uyarı vardiyanın mağazasını taşır (bildirim yalnızca o mağazanın yöneticilerine gider)
+    expect(alerts[0].storeId).toBe('store-A')
+  })
+
+  it('farklı mağazaların vardiyaları kendi mağaza kimlikleriyle uyarı üretir', () => {
+    const shifts = [shift({ id: 's1' }), { ...shift({ id: 's2' }), store_id: 'store-B' }]
+    const alerts = findMissedAttendance(shifts, [], tr('2026-10-12T10:00:00'), CONFIG)
+    expect(alerts.map((a) => [a.shift.id, a.storeId])).toEqual([['s1', 'store-A'], ['s2', 'store-B']])
   })
 
   it('giriş yapılmışsa giriş uyarısı üretmez', () => {

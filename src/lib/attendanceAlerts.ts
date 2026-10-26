@@ -3,9 +3,11 @@
  *
  * İki tetikleyici:
  *   1. Anlık: QR / buton ile giriş-çıkış yapıldığında, vardiya saatine göre
- *      tolerans aşıldıysa yöneticilere "geç giriş" / "geç çıkış" bildirimi.
+ *      tolerans aşıldıysa vardiyanın mağazasındaki yöneticilere (+ adminlere) "geç giriş" /
+ *      "geç çıkış" bildirimi.
  *   2. Periyodik tarama: vardiya başlamış ama giriş okutulmamış ya da vardiya
- *      bitmiş ama çıkış okutulmamış çalışanlar için yöneticilere bildirim.
+ *      bitmiş ama çıkış okutulmamış çalışanlar için vardiyanın mağazasındaki yöneticilere
+ *      (+ adminlere) bildirim; başka mağazanın yöneticisi bilgilendirilmez.
  *      Asıl tarama veritabanında pg_cron ile çalışır (public.scan_missed_attendance,
  *      20261023100000_attendance_missed_scan_cron.sql) — uygulama kapalıyken de push gider.
  *      Buradaki TS kopyası yedektir; mantık değişirse SQL fonksiyonu da güncellenmeli.
@@ -98,6 +100,8 @@ function formatDelay(mins: number): string {
 export async function notifyIfLateAttendance(
   admin: SupabaseClient,
   params: {
+    /** Vardiyanın mağazası (shift_assignments.store_id) */
+    storeId: string
     employeeId: string
     employeeName: string
     shift: ShiftLike
@@ -109,7 +113,7 @@ export async function notifyIfLateAttendance(
   config: AttendanceAlertConfig = getAttendanceAlertConfig(),
 ): Promise<void> {
   try {
-    const { employeeId, employeeName, shift, action, at, recordedAt } = params
+    const { storeId, employeeId, employeeName, shift, action, at, recordedAt } = params
     const { start, end } = getShiftWindow(shift)
     const reference = action === 'clock_in' ? start : end
     const delayMins = Math.floor((at.getTime() - reference.getTime()) / MINUTE_MS)
@@ -126,6 +130,7 @@ export async function notifyIfLateAttendance(
       recordedAt && turkeyTime(recordedAt) !== turkeyTime(at) ? `, işlenen: ${turkeyTime(recordedAt)}` : ''
     await notifyManagers(
       admin,
+      storeId,
       {
         type,
         title: isIn ? 'Geç giriş' : 'Geç çıkış',
@@ -145,6 +150,7 @@ export async function notifyIfLateAttendance(
 
 interface ScanShiftRow extends ShiftLike {
   employee_id: string
+  store_id: string
   is_on_leave: boolean | null
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   employees: any
@@ -159,6 +165,8 @@ interface ScanRecordRow {
 export interface MissedAttendanceAlert {
   type: 'attendance_missed_clock_in' | 'attendance_missed_clock_out'
   shift: ShiftLike
+  /** Vardiyanın mağazası — bildirim yalnızca bu mağazanın yöneticilerine gider */
+  storeId: string
   employeeId: string
   employeeName: string
 }
@@ -191,7 +199,7 @@ export function findMissedAttendance(
     const recs = byShift.get(shift.id) ?? []
     const hasClockIn = recs.some((r) => r.clock_in_at)
     const hasClockOut = recs.some((r) => r.clock_out_at)
-    const base = { shift, employeeId: shift.employee_id, employeeName: emp.full_name ?? 'Çalışan' }
+    const base = { shift, storeId: shift.store_id, employeeId: shift.employee_id, employeeName: emp.full_name ?? 'Çalışan' }
 
     if (!hasClockIn && now.getTime() > start.getTime() + config.missedClockInMins * MINUTE_MS) {
       alerts.push({ ...base, type: 'attendance_missed_clock_in' })
@@ -215,7 +223,7 @@ export async function scanMissedAttendance(
 
   const { data: shifts, error: shiftErr } = await admin
     .from('shift_assignments')
-    .select('id, employee_id, work_date, start_time, end_time, is_on_leave, employees(full_name, active)')
+    .select('id, employee_id, store_id, work_date, start_time, end_time, is_on_leave, employees(full_name, active)')
     .in('work_date', dates)
   if (shiftErr) throw shiftErr
   if (!shifts || shifts.length === 0) return { checked: 0, notified: 0 }
@@ -241,8 +249,11 @@ export async function scanMissedAttendance(
     alerts.map((a) => a.shift.id),
   )
 
-  // Yönetici listesi döngü dışında bir kez alınır (N+1 sorgu önlemi)
-  const managerIds = await getActiveManagerIds(admin)
+  // Yönetici listesi mağaza başına bir kez alınır (N+1 sorgu önlemi); adminler her listede yer alır
+  const managerIdsByStore = new Map<string, string[]>()
+  for (const storeId of new Set(alerts.map((a) => a.storeId))) {
+    managerIdsByStore.set(storeId, await getActiveManagerIds(admin, storeId))
+  }
 
   let notified = 0
   for (const alert of alerts) {
@@ -251,6 +262,7 @@ export async function scanMissedAttendance(
     try {
       await notifyManagers(
         admin,
+        alert.storeId,
         {
           type: alert.type,
           title: isIn ? 'Giriş okutulmadı' : 'Çıkış okutulmadı',
@@ -259,7 +271,7 @@ export async function scanMissedAttendance(
             : `${alert.employeeName}, ${shiftLabel(alert.shift)} vardiyası bitti ancak çıkış QR'ı okutulmadı.`,
           related_id: alert.shift.id,
         },
-        { excludeEmployeeId: alert.employeeId, managerIds },
+        { excludeEmployeeId: alert.employeeId, managerIds: managerIdsByStore.get(alert.storeId) },
       )
       notified++
     } catch (err) {

@@ -3,10 +3,12 @@
 /**
  * QrKioskPage — Tek kullanımlık kiosk QR'ı, Supabase Realtime Broadcast ile güncellenir.
  *
- * - Ekran private "kiosk-qr" kanalına abone olur (yalnızca aktif Kiosk / Müdür Yardımcısı+;
- *   yetki realtime.messages RLS politikasıyla veritabanında denetlenir).
- * - Abonelik kurulunca (ilk açılış ve her yeniden bağlanma) güncel kod GET /api/kiosk/qr ile
- *   bir kez alınır. Sonrasında kod yalnızca biri okutup onaylandığında, sunucunun yayınıyla değişir.
+ * - Ekran aktif mağazanın private "kiosk-qr:<store_id>" kanalına hemen abone olur (mağaza
+ *   oturumdan bilinir; bilinmiyorsa kanal adı GET /api/kiosk/qr yanıtından alınır) (kiosk / yönetici / müdür yalnızca kendi
+ *   mağazasının, admin her mağazanın kanalına; yetki realtime.messages RLS politikasıyla
+ *   veritabanında denetlenir).
+ * - Abonelik kurulunca (ilk açılış ve her yeniden bağlanma) güncel kod yine bir kez alınır.
+ *   Sonrasında kod yalnızca biri okutup onaylandığında, sunucunun yayınıyla değişir.
  * - Zamanlayıcı / periyodik istek yoktur.
  * - Tarayıcı çevrimdışıyken bağlantı geri gelince (online olayı) güncel kod yine bir kez alınır.
  * - Sayfa görünürken ekran kilidi (Screen Wake Lock) istenir; destek yoksa sessizce atlanır.
@@ -18,8 +20,8 @@
  * telefonda alt alta.
  */
 import { useState, useEffect, useRef, useSyncExternalStore } from 'react'
+import type { RealtimeChannel } from '@supabase/supabase-js'
 import { useRouter } from 'next/navigation'
-import useSWR from 'swr'
 import { CircleAlert, LayoutDashboard, LogOut, Maximize, WifiOff } from 'lucide-react'
 import { QrCodeDisplay } from './QrCodeDisplay'
 import { useClock } from './useClock'
@@ -28,7 +30,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter } from '@/components/ui/card'
 import { Spinner } from '@/components/ui/spinner'
-import { apiFetch } from '@/lib/api/http'
 import { BrandMark } from '@/components/common/BrandMark'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
@@ -36,7 +37,6 @@ import { isKioskRole } from '@/lib/auth/roles'
 import { getSupabaseBrowserClient } from '@/lib/supabase/browser'
 import { isStandaloneDisplay } from '@/lib/pwa/deviceInfo'
 
-const TOPIC = 'kiosk-qr'
 const EVENT = 'qr'
 
 type LinkState = 'connecting' | 'live' | 'offline'
@@ -124,7 +124,8 @@ function enterFullscreen() {
 
 export function QrKioskPage() {
   const router = useRouter()
-  const { employee, signOut } = useAuth()
+  const { employee, store, signOut } = useAuth()
+  const storeId = store?.active.id ?? null
   const isKiosk = isKioskRole(employee?.roles?.access_level ?? null)
 
   const [qrData, setQrData] = useState<string | null>(null)
@@ -139,10 +140,6 @@ export function QrKioskPage() {
   useScreenWakeLock()
   const canEnterFullscreen = useCanEnterFullscreen()
   const clock = useClock()
-  // Üst çubuktaki mağaza adı (yan menüyle aynı uç ve önbellek anahtarı)
-  const { data: store } = useSWR('/api/store-location/name', (url: string) => apiFetch<{ name: string | null }>(url), {
-    revalidateOnFocus: false,
-  })
 
   useEffect(() => {
     const supabase = getSupabaseBrowserClient()
@@ -155,38 +152,16 @@ export function QrKioskPage() {
       })
     }
 
-    const fetchCurrent = async () => {
-      const startedAt = versionRef.current
-      try {
-        const res = await fetch('/api/kiosk/qr', { credentials: 'same-origin', cache: 'no-store' })
-        if (res.status === 401) {
-          router.replace('/login?next=/qr-kiosk')
-          return
-        }
-        if (!res.ok) {
-          const body = (await res.json().catch(() => ({}))) as { error?: string }
-          throw new Error(body.error ?? 'QR kodu alınamadı.')
-        }
-        const { qr_data } = (await res.json()) as { qr_data: string }
-        if (!disposed && versionRef.current === startedAt) showQr(qr_data)
-        setError(null)
-      } catch (err) {
-        if (!disposed) setError(err instanceof Error ? err.message : 'QR kodu alınamadı.')
-      }
-    }
+    /** Abone olunan mağaza kanalı; API'nin döndürdüğü kanal değişirse (ör. admin mağaza değiştirdi) yeniden abone olunur */
+    let channel: RealtimeChannel | null = null
+    let topic: string | null = null
+    let authReady = false
 
-    const channel = supabase.channel(TOPIC, { config: { private: true } })
-
-    const start = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (disposed) return
-      if (!session) {
-        setLink('offline')
-        setError('Gerçek zamanlı bağlantı için oturum bulunamadı. Çıkış yapıp yeniden giriş yapın.')
-        return
-      }
-      await supabase.realtime.setAuth(session.access_token)
-
+    const subscribeTo = (nextTopic: string) => {
+      if (disposed || !authReady || nextTopic === topic) return
+      if (channel) void supabase.removeChannel(channel)
+      topic = nextTopic
+      channel = supabase.channel(nextTopic, { config: { private: true } })
       channel
         .on('broadcast', { event: EVENT }, ({ payload }) => {
           const data = (payload as { qr_data?: unknown })?.qr_data
@@ -205,6 +180,44 @@ export function QrKioskPage() {
           }
         })
     }
+
+    const fetchCurrent = async () => {
+      const startedAt = versionRef.current
+      try {
+        const res = await fetch('/api/kiosk/qr', { credentials: 'same-origin', cache: 'no-store' })
+        if (res.status === 401) {
+          router.replace('/login?next=/qr-kiosk')
+          return
+        }
+        if (!res.ok) {
+          const body = (await res.json().catch(() => ({}))) as { error?: string }
+          throw new Error(body.error ?? 'QR kodu alınamadı.')
+        }
+        const { qr_data, topic: apiTopic } = (await res.json()) as { qr_data: string; topic: string }
+        if (!disposed && versionRef.current === startedAt) showQr(qr_data)
+        setError(null)
+        // Kanal adı sunucudan gelir (mağaza başına); henüz abone değilsek / kanal değiştiyse abone ol
+        if (typeof apiTopic === 'string') subscribeTo(apiTopic)
+      } catch (err) {
+        if (!disposed) setError(err instanceof Error ? err.message : 'QR kodu alınamadı.')
+      }
+    }
+
+    const start = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (disposed) return
+      if (!session) {
+        setLink('offline')
+        setError('Gerçek zamanlı bağlantı için oturum bulunamadı. Çıkış yapıp yeniden giriş yapın.')
+        return
+      }
+      await supabase.realtime.setAuth(session.access_token)
+      authReady = true
+      // Mağaza oturumdan biliniyorsa ilk istek beklenmeden abone olunur (ilk istek başarısız olsa
+      // da kanal kurulur; SUBSCRIBED olunca güncel kod alınır). Bilinmiyorsa kanal adı API'den gelir.
+      if (storeId) subscribeTo(`kiosk-qr:${storeId}`)
+      else await fetchCurrent()
+    }
     void start()
 
     // Tarayıcı çevrimdışıyken kaçan yayınlar olabilir: bağlantı geri gelince güncel kodu bir kez al
@@ -217,9 +230,9 @@ export function QrKioskPage() {
     return () => {
       disposed = true
       window.removeEventListener('online', onOnline)
-      void supabase.removeChannel(channel)
+      if (channel) void supabase.removeChannel(channel)
     }
-  }, [router])
+  }, [router, storeId])
 
   const linkBadge = link === 'live' ? (
     <Badge tone="success">Canlı</Badge>
@@ -249,7 +262,7 @@ export function QrKioskPage() {
         <BrandMark size={36} />
         <div className="min-w-0 flex-1">
           <p className="truncate font-semibold leading-tight">ShiftUp</p>
-          <p className="truncate text-sm text-muted-foreground">{store?.name ?? 'QR kiosk'}</p>
+          <p className="truncate text-sm text-muted-foreground">{store?.active.name ?? 'QR kiosk'}</p>
         </div>
         <div className="flex items-center gap-1 sm:gap-2">
           {canEnterFullscreen && (

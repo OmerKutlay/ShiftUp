@@ -1,7 +1,7 @@
 /**
- * GET  /api/shifts?week=YYYY-MM-DD           — o haftanın (Pzt–Paz) vardiyaları (oturum gerektirir)
+ * GET  /api/shifts?week=YYYY-MM-DD           — aktif mağazanın o haftaki (Pzt–Paz) vardiyaları (oturum gerektirir)
  * GET  /api/shifts?start=YYYY-MM-DD&end=...   — tarih aralığı (en fazla 62 gün)
- * POST /api/shifts                             — vardiya atar (Müdür Yardımcısı+)
+ * POST /api/shifts                             — vardiya atar (Müdür Yardımcısı+); çalışan aktif mağazadan olmalı
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, requireMinRole, ACCESS, hasRole, MANAGER_ROLES } from '@/lib/auth'
@@ -9,6 +9,7 @@ import { fetchWeeklyAssignments, fetchAssignmentsInRange, createShiftAssignment,
 import { ShiftConflictError } from '@/types/schedule'
 import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/apiErrors'
 import { isUuid, isValidDate, isValidTime } from '@/lib/validation'
+import { isTemplateInStore } from '@/lib/shiftTemplateRepository'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { logAudit } from '@/lib/auditLog'
 import { checkAssignmentRules } from '@/lib/shiftAssignmentRules'
@@ -18,6 +19,7 @@ export async function GET(req: NextRequest) {
   const auth = await requireAuth(req)
   if ('response' in auth) return auth.response
 
+  const storeId = auth.employee.store_id
   const sp = req.nextUrl.searchParams
   const week = sp.get('week')
   const start = sp.get('start')
@@ -28,13 +30,13 @@ export async function GET(req: NextRequest) {
   try {
     if (week) {
       if (!isValidDate(week)) return badRequest('Geçersiz hafta tarihi.')
-      const assignments = await fetchWeeklyAssignments(new Date(`${week}T12:00:00`))
+      const assignments = await fetchWeeklyAssignments(new Date(`${week}T12:00:00`), storeId)
       return NextResponse.json({ assignments: await attachWorkedMinutes(assignments, onlyEmployeeId) })
     }
     if (isValidDate(start) && isValidDate(end)) {
       const days = (Date.parse(end) - Date.parse(start)) / 86_400_000
       if (days < 0 || days > 62) return badRequest('Tarih aralığı 0–62 gün olmalıdır.')
-      const assignments = await fetchAssignmentsInRange(start, end)
+      const assignments = await fetchAssignmentsInRange(start, end, storeId)
       return NextResponse.json({ assignments: await attachWorkedMinutes(assignments, onlyEmployeeId) })
     }
     return badRequest('week veya start/end parametresi gerekli.')
@@ -61,15 +63,22 @@ export async function POST(req: NextRequest) {
     return badRequest('Başlangıç ve bitiş saati aynı olamaz.')
   }
 
+  const storeId = auth.employee.store_id
+
   try {
     const admin = createAdminClient()
+    // Yalnızca aktif mağazanın çalışanına vardiya atanır (başka mağaza → 404, varlığı sızdırılmaz)
     const { data: emp, error: empErr } = await admin
       .from('employees')
       .select('id, active')
       .eq('id', employee_id)
+      .eq('store_id', storeId)
       .maybeSingle()
     if (empErr) return serverError('POST /api/shifts', empErr)
     if (!emp) return notFound('Çalışan bulunamadı.')
+    if (shift_template_id && !(await isTemplateInStore(shift_template_id, storeId))) {
+      return badRequest('Geçersiz vardiya şablonu.')
+    }
 
     // İş Kanunu kuralları: kesin engeller (izin, 18 yaş altı) 409; çalışma süresi ihlalleri onay ister
     const rules = await checkAssignmentRules(admin, employee_id, {
@@ -96,11 +105,13 @@ export async function POST(req: NextRequest) {
         start_time: start_time.slice(0, 5),
         end_time: end_time.slice(0, 5),
       },
-      emp.active
+      emp.active,
+      storeId
     )
 
     await logAudit({
       actorId: auth.employee.id,
+      storeId,
       action: 'shift.create',
       entityType: 'shift_assignment',
       entityId: assignment.id,

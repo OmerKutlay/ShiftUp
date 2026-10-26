@@ -3,7 +3,7 @@
  * Oturumdaki çalışanın şu anki vardiya + devam durumunu ve izinli aksiyonları döner.
  *
  * Her zaman oturum gerektirir. employee_id parametresi yalnızca yöneticiler
- * tarafından başka bir çalışan için kullanılabilir.
+ * tarafından, aktif mağazadaki başka bir çalışan için kullanılabilir.
  * "Bugün" Türkiye saatine göredir; gece yarısını geçen vardiyada dünün açık
  * kaydı da bulunur.
  */
@@ -12,7 +12,8 @@ import { createAdminClient } from '@/lib/supabaseAdmin'
 import { getAllowedActions } from '@/lib/attendanceStateMachine'
 import { requireAuth, forbidden, hasRole, MANAGER_ROLES } from '@/lib/auth'
 import { findCurrentShift, NoShiftError } from '@/lib/attendanceService'
-import { serverError } from '@/lib/apiErrors'
+import { notFound, serverError } from '@/lib/apiErrors'
+import { isEmployeeInStore } from '@/lib/storeScope'
 import { isUuid } from '@/lib/validation'
 import { startTrace, type RequestTrace } from '@/lib/requestTrace'
 import type { AttendanceStatus } from '@/types/attendance'
@@ -51,6 +52,11 @@ async function getCurrentStatus(req: NextRequest, trace: RequestTrace): Promise<
   }
 
   try {
+    // Başka mağazanın çalışanı görüntülenemez (service role RLS'yi bypass eder)
+    if (employeeId !== auth.employee.id && !(await isEmployeeInStore(employeeId, auth.employee.store_id))) {
+      return notFound('Çalışan bulunamadı.', 'EMPLOYEE_NOT_FOUND')
+    }
+
     const admin = createAdminClient()
 
     let found: Awaited<ReturnType<typeof findCurrentShift>>

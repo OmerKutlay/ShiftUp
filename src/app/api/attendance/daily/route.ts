@@ -1,6 +1,6 @@
 /**
  * GET /api/attendance/daily?date=YYYY-MM-DD
- * Günlük operasyon ekranı: o günün (varsayılan: bugün, Türkiye saati) vardiyaları
+ * Günlük operasyon ekranı: aktif mağazanın o günkü (varsayılan: bugün, Türkiye saati) vardiyaları
  * + devam kayıtları. Tüm çalışanlara açık (salt okunur); yönetici olmayanlar yalnızca bugünü görür.
  */
 import { NextRequest, NextResponse } from 'next/server'
@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const entries = await fetchDailyShifts(date)
+    const entries = await fetchDailyShifts(date, auth.employee.store_id)
     return NextResponse.json({ date, entries })
   } catch (err) {
     return serverError('GET /api/attendance/daily', err)

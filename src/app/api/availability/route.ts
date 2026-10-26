@@ -4,9 +4,10 @@
  * DELETE /api/availability?id=xxx
  *
  * Erişim kuralları:
- *   GET:    requireAuth → employee kendi, manager+ herkes (all=true yalnızca manager)
- *   POST:   requireAuth → kendi adına; başkası adına ancak manager+
- *   DELETE: requireAuth → kaydın sahibi veya manager+
+ *   GET:    requireAuth → employee kendi, manager+ aktif mağazanın herkesi (all=true yalnızca manager)
+ *   POST:   requireAuth → kendi adına; başkası adına ancak manager+ (aktif mağazanın çalışanı)
+ *   DELETE: requireAuth → kaydın sahibi veya manager+ (aktif mağazanın çalışanı)
+ * Başka mağazanın çalışanı için istek 404 döner.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
@@ -14,6 +15,7 @@ import type { CreateAvailabilityPayload, DayOfWeek } from '@/types/workforce'
 import { requireAuth, canAccessEmployee, MANAGER_ROLES, hasRole, forbidden } from '@/lib/auth'
 import { badRequest, notFound, readJson, serverError } from '@/lib/apiErrors'
 import { isUuid, isValidTime } from '@/lib/validation'
+import { isEmployeeInStore, storeEmployeeIds } from '@/lib/storeScope'
 
 const VALID_DAYS: DayOfWeek[] = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']
 
@@ -37,8 +39,17 @@ export async function GET(req: NextRequest) {
       .order('day_of_week')
       .order('start_time')
 
-    if (!(all && isManager)) {
-      query = query.eq('employee_id', isManager ? (requestedId ?? currentEmployee.id) : currentEmployee.id)
+    if (all && isManager) {
+      // Yalnızca aktif mağazanın çalışanları
+      const storeIds = await storeEmployeeIds(currentEmployee.store_id)
+      if (storeIds.length === 0) return NextResponse.json({ availability: [] })
+      query = query.in('employee_id', storeIds)
+    } else {
+      const targetId = isManager ? (requestedId ?? currentEmployee.id) : currentEmployee.id
+      if (targetId !== currentEmployee.id && !(await isEmployeeInStore(targetId, currentEmployee.store_id))) {
+        return notFound('Çalışan bulunamadı.')
+      }
+      query = query.eq('employee_id', targetId)
     }
 
     const { data, error } = await query
@@ -73,6 +84,12 @@ export async function POST(req: NextRequest) {
     // Employee sadece kendisi adına, manager+ herhangi biri adına
     const accessCheck = await canAccessEmployee(req, body.employee_id, MANAGER_ROLES)
     if ('response' in accessCheck) return accessCheck.response
+    if (
+      body.employee_id !== accessCheck.employee.id &&
+      !(await isEmployeeInStore(body.employee_id, accessCheck.employee.store_id))
+    ) {
+      return notFound('Çalışan bulunamadı.')
+    }
 
     const admin = createAdminClient()
     const { data, error } = await admin
@@ -115,8 +132,14 @@ export async function DELETE(req: NextRequest) {
     if (exErr) return serverError('DELETE /api/availability', exErr)
     if (!existing) return notFound('Kayıt bulunamadı.')
 
-    if (existing.employee_id !== currentEmployee.id && !hasRole(currentEmployee.access_level, MANAGER_ROLES)) {
-      return forbidden('Yalnızca kendi müsaitlik kaydınızı silebilirsiniz.')
+    if (existing.employee_id !== currentEmployee.id) {
+      if (!hasRole(currentEmployee.access_level, MANAGER_ROLES)) {
+        return forbidden('Yalnızca kendi müsaitlik kaydınızı silebilirsiniz.')
+      }
+      // Başka mağazanın çalışanının kaydı görünmez (404)
+      if (!(await isEmployeeInStore(existing.employee_id, currentEmployee.store_id))) {
+        return notFound('Kayıt bulunamadı.')
+      }
     }
 
     const { error } = await admin.from('employee_availability').delete().eq('id', id)

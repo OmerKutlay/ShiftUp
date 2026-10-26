@@ -16,6 +16,14 @@ export class ShiftTemplateValidationError extends Error {
   }
 }
 
+/** Şablon yok ya da başka mağazaya ait (varlığı sızdırılmaz) */
+export class ShiftTemplateNotFoundError extends Error {
+  constructor() {
+    super('Şablon bulunamadı.')
+    this.name = 'ShiftTemplateNotFoundError'
+  }
+}
+
 /** HH:MM formatını doğrular */
 function isValidTime(time: string): boolean {
   return /^\d{2}:\d{2}$/.test(time)
@@ -43,22 +51,24 @@ function validatePayload(payload: CreateShiftTemplatePayload): void {
 // Queries
 // ============================================================
 
-/** Tüm şablonları getirir */
-export async function fetchShiftTemplates(): Promise<ShiftTemplate[]> {
+/** Mağazanın tüm şablonlarını getirir */
+export async function fetchShiftTemplates(storeId: string): Promise<ShiftTemplate[]> {
   const { data, error } = await db
     .from('shift_templates')
     .select('id, name, start_time, end_time, description, active, created_at, updated_at')
+    .eq('store_id', storeId)
     .order('start_time', { ascending: true })
 
   if (error) throw new Error(`Vardiya şablonları yüklenemedi: ${error.message}`)
   return (data ?? []) as ShiftTemplate[]
 }
 
-/** Sadece aktif şablonları getirir (vardiya atama için) */
-export async function fetchActiveShiftTemplates(): Promise<ShiftTemplate[]> {
+/** Mağazanın yalnızca aktif şablonlarını getirir (vardiya atama için) */
+export async function fetchActiveShiftTemplates(storeId: string): Promise<ShiftTemplate[]> {
   const { data, error } = await db
     .from('shift_templates')
     .select('id, name, start_time, end_time, description, active, created_at, updated_at')
+    .eq('store_id', storeId)
     .eq('active', true)
     .order('start_time', { ascending: true })
 
@@ -66,19 +76,36 @@ export async function fetchActiveShiftTemplates(): Promise<ShiftTemplate[]> {
   return (data ?? []) as ShiftTemplate[]
 }
 
+/** Şablon bu mağazaya mı ait? (istemciden gelen shift_template_id doğrulaması) */
+export async function isTemplateInStore(id: string, storeId: string): Promise<boolean> {
+  const { data, error } = await db
+    .from('shift_templates')
+    .select('id')
+    .eq('id', id)
+    .eq('store_id', storeId)
+    .maybeSingle()
+  if (error) throw new Error(`Vardiya şablonu doğrulanamadı: ${error.message}`)
+  return !!data
+}
+
 // ============================================================
 // Mutations
 // ============================================================
 
-/** Yeni şablon oluşturur. Duplicate isim kontrolü DB UNIQUE kısıtı + özel hata mesajı ile sağlanır. */
+/**
+ * Mağazaya yeni şablon oluşturur. İsim tekilliği mağaza başınadır:
+ * DB UNIQUE (store_id, name) kısıtı + özel hata mesajı ile sağlanır.
+ */
 export async function createShiftTemplate(
-  payload: CreateShiftTemplatePayload
+  payload: CreateShiftTemplatePayload,
+  storeId: string
 ): Promise<ShiftTemplate> {
   validatePayload(payload)
 
   const { data, error } = await db
     .from('shift_templates')
     .insert({
+      store_id: storeId,
       name: payload.name.trim(),
       start_time: payload.start_time,
       end_time: payload.end_time,
@@ -101,10 +128,11 @@ export async function createShiftTemplate(
   return data as ShiftTemplate
 }
 
-/** Mevcut şablonu günceller */
+/** Mağazanın mevcut şablonunu günceller (başka mağazanın şablonu → ShiftTemplateNotFoundError) */
 export async function updateShiftTemplate(
   id: string,
-  payload: UpdateShiftTemplatePayload
+  payload: UpdateShiftTemplatePayload,
+  storeId: string
 ): Promise<ShiftTemplate> {
   // Güncelleme varsa validate et
   if (payload.name !== undefined || payload.start_time !== undefined || payload.end_time !== undefined) {
@@ -130,8 +158,9 @@ export async function updateShiftTemplate(
     .from('shift_templates')
     .update(payload)
     .eq('id', id)
+    .eq('store_id', storeId)
     .select()
-    .single()
+    .maybeSingle()
 
   if (error) {
     if (error.code === '23505') {
@@ -141,15 +170,16 @@ export async function updateShiftTemplate(
     }
     throw new Error(`Şablon güncellenemedi: ${error.message}`)
   }
+  if (!data) throw new ShiftTemplateNotFoundError()
 
   return data as ShiftTemplate
 }
 
 /** Şablonu pasif yapar (soft deactivate) */
-export async function deactivateShiftTemplate(id: string): Promise<ShiftTemplate> {
-  return updateShiftTemplate(id, { active: false })
+export async function deactivateShiftTemplate(id: string, storeId: string): Promise<ShiftTemplate> {
+  return updateShiftTemplate(id, { active: false }, storeId)
 }
 
-export async function activateShiftTemplate(id: string): Promise<ShiftTemplate> {
-  return updateShiftTemplate(id, { active: true })
+export async function activateShiftTemplate(id: string, storeId: string): Promise<ShiftTemplate> {
+  return updateShiftTemplate(id, { active: true }, storeId)
 }

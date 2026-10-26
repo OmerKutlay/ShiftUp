@@ -6,6 +6,7 @@
  *
  * Çalışanlar QR üretemez; aksi halde evden kendi ürettikleri kodu okutarak
  * mağazada bulunma şartını atlayabilirlerdi.
+ * Hedef çalışan yöneticinin aktif mağazasında olmalıdır (başka mağaza → 404).
  * Token ömrü en fazla 60 sn — ekran fotoğrafıyla uzaktan okutma penceresini daraltır.
  */
 import { NextRequest, NextResponse } from 'next/server'
@@ -59,8 +60,9 @@ export async function POST(req: NextRequest) {
     const admin = createAdminClient()
     const { data: employee, error: empError } = await admin
       .from('employees')
-      .select('id, active')
+      .select('id, active, store_id')
       .eq('id', body.employee_id)
+      .eq('store_id', auth.employee.store_id)
       .maybeSingle()
 
     if (empError) return serverError('POST /api/qr/generate', empError)
@@ -71,7 +73,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Pasif çalışan için QR üretilemez.', code: 'EMPLOYEE_INACTIVE' }, { status: 403 })
     }
 
-    const result = await generateQrToken(body.employee_id, body.action_type, ttl)
+    const result = await generateQrToken(body.employee_id, body.action_type, ttl, employee.store_id)
     return NextResponse.json(result, { status: 201 })
   } catch (err) {
     if (err instanceof QrTokenError) {

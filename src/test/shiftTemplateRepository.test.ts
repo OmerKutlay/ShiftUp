@@ -21,6 +21,8 @@ import { db as supabase } from '@/lib/db'
 // ============================================================
 // Helpers
 // ============================================================
+const STORE = '00000000-0000-0000-0003-000000000001'
+
 function makeTemplate(overrides: Partial<ShiftTemplate> = {}): ShiftTemplate {
   return {
     id: 'tpl-001',
@@ -54,7 +56,7 @@ describe('shiftTemplateRepository — fetchShiftTemplates', () => {
     ;(supabase.from as ReturnType<typeof vi.fn>).mockReturnValueOnce(
       buildChain({ data: templates, error: null })
     )
-    const result = await fetchShiftTemplates()
+    const result = await fetchShiftTemplates(STORE)
     expect(result).toHaveLength(2)
   })
 
@@ -62,7 +64,7 @@ describe('shiftTemplateRepository — fetchShiftTemplates', () => {
     ;(supabase.from as ReturnType<typeof vi.fn>).mockReturnValueOnce(
       buildChain({ data: null, error: { message: 'DB hatası' } })
     )
-    await expect(fetchShiftTemplates()).rejects.toThrow('Vardiya şablonları yüklenemedi')
+    await expect(fetchShiftTemplates(STORE)).rejects.toThrow('Vardiya şablonları yüklenemedi')
   })
 })
 
@@ -77,7 +79,7 @@ describe('shiftTemplateRepository — fetchActiveShiftTemplates', () => {
     ;(supabase.from as ReturnType<typeof vi.fn>).mockReturnValueOnce(
       buildChain({ data: active, error: null })
     )
-    const result = await fetchActiveShiftTemplates()
+    const result = await fetchActiveShiftTemplates(STORE)
     expect(result.every((t) => t.active)).toBe(true)
   })
 })
@@ -90,31 +92,31 @@ describe('shiftTemplateRepository — createShiftTemplate validation', () => {
 
   it('isim boş olamaz', async () => {
     await expect(
-      createShiftTemplate({ name: '', start_time: '09:00', end_time: '18:00' })
+      createShiftTemplate({ name: '', start_time: '09:00', end_time: '18:00' }, STORE)
     ).rejects.toThrow(ShiftTemplateValidationError)
     await expect(
-      createShiftTemplate({ name: '   ', start_time: '09:00', end_time: '18:00' })
+      createShiftTemplate({ name: '   ', start_time: '09:00', end_time: '18:00' }, STORE)
     ).rejects.toThrow('Şablon adı boş olamaz.')
   })
 
   it('başlangıç saati zorunludur', async () => {
     await expect(
-      createShiftTemplate({ name: 'Test', start_time: '', end_time: '18:00' })
+      createShiftTemplate({ name: 'Test', start_time: '', end_time: '18:00' }, STORE)
     ).rejects.toThrow('Başlangıç saati zorunludur.')
   })
 
   it('bitiş saati zorunludur', async () => {
     await expect(
-      createShiftTemplate({ name: 'Test', start_time: '09:00', end_time: '' })
+      createShiftTemplate({ name: 'Test', start_time: '09:00', end_time: '' }, STORE)
     ).rejects.toThrow('Bitiş saati zorunludur.')
   })
 
   it('geçersiz saat formatı reddedilir', async () => {
     await expect(
-      createShiftTemplate({ name: 'Test', start_time: '9:0', end_time: '18:00' })
+      createShiftTemplate({ name: 'Test', start_time: '9:0', end_time: '18:00' }, STORE)
     ).rejects.toThrow('Geçersiz başlangıç saati formatı')
     await expect(
-      createShiftTemplate({ name: 'Test', start_time: '09:00', end_time: 'abc' })
+      createShiftTemplate({ name: 'Test', start_time: '09:00', end_time: 'abc' }, STORE)
     ).rejects.toThrow('Geçersiz bitiş saati formatı')
   })
 })
@@ -136,7 +138,7 @@ describe('shiftTemplateRepository — createShiftTemplate success', () => {
       name: 'Açılış',
       start_time: '09:00',
       end_time: '18:00',
-    })
+    }, STORE)
     expect(result.id).toBe('new-tpl')
     expect(result.name).toBe('Açılış')
   })
@@ -160,11 +162,11 @@ describe('shiftTemplateRepository — createShiftTemplate success', () => {
       })
 
     await expect(
-      createShiftTemplate({ name: 'Açılış', start_time: '09:00', end_time: '18:00' })
+      createShiftTemplate({ name: 'Açılış', start_time: '09:00', end_time: '18:00' }, STORE)
     ).rejects.toThrow(ShiftTemplateValidationError)
 
     await expect(
-      createShiftTemplate({ name: 'Açılış', start_time: '09:00', end_time: '18:00' })
+      createShiftTemplate({ name: 'Açılış', start_time: '09:00', end_time: '18:00' }, STORE)
     ).rejects.toThrow('"Açılış" adında bir şablon zaten mevcut.')
   })
 })
@@ -181,15 +183,15 @@ describe('shiftTemplateRepository — updateShiftTemplate', () => {
       update: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
       select: vi.fn().mockReturnThis(),
-      single: vi.fn().mockResolvedValue({ data: updated, error: null }),
+      maybeSingle: vi.fn().mockResolvedValue({ data: updated, error: null }),
     })
-    const result = await updateShiftTemplate('tpl-001', { name: 'Yeni İsim' })
+    const result = await updateShiftTemplate('tpl-001', { name: 'Yeni İsim' }, STORE)
     expect(result.name).toBe('Yeni İsim')
   })
 
   it('geçersiz start_time güncellemesi reddedilir', async () => {
     await expect(
-      updateShiftTemplate('tpl-001', { start_time: 'bad' })
+      updateShiftTemplate('tpl-001', { start_time: 'bad' }, STORE)
     ).rejects.toThrow(ShiftTemplateValidationError)
   })
 })
@@ -206,9 +208,9 @@ describe('shiftTemplateRepository — deactivateShiftTemplate', () => {
       update: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
       select: vi.fn().mockReturnThis(),
-      single: vi.fn().mockResolvedValue({ data: deactivated, error: null }),
+      maybeSingle: vi.fn().mockResolvedValue({ data: deactivated, error: null }),
     })
-    const result = await deactivateShiftTemplate('tpl-001')
+    const result = await deactivateShiftTemplate('tpl-001', STORE)
     expect(result.active).toBe(false)
   })
 })

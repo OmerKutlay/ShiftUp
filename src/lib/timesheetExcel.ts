@@ -1,7 +1,7 @@
 /**
  * timesheetExcel — aylık puantajı .xlsx olarak üretir (yalnızca server).
  *
- * Sayfa 1 "Puantaj": çalışan × gün kod tablosu + toplam sütunları
+ * Sayfa 1 "Puantaj": (mağaza adı verilmişse üstte başlık satırı) çalışan × gün kod tablosu + toplam sütunları
  * Sayfa 2 "Açıklama": kod listesi ve hesaplama notları
  */
 import ExcelJS from 'exceljs'
@@ -25,21 +25,38 @@ const DOW_TR = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt']
 
 const hours = (mins: number) => Math.round((mins / 60) * 100) / 100
 
+/** Dosya adı için ASCII-güvenli mağaza slug'ı ("Kadıköy Şube" → "kadikoy-sube") */
+export function storeFileSlug(name: string): string {
+  const map: Record<string, string> = { 'ç': 'c', 'ğ': 'g', 'ı': 'i', 'ö': 'o', 'ş': 's', 'ü': 'u', 'İ': 'i', 'Ç': 'c', 'Ğ': 'g', 'Ö': 'o', 'Ş': 's', 'Ü': 'u' }
+  const slug = name
+    .replace(/[çğıöşüİÇĞÖŞÜ]/g, (c) => map[c])
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return slug || 'magaza'
+}
+
 /** Excel'de formül olarak yorumlanabilecek metinleri kaçışlar */
 const safeText = (s: string) => (/^[=+\-@\t\r]/.test(s) ? `'${s}` : s)
 
 export async function buildTimesheetWorkbook(
   month: string,
   rows: TimesheetRow[],
-  holidays: PublicHoliday[]
+  holidays: PublicHoliday[],
+  storeName?: string
 ): Promise<Buffer> {
   const wb = new ExcelJS.Workbook()
   wb.creator = 'ShiftUp'
   wb.created = new Date()
+  if (storeName) wb.title = `Puantaj — ${storeName} — ${month}`
 
   const days = monthDays(month)
   const holidaySet = new Set(holidays.filter((h) => !h.half_day).map((h) => h.date))
-  const ws = wb.addWorksheet('Puantaj', { views: [{ state: 'frozen', xSplit: 2, ySplit: 2 }] })
+  // Mağaza adı varsa tablonun üstüne bir başlık satırı eklenir; tablo satırları bir aşağı kayar
+  const top = storeName ? 1 : 0
+  const ws = wb.addWorksheet('Puantaj', { views: [{ state: 'frozen', xSplit: 2, ySplit: 2 + top }] })
 
   const totals = [
     'Çalışılan Gün', 'Net Saat', 'Fazla Çalışma (s)', 'Gece Çalışması (s)', 'RT Çalışılan Gün',
@@ -47,17 +64,22 @@ export async function buildTimesheetWorkbook(
   ]
 
   // Başlık satırları
+  if (storeName) {
+    ws.addRow([safeText(`${storeName} — Aylık Puantaj — ${month}`)])
+    ws.getRow(1).font = { bold: true, size: 13 }
+    ws.mergeCells(1, 1, 1, 2 + days.length)
+  }
   ws.addRow(['Çalışan', 'Pozisyon', ...days.map((d) => Number(d.slice(8))), ...totals])
   ws.addRow(['', '', ...days.map((d) => DOW_TR[new Date(`${d}T00:00:00Z`).getUTCDay()]), ...totals.map(() => '')])
-  for (const r of [1, 2]) {
+  for (const r of [1 + top, 2 + top]) {
     const row = ws.getRow(r)
     row.font = { bold: true }
     row.alignment = { horizontal: 'center', vertical: 'middle' }
   }
-  ws.mergeCells(1, 1, 2, 1)
-  ws.mergeCells(1, 2, 2, 2)
-  totals.forEach((_, i) => ws.mergeCells(1, 3 + days.length + i, 2, 3 + days.length + i))
-  ws.getRow(1).height = 30
+  ws.mergeCells(1 + top, 1, 2 + top, 1)
+  ws.mergeCells(1 + top, 2, 2 + top, 2)
+  totals.forEach((_, i) => ws.mergeCells(1 + top, 3 + days.length + i, 2 + top, 3 + days.length + i))
+  ws.getRow(1 + top).height = 30
 
   for (const r of rows) {
     const notes: string[] = []
@@ -92,7 +114,7 @@ export async function buildTimesheetWorkbook(
   // Resmi tatil sütunlarını başlıkta vurgula
   days.forEach((d, i) => {
     if (!holidaySet.has(d)) return
-    for (const r of [1, 2]) {
+    for (const r of [1 + top, 2 + top]) {
       ws.getRow(r).getCell(3 + i).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFDE68A' } }
     }
   })
@@ -112,6 +134,7 @@ export async function buildTimesheetWorkbook(
 
   // Açıklama sayfası
   const legend = wb.addWorksheet('Açıklama')
+  if (storeName) legend.addRow(['Mağaza', safeText(storeName)]).font = { bold: true }
   legend.addRow(['Kod', 'Anlamı']).font = { bold: true }
   for (const [code, label] of Object.entries(TIMESHEET_CODE_LABELS)) legend.addRow([code, label])
   legend.addRow([])

@@ -22,6 +22,8 @@ import { turkeyDateString, addDaysToDateString } from '@/lib/dateUtils'
 export interface ShiftRow {
   id: string
   employee_id: string
+  /** Vardiyanın mağazası — geç okutma bildirimi o mağazanın yöneticilerine gider */
+  store_id: string
   work_date: string
   start_time: string
   end_time: string
@@ -56,7 +58,7 @@ export async function findCurrentShift(
 
   const { data: shifts, error: shiftError } = await admin
     .from('shift_assignments')
-    .select('id, employee_id, work_date, start_time, end_time, is_on_leave')
+    .select('id, employee_id, store_id, work_date, start_time, end_time, is_on_leave')
     .eq('employee_id', employeeId)
     .gte('work_date', yesterday)
     .lte('work_date', today)
@@ -208,6 +210,7 @@ export async function performAttendanceAction(input: PerformActionInput): Promis
 
   if (notifyLate && (action === 'clock_in' || action === 'clock_out')) {
     await notifyIfLateAttendance(admin, {
+      storeId: shift.store_id,
       employeeId,
       employeeName,
       shift,

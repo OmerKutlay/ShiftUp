@@ -25,7 +25,7 @@ function shiftStartMs(workDate: string, startTime: string): number {
   return new Date(`${workDate}T${startTime.slice(0, 5)}:00+03:00`).getTime()
 }
 
-function buildReportQuery(client: SupabaseClient, filters: AttendanceReportFilters) {
+function buildReportQuery(client: SupabaseClient, storeId: string, filters: AttendanceReportFilters) {
   let query = client
     .from('shift_assignments')
     .select(`
@@ -49,6 +49,8 @@ function buildReportQuery(client: SupabaseClient, filters: AttendanceReportFilte
         exception_note
       )
     `)
+    // Vardiya çalışıldığı mağazaya aittir (çalışan sonradan mağaza değiştirse de)
+    .eq('store_id', storeId)
     .gte('work_date', filters.date_from)
     .lte('work_date', filters.date_to)
     .order('work_date', { ascending: true })
@@ -64,18 +66,19 @@ function buildReportQuery(client: SupabaseClient, filters: AttendanceReportFilte
 }
 
 /**
- * Tarih aralığındaki tüm vardiyaları attendance kayıtlarıyla çeker.
+ * Tarih aralığında mağazada çalışılan tüm vardiyaları attendance kayıtlarıyla çeker.
  * PostgREST max_rows (1000) sınırını aşan aralıklar için sayfalı çekim yapar.
  */
 export async function queryAttendanceReport(
   client: SupabaseClient,
+  storeId: string,
   filters: AttendanceReportFilters,
   now: number = Date.now()
 ): Promise<AttendanceReportRow[]> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data: any[] = []
   for (let from = 0; ; from += REPORT_PAGE_SIZE) {
-    const { data: page, error } = await buildReportQuery(client, filters)
+    const { data: page, error } = await buildReportQuery(client, storeId, filters)
       .range(from, from + REPORT_PAGE_SIZE - 1)
     if (error) throw new Error(`Rapor yüklenemedi: ${error.message}`)
     if (!page || page.length === 0) break

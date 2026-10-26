@@ -87,12 +87,13 @@ export function checkGeofence(
 // Aktif mağaza konumunu DB'den getir (server-side)
 // ============================================================
 
-export async function fetchActiveStoreLocation(): Promise<StoreLocation> {
+export async function fetchActiveStoreLocation(storeId: string): Promise<StoreLocation> {
   const admin = createAdminClient()
 
   const { data, error } = await admin
     .from('store_locations')
     .select('*')
+    .eq('store_id', storeId)
     .eq('active', true)
     .limit(1)
     .maybeSingle()
@@ -119,13 +120,14 @@ export async function fetchActiveStoreLocation(): Promise<StoreLocation> {
 // ============================================================
 
 /**
- * GPS koordinatlarını server tarafında mağaza konumuyla doğrular.
+ * GPS koordinatlarını server tarafında verilen mağazanın aktif konumuyla doğrular.
  * Frontend'den gelen lat/lon/accuracy'ye güvenmez — koordinatları
  * DB'deki mağaza konumuyla karşılaştırır.
  */
 export async function validateLocationServerSide(
-  userCoords: GpsCoordinates
+  userCoords: GpsCoordinates,
+  storeId: string
 ): Promise<GeofenceResult> {
-  const store = await fetchActiveStoreLocation()
+  const store = await fetchActiveStoreLocation(storeId)
   return checkGeofence(userCoords, store)
 }

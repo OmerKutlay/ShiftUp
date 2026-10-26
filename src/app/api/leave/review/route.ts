@@ -16,6 +16,7 @@ import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/api
 import { isUuid } from '@/lib/validation'
 import { removePlannedShiftsInRange } from '@/lib/leaveService'
 import { logAudit } from '@/lib/auditLog'
+import { isEmployeeInStore } from '@/lib/storeScope'
 
 export async function POST(req: NextRequest) {
   const auth = await requireMinRole(req, ACCESS.MANAGER)
@@ -40,7 +41,10 @@ export async function POST(req: NextRequest) {
       .eq('id', body.request_id)
       .maybeSingle()
     if (exErr) return serverError('POST /api/leave/review', exErr)
-    if (!existing) return notFound('İzin talebi bulunamadı.')
+    // Başka mağazanın talebi görünmez (404)
+    if (!existing || !(await isEmployeeInStore(existing.employee_id, auth.employee.store_id))) {
+      return notFound('İzin talebi bulunamadı.')
+    }
 
     if (existing.employee_id === auth.employee.id) {
       return forbidden('Kendi izin talebinizi onaylayamaz veya reddedemezsiniz.')
@@ -78,6 +82,7 @@ export async function POST(req: NextRequest) {
 
     await logAudit({
       actorId: auth.employee.id,
+      storeId: auth.employee.store_id,
       action: `leave.${body.status}`,
       entityType: 'leave_request',
       entityId: data.id,
