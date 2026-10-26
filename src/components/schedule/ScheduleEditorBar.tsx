@@ -77,12 +77,12 @@ function AddStonePopover({ stones, customIds, onAdd, onRemove, side }: {
       <PopoverTrigger asChild>
         <Button variant="ghost" size="sm" className="shrink-0">
           <Plus />
-          Taş ekle
+          Saat ekle
         </Button>
       </PopoverTrigger>
       <PopoverContent side={side} align="start" className="w-72">
         <PopoverHeader>
-          <PopoverTitle>Özel taş</PopoverTitle>
+          <PopoverTitle>Özel saat</PopoverTitle>
           <PopoverDescription>Şablonda olmayan saatler için. Bu cihazda saklanır.</PopoverDescription>
         </PopoverHeader>
         <form
@@ -112,7 +112,7 @@ function AddStonePopover({ stones, customIds, onAdd, onRemove, side }: {
         {custom.length > 0 && (
           <>
             <Separator className="my-3" />
-            <ul className="flex flex-col gap-1" aria-label="Eklenen taşlar">
+            <ul className="flex flex-col gap-1" aria-label="Eklenen saatler">
               {custom.map((s) => (
                 <li key={s.id} className="flex items-center gap-2 text-sm">
                   <ShiftKindBar kind={shiftKindOf(s.label, s.start, s.end)} className="h-4" />
@@ -120,7 +120,7 @@ function AddStonePopover({ stones, customIds, onAdd, onRemove, side }: {
                   <span className="text-xs text-muted-foreground tabular-nums">{fmtRange(s.start, s.end)}</span>
                   <Button
                     variant="ghost" size="icon" className="ml-auto size-7"
-                    aria-label={`${s.label} taşını kaldır`} onClick={() => onRemove(s.id)}
+                    aria-label={`${s.label} saatini kaldır`} onClick={() => onRemove(s.id)}
                   >
                     <Trash2 />
                   </Button>
@@ -146,7 +146,7 @@ export function ScheduleEditorBar({
       value={selectedId}
       // Seçili taşa tekrar basmak seçimi kaldırmasın
       onValueChange={(v) => { if (v) onSelect(v) }}
-      aria-label="Taş paleti"
+      aria-label="Vardiya paleti"
       className={cn(compact ? 'flex-nowrap' : 'flex-wrap')}
     >
       {stones.map((s) => (

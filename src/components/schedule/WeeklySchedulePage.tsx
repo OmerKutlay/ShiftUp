@@ -752,7 +752,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
 
       {hasData && editing && !isMobile && (
         <p className="-mt-2 text-xs text-muted-foreground">
-          Taş seçin, ardından kutulara tıklayın; basılı tutup sürükleyerek birden çok kutuyu boyayabilirsiniz.
+          Vardiya seçin, ardından kutulara tıklayın; basılı tutup sürükleyerek birden çok kutuyu boyayabilirsiniz.
           Kesikli çerçeveli kutular henüz kaydedilmedi.
         </p>
       )}
@@ -763,7 +763,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
           <ShiftKindLegend kinds={presentKinds} />
           <p className="text-xs text-muted-foreground">
             {editing
-              ? 'Taş seçip kutulara dokunun · kesikli çerçeve: kaydedilmedi'
+              ? 'Vardiya seçip kutulara dokunun · kesikli çerçeve: kaydedilmedi'
               : 'Kutudaki sayı başlangıç saatidir · kırmızı nokta: dinlenme / limit uyarısı'}
           </p>
           {/* Sabit editör çubuğu son satırları örtmesin */}
