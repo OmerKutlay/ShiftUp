@@ -170,6 +170,30 @@ describe('buildFieldPatch — çoklu mola', () => {
     expect(workedMinutes({ ...rec, completed_break_minutes: 75 }, shift)).toBe(7 * 60 + 30) // 90 dk mola
     expect(workedMinutes({ ...rec, break_start_at: null, break_end_at: null, completed_break_minutes: 0 }, shift)).toBe(9 * 60 - 60)
   })
+
+  it('1,5 saat molalı vardiya: 1 saat yemek + 30 dk mola (sıra fark etmez)', () => {
+    // 08:00–18:00 (TR) = 10 saat brüt → planlanan mola 90 dk → net 8,5 saat
+    const shift = { work_date: '2026-10-01', start_time: '08:00', end_time: '18:00' }
+    const base = { clock_in_at: '2026-10-01T05:00:00Z', clock_out_at: '2026-10-01T15:00:00Z' }
+    // Önce yemek (60), sonra 30'luk mola
+    expect(workedMinutes({ ...base, completed_break_minutes: 60,
+      break_start_at: '2026-10-01T12:00:00Z', break_end_at: '2026-10-01T12:30:00Z' }, shift)).toBe(8 * 60 + 30)
+    // Önce 30'luk mola, sonra yemek (60)
+    expect(workedMinutes({ ...base, completed_break_minutes: 30,
+      break_start_at: '2026-10-01T10:00:00Z', break_end_at: '2026-10-01T11:00:00Z' }, shift)).toBe(8 * 60 + 30)
+  })
+
+  it('2 saat molalı vardiya: birer saatlik iki mola', () => {
+    // 08:00–20:00 (TR) = 12 saat brüt → planlanan mola 120 dk → net 10 saat
+    const shift = { work_date: '2026-10-01', start_time: '08:00', end_time: '20:00' }
+    expect(workedMinutes({
+      clock_in_at: '2026-10-01T05:00:00Z',
+      clock_out_at: '2026-10-01T17:00:00Z',
+      completed_break_minutes: 60,
+      break_start_at: '2026-10-01T13:00:00Z',
+      break_end_at: '2026-10-01T14:00:00Z',
+    }, shift)).toBe(10 * 60)
+  })
 })
 
 describe('exportReportToCsv', () => {
