@@ -105,7 +105,7 @@ export async function actualWorkedHours(
     if (error) throw error
     for (const rec of (data ?? []) as Array<AttendanceTimes & { shift_assignment_id: string }>) {
       const shift = byId.get(rec.shift_assignment_id)
-      if (shift) mins += workedMinutes(rec, shift)
+      if (shift) mins += workedMinutes(rec, shift) ?? 0
     }
   }
   return Math.round((mins / 60) * 10) / 10
