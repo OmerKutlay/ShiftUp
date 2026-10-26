@@ -237,12 +237,13 @@ Admin: Ayarlar → Hatalar (son 100 kayıt). Workers Logs `wrangler.jsonc` için
 `.github/workflows/db-backup.yml` her Pazar 01:00 UTC'de (ve elle, "Run workflow") `public` şemasının
 `pg_dump` yedeğini alır, **şifreli** artifact olarak 90 gün saklar. Repo herkese açık olduğundan artifact'ler
 giriş yapmış herhangi bir GitHub kullanıcısı tarafından indirilebilir; bu yüzden şifreleme ve güçlü
-(en az 24 karakter, rastgele) bir parola zorunludur. Parolayı kaybederseniz yedek açılamaz; ayrıca saklayın.
+(en az 32 rastgele karakter; iş daha kısa parolayı reddeder) bir parola zorunludur. Parolayı kaybederseniz yedek açılamaz; ayrıca saklayın.
 
 Secret'lar (yoksa iş sessizce atlanır):
 ```bash
-gh secret set SUPABASE_DB_URL      # Supabase → Connect → Session pooler bağlantı dizesi
-gh secret set BACKUP_PASSPHRASE    # güçlü parola
+gh secret set SUPABASE_DB_URL      # Session pooler URL (runner'larda IPv6 yok; doğrudan bağlantı çalışmaz)
+openssl rand -base64 32      # parola üret (ör.), sonra:
+gh secret set BACKUP_PASSPHRASE    # en az 32 karakter
 ```
 
 Geri yükleme:
@@ -251,5 +252,9 @@ gh run download -n db-backup            # shiftup-YYYYMMDD-HHMM.dump.enc
 openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in shiftup-*.dump.enc -out backup.dump   # parola sorulur
 pg_restore --no-owner --clean --if-exists -d "$HEDEF_DB_URL" backup.dump
 ```
+- Zamanlanmış workflow'lar repoda 60 gün etkinlik olmazsa GitHub tarafından durdurulur; arada bir elle çalıştırın.
+- Düzenli aralıklarla bir geri yükleme tatbikatı (boş test DB'ye `pg_restore`) önerilir.
+- `app_errors` DB hata metinleriyle satır değerleri içerebilir; yalnızca Admin görür, 30 gün saklanır.
+
 Yedek yalnızca `public` şemasıdır (auth kullanıcıları ve storage dahil değildir). Geri yüklemeyi önce
 boş bir test veritabanında deneyin.

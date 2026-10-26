@@ -7,7 +7,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
-import { badRequest, readJson, tooManyRequests } from '@/lib/apiErrors'
+import { badRequest, tooManyRequests } from '@/lib/apiErrors'
 import { checkRateLimit } from '@/lib/rateLimiter'
 import { logError, MAX_MESSAGE, MAX_STACK } from '@/lib/errorLog'
 
@@ -23,13 +23,21 @@ export async function POST(req: NextRequest) {
   if ('response' in auth) return auth.response
   const { employee } = auth
 
-  const declared = Number(req.headers.get('content-length') ?? '0')
-  if (declared > MAX_BODY_BYTES) return badRequest('İstek gövdesi çok büyük.')
 
   const limit = await checkRateLimit(`client_err:${employee.id}`, RATE_LIMIT, RATE_WINDOW_MS)
   if (!limit.allowed) return tooManyRequests()
 
-  const body = await readJson<Record<string, unknown>>(req)
+  // Boyut sınırı gerçek gövdede uygulanır (content-length başlığına güvenilmez)
+  const declared = Number(req.headers.get('content-length') ?? '0')
+  if (declared > MAX_BODY_BYTES) return badRequest('İstek gövdesi çok büyük.')
+  let raw: string
+  try { raw = await req.text() } catch { return badRequest('Geçersiz istek gövdesi.') }
+  if (new TextEncoder().encode(raw).length > MAX_BODY_BYTES) return badRequest('İstek gövdesi çok büyük.')
+  let body: Record<string, unknown> | null = null
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) body = parsed as Record<string, unknown>
+  } catch { /* geçersiz JSON */ }
   if (!body) return badRequest('Geçersiz istek gövdesi.')
   const message = str(body.message, MAX_MESSAGE)
   if (!message) return badRequest('message gerekli.')

@@ -24,9 +24,14 @@ export function tooManyRequests(error = 'Çok fazla istek. Lütfen biraz sonra t
 }
 
 /** Beklenmeyen DB/iç hata: detay loglanır, istemciye genel mesaj döner */
-export function serverError(context: string, err?: unknown, message = 'Sunucu hatası.') {
+export function serverError(
+  context: string,
+  err?: unknown,
+  message = 'Sunucu hatası.',
+  ctx: { employeeId?: string | null; storeId?: string | null; requestId?: string | null } = {},
+) {
   // console.error + app_errors (asenkron, kısıtlı, fırlatmaz) — bkz. errorLog.ts
-  logError(context, err ?? 'Bilinmeyen hata')
+  logError(context, err ?? 'Bilinmeyen hata', ctx)
   return NextResponse.json({ error: message, code: 'SERVER_ERROR' }, { status: 500 })
 }
 

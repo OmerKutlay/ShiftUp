@@ -7,6 +7,7 @@
  * - Test ortamında DB'ye yazılmaz.
  * - Saklama: 30 gün (purge_expired_data, 20261028100000).
  */
+import { headers } from 'next/headers'
 import { getCloudflareContext } from '@opennextjs/cloudflare'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 
@@ -22,18 +23,24 @@ export const MAX_STACK = 4000
 const MAX_META_JSON = 2000
 const DEDUPE_MS = 60_000
 const GLOBAL_LIMIT = 30
+/** client:* kaynaklarının ayrı, küçük bütçesi — istemci raporları sunucu hatalarının önüne geçemez */
+const CLIENT_LIMIT = 5
 const GLOBAL_WINDOW_MS = 60_000
 const MAX_TRACKED = 200
 
 const recent = new Map<string, number>()
 let windowStart = 0
 let windowCount = 0
+let clientWindowStart = 0
+let clientWindowCount = 0
 
 /** Yalnızca testler için */
 export function _resetErrorLogThrottle() {
   recent.clear()
   windowStart = 0
   windowCount = 0
+  clientWindowStart = 0
+  clientWindowCount = 0
 }
 
 function describe(err: unknown): { message: string; stack: string | null } {
@@ -50,23 +57,29 @@ function safeJson(v: unknown): string {
 }
 
 /** true → bu hata şimdi yazılmalı */
-function shouldWrite(key: string, now: number): boolean {
+function shouldWrite(key: string, now: number, client: boolean): boolean {
   const last = recent.get(key)
   if (last !== undefined && now - last < DEDUPE_MS) return false
-  if (now - windowStart > GLOBAL_WINDOW_MS) { windowStart = now; windowCount = 0 }
-  if (windowCount >= GLOBAL_LIMIT) return false
-  windowCount++
+  if (client) {
+    if (now - clientWindowStart > GLOBAL_WINDOW_MS) { clientWindowStart = now; clientWindowCount = 0 }
+    if (clientWindowCount >= CLIENT_LIMIT) return false
+    clientWindowCount++
+  } else {
+    if (now - windowStart > GLOBAL_WINDOW_MS) { windowStart = now; windowCount = 0 }
+    if (windowCount >= GLOBAL_LIMIT) return false
+    windowCount++
+  }
   if (recent.size >= MAX_TRACKED) recent.clear()
   recent.set(key, now)
   return true
 }
 
-async function currentRequestId(): Promise<string | null> {
+/** headers() çağrısı eşzamanlı yapılmalı (istek bağlamı await'ten sonra kaybolabilir); yalnızca söz döner */
+function startRequestIdLookup(): Promise<string | null> {
   try {
-    const { headers } = await import('next/headers')
-    return (await headers()).get('cf-ray')
+    return Promise.resolve(headers()).then((h) => h.get('cf-ray'), () => null)
   } catch {
-    return null
+    return Promise.resolve(null)
   }
 }
 
@@ -94,10 +107,14 @@ export function logError(source: string, err: unknown, ctx: ErrorContext = {}): 
     console.error(`[${source}]`, message)
     if (process.env.NODE_ENV === 'test') return
 
-    if (!shouldWrite(`${source}|${message}`, Date.now())) return
+    const client = source.startsWith('client:')
+    const key = client ? `${source}|${ctx.employeeId ?? ''}|${message}` : `${source}|${message}`
+    if (!shouldWrite(key, Date.now(), client)) return
+
+    const idLookup = ctx.requestId ? Promise.resolve(ctx.requestId) : startRequestIdLookup()
 
     runInBackground((async () => {
-      const requestId = ctx.requestId ?? (await currentRequestId())
+      const requestId = await idLookup
       let meta: unknown = null
       if (ctx.meta) {
         const json = safeJson(ctx.meta)

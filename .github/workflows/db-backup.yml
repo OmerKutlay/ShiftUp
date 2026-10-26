@@ -30,6 +30,9 @@ jobs:
           if [ -z "${SUPABASE_DB_URL:-}" ] || [ -z "${BACKUP_PASSPHRASE:-}" ]; then
             echo "::notice::SUPABASE_DB_URL veya BACKUP_PASSPHRASE tanımlı değil; yedek atlandı."
             echo "run=false" >> "$GITHUB_OUTPUT"
+          elif [ "${#BACKUP_PASSPHRASE}" -lt 32 ]; then
+            echo "::error::BACKUP_PASSPHRASE en az 32 karakter olmalı (örn. openssl rand -base64 32)."
+            exit 1
           else
             echo "run=true" >> "$GITHUB_OUTPUT"
           fi

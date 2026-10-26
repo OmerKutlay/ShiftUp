@@ -85,6 +85,22 @@ describe('logError', () => {
     expect(state.inserts).toHaveLength(30)
   })
 
+  it('client:* kaynakları ayrı bütçe kullanır; sunucu hatalarını aç bırakmaz', async () => {
+    for (let i = 0; i < 20; i++) logError('client:app-error', new Error(`c${i}`), { employeeId: `e${i}` })
+    logError('GET /api/x', new Error('sunucu'))
+    await flush()
+    expect(state.inserts.filter((r) => String(r.source).startsWith('client:'))).toHaveLength(5)
+    expect(state.inserts.some((r) => r.source === 'GET /api/x')).toBe(true)
+  })
+
+  it('aynı client hatası farklı çalışanlardan ayrı sayılır', async () => {
+    logError('client:x', new Error('m'), { employeeId: 'a' })
+    logError('client:x', new Error('m'), { employeeId: 'b' })
+    logError('client:x', new Error('m'), { employeeId: 'a' })
+    await flush()
+    expect(state.inserts).toHaveLength(2)
+  })
+
   it('DB hata verse de asla fırlatmaz', async () => {
     state.insertError = true
     expect(() => logError('src', new Error('a'))).not.toThrow()
@@ -125,6 +141,15 @@ describe('POST /api/client-errors', () => {
     expect((await POST(post({}))).status).toBe(400)
     state.limitAllowed = false
     expect((await POST(post({ message: 'm' }))).status).toBe(429)
+  })
+
+  it('content-length yalan söyleyse de gerçek gövde 8 KB sınırını aşarsa reddeder', async () => {
+    const req = new NextRequest('http://localhost/api/client-errors', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'm', stack: 'x'.repeat(9000) }),
+    })
+    expect((await POST(req)).status).toBe(400)
   })
 
   it('çok büyük gövdeyi reddeder', async () => {
