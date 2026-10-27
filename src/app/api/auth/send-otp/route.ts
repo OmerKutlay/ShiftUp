@@ -31,7 +31,13 @@ import { checkRateLimit, clientIp } from '@/lib/rateLimiter'
 import { isValidEmail } from '@/lib/validation'
 
 const WINDOW_MS = 15 * 60 * 1000
-const PER_EMAIL = 5
+/**
+ * E-posta sınırı IP ile birlikte sayılır: başka bir yerden gelen yabancı, kurbanın kendi
+ * cihazından kod istemesini engelleyemez. PER_EMAIL yalnızca gelen kutusunu boğmaya karşı
+ * IP'lerden bağımsız üst sınırdır (aşılsa bile gönderilen kodlar kurbanın kutusundadır).
+ */
+const PER_EMAIL_PER_IP = 5
+const PER_EMAIL = 15
 const PER_IP = 20
 
 export async function POST(req: NextRequest) {
@@ -51,11 +57,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, reason: 'INVALID_EMAIL' }, { status: 400 })
   }
 
-  const [byEmail, byIp] = await Promise.all([
+  const ip = clientIp(req)
+  const limits = await Promise.all([
+    checkRateLimit(`otp_send:email_ip:${email}:${ip}`, PER_EMAIL_PER_IP, WINDOW_MS, { failClosed: true }),
     checkRateLimit(`otp_send:email:${email}`, PER_EMAIL, WINDOW_MS, { failClosed: true }),
-    checkRateLimit(`otp_send:ip:${clientIp(req)}`, PER_IP, WINDOW_MS, { failClosed: true }),
+    checkRateLimit(`otp_send:ip:${ip}`, PER_IP, WINDOW_MS, { failClosed: true }),
   ])
-  if (!byEmail.allowed || !byIp.allowed) {
+  if (limits.some((l) => !l.allowed)) {
     return NextResponse.json({ ok: false, reason: 'RATE_LIMITED' }, { status: 429 })
   }
 

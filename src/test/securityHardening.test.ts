@@ -215,4 +215,15 @@ describe('clientIp', () => {
   it('Cloudflare dışında x-forwarded-for kullanılır', () => {
     expect(clientIp(headers({ 'x-forwarded-for': '198.51.100.1, 10.0.0.1' }))).toBe('198.51.100.1')
   })
+
+  it('IPv6 adresleri /64 önekine indirgenir (adres değiştirerek limit atlatılamaz)', () => {
+    const a = clientIp(headers({ 'cf-connecting-ip': '2001:db8:abcd:12:1111:2222:3333:4444' }))
+    const b = clientIp(headers({ 'cf-connecting-ip': '2001:0db8:abcd:0012::9' }))
+    expect(a).toBe('2001:db8:abcd:12::/64')
+    expect(b).toBe(a)
+    expect(clientIp(headers({ 'cf-connecting-ip': '2001:db8::1' }))).toBe('2001:db8:0:0::/64')
+    expect(clientIp(headers({ 'cf-connecting-ip': '::1' }))).toBe('0:0:0:0::/64')
+    expect(clientIp(headers({ 'cf-connecting-ip': '::ffff:203.0.113.9' }))).toBe('203.0.113.9')
+    expect(clientIp(headers({}))).toBe('unknown')
+  })
 })
