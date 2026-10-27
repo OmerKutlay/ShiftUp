@@ -12,7 +12,7 @@
  *     kazanır), yeni kod üretilir ve REST üzerinden mağazanın kanalına yayınlanır.
  *
  * Kanal güvenliği: Realtime "private_only" + realtime.messages RLS politikası
- * (public.can_view_kiosk_qr_topic: admin her mağaza; Kiosk / Yönetici / Müdür yalnızca kendi
+ * (private.can_view_kiosk_qr_topic: admin her mağaza; Kiosk / Yönetici / Müdür yalnızca kendi
  * mağazası). İstemcilerin kanala mesaj göndermesine izin veren politika yoktur; yalnızca
  * sunucu (secret key) yayınlar.
  */

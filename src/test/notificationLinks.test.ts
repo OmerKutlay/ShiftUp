@@ -37,6 +37,7 @@ const ALL_TYPES = {
   attendance_break_ending: true,
   checklist_overdue: true,
   announcement: true,
+  data_integrity_alert: true,
   push_test: true,
 } satisfies Record<NotificationType, true>
 

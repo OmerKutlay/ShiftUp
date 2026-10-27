@@ -33,6 +33,8 @@ export type NotificationType =
   | 'checklist_overdue'
   /** Duyuru yayınlandı / hatırlatıldı (related_id = duyuru id) */
   | 'announcement'
+  /** Kritik bir tablonun satır sayısı beklenmedik biçimde düştü (adminlere; pg_cron → private.check_row_count_drops) */
+  | 'data_integrity_alert'
   /** Eski kurulum testi bildirimleri (endpoint kaldırıldı; mevcut kayıtlar için) */
   | 'push_test'
 

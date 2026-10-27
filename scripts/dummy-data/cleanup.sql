@@ -4,6 +4,8 @@
 -- uygulamanın sonradan bağladığı satırları siler. employees'a dokunmaz.
 -- ============================================================
 BEGIN;
+-- Toplu silme güvenlik ağı (20261030110100_delete_safety_net.sql) bu bakım işlemi için açılır
+SET LOCAL app.allow_bulk_delete = 'on';
 
 CREATE TEMP TABLE _ds ON COMMIT DROP AS SELECT tbl, id FROM public._dummy_seed;
 CREATE TEMP TABLE _ds_shift ON COMMIT DROP AS SELECT id::uuid AS id FROM _ds WHERE tbl = 'shift_assignments';

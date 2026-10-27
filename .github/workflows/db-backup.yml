@@ -3,6 +3,8 @@ name: DB Backup
 # Haftalık şifreli veritabanı yedeği (Supabase ücretsiz planda PITR yok).
 # Repo herkese açık: artifact'ler giriş yapmış GitHub kullanıcılarınca görülebilir,
 # bu yüzden yedek ASLA şifresiz diske yazılmaz (pg_dump → openssl → dosya).
+# Her yedek geçici bir PostgreSQL 17'ye geri yüklenerek doğrulanır; geri yüklenemeyen
+# yedek başarılı sayılmaz. Secret'lar eksikse iş kırmızı biter (sessizce atlanmaz).
 on:
   schedule:
     - cron: '0 1 * * 0' # her Pazar 01:00 UTC
@@ -20,25 +22,33 @@ jobs:
     name: pg_dump (şifreli)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    services:
+      # Geri yükleme testi: yedek buraya açılır ve kritik tablolar sayılır
+      restore:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: restore
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
       BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
     steps:
+      - uses: actions/checkout@v4
+
       - name: Secret kontrolü
-        id: check
         run: |
           if [ -z "${SUPABASE_DB_URL:-}" ] || [ -z "${BACKUP_PASSPHRASE:-}" ]; then
-            echo "::notice::SUPABASE_DB_URL veya BACKUP_PASSPHRASE tanımlı değil; yedek atlandı."
-            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::error::SUPABASE_DB_URL veya BACKUP_PASSPHRASE tanımlı değil — yedek ALINMADI."
+            exit 1
           elif [ "${#BACKUP_PASSPHRASE}" -lt 32 ]; then
             echo "::error::BACKUP_PASSPHRASE en az 32 karakter olmalı (örn. openssl rand -base64 32)."
             exit 1
-          else
-            echo "run=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: PostgreSQL 17 istemcisi (PGDG)
-        if: steps.check.outputs.run == 'true'
         run: |
           set -euo pipefail
           sudo install -d /usr/share/postgresql-common/pgdg
@@ -50,14 +60,13 @@ jobs:
           /usr/lib/postgresql/17/bin/pg_dump --version
 
       - name: Dump + şifrele
-        if: steps.check.outputs.run == 'true'
         run: |
           set -euo pipefail
           mkdir -p out
           stamp="$(date -u +%Y%m%d-%H%M)"
           # Düz metin diske yazılmaz: pg_dump çıktısı doğrudan openssl'e akar
           /usr/lib/postgresql/17/bin/pg_dump "$SUPABASE_DB_URL" \
-            --format=custom --no-owner --schema=public \
+            --format=custom --no-owner --schema=public --schema=private \
             | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass env:BACKUP_PASSPHRASE \
             > "out/shiftup-${stamp}.dump.enc"
           size="$(stat -c %s "out/shiftup-${stamp}.dump.enc")"
@@ -68,8 +77,39 @@ jobs:
           fi
           echo "Yedek boyutu: ${size} bayt"
 
+      - name: Geri yükleme testi
+        env:
+          RESTORE_URL: postgresql://postgres:restore@localhost:5432/postgres
+        run: |
+          set -euo pipefail
+          PGBIN=/usr/lib/postgresql/17/bin
+          f="$(ls out/*.dump.enc)"
+          # Şifre çözülen yedek diske yazılmaz: openssl → pg_restore (stdin)
+          decrypt() { openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass env:BACKUP_PASSPHRASE -in "$f"; }
+          $PGBIN/psql "$RESTORE_URL" -v ON_ERROR_STOP=1 -q -f scripts/backup-restore-prelude.sql
+          decrypt | $PGBIN/pg_restore --no-owner --no-acl --exit-on-error --section=pre-data --section=data -d "$RESTORE_URL"
+          # employees.auth_user_id → auth.users FK'si: auth şeması yedekte yok, kimlikler doldurulur
+          $PGBIN/psql "$RESTORE_URL" -v ON_ERROR_STOP=1 -q -c \
+            "INSERT INTO auth.users (id) SELECT DISTINCT auth_user_id FROM public.employees WHERE auth_user_id IS NOT NULL ON CONFLICT DO NOTHING"
+          decrypt | $PGBIN/pg_restore --no-owner --no-acl --exit-on-error --section=post-data -d "$RESTORE_URL"
+          $PGBIN/psql "$RESTORE_URL" -v ON_ERROR_STOP=1 -At -c "
+            SELECT t, n FROM (
+              SELECT 'stores' t, count(*) n FROM public.stores UNION ALL
+              SELECT 'roles', count(*) FROM public.roles UNION ALL
+              SELECT 'employees', count(*) FROM public.employees UNION ALL
+              SELECT 'shift_assignments', count(*) FROM public.shift_assignments UNION ALL
+              SELECT 'attendance_records', count(*) FROM public.attendance_records UNION ALL
+              SELECT 'audit_logs', count(*) FROM public.audit_logs) s" | tee counts.txt
+          for t in stores roles employees; do
+            n="$(grep "^$t|" counts.txt | cut -d'|' -f2)"
+            if [ "${n:-0}" -lt 1 ]; then
+              echo "::error::Geri yüklenen yedekte $t tablosu boş."
+              exit 1
+            fi
+          done
+          echo "Geri yükleme testi başarılı."
+
       - name: Artifact olarak yükle
-        if: steps.check.outputs.run == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: db-backup

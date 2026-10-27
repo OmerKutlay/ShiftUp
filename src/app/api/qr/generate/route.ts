@@ -46,6 +46,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Geçersiz action_type.', code: 'VALIDATION_ERROR' }, { status: 400 })
     }
 
+    // Yönetici kendi adına kod üretirse kiosk'a gitmeden giriş/çıkış yapabilirdi
+    if (body.employee_id === auth.employee.id) {
+      return NextResponse.json(
+        { error: 'Kendiniz için QR kodu üretemezsiniz; kiosk ekranındaki kodu okutun.', code: 'FORBIDDEN' },
+        { status: 403 }
+      )
+    }
+
     const rateCheck = await checkRateLimit(`qr_gen:${auth.employee.id}`, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS)
     if (!rateCheck.allowed) {
       return NextResponse.json(
