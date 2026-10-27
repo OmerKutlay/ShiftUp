@@ -11,7 +11,7 @@ vi.mock('@/lib/api/employees', () => ({
   fetchEmployees: vi.fn(),
   fetchRoles: vi.fn(),
   createEmployee: vi.fn(),
-  updateEmployee: vi.fn(),
+  updateEmployeeWithTransfer: vi.fn(),
   deactivateEmployee: vi.fn(),
   activateEmployee: vi.fn(),
 }))
@@ -281,7 +281,7 @@ describe('EmployeesPage — mağaza (çoklu mağaza)', () => {
   it('Admin mağaza değiştirince onay sonrası transfer eder; pasif mağaza listelenmez', async () => {
     asAdmin()
     vi.mocked(repo.fetchEmployees).mockResolvedValue([makeEmployee()])
-    vi.mocked(repo.updateEmployee).mockResolvedValue(makeEmployee({ store_id: 'store-b' }))
+    vi.mocked(repo.updateEmployeeWithTransfer).mockResolvedValue({ employee: makeEmployee({ store_id: 'store-b' }), transfer: { shifts_deleted: 2, swaps_cancelled: 0 } })
     renderPage()
     await screen.findByText('Ahmet Kaya')
     await userEvent.click(screen.getByRole('button', { name: /ahmet kaya işlemleri/i }))
@@ -294,25 +294,25 @@ describe('EmployeesPage — mağaza (çoklu mağaza)', () => {
 
     // Onay istenir; onaylanmadan kayıt yapılmaz
     expect(await screen.findByText(/Beşiktaş mağazasına taşınacak/)).toBeInTheDocument()
-    expect(repo.updateEmployee).not.toHaveBeenCalled()
+    expect(repo.updateEmployeeWithTransfer).not.toHaveBeenCalled()
     await userEvent.click(screen.getByRole('button', { name: /taşı ve kaydet/i }))
 
     await waitFor(() =>
-      expect(repo.updateEmployee).toHaveBeenCalledWith('emp-001', expect.objectContaining({ store_id: 'store-b' }))
+      expect(repo.updateEmployeeWithTransfer).toHaveBeenCalledWith('emp-001', expect.objectContaining({ store_id: 'store-b' }))
     )
   })
 
   it('Mağaza değişmediyse transfer onayı istenmez ve store_id gönderilmez', async () => {
     asAdmin()
     vi.mocked(repo.fetchEmployees).mockResolvedValue([makeEmployee()])
-    vi.mocked(repo.updateEmployee).mockResolvedValue(makeEmployee())
+    vi.mocked(repo.updateEmployeeWithTransfer).mockResolvedValue({ employee: makeEmployee() })
     renderPage()
     await screen.findByText('Ahmet Kaya')
     await userEvent.click(screen.getByRole('button', { name: /ahmet kaya işlemleri/i }))
     await userEvent.click(await screen.findByRole('menuitem', { name: /düzenle/i }))
     await userEvent.click(await screen.findByRole('button', { name: /^kaydet$/i }))
 
-    await waitFor(() => expect(repo.updateEmployee).toHaveBeenCalled())
-    expect(vi.mocked(repo.updateEmployee).mock.calls[0][1]).not.toHaveProperty('store_id')
+    await waitFor(() => expect(repo.updateEmployeeWithTransfer).toHaveBeenCalled())
+    expect(vi.mocked(repo.updateEmployeeWithTransfer).mock.calls[0][1]).not.toHaveProperty('store_id')
   })
 })

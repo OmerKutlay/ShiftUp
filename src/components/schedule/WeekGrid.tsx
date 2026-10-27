@@ -114,6 +114,8 @@ export function WeekGrid(props: WeekGridProps) {
     const partTime = emp.employment_type === 'part_time'
     const roleText = [emp.roles?.name, partTime && (compact ? 'PT' : 'Yarı zamanlı')].filter(Boolean).join(' · ')
     const mine = !!meId && emp.id === meId
+    // Taşınan / pasif çalışan: yalnızca bu mağazadaki vardiyaları görünür, düzenlenemez
+    const former = !!entry.formerLabel
     const over = stats ? stats.totalMins > weeklyLimitMins(stats, config) : false
     const warn = over || (stats?.restViolations.length ?? 0) > 0
     return (
@@ -125,8 +127,9 @@ export function WeekGrid(props: WeekGridProps) {
               <p className={cn('flex items-center gap-1.5 font-medium', compact ? 'text-xs' : 'text-sm')}>
                 <span className="truncate">{compact ? emp.full_name.split(/\s+/)[0] : emp.full_name}</span>
                 {mine && <Badge variant="outline" className="bg-background px-1.5">Siz</Badge>}
+                {former && !compact && <Badge variant="secondary" className="px-1.5 font-normal">{entry.formerLabel}</Badge>}
               </p>
-              <p className="truncate text-xs text-muted-foreground">{roleText}</p>
+              <p className="truncate text-xs text-muted-foreground">{former && compact ? entry.formerLabel : roleText}</p>
             </div>
           </div>
         </td>
@@ -140,12 +143,12 @@ export function WeekGrid(props: WeekGridProps) {
             availStatus: getAvailStatus(emp.id, d, availabilityMap, asgn?.start_time, asgn?.end_time),
             dailyOver: stats ? (stats.dailyMins[d] ?? 0) > config.maxDailyWorkHours * 60 : false,
             onClick: () => (onCellPaint ? onCellPaint(emp, d) : onCellClick(emp, d)),
-            readOnly,
+            readOnly: readOnly || former,
           }
           const pending = pendingKeys?.has(key) ?? false
           // Fare: basınca boya, basılıyken girilen hücreyi boya. Dokunma / klavye onClick ile boyar
           // (aynı taşla tekrar boyamak etkisiz olduğundan farede onClick'in ikinci kez çalışması sorun değil).
-          const paintHandlers = onCellPaint ? {
+          const paintHandlers = onCellPaint && !former ? {
             onPointerDown: (e: React.PointerEvent) => {
               if (e.pointerType !== 'mouse' || e.button !== 0) return
               dragging.current = true

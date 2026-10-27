@@ -107,6 +107,8 @@ export function MobileDayBoard({
     for (const e of entries) {
       const key = `${e.employee.id}:${selectedDay}`
       const asgn = e.dayAssignments[selectedDay]
+      // Taşınan / pasif çalışan yalnızca bu mağazadaki vardiyasıyla listelenir
+      if (e.formerLabel && !asgn) continue
       if (restDayMap.has(key)) { off.push({ emp: e.employee, kind: 'rest' }); continue }
       if (asgn?.is_on_leave || approvedLeaveMap.has(key)) { off.push({ emp: e.employee, kind: 'leave' }); continue }
       const avail = getAvailStatus(e.employee.id, selectedDay, availabilityMap, asgn?.start_time, asgn?.end_time)

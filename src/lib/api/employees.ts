@@ -37,11 +37,15 @@ export async function createEmployee(payload: CreateEmployeePayload): Promise<Em
 }
 
 export async function updateEmployee(id: string, payload: UpdateEmployeePayload): Promise<Employee> {
-  const { employee } = await apiFetch<{ employee: Employee }>(
-    `/api/employees/${encodeURIComponent(id)}`,
-    { method: 'PATCH', body: payload }
-  )
-  return employee
+  return (await updateEmployeeWithTransfer(id, payload)).employee
+}
+
+/** Mağaza transferinde eski mağazadan silinen vardiya / iptal edilen takas sayısını da döner */
+export async function updateEmployeeWithTransfer(
+  id: string,
+  payload: UpdateEmployeePayload
+): Promise<{ employee: Employee; transfer?: { shifts_deleted: number; swaps_cancelled: number } }> {
+  return apiFetch(`/api/employees/${encodeURIComponent(id)}`, { method: 'PATCH', body: payload })
 }
 
 export function deactivateEmployee(id: string): Promise<Employee> {

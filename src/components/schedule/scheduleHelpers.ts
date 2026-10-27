@@ -2,7 +2,8 @@
  * scheduleHelpers — haftalık plan ekranının saf yardımcıları (sabitler, özet ve müsaitlik hesapları).
  */
 import type { AccessLevel, PlanningGroup } from '@/lib/auth/roles'
-import type { ShiftAssignmentWithDetails } from '@/types/schedule'
+import type { ShiftAssignmentWithDetails, WeeklyScheduleEntry } from '@/types/schedule'
+import type { EmployeeWithRole } from '@/types/employee'
 import type { EmployeeAvailability, DayOfWeek } from '@/types/workforce'
 import { shiftDurationMins, netWorkMins, checkMinRest } from '@/lib/workingTimeService'
 import { getWorkingTimeConfig } from '@/lib/workingTimeConfig'
@@ -39,6 +40,36 @@ export function getRoleSortOrder(role: RoleLike): number {
 /** İki rolü karşılaştırır: önce grup sırası, eşitse roles.sort_order */
 export function compareRoles(a: RoleLike, b: RoleLike): number {
   return getRoleSortOrder(a) - getRoleSortOrder(b) || (a?.sort_order ?? 999) - (b?.sort_order ?? 999)
+}
+
+/**
+ * Plan satırları (rol, sonra ada göre): mağazanın aktif çalışanları + haftada bu mağazada vardiyası
+ * olup artık listede olmayanlar (başka mağazaya taşınan / pasifleşen). İkinciler yalnızca bu
+ * mağazadaki vardiyalarıyla görünür ve düzenlenemez (formerLabel).
+ */
+export function buildScheduleEntries(
+  employees: EmployeeWithRole[],
+  assignments: ShiftAssignmentWithDetails[],
+  weekDays: string[]
+): WeeklyScheduleEntry[] {
+  const byKey = new Map(assignments.map((a) => [`${a.employee_id}:${a.work_date}`, a]))
+  const current = new Set(employees.map((e) => e.id))
+  const former = new Map<string, EmployeeWithRole>()
+  for (const a of assignments) {
+    if (!current.has(a.employee_id) && a.employees && !former.has(a.employee_id)) former.set(a.employee_id, a.employees)
+  }
+  const toEntry = (employee: EmployeeWithRole, formerLabel?: string): WeeklyScheduleEntry => ({
+    employee,
+    dayAssignments: Object.fromEntries(weekDays.map((d) => [d, byKey.get(`${employee.id}:${d}`) ?? null])),
+    ...(formerLabel ? { formerLabel } : {}),
+  })
+  return [
+    ...employees.map((e) => toEntry(e)),
+    // Aktif ama bu mağazanın listesinde yok → başka mağazaya taşınmış
+    ...[...former.values()].map((e) => toEntry(e, e.active ? 'Başka mağazada' : 'Pasif')),
+  ].sort((a, b) =>
+    compareRoles(a.employee.roles, b.employee.roles)
+    || (a.employee.full_name ?? '').localeCompare(b.employee.full_name ?? '', 'tr'))
 }
 
 /** Haftalık plandaki rol grupları (getRoleSortOrder sıralarına göre) */

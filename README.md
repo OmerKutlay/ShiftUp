@@ -165,9 +165,13 @@ CI (`.github/workflows/ci.yml`) her PR'da typecheck, lint, test ve build çalı�
 (`00000000-0000-0000-0003-000000000001`) taşınır.
 
 - **Çalışan:** her çalışanın tek bir ana mağazası vardır (`employees.store_id`). Mağaza değişikliği
-  (transfer) yalnızca Admin tarafından, çalışanın eski mağazada bugün veya sonrası için vardiyası
-  yoksa yapılır. Geçmiş vardiyalar `shift_assignments.store_id` ile eski mağazada kalır; puantaj ve
-  raporlar vardiyanın mağazasına göre hesaplanır.
+  (transfer) yalnızca Admin tarafından yapılır (`apply_employee_store_transfer`, tek transaction):
+  eski mağazadaki bugün ve sonrası vardiyalar silinir, bekleyen takaslar iptal edilir, üstlenilmiş
+  açık vardiyalar tekrar açılır. Dün/bugün vardiyasında açık giriş kaydı varsa transfer reddedilir
+  (409 `OPEN_ATTENDANCE`). Geçmiş ve çalışılmış vardiyalar `shift_assignments.store_id` ile eski
+  mağazada kalır: eski haftaların planında salt okunur satır ("Başka mağazada" / "Pasif") olarak,
+  çalışanın "Çalışma özetim" sayfasında da tüm mağazalarıyla görünür; puantaj ve raporlar
+  vardiyanın mağazasına göre hesaplanır.
 - **Yetki:** Admin şirket genelidir — mağaza açar/yeniden adlandırır/pasife alır (Ayarlar › Mağazalar)
   ve yan menüdeki mağaza seçiciyle aktif mağazayı değiştirir (`shiftup_store` httpOnly çerezi,
   `POST /api/stores/active`). Müdür, yönetici, çalışan ve kiosk yalnızca kendi mağazasını görür.

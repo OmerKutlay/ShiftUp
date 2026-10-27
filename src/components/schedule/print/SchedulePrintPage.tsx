@@ -19,7 +19,7 @@ import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 import { PeriodStepper } from '@/components/common'
 import { useWeeklySchedule } from '../useWeeklySchedule'
-import { calcEmployeeStats, compareRoles, type EmployeeWeekStats } from '../scheduleHelpers'
+import { buildScheduleEntries, calcEmployeeStats, type EmployeeWeekStats } from '../scheduleHelpers'
 import { WeekPrintSheet } from './WeekPrintSheet'
 import { formatPrintedAt, formatWeekRangeTr, parseWeekParam } from './printHelpers'
 
@@ -34,17 +34,10 @@ export function SchedulePrintPage({ week, auto }: { week?: string; auto?: boolea
   const { weekDays, employees, assignments, settled, failed } = data
   const [printedAt] = useState(() => formatPrintedAt(new Date()))
 
-  const entries: WeeklyScheduleEntry[] = useMemo(() => {
-    const map = new Map(assignments.map((a) => [`${a.employee_id}:${a.work_date}`, a]))
-    return employees
-      .map((employee) => ({
-        employee,
-        dayAssignments: Object.fromEntries(weekDays.map((d) => [d, map.get(`${employee.id}:${d}`) ?? null])),
-      }))
-      .sort((a, b) =>
-        compareRoles(a.employee.roles, b.employee.roles)
-        || (a.employee.full_name ?? '').localeCompare(b.employee.full_name ?? '', 'tr'))
-  }, [employees, weekDays, assignments])
+  const entries: WeeklyScheduleEntry[] = useMemo(
+    () => buildScheduleEntries(employees, assignments, weekDays),
+    [employees, weekDays, assignments]
+  )
 
   const statsMap = useMemo(() => {
     const m = new Map<string, EmployeeWeekStats>()

@@ -16,7 +16,7 @@ import {
 import { toast } from 'sonner'
 
 import type { CreateEmployeePayload, EmployeeWithRole, EmploymentType, UpdateEmployeePayload } from '@/types/employee'
-import { createEmployee, fetchEmployees, fetchRoles, undoOffboarding, updateEmployee } from '@/lib/api/employees'
+import { createEmployee, fetchEmployees, fetchRoles, undoOffboarding, updateEmployeeWithTransfer } from '@/lib/api/employees'
 import { STORES_KEY, fetchStores } from '@/lib/api/stores'
 import { useAuth } from '@/context/AuthContext'
 import { ACCESS, ACCESS_LABELS, canManageRole, isKioskRole, roleAtLeast } from '@/lib/auth/roles'
@@ -163,8 +163,9 @@ export function EmployeesPage() {
   const handleSave = async (payload: CreateEmployeePayload | UpdateEmployeePayload) => {
     setSaving(true)
     try {
+      let transfer: { shifts_deleted: number } | undefined
       if (editTarget) {
-        await updateEmployee(editTarget.id, payload as UpdateEmployeePayload)
+        transfer = (await updateEmployeeWithTransfer(editTarget.id, payload as UpdateEmployeePayload)).transfer
       } else {
         await createEmployee(payload as CreateEmployeePayload)
       }
@@ -173,7 +174,7 @@ export function EmployeesPage() {
       const transferred = !!editTarget && !!payload.store_id && payload.store_id !== editTarget.store_id
       toast.success(
         transferred
-          ? `${editTarget.full_name} taşındı`
+          ? `${editTarget.full_name} taşındı${transfer?.shifts_deleted ? ` — ${transfer.shifts_deleted} vardiya plandan kaldırıldı` : ''}`
           : editTarget ? 'Değişiklikler kaydedildi' : `${payload.full_name ?? 'Çalışan'} eklendi`
       )
       await load()

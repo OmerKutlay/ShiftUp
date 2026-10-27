@@ -91,7 +91,14 @@ function seed(): FakeDb {
   }, {
     evalOr: true,
     relations: { announcement_recipients: { announcements: { table: 'announcements', fk: 'announcement_id' } } },
-    rpc: { announcement_mark: markRpc },
+    rpc: {
+      announcement_mark: markRpc,
+      // Transfer: yalnızca mağazayı değiştirir (vardiya silme ayrıntısı multiStorePeopleApi testinde)
+      apply_employee_store_transfer: (x: { p_employee_id: string; p_to_store: string }, fdb: FakeDb) => {
+        fdb.tables.employees.find((e) => e.id === x.p_employee_id)!.store_id = x.p_to_store
+        return { data: { shifts_deleted: 0, open_shifts_reopened: 0, swaps: [] } }
+      },
+    },
   })
 }
 
