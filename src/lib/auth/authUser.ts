@@ -3,7 +3,10 @@
  *
  * Çalışanlar employees tablosuna eklenirken Supabase Auth kullanıcısı oluşturulmaz.
  * OTP gönderilmeden önce bu helper çağrılır:
- *   - auth_user_id yoksa → auth kullanıcısı oluşturulur (veya email ile bulunur) ve bağlanır
+ *   - auth_user_id yoksa → auth kullanıcısı oluşturulur ve bağlanır. Email zaten kayıtlıysa yalnızca
+ *     bu çalışan için oluşturulmuş (app_metadata.employee_id eşleşen) kullanıcı bağlanır; kaynağı
+ *     belirsiz kullanıcı silinip yeniden oluşturulur (önceden konmuş şifre/kimlik ile hesap ele
+ *     geçirmeyi önler)
  *   - auth_user_id var ama email değişmişse → auth kullanıcısının email'i güncellenir
  *
  * Böylece signInWithOtp({ shouldCreateUser: false }) güvenle çağrılabilir;
@@ -63,22 +66,51 @@ export async function ensureAuthUserForEmployee(
 
     // ── Bağlı değil: oluştur veya mevcut auth kullanıcısını bul ─
     let authUserId: string
-    const { data: created, error: createError } = await admin.auth.admin.createUser({
-      email,
-      email_confirm: true,
-      app_metadata: { employee_id: employee.id },
-    })
+    const createForEmployee = () =>
+      admin.auth.admin.createUser({
+        email,
+        email_confirm: true,
+        app_metadata: { employee_id: employee.id },
+      })
+    const { data: created, error: createError } = await createForEmployee()
 
     if (created?.user) {
       authUserId = created.user.id
     } else {
-      // Email zaten auth.users'ta kayıtlı (ör. önceki bir deneme) → onu bağla
+      // Email zaten auth.users'ta kayıtlı
       const existing = await findAuthUserByEmail(admin, email)
       if (!existing) {
         console.error('[ensureAuthUser] createUser failed:', createError?.message)
         return { ok: false, reason: 'AUTH_PROVISION_FAILED' }
       }
-      authUserId = existing.id
+
+      if (existing.app_metadata?.employee_id === employee.id) {
+        // Bu çalışan için önceki bir denemede oluşturulmuş, bağlanamamış kullanıcı → bağla
+        authUserId = existing.id
+      } else {
+        // Kaynağı doğrulanamayan kullanıcı (ör. dışarıdan kayıtla önceden açılmış, şifre/kimlik
+        // eklenmiş olabilir) asla benimsenmez: başka çalışana bağlıysa çakışma, değilse silinip
+        // temiz bir kullanıcı oluşturulur — böylece önceden konmuş hiçbir kimlik bilgisi kalmaz.
+        const { data: owner, error: ownerError } = await admin
+          .from('employees')
+          .select('id')
+          .eq('auth_user_id', existing.id)
+          .maybeSingle()
+        if (ownerError) throw ownerError
+        if (owner) return { ok: false, reason: 'AUTH_USER_CONFLICT' }
+
+        const { error: deleteError } = await admin.auth.admin.deleteUser(existing.id)
+        if (deleteError) {
+          console.error('[ensureAuthUser] stale auth user delete failed:', deleteError.message)
+          return { ok: false, reason: 'AUTH_PROVISION_FAILED' }
+        }
+        const { data: recreated, error: recreateError } = await createForEmployee()
+        if (!recreated?.user) {
+          console.error('[ensureAuthUser] createUser failed after cleanup:', recreateError?.message)
+          return { ok: false, reason: 'AUTH_PROVISION_FAILED' }
+        }
+        authUserId = recreated.user.id
+      }
     }
 
     const { error: linkError } = await admin
