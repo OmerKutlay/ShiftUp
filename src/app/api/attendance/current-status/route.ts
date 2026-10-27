@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { getAllowedActions } from '@/lib/attendanceStateMachine'
+import { listBreaks } from '@/lib/attendanceDurations'
 import { requireAuth, forbidden, hasRole, MANAGER_ROLES } from '@/lib/auth'
 import { findCurrentShift, NoShiftError } from '@/lib/attendanceService'
 import { notFound, serverError } from '@/lib/apiErrors'
@@ -95,6 +96,7 @@ async function getCurrentStatus(req: NextRequest, trace: RequestTrace): Promise<
       current_status: currentStatus,
       suggested_action: suggestedAction,
       allowed_actions: allowedQrActions,
+      breaks: record ? listBreaks(record) : [],
     })
   } catch (err) {
     return serverError('GET /api/attendance/current-status', err)

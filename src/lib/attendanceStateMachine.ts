@@ -1,5 +1,5 @@
 import type { AttendanceStatus } from '@/types/attendance'
-import { diffMinutes, type AttendanceTimes } from '@/lib/attendanceDurations'
+import { diffMinutes, type AttendanceTimes, type BreakSpan } from '@/lib/attendanceDurations'
 
 // ============================================================
 // Attendance State Machine
@@ -100,10 +100,11 @@ export interface AttendanceFieldPatch {
   break_end_at?: string | null
   clock_out_at?: string
   completed_break_minutes?: number
+  previous_breaks?: BreakSpan[]
 }
 
 /** Yeni mola başlarken önceki molayı biriktirmek için gereken alanlar */
-export type BreakFields = Pick<AttendanceTimes, 'break_start_at' | 'break_end_at' | 'completed_break_minutes'>
+export type BreakFields = Pick<AttendanceTimes, 'break_start_at' | 'break_end_at' | 'completed_break_minutes' | 'previous_breaks'>
 
 export function buildFieldPatch(
   currentStatus: AttendanceStatus,
@@ -126,6 +127,10 @@ export function buildFieldPatch(
           break_start_at: now,
           break_end_at: null,
           completed_break_minutes: (record.completed_break_minutes ?? 0) + prevBreak,
+          // Biten molanın saatleri gösterim için saklanır (kolon yoksa — migration öncesi — yazılmaz)
+          ...(Array.isArray(record.previous_breaks) && {
+            previous_breaks: [...record.previous_breaks, { start_at: record.break_start_at!, end_at: record.break_end_at! }],
+          }),
         }
       }
       return { status: nextStatus, break_start_at: now }

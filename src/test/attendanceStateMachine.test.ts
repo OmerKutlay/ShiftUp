@@ -141,6 +141,21 @@ describe('attendanceStateMachine — buildFieldPatch', () => {
     expect(third.completed_break_minutes).toBe(35)
   })
 
+  it('ikinci mola: biten molanın saatleri previous_breaks\'e eklenir', () => {
+    const first = { start_at: '2026-09-28T05:00:00.000Z', end_at: '2026-09-28T05:10:00.000Z' }
+    const patch = buildFieldPatch('working_after_break', 'start_break', NOW, {
+      break_start_at: '2026-09-28T06:00:00.000Z',
+      break_end_at: '2026-09-28T06:20:00.000Z',
+      completed_break_minutes: 10,
+      previous_breaks: [first],
+    })
+    expect(patch.previous_breaks).toEqual([
+      first,
+      { start_at: '2026-09-28T06:00:00.000Z', end_at: '2026-09-28T06:20:00.000Z' },
+    ])
+    expect(patch.completed_break_minutes).toBe(30)
+  })
+
   it('clock_out patch: status=clocked_out, clock_out_at ayarlanır', () => {
     const patch = buildFieldPatch('working', 'clock_out', NOW)
     expect(patch.status).toBe('clocked_out')

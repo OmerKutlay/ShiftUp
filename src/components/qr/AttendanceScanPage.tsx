@@ -47,6 +47,7 @@ import {
 } from './scanPageHelpers'
 import type { LocationErrorKind } from './scanPageHelpers'
 import { useClock } from './useClock'
+import { BreakSummary } from './BreakSummary'
 
 // html5-qrcode yalnızca tarayıcıda çalışır; ssr:false ile sunucu paketine (Cloudflare Worker 3 MB sınırı) girmez
 const QrScanner = dynamic(() => import('./QrScanner').then((m) => m.QrScanner), { ssr: false })
@@ -355,6 +356,8 @@ export function AttendanceScanPage() {
               </p>
             )}
           </section>
+
+          {hasShift && <BreakSummary breaks={statusData?.breaks ?? []} />}
 
           {!hasShift && (
             <StateCard>

@@ -19,12 +19,29 @@
  */
 import { netWorkMins, plannedBreakForGrossMins, plannedBreakMins } from '@/lib/workingTimeService'
 
+/** Tamamlanmış önceki mola (attendance_records.previous_breaks öğesi) */
+export interface BreakSpan {
+  start_at: string
+  end_at: string
+}
+
 export interface AttendanceTimes {
   clock_in_at: string | null
   break_start_at: string | null
   break_end_at: string | null
   clock_out_at: string | null
   completed_break_minutes?: number | null
+  /** Önceki molaların saatleri — yalnızca gösterim; toplamları completed_break_minutes'tır */
+  previous_breaks?: BreakSpan[] | null
+}
+
+/** Çalışanın ekranındaki tek mola satırı */
+export interface BreakItem {
+  /** null → saatleri bilinmeyen önceki molaların toplamı (kolon öncesi kayıt / yönetici düzeltmesi) */
+  start_at: string | null
+  end_at: string | null
+  /** Tamamlanan molanın süresi (dk); süren molada null */
+  minutes: number | null
 }
 
 /** Planlı vardiya (Türkiye saati) — planlanan mola ve bitiş saati buradan hesaplanır */
@@ -53,6 +70,27 @@ export function diffMinutes(from: string | null, to: string | null): number | nu
 /** Toplam fiili mola süresi: önceki molalar + son (tamamlanmış) mola */
 export function totalBreakMinutes(rec: AttendanceTimes): number {
   return (rec.completed_break_minutes ?? 0) + (diffMinutes(rec.break_start_at, rec.break_end_at) ?? 0)
+}
+
+/**
+ * Molalar sırayla: önceki molalar previous_breaks'ten, son mola break_start_at / break_end_at'ten
+ * (bitişi yoksa sürüyor). previous_breaks'in toplamı completed_break_minutes'ı tutmuyorsa önceki
+ * molalar saatsiz tek satıra indirgenir — gösterilen toplam hesaplanan moladan sapmasın.
+ */
+export function listBreaks(rec: AttendanceTimes): BreakItem[] {
+  const completed = rec.completed_break_minutes ?? 0
+  const previous = (rec.previous_breaks ?? []).map((b) => ({
+    start_at: b.start_at,
+    end_at: b.end_at,
+    minutes: diffMinutes(b.start_at, b.end_at) ?? 0,
+  }))
+  const items: BreakItem[] = []
+  if (previous.length > 0 && previous.reduce((sum, b) => sum + b.minutes, 0) === completed) items.push(...previous)
+  else if (completed > 0) items.push({ start_at: null, end_at: null, minutes: completed })
+  if (rec.break_start_at) {
+    items.push({ start_at: rec.break_start_at, end_at: rec.break_end_at, minutes: diffMinutes(rec.break_start_at, rec.break_end_at) })
+  }
+  return items
 }
 
 /** Mola okutulmuş mu (önceki molalar dahil) */

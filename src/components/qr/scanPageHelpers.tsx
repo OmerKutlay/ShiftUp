@@ -17,6 +17,7 @@ import { Coffee, Info, LogIn, LogOut, Undo2, type LucideIcon } from 'lucide-reac
 import type { QrActionType } from '@/types/qr'
 import type { AttendanceStatus } from '@/types/attendance'
 import type { GpsCoordinates } from '@/types/location'
+import type { BreakItem } from '@/lib/attendanceDurations'
 import type { BadgeTone } from '@/components/ui/badge'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { detectPlatform, isStandaloneDisplay } from '@/lib/pwa/deviceInfo'
@@ -31,6 +32,8 @@ export interface CurrentStatusResponse {
   current_status: AttendanceStatus | null
   suggested_action: QrActionType | null
   allowed_actions: QrActionType[]
+  /** Bugünkü molalar sırayla (son öğe sürüyor olabilir) */
+  breaks?: BreakItem[]
 }
 
 /**
