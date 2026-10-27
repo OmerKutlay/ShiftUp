@@ -98,12 +98,29 @@ export function hasScannedBreak(rec: AttendanceTimes): boolean {
   return !!rec.break_start_at || (rec.completed_break_minutes ?? 0) > 0
 }
 
+/** Planlanan vardiya başlangıcı (ms) */
+export function plannedShiftStartMs(shift: PlannedShift): number {
+  return new Date(`${shift.work_date}T${shift.start_time.slice(0, 5)}:00+03:00`).getTime()
+}
+
 /** Planlanan vardiya bitişi (ms) — gece yarısını geçen vardiya ertesi güne taşınır */
 export function plannedShiftEndMs(shift: PlannedShift): number {
-  const start = new Date(`${shift.work_date}T${shift.start_time.slice(0, 5)}:00+03:00`).getTime()
+  const start = plannedShiftStartMs(shift)
   let end = new Date(`${shift.work_date}T${shift.end_time.slice(0, 5)}:00+03:00`).getTime()
   if (end <= start) end += 24 * 60 * MINUTE_MS
   return end
+}
+
+/**
+ * Giriş/çıkışı planlanan vardiya penceresine kırpar: vardiyadan önceki ve sonraki süre çalışma
+ * sayılmaz (puantaja, fazla mesaiye ve bordroya yansımaz). Kayıttaki ham saatler değişmez.
+ */
+function clampToShiftWindow(rec: AttendanceTimes, shift: PlannedShift): AttendanceTimes {
+  const start = plannedShiftStartMs(shift)
+  const end = plannedShiftEndMs(shift)
+  const inMs = Math.min(Math.max(new Date(rec.clock_in_at!).getTime(), start), end)
+  const outMs = Math.max(Math.min(new Date(rec.clock_out_at!).getTime(), end), inMs)
+  return { ...rec, clock_in_at: new Date(inMs).toISOString(), clock_out_at: new Date(outMs).toISOString() }
 }
 
 /** Planlanan bitişten en az tolerans kadar önce çıkış yapıldı mı */
@@ -135,11 +152,13 @@ export function roundWorkedMinutes(mins: number): number {
 
 /**
  * Net çalışma süresi (dk). Giriş veya çıkış yoksa null.
- * shift verilirse mola kuralı uygulanır ve sonuç tam / buçuklu saate yuvarlanır;
- * verilmezse fiili mola düşülmüş ham süre döner.
+ * shift verilirse süre planlanan vardiya penceresiyle sınırlanır (erken giriş / geç çıkış sayılmaz),
+ * mola kuralı uygulanır ve sonuç tam / buçuklu saate yuvarlanır; verilmezse fiili mola düşülmüş
+ * ham süre döner.
  */
 export function workedMinutes(rec: AttendanceTimes, shift?: PlannedShift | null): number | null {
   if (!rec.clock_in_at || !rec.clock_out_at) return null
+  if (shift) rec = clampToShiftWindow(rec, shift)
   const total = diffMinutes(rec.clock_in_at, rec.clock_out_at) ?? 0
   const net = Math.max(0, total - deductedBreakMinutes(rec, shift))
   if (!shift) return net

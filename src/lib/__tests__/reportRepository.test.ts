@@ -194,6 +194,37 @@ describe('buildFieldPatch — çoklu mola', () => {
       break_end_at: '2026-10-01T14:00:00Z',
     }, shift)).toBe(10 * 60)
   })
+
+  describe('vardiya dışı süre çalışma sayılmaz', () => {
+    // 09:00–18:00 (TR) vardiya → net 8 saat
+    const shift = { work_date: '2026-10-01', start_time: '09:00', end_time: '18:00' }
+    const noBreak = { break_start_at: null, break_end_at: null, completed_break_minutes: 0 }
+
+    it('erken giriş ve geç çıkış planlanan vardiyaya kırpılır', () => {
+      // 03:00 giriş (6 saat erken), 21:00 çıkış (3 saat geç)
+      expect(workedMinutes({ ...noBreak, clock_in_at: '2026-10-01T00:00:00Z', clock_out_at: '2026-10-01T18:00:00Z' }, shift))
+        .toBe(8 * 60)
+    })
+
+    it('tamamen vardiya dışındaki varlık sıfır sayılır', () => {
+      // 05:00–07:00 (TR), vardiya 09:00'da başlıyor
+      expect(workedMinutes({ ...noBreak, clock_in_at: '2026-10-01T02:00:00Z', clock_out_at: '2026-10-01T04:00:00Z' }, shift))
+        .toBe(0)
+    })
+
+    it('gece yarısını geçen vardiyada da geç çıkış kırpılır', () => {
+      // 22:00–06:00 (TR) vardiya, 09:00'da çıkış → yine 8 saat brüt
+      const night = { work_date: '2026-10-01', start_time: '22:00', end_time: '06:00' }
+      const exact = workedMinutes({ ...noBreak, clock_in_at: '2026-10-01T19:00:00Z', clock_out_at: '2026-10-02T03:00:00Z' }, night)
+      const late = workedMinutes({ ...noBreak, clock_in_at: '2026-10-01T19:00:00Z', clock_out_at: '2026-10-02T06:00:00Z' }, night)
+      expect(late).toBe(exact)
+    })
+
+    it('vardiya verilmezse ham süre döner (canlı gösterim)', () => {
+      expect(workedMinutes({ ...noBreak, clock_in_at: '2026-10-01T00:00:00Z', clock_out_at: '2026-10-01T18:00:00Z' }))
+        .toBe(18 * 60)
+    })
+  })
 })
 
 describe('exportReportToCsv', () => {
