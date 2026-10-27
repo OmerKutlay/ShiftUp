@@ -41,6 +41,7 @@ export const NOTIFICATION_META: Record<NotificationType, NotificationMeta> = {
   attendance_break_ending:     { Icon: Coffee,        tone: 'warning', label: 'Mola bitiyor',         short: 'Mola' },
   checklist_overdue:           { Icon: ListChecks,    tone: 'danger',  label: 'Kontrol listesi gecikti', short: 'Liste gecikti' },
   announcement:                { Icon: Megaphone,     tone: 'brand',   label: 'Duyuru',               short: 'Duyuru' },
+  data_integrity_alert:        { Icon: TriangleAlert, tone: 'danger',  label: 'Veri kaybı uyarısı',   short: 'Veri kaybı' },
   push_test:                 { Icon: BellRing,      tone: 'neutral', label: 'Test bildirimi',       short: 'Test' },
 }
 

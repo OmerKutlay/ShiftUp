@@ -70,6 +70,33 @@ describe('GET /api/attendance/daily — mağaza filtresi', () => {
     const body = (await res.json()) as { entries: { shiftAssignment: { id: string } }[] }
     expect(body.entries.map((e) => e.shiftAssignment.id)).toEqual(['s-b'])
   })
+
+  it('çalışan, iş arkadaşının düzeltme notunu ve konum ölçümünü görmez; kendi kaydını tam görür', async () => {
+    const { turkeyToday } = await import('@/lib/dateUtils')
+    const date = turkeyToday()
+    state.employee = { ...managerA, id: 'e-self', access_level: ACCESS.EMPLOYEE }
+    const record = (id: string, employeeId: string, shiftId: string) => ({
+      id, employee_id: employeeId, shift_assignment_id: shiftId, status: 'working', clock_in_at: `${date}T06:00:00Z`,
+      break_start_at: null, break_end_at: null, clock_out_at: null, completed_break_minutes: 0, previous_breaks: [],
+      verification_method: 'manager_override', exception_note: 'Düzeltme: geç geldi', location_distance_m: 12, location_accuracy_m: 8,
+      created_at: `${date}T06:00:00Z`, updated_at: `${date}T06:00:00Z`,
+    })
+    useDb({
+      shift_assignments: [
+        { id: 's-self', employee_id: 'e-self', store_id: STORE_A, work_date: date, start_time: '09:00', end_time: '17:00', employees: {} },
+        { id: 's-other', employee_id: 'e-other', store_id: STORE_A, work_date: date, start_time: '09:00', end_time: '17:00', employees: {} },
+      ],
+      attendance_records: [record('r-self', 'e-self', 's-self'), record('r-other', 'e-other', 's-other')],
+    })
+    const { GET } = await import('@/app/api/attendance/daily/route')
+    const res = await GET(new NextRequest('http://localhost/api/attendance/daily'))
+    const body = (await res.json()) as { entries: { shiftAssignment: { id: string }; attendanceRecord: Record<string, unknown> }[] }
+    const byShift = Object.fromEntries(body.entries.map((e) => [e.shiftAssignment.id, e.attendanceRecord]))
+    expect(byShift['s-other']).toMatchObject({ status: 'working', exception_note: null, verification_method: null })
+    expect(byShift['s-other']).not.toHaveProperty('location_distance_m')
+    expect(byShift['s-other']).not.toHaveProperty('location_accuracy_m')
+    expect(byShift['s-self']).toMatchObject({ exception_note: 'Düzeltme: geç geldi', location_distance_m: 12 })
+  })
 })
 
 // ============================================================

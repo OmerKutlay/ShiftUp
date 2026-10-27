@@ -163,6 +163,31 @@ describe('kişisel veri — standart çalışan', () => {
     expect(other.reason).toBeNull()
     expect(own.leave_type).toBe('sick')
   })
+
+  it('exclude_type=sick ile başkasının hastalık izni ayırt edilemez (filtre maskeden sonra)', async () => {
+    state.employee = session(EMP1)
+    const ids = async (url: string) => {
+      const res = await leaveGET(req(url))
+      const { requests } = (await res.json()) as { requests: Array<{ id: string }> }
+      return requests.map((r) => r.id)
+    }
+    const all = await ids('/api/leave')
+    const noSick = await ids('/api/leave?exclude_type=sick')
+    const noOther = await ids('/api/leave?exclude_type=other')
+    // Başkasının hastalık izni "diğer" gibi davranır: sick filtresiyle kaybolmaz, other filtresiyle kaybolur
+    expect(all).toContain(LEAVE_EMP2_SICK)
+    expect(noSick).toContain(LEAVE_EMP2_SICK)
+    expect(noOther).not.toContain(LEAVE_EMP2_SICK)
+    // Kendi hastalık izni gerçek türüyle filtrelenir
+    expect(noSick).not.toContain(LEAVE_EMP1_SICK)
+  })
+
+  it('yönetici için exclude_type gerçek türe göre çalışır', async () => {
+    state.employee = session(MGR)
+    const res = await leaveGET(req('/api/leave?exclude_type=sick'))
+    const { requests } = (await res.json()) as { requests: Array<{ id: string }> }
+    expect(requests.map((r) => r.id)).not.toContain(LEAVE_EMP2_SICK)
+  })
 })
 
 describe('spam — talep oluşturma hız sınırı', () => {

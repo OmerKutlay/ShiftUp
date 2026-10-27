@@ -50,8 +50,8 @@ export async function POST(req: NextRequest) {
   }
 
   const [byEmail, byIp] = await Promise.all([
-    checkRateLimit(`otp_verify:email:${email}`, PER_EMAIL, WINDOW_MS),
-    checkRateLimit(`otp_verify:ip:${clientIp(req)}`, PER_IP, WINDOW_MS),
+    checkRateLimit(`otp_verify:email:${email}`, PER_EMAIL, WINDOW_MS, { failClosed: true }),
+    checkRateLimit(`otp_verify:ip:${clientIp(req)}`, PER_IP, WINDOW_MS, { failClosed: true }),
   ])
   if (!byEmail.allowed || !byIp.allowed) {
     return NextResponse.json({ ok: false, reason: 'RATE_LIMITED' }, { status: 429 })

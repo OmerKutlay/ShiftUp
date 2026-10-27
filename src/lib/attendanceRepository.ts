@@ -8,8 +8,15 @@ import type { AttendanceRecord, DailyShiftEntry } from '@/types/attendance'
 /**
  * Fetch all shift assignments of a store for a given date (YYYY-MM-DD, Europe/Istanbul),
  * joined with employee and attendance data.
+ *
+ * viewerId verilirse (yönetici olmayan çalışan) başkalarının kayıtlarında yönetici düzeltme
+ * notu, doğrulama yöntemi ve konum ölçümleri gizlenir; saatler ve durum görünür kalır.
  */
-export async function fetchDailyShifts(dateStr: string, storeId: string): Promise<DailyShiftEntry[]> {
+export async function fetchDailyShifts(
+  dateStr: string,
+  storeId: string,
+  { viewerId }: { viewerId?: string } = {}
+): Promise<DailyShiftEntry[]> {
   const { data: assignments, error: assignError } = await db
     .from('shift_assignments')
     .select(`
@@ -49,7 +56,10 @@ export async function fetchDailyShifts(dateStr: string, storeId: string): Promis
   if (recError) throw new Error(`Devam kayıtları yüklenemedi: ${recError.message}`)
 
   const recordsByShiftId = new Map<string, AttendanceRecord>(
-    (records ?? []).map((r: AttendanceRecord) => [r.shift_assignment_id, r])
+    (records ?? []).map((r: AttendanceRecord) => [
+      r.shift_assignment_id,
+      viewerId && r.employee_id !== viewerId ? redactForColleague(r) : r,
+    ])
   )
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -68,6 +78,26 @@ export async function fetchDailyShifts(dateStr: string, storeId: string): Promis
     },
     attendanceRecord: recordsByShiftId.get(assignment.id) ?? null,
   }))
+}
+
+/** İş arkadaşının kaydı: yalnızca operasyon ekranının gösterdiği alanlar */
+function redactForColleague(r: AttendanceRecord): AttendanceRecord {
+  return {
+    id: r.id,
+    employee_id: r.employee_id,
+    shift_assignment_id: r.shift_assignment_id,
+    status: r.status,
+    clock_in_at: r.clock_in_at,
+    break_start_at: r.break_start_at,
+    break_end_at: r.break_end_at,
+    clock_out_at: r.clock_out_at,
+    completed_break_minutes: r.completed_break_minutes,
+    previous_breaks: r.previous_breaks,
+    verification_method: null,
+    exception_note: null,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  }
 }
 
 /** Tek bir devam kaydını id ile getirir */

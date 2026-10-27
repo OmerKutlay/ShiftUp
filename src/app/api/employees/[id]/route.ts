@@ -18,7 +18,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
-import { requireMinRole, ACCESS, accessLevelOf, canManageRole, forbidden } from '@/lib/auth'
+import { requireMinRole, ACCESS, accessLevelOf, canManageRole, forbidden, roleAtLeast } from '@/lib/auth'
 import { isActiveStore, updateEmployee } from '@/lib/employeeRepository'
 import { validateEmployeeInput } from '@/lib/employeeValidation'
 import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/apiErrors'
@@ -87,6 +87,17 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
         (body.store_id !== undefined && body.store_id !== target.store_id))
     ) {
       return forbidden('Kendi rolünüzü, e-postanızı, mağazanızı veya durumunuzu değiştiremezsiniz.')
+    }
+
+    // Giriş e-posta OTP'si ile yapılır: e-postayı değiştiren hesabı devralır. Bu yüzden yalnızca
+    // Müdür ve üstü değiştirebilir (Yönetici, astının e-postasını kendi adresine çeviremez).
+    if (
+      !isSelf &&
+      body.email !== undefined &&
+      normEmail(body.email) !== (target.email ?? null) &&
+      !roleAtLeast(auth.employee.access_level, ACCESS.STORE_MANAGER)
+    ) {
+      return forbidden('E-posta adresini yalnızca Müdür veya Admin değiştirebilir.')
     }
 
     if (isSelf) {
@@ -159,8 +170,10 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
         if (error) console.error('[PATCH /api/employees/[id]] auth email sync:', error.message)
       }
       if (emailChanged || result.payload.active === false) {
-        // Açık oturumları sonlandır
-        await admin.auth.admin.signOut(target.auth_user_id).catch(() => undefined)
+        // Açık oturumları sonlandır (auth.sessions + refresh token'lar, push abonelikleri).
+        // auth.admin.signOut kullanıcı id'si değil JWT bekler; id ile çağrı sessizce başarısız oluyordu.
+        const { error } = await admin.rpc('revoke_employee_access', { p_ids: [id] })
+        if (error) console.error('[PATCH /api/employees/[id]] oturum kapatma:', error.message)
       }
     }
 

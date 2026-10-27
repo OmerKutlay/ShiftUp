@@ -65,6 +65,11 @@ export function dayOfWeekFromDateString(dateStr: string): number {
   return new Date(`${dateStr}T00:00:00Z`).getUTCDay()
 }
 
+/** 'YYYY-MM-DD' tarihinin içinde bulunduğu haftanın pazartesisi */
+export function mondayOfDateString(dateStr: string): string {
+  return addDaysToDateString(dateStr, -((dayOfWeekFromDateString(dateStr) + 6) % 7))
+}
+
 /**
  * Format a Date to 'EEEE' (day name) in Turkish locale.
  */

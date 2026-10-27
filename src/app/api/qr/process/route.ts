@@ -8,9 +8,9 @@
  *   mağazasının aktif konumuna göre doğrulanır; yeni kod o mağazanın kanalına yayınlanır.
  *
  * Employee belirleme:
- *   - Kiosk QR ("SU2.…", tek kullanımlık): employee session'dan alınır. Çalışan/vardiya
- *     kontrollerinden sonra atomik tüketilir — aynı anda okutanlardan yalnızca ilki kazanır —
- *     ve yeni kod Realtime Broadcast ile mağazanın kiosk ekranlarına yayınlanır.
+ *   - Kiosk QR ("SU3.…", ekranda dakikada bir yerelde üretilir): employee session'dan alınır.
+ *     İmza, mağaza ve zaman penceresi veritabanına gitmeden doğrulanır (kioskQrService); kodu
+ *     üreten kiosk oturumu hâlâ yetkili olmalı ve okutanla aynı kişi olmamalıdır.
  *   - Klasik QR: token'daki employee_id ile session eşleşmeli (spoofing önlemi)
  *
  * Action belirleme:
@@ -19,11 +19,14 @@
  *
  * Konum: ATTENDANCE_REQUIRE_LOCATION !== 'false' ise (varsayılan) konum zorunludur ve
  * mağaza geofence'i içinde olmalıdır. Ölçülen mesafe/doğruluk denetim için kayda yazılır.
+ * Konum tarayıcıdan gelir ve sahtelenebilir; bu yüzden asıl "mağazadayım" kanıtı, yalnızca
+ * mağazadaki ekranda görünen ve ~1,5 dakikada geçersizleşen kiosk kodudur.
  */
 import { isEffectivelyActive } from '@/lib/employment'
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAndConsumeToken, QrTokenError } from '@/lib/qrTokenService'
-import { isKioskQr, consumeKioskQr, rotateAndBroadcastKioskQr } from '@/lib/kioskQrService'
+import { verifyKioskQr, verifyKioskIssuer } from '@/lib/kioskQrService'
+import { isKioskQr } from '@/lib/kioskQrCode'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { AttendanceRuleError } from '@/lib/attendanceStateMachine'
 import type { AttendanceAction } from '@/lib/attendanceStateMachine'
@@ -63,6 +66,8 @@ const PROCESS_RATE_LIMIT = 30
 const PROCESS_RATE_WINDOW_MS = 60 * 1000
 const MAX_QR_DATA_LENGTH = 2048
 const VALID_ACTIONS: QrActionType[] = ['clock_in', 'break_start', 'break_end', 'clock_out']
+/** Gerçek bir GPS ölçümünün doğruluğu bu aralıktadır; dışı bozuk veya elle yazılmış veridir */
+const MAX_REPORTED_ACCURACY_M = 100_000
 
 function locationRequired(): boolean {
   return process.env.ATTENDANCE_REQUIRE_LOCATION !== 'false'
@@ -101,11 +106,36 @@ async function processQr(req: NextRequest, trace: RequestTrace): Promise<NextRes
       return NextResponse.json({ error: 'Çok fazla işlem talebi.', code: 'RATE_LIMITED' }, { status: 429 })
     }
 
-    // Konum doğrulaması — token tüketilmeden önce (konum hatasında QR boşa gitmesin)
+    // Eski (tek kullanımlık) kiosk kodu: ekran güncellenmemiş
+    if (body.qr_data.startsWith('SU2.')) {
+      return NextResponse.json(
+        { error: 'Kiosk ekranı güncel değil. Kiosk sayfasını yenileyip yeni kodu okutun.', code: 'QR_INVALID' },
+        { status: 400 }
+      )
+    }
+
+    const admin = createAdminClient()
+    const employeeId = sessionEmployee.id
+
+    // Kiosk kodu: imza / mağaza / süre veritabanına gitmeden, ardından kodu üreten oturum doğrulanır
+    const kioskQr = isKioskQr(body.qr_data)
+    if (kioskQr) {
+      const { issuerId } = await verifyKioskQr(body.qr_data, { storeId, scannerId: employeeId })
+      await verifyKioskIssuer(admin, issuerId, storeId)
+      trace.step('kiosk_verify')
+    }
+
+    // Konum doğrulaması — klasik token tüketilmeden önce (konum hatasında QR boşa gitmesin)
     let locationFields: Record<string, unknown> = {}
     if (body.location) {
       const loc = body.location
-      if (typeof loc.latitude !== 'number' || typeof loc.longitude !== 'number' || typeof loc.accuracy !== 'number') {
+      if (
+        !Number.isFinite(loc.latitude) ||
+        !Number.isFinite(loc.longitude) ||
+        !Number.isFinite(loc.accuracy) ||
+        loc.accuracy <= 0 ||
+        loc.accuracy > MAX_REPORTED_ACCURACY_M
+      ) {
         return NextResponse.json({ error: 'Konum verisi hatalı.', code: 'LOCATION_VALIDATION_FAILED' }, { status: 400 })
       }
       if (loc.latitude < -90 || loc.latitude > 90 || loc.longitude < -180 || loc.longitude > 180) {
@@ -133,12 +163,7 @@ async function processQr(req: NextRequest, trace: RequestTrace): Promise<NextRes
       )
     }
 
-    const admin = createAdminClient()
-    const employeeId = sessionEmployee.id
-
-    // Kiosk QR: çalışan/vardiya kontrollerinden sonra tüketilir (aşağıda)
     // Klasik QR: doğrula + tek kullanım tüket (atomik)
-    const kioskQr = isKioskQr(body.qr_data)
     let classicAction: QrActionType | null = null
     if (!kioskQr) {
       const { token: qrToken } = await validateAndConsumeToken(body.qr_data, { employeeId, storeId })
@@ -199,14 +224,6 @@ async function processQr(req: NextRequest, trace: RequestTrace): Promise<NextRes
     }
     const attendanceAction = QR_TO_ATTENDANCE_ACTION[actionType] as AttendanceAction
 
-    // Kiosk kodunu tüket (ilk okutan kazanır) → yeni kodu ekranlara yayınla
-    if (kioskQr) {
-      await consumeKioskQr(admin, body.qr_data, storeId)
-      trace.step('kiosk_consume')
-      await rotateAndBroadcastKioskQr(admin, storeId)
-      trace.step('kiosk_rotate')
-    }
-
     const result = await performAttendanceAction({
       admin,
       shift,
@@ -235,7 +252,7 @@ async function processQr(req: NextRequest, trace: RequestTrace): Promise<NextRes
     trace.step('error', { error: err instanceof Error ? err.name : 'unknown', code: (err as { code?: string } | null)?.code ?? null })
     if (err instanceof QrTokenError) {
       if (err.code === 'DB_ERROR') return serverError('POST /api/qr/process', err)
-      return NextResponse.json({ error: err.message, code: err.code }, { status: err.code === 'QR_EXPIRED' ? 410 : err.code === 'QR_USED' ? 409 : err.code === 'QR_WRONG_STORE' || err.code === 'QR_NOT_OWNER' ? 403 : 400 })
+      return NextResponse.json({ error: err.message, code: err.code }, { status: err.code === 'QR_EXPIRED' ? 410 : err.code === 'QR_USED' ? 409 : err.code === 'QR_WRONG_STORE' || err.code === 'QR_NOT_OWNER' || err.code === 'QR_SELF_ISSUED' ? 403 : 400 })
     }
     if (err instanceof LocationError) {
       return NextResponse.json({ error: err.message, code: err.code }, { status: 403 })

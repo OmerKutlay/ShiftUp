@@ -22,6 +22,7 @@ npm run dev                  # http://localhost:3000
 | `DEV_OTP` | dev | `AUTH_MODE=development` iken geçerli kod |
 | `DEV_SESSION_SECRET` | | Dev oturum çerezinin HMAC anahtarı (yoksa service role key kullanılır) |
 | `CRON_SECRET` | | `/api/attendance/alerts/scan` cron çağrısı için Bearer anahtarı |
+| `KIOSK_QR_SECRET` | | Kiosk QR anahtarlarının imza sırrı (yoksa `SUPABASE_SECRET_KEY`'den türetilir). Değişirse açık kiosk ekranları yeni anahtarı kendiliğinden alır |
 | `ATTENDANCE_REQUIRE_LOCATION` | | `false` yapılmadıkça QR okutmada konum (geofence) zorunludur |
 | `WT_MIN_REST_HOURS` / `WT_MAX_DAILY_HOURS` / `WT_MAX_WEEKLY_HOURS` | | Çalışma süresi sınırlarını sıkılaştırır (yasal üst sınır 11s/gün, 45s/hafta aşılamaz) |
 | `VAPID_PUBLIC_KEY` | | Web Push VAPID açık anahtarı (gizli değil). Yoksa push kapalıdır — bkz. [Push bildirimleri](#push-bildirimleri) |
@@ -179,8 +180,8 @@ CI (`.github/workflows/ci.yml`) her PR'da typecheck, lint, test ve build çalı�
   `SessionEmployee.store_id`); istemci mağaza parametresi göndermez. Mağaza değişince SWR önbelleği
   tümüyle temizlenir.
 - **Mağazaya özel:** vardiyalar, vardiya şablonları (ad mağaza içinde tekil), açık vardiyalar, konum
-  (mağaza başına tek aktif geofence), kiosk QR'ı (mağaza başına tek aktif kod, Realtime kanalı
-  `kiosk-qr:<store_id>`), denetim kaydı. İzin, mesai düzeltme, takas ve uygunluk çalışanın
+  (mağaza başına tek aktif geofence), kiosk QR'ı (mağazaya bağlı, ekranda dakikada bir yerel
+  üretilen imzalı kod — `src/lib/kioskQrService.ts`), denetim kaydı. İzin, mesai düzeltme, takas ve uygunluk çalışanın
   mağazasından okunur.
 - **Resmi tatiller:** `store_id` boş = ulusal (tüm mağazalar, yalnızca Admin yönetir); dolu = o
   mağazanın yerel tatili (Müdür+). Ulusal tatil gününe yerel tatil eklenemez; ulusal kayıt her zaman

@@ -40,6 +40,8 @@ export const NOTIFICATION_LINKS: Record<NotificationType, string> = {
   checklist_overdue: '/checklists',
   // Duyuru → Duyurular sayfası
   announcement: '/announcements',
+  // Veri kaybı uyarısı adminlere gider → Ayarlar (uygulama hata günlüğü)
+  data_integrity_alert: '/settings',
   // Test bildirimi → anlık bildirim ayarının bulunduğu Daha fazla sayfası
   push_test: '/more',
 }

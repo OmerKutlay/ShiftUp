@@ -16,7 +16,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { createNotification, notifyManagers } from '@/lib/notificationRepository'
-import { requireAuth, roleAtLeast, forbidden, ACCESS } from '@/lib/auth'
+import { requireAuth, roleAtLeast, forbidden, forbidIfOutranked, ACCESS } from '@/lib/auth'
 import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/apiErrors'
 import { isUuid } from '@/lib/validation'
 import { checkAssignmentRules, shiftsHaveAttendance } from '@/lib/shiftAssignmentRules'
@@ -141,6 +141,12 @@ export async function POST(req: NextRequest) {
     }
     if (swap.requester_id === currentEmployee.id || swap.target_id === currentEmployee.id) {
       return forbidden('Tarafı olduğunuz bir takas talebini onaylayamaz veya reddedemezsiniz.')
+    }
+    // İzin / mesai onayıyla aynı kural: kendinden yüksek yetkili birinin vardiyasına karar verilemez
+    for (const partyId of [swap.requester_id, swap.target_id]) {
+      if (!partyId) continue
+      const denied = await forbidIfOutranked(currentEmployee, partyId)
+      if (denied) return denied
     }
 
     let violationMessages: string[] = []
