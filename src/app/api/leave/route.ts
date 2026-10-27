@@ -79,7 +79,9 @@ export async function GET(req: NextRequest) {
 
     if (statusFilter) query = query.eq('status', statusFilter)
     if (employeeId) query = query.eq('employee_id', employeeId)
-    if (excludeType) query = query.neq('leave_type', excludeType)
+    // Standart çalışanda tür filtresi maskelemeden SONRA uygulanır (aşağıda); sorguda uygulansaydı
+    // filtreli/filtresiz iki cevabın farkı başkasının maskelenmiş hastalık iznini ele verirdi
+    if (excludeType && isManager) query = query.neq('leave_type', excludeType)
     // Aralıkla kesişen izinler
     if (to) query = query.lte('start_date', to)
     if (from) query = query.gte('end_date', from)
@@ -98,6 +100,7 @@ export async function GET(req: NextRequest) {
             ? r
             : { ...r, reason: null, reviewer_note: null, leave_type: r.leave_type === 'sick' ? 'other' : r.leave_type }
         )
+      if (excludeType) requests = requests.filter((r) => r.leave_type !== excludeType)
     }
 
     return NextResponse.json({ requests })
