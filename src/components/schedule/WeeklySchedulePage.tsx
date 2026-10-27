@@ -44,7 +44,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useWeeklySchedule } from './useWeeklySchedule'
 import { ShiftAssignDialog, type ShiftSavePayload } from './ShiftAssignDialog'
 import {
-  compareRoles, JS_DAY_TO_KEY, calcEmployeeStats, fmtHoursTr, fmtRange, getAvailStatus, shiftKindOf,
+  buildScheduleEntries, JS_DAY_TO_KEY, calcEmployeeStats, fmtHoursTr, fmtRange, getAvailStatus, shiftKindOf,
   ROLE_GROUPS, roleGroupOf, type EmployeeWeekStats, type RoleGroupKey,
 } from './scheduleHelpers'
 import { ShiftKindLegend, weeklyLimitMins } from './ScheduleCells'
@@ -56,6 +56,8 @@ import {
   ERASE_STONE, REST_STONE, applyDrafts, cellKey, customStone, paintCell, sameAsOriginal, saveSteps, splitKey,
   templateStones, type CellDraft, type CellOriginal, type DraftMap, type EditorStone, type SaveStep, type ShiftStone,
 } from './scheduleEditor'
+
+const FORMER_LOCKED = 'Bu çalışan artık bu mağazada değil; geçmiş vardiyaları yalnızca görüntülenir.'
 
 const KIND_ORDER: ShiftKind[] = ['opening', 'mid', 'closing', 'full', 'custom']
 
@@ -198,17 +200,24 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     [savedAssignments]
   )
 
-  /** Hücrenin kayıtlı durumu; izinli, çok günlü tatil ve çalışılmış hücreler kilitli */
+  // Haftada vardiyası olup artık mağazanın aktif çalışanı olmayanlar (taşınan / pasif): salt okunur satır
+  const formerIds = useMemo(() => {
+    const current = new Set(employees.map((e) => e.id))
+    return new Set(savedAssignments.map((a) => a.employee_id).filter((id) => !current.has(id)))
+  }, [employees, savedAssignments])
+
+  /** Hücrenin kayıtlı durumu; izinli, çok günlü tatil, çalışılmış ve eski çalışan hücreleri kilitli */
   const originalOf = useCallback((key: string): CellOriginal => {
     const assignment = savedAssignmentMap.get(key) ?? null
     const leaveId = leaveDayToId.get(key) ?? null
     const isRest = savedRestDayMap.has(key)
     let locked: string | null = null
-    if ((savedLeaveMap.has(key) && !isRest) || assignment?.is_on_leave) locked = 'İzinli günler editörde değiştirilemez.'
+    if (formerIds.has(splitKey(key).employeeId)) locked = FORMER_LOCKED
+    else if ((savedLeaveMap.has(key) && !isRest) || assignment?.is_on_leave) locked = 'İzinli günler editörde değiştirilemez.'
     else if (isRest && leaveId && multiDayLeaveIds.has(leaveId)) locked = 'Birden fazla günü kapsayan tatil editörde değiştirilemez.'
     else if (assignment?.worked_minutes != null) locked = 'Çalışılmış vardiya değiştirilemez.'
     return { assignment, restLeaveId: isRest ? leaveId : null, locked }
-  }, [savedAssignmentMap, leaveDayToId, savedRestDayMap, savedLeaveMap, multiDayLeaveIds])
+  }, [savedAssignmentMap, leaveDayToId, savedRestDayMap, savedLeaveMap, multiDayLeaveIds, formerIds])
 
   // Kaydedilecek taslaklar: veri yenilenip kayıtlı hale gelenler ya da kilitlenenler düşer
   const pendingDrafts: DraftMap = useMemo(() => {
@@ -247,20 +256,10 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
   }, [assignments])
 
   // Satırlar rol sırasına göre: Müdür → Müdür yrd. → Reyon sorumlusu → Kasa → Satış → Görsel → Depo
-  const scheduleEntries: WeeklyScheduleEntry[] = useMemo(() => {
-    const entries = employees.map((emp) => ({
-      employee: emp,
-      dayAssignments: Object.fromEntries(
-        weekDays.map((d) => [d, assignmentMap.get(`${emp.id}:${d}`) ?? null])
-      ),
-    }))
-    entries.sort((a, b) => {
-      const byRole = compareRoles(a.employee.roles, b.employee.roles)
-      if (byRole !== 0) return byRole
-      return (a.employee.full_name ?? '').localeCompare(b.employee.full_name ?? '', 'tr')
-    })
-    return entries
-  }, [employees, weekDays, assignmentMap])
+  const scheduleEntries: WeeklyScheduleEntry[] = useMemo(
+    () => buildScheduleEntries(employees, assignments, weekDays),
+    [employees, weekDays, assignments]
+  )
 
   // Çalışan bazında haftalık özet
   const statsMap = useMemo(() => {
@@ -274,6 +273,10 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
 
   const openAssignDialog = (emp: EmployeeWithRole, date: string) => {
     if (readOnly) return   // çalışan modu — sadece görüntüleme
+    if (formerIds.has(emp.id)) {
+      toast.info(FORMER_LOCKED, { id: 'plan-former-locked', description: emp.full_name })
+      return
+    }
     // İzinli / tatil günü: silme onayı
     const leaveKey = `${emp.id}:${date}`
     const leaveId = leaveDayToId.get(leaveKey)

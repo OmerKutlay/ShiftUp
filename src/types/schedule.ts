@@ -19,6 +19,11 @@ export interface WeeklyScheduleEntry {
   employee: EmployeeWithRole
   // work_date string → ShiftAssignmentWithDetails | null
   dayAssignments: Record<string, ShiftAssignmentWithDetails | null>
+  /**
+   * Artık mağazanın aktif çalışanı değil (başka mağazaya taşındı / pasif): satır yalnızca bu
+   * mağazadaki geçmiş vardiyalarını gösterir ve düzenlenemez. Değer, satırda gösterilen etikettir.
+   */
+  formerLabel?: string
 }
 
 // Vardiya atama payload

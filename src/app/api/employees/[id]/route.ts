@@ -6,8 +6,8 @@
  * çalışanının varlığı sızdırılmaz).
  *
  * Mağaza transferi: PATCH gövdesinde store_id yalnızca Admin içindir; hedef mağaza var ve
- * aktif olmalı. Vardiyalar mağazaya bağlı kaldığından, eski mağazada bugün ve sonrasına
- * ait vardiyası olan çalışan taşınamaz (409 HAS_FUTURE_SHIFTS) — önce o vardiyalar silinmelidir.
+ * aktif olmalı. Eski mağazadaki bugün ve sonrası vardiyalar silinir; geçmiş (ve çalışılmış)
+ * vardiyalar eski mağazada kalır (bkz. employeeTransfer). Açık giriş kaydı varsa 409 OPEN_ATTENDANCE.
  *
  * Hiyerarşi: Yönetici herkesi; diğer yöneticiler yalnızca kendinden düşük
  * roldeki çalışanları yönetebilir. E-posta değişikliği bağlı Supabase Auth
@@ -24,7 +24,7 @@ import { validateEmployeeInput } from '@/lib/employeeValidation'
 import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/apiErrors'
 import { isUuid } from '@/lib/validation'
 import { canSwitchStore } from '@/lib/storeScope'
-import { turkeyToday } from '@/lib/dateUtils'
+import { applyStoreTransfer, hasOpenAttendance, OPEN_ATTENDANCE_MESSAGE, TransferError, type TransferResult } from '@/lib/employeeTransfer'
 import { logAudit } from '@/lib/auditLog'
 import { addLateJoinerRecipient } from '@/lib/announcementService'
 
@@ -109,20 +109,9 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       if (!(await isActiveStore(body.store_id))) {
         return notFound('Hedef mağaza bulunamadı veya aktif değil.', 'STORE_NOT_FOUND')
       }
-      // Vardiyalar eski mağazada kalır: bugün ve sonrası için vardiyası varsa taşıma yapılmaz
-      const { data: futureShifts, error: fsErr } = await createAdminClient()
-        .from('shift_assignments')
-        .select('id')
-        .eq('employee_id', id)
-        .eq('store_id', target.store_id)
-        .gte('work_date', turkeyToday())
-        .limit(1)
-      if (fsErr) throw fsErr
-      if (futureShifts && futureShifts.length > 0) {
-        return conflict(
-          'Bu çalışanın bugün veya sonrası için vardiyası var. Başka mağazaya taşımadan önce gelecekteki vardiyalarını silin.',
-          'HAS_FUTURE_SHIFTS'
-        )
+      // Açık giriş kaydı olan vardiya eski mağazaya bağlıdır; önce çıkış yapılmalı
+      if (await hasOpenAttendance(createAdminClient(), id, target.store_id)) {
+        return conflict(OPEN_ATTENDANCE_MESSAGE, 'OPEN_ATTENDANCE')
       }
       transferTo = body.store_id
     }
@@ -141,7 +130,23 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     const emailChanged =
       result.payload.email !== undefined && result.payload.email !== (target.email ?? null)
 
-    const employee = await updateEmployee(id, result.payload)
+    let employee
+    let transfer: TransferResult | null = null
+    if (transferTo) {
+      // Önce diğer alanlar: doğrulama hataları (ör. aynı e-posta) transferden önce yakalanır
+      const { store_id: _store, ...rest } = result.payload
+      if (Object.keys(rest).length > 0) await updateEmployee(id, rest)
+      transfer = await applyStoreTransfer(createAdminClient(), {
+        employeeId: id,
+        employeeName: target.full_name,
+        actorId: auth.employee.id,
+        fromStoreId: target.store_id,
+        toStoreId: transferTo,
+      })
+      employee = await updateEmployee(id, { store_id: transferTo }) // RPC zaten taşıdı; güncel satırı döner
+    } else {
+      employee = await updateEmployee(id, result.payload)
+    }
 
     // Auth kullanıcısını senkron tut (e-posta değişti / pasifleştirildi)
     if (target.auth_user_id) {
@@ -181,13 +186,24 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
           entityType: 'employee',
           entityId: id,
           before: { store_id: target.store_id },
-          after: { store_id: transferTo },
+          after: {
+            store_id: transferTo,
+            shifts_deleted: transfer?.shifts_deleted ?? 0,
+            open_shifts_reopened: transfer?.open_shifts_reopened ?? 0,
+            swaps_cancelled: transfer?.swaps.length ?? 0,
+          },
         })
       }
     }
 
-    return NextResponse.json({ employee })
+    return NextResponse.json({
+      employee,
+      ...(transfer ? { transfer: { shifts_deleted: transfer.shifts_deleted, swaps_cancelled: transfer.swaps.length } } : {}),
+    })
   } catch (err) {
+    if (err instanceof TransferError) {
+      return err.code === 'NOT_FOUND' ? notFound(err.message) : conflict(err.message, err.code)
+    }
     if (err instanceof Error && /duplicate|unique|23505/i.test(err.message)) {
       return conflict('Bu e-posta adresi başka bir çalışana ait.', 'DUPLICATE_EMAIL')
     }

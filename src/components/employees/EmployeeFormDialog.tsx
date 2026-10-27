@@ -180,7 +180,7 @@ export function EmployeeFormDialog({ open, onClose, onSave, employee, roles, loa
         const to = stores?.find((s) => s.id === form.store_id)?.name ?? 'seçilen'
         const ok = await confirm({
           title: `${employee.full_name} taşınsın mı?`,
-          message: `${employee.full_name}, ${from} mağazasından ${to} mağazasına taşınacak. ${from} mağazasının listelerinde artık görünmeyecek.`,
+          message: `${employee.full_name}, ${from} mağazasından ${to} mağazasına taşınacak. ${from} mağazasındaki bugün ve sonrası vardiyaları haftalık plandan kaldırılacak; geçmiş vardiyaları ${from} planında ve çalışanın özetinde kalır.`,
           confirmText: 'Taşı ve kaydet',
         })
         if (!ok) return

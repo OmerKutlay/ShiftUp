@@ -109,7 +109,29 @@ function seed(): FakeDb {
     notifications: [],
     attendance_records: [],
     public_holidays: [],
-  })
+    open_shifts: [],
+  }, { rpc: { apply_employee_store_transfer: fakeTransferRpc } })
+}
+
+/** apply_employee_store_transfer'ın bellek içi karşılığı (SQL: 20261029100000_employee_store_transfer) */
+function fakeTransferRpc(a: { p_employee_id: string; p_from_store: string; p_to_store: string }, fdb: FakeDb) {
+  const t = fdb.tables
+  const today = turkeyToday()
+  const emp = t.employees.find((e) => e.id === a.p_employee_id && e.store_id === a.p_from_store)
+  if (!emp) return { error: { message: 'NOT_FOUND' } }
+  const mine = t.shift_assignments.filter((s) => s.employee_id === a.p_employee_id && s.store_id === a.p_from_store)
+  const hasRecord = (id: string) => t.attendance_records.some((r) => r.shift_assignment_id === id)
+  if (mine.some((s) => s.work_date >= addDaysToDateString(today, -1) &&
+    t.attendance_records.some((r) => r.shift_assignment_id === s.id && r.status !== 'clocked_out'))) {
+    return { error: { message: 'OPEN_ATTENDANCE' } }
+  }
+  const del = new Set(mine.filter((s) => s.work_date >= today && !hasRecord(s.id)).map((s) => s.id))
+  const swaps = t.shift_swap_requests.filter((w) => w.status === 'pending' &&
+    (w.requester_id === a.p_employee_id || w.target_id === a.p_employee_id))
+  swaps.forEach((w) => { w.status = 'cancelled' })
+  t.shift_assignments = t.shift_assignments.filter((s) => !del.has(s.id))
+  emp.store_id = a.p_to_store
+  return { data: { shifts_deleted: del.size, open_shifts_reopened: 0, swaps: swaps.map((w) => ({ id: w.id, requester_id: w.requester_id, target_id: w.target_id })) } }
 }
 
 const session = (id: string, name: string, level: string, home: string, active = home) => ({
@@ -246,12 +268,47 @@ describe('PATCH/DELETE /api/employees/[id] — mağaza kapsamı ve transfer', ()
     expect(db().tables.audit_logs.map((a) => a.action)).toContain('employee.transfer')
   })
 
-  it('gelecek vardiyası olan çalışanın transferi 409 HAS_FUTURE_SHIFTS', async () => {
+  it('transferde eski mağazadaki bugün ve sonrası vardiyalar silinir; geçmiş ve çalışılmış vardiyalar kalır', async () => {
+    const today = turkeyToday()
+    const t = db().tables
+    t.shift_assignments.push(
+      { id: uuid(33), employee_id: EMP_A1, store_id: STORE_A, work_date: PAST, start_time: '09:00', end_time: '17:00' },
+      { id: uuid(34), employee_id: EMP_A1, store_id: STORE_A, work_date: today, start_time: '09:00', end_time: '17:00' },
+      { id: uuid(35), employee_id: EMP_A1, store_id: STORE_A, work_date: today, start_time: '18:00', end_time: '20:00' },
+    )
+    t.attendance_records.push({ id: uuid(80), shift_assignment_id: uuid(35), status: 'clocked_out' })
+    asAdmin()
+    const res = await employeePATCH(json(`/api/employees/${EMP_A1}`, 'PATCH', { store_id: STORE_B, full_name: 'Ali Yeni' }), ctx(EMP_A1))
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.employee).toMatchObject({ store_id: STORE_B, full_name: 'Ali Yeni' })
+    expect(body.transfer).toEqual({ shifts_deleted: 2, swaps_cancelled: 0 })
+    expect(db().tables.shift_assignments.filter((s) => s.employee_id === EMP_A1).map((s) => s.id).sort())
+      .toEqual([uuid(33), uuid(35)].sort())
+    const audit = db().tables.audit_logs.find((x) => x.action === 'employee.transfer')
+    expect(audit?.after).toMatchObject({ store_id: STORE_B, shifts_deleted: 2 })
+  })
+
+  it('açık giriş kaydı varken transfer 409 OPEN_ATTENDANCE; hiçbir şey değişmez', async () => {
+    const t = db().tables
+    t.shift_assignments.push({ id: uuid(36), employee_id: EMP_A1, store_id: STORE_A, work_date: turkeyToday(), start_time: '09:00', end_time: '17:00' })
+    t.attendance_records.push({ id: uuid(81), shift_assignment_id: uuid(36), status: 'on_break' })
+    asAdmin()
+    const res = await employeePATCH(json(`/api/employees/${EMP_A1}`, 'PATCH', { store_id: STORE_B, full_name: 'Ali Yeni' }), ctx(EMP_A1))
+    expect(res.status).toBe(409)
+    expect((await res.json()).code).toBe('OPEN_ATTENDANCE')
+    expect(t.employees.find((x) => x.id === EMP_A1)).toMatchObject({ store_id: STORE_A, full_name: 'Ali A1' })
+    expect(t.shift_assignments.some((s) => s.id === SH_A1)).toBe(true)
+  })
+
+  it('transferde bekleyen takas iptal edilir ve karşı taraf bildirilir', async () => {
+    db().tables.shift_swap_requests.push(
+      { id: uuid(61), requester_id: EMP_A2, requester_shift_id: SH_A2, target_id: EMP_A1, target_shift_id: SH_A1, status: 'pending' })
     asAdmin()
     const res = await employeePATCH(json(`/api/employees/${EMP_A1}`, 'PATCH', { store_id: STORE_B }), ctx(EMP_A1))
-    expect(res.status).toBe(409)
-    expect((await res.json()).code).toBe('HAS_FUTURE_SHIFTS')
-    expect(db().tables.employees.find((e) => e.id === EMP_A1)?.store_id).toBe(STORE_A)
+    expect(res.status).toBe(200)
+    expect((await res.json()).transfer.swaps_cancelled).toBe(1)
+    expect(db().tables.notifications).toEqual([expect.objectContaining({ employee_id: EMP_A2, type: 'shift_swap_rejected' })])
   })
 
   it('pasif veya olmayan mağazaya transfer 404', async () => {
