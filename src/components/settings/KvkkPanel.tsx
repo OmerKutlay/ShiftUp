@@ -7,11 +7,11 @@
  * Şirket bilgisi mağazadan bağımsızdır; yalnızca Admin düzenler, Mağaza Müdürü+ görür.
  * Onay listesi yalnızca aktif mağazanın aktif çalışanlarını gösterir.
  */
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
 import { toast } from 'sonner'
-import { CircleAlert, ExternalLink } from 'lucide-react'
+import { CircleAlert, ExternalLink, Users } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { ACCESS } from '@/lib/auth/roles'
 import { formatInTimeZone } from '@/lib/dateUtils'
@@ -19,12 +19,16 @@ import { COMPANY_FIELD_LIMITS, KVKK_NOTICE_VERSION, PRIVACY_PATH, type CompanySe
 import {
   COMPANY_SETTINGS_KEY, KVKK_LIST_KEY, fetchCompanySettings, fetchKvkkAckList, saveCompanySettings,
 } from '@/lib/api/kvkk'
-import { StatusBadge } from '@/components/common'
+import { ListSkeleton, PersonAvatar, StatusBadge } from '@/components/common'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import {
+  Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemSeparator, ItemTitle,
+} from '@/components/ui/item'
 import { Spinner } from '@/components/ui/spinner'
 import { Textarea } from '@/components/ui/textarea'
 
@@ -139,36 +143,52 @@ function AckList() {
           {data ? ` — ${done}/${rows.length} çalışan` : ''}
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex flex-col gap-3">
         {error && (
           <Alert variant="destructive">
             <CircleAlert />
             <AlertDescription>{error instanceof Error ? error.message : 'Liste alınamadı.'}</AlertDescription>
           </Alert>
         )}
-        {isLoading && <Spinner />}
-        {data && rows.length === 0 && <p className="text-sm text-muted-foreground">Aktif çalışan yok.</p>}
-        <ul className="divide-y">
-          {rows.map((r) => {
-            const current = !!r.kvkk_notice_ack_at && r.kvkk_notice_version === KVKK_NOTICE_VERSION
-            return (
-              <li key={r.id} className="flex items-center justify-between gap-3 py-2.5">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{r.full_name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {r.kvkk_notice_ack_at
-                      ? `Sürüm ${r.kvkk_notice_version ?? '?'} · ${formatInTimeZone(r.kvkk_notice_ack_at, 'dd.MM.yyyy HH:mm')}`
-                      : 'Henüz teyit etmedi'}
-                  </p>
-                </div>
-                <StatusBadge
-                  tone={current ? 'success' : r.kvkk_notice_ack_at ? 'warning' : 'neutral'}
-                  label={current ? 'Güncel' : r.kvkk_notice_ack_at ? 'Eski sürüm' : 'Bekliyor'}
-                />
-              </li>
-            )
-          })}
-        </ul>
+        {isLoading && <ListSkeleton count={4} actions={1} />}
+        {data && rows.length === 0 && (
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><Users /></EmptyMedia>
+              <EmptyTitle>Aktif çalışan yok</EmptyTitle>
+              <EmptyDescription>Bu mağazada teyit bekleyen çalışan bulunmuyor.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        )}
+        {rows.length > 0 && (
+          <ItemGroup>
+            {rows.map((r, i) => {
+              const current = !!r.kvkk_notice_ack_at && r.kvkk_notice_version === KVKK_NOTICE_VERSION
+              return (
+                <Fragment key={r.id}>
+                  {i > 0 && <ItemSeparator />}
+                  <Item size="sm" className="px-0">
+                    <ItemMedia><PersonAvatar name={r.full_name} /></ItemMedia>
+                    <ItemContent className="min-w-0">
+                      <ItemTitle className="truncate">{r.full_name}</ItemTitle>
+                      <ItemDescription className="tabular-nums">
+                        {r.kvkk_notice_ack_at
+                          ? `Sürüm ${r.kvkk_notice_version ?? '?'} · ${formatInTimeZone(r.kvkk_notice_ack_at, 'dd.MM.yyyy HH:mm')}`
+                          : 'Henüz teyit etmedi'}
+                      </ItemDescription>
+                    </ItemContent>
+                    <ItemActions>
+                      <StatusBadge
+                        tone={current ? 'success' : r.kvkk_notice_ack_at ? 'warning' : 'neutral'}
+                        label={current ? 'Güncel' : r.kvkk_notice_ack_at ? 'Eski sürüm' : 'Bekliyor'}
+                      />
+                    </ItemActions>
+                  </Item>
+                </Fragment>
+              )
+            })}
+          </ItemGroup>
+        )}
       </CardContent>
     </Card>
   )

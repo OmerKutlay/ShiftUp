@@ -17,6 +17,7 @@ import { useSWRConfig } from 'swr'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card, CardAction, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
@@ -84,23 +85,28 @@ export function TemplatesPanel() {
       {data && data.length > 0 && (
         <ul className="grid gap-3 md:grid-cols-2">
           {data.map((t) => (
-            <li key={t.id} className="flex flex-col gap-2 rounded-xl border bg-card p-4 shadow-xs">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="font-semibold break-words">{t.name}</p>
-                  <p className="text-sm text-muted-foreground">
+            <li key={t.id}>
+              <Card className="h-full gap-4 py-4 shadow-xs md:py-5">
+                <CardHeader className="px-4 md:px-5">
+                  <CardTitle className="break-words">{t.name}</CardTitle>
+                  <CardDescription>
                     {CHECKLIST_KIND_LABELS[t.kind]} · {weekdaysLabel(t.weekdays)}
                     {t.due_time && <span className="tabular-nums"> · Son saat {t.due_time}</span>}
-                  </p>
-                </div>
-                <Switch checked={t.active} onCheckedChange={(v) => void toggleActive(t, v)} aria-label={`${t.name} aktif`} />
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <Badge variant="outline">{t.items.length} madde</Badge>
-                <Button variant="outline" size="sm" onClick={() => setDialog({ template: t, n: Date.now() })}>
-                  <SquarePen /> Düzenle
-                </Button>
-              </div>
+                  </CardDescription>
+                  <CardAction>
+                    <Switch checked={t.active} onCheckedChange={(v) => void toggleActive(t, v)} aria-label={`${t.name} aktif`} />
+                  </CardAction>
+                </CardHeader>
+                <CardFooter className="mt-auto justify-between gap-2 px-4 md:px-5">
+                  <span className="flex flex-wrap items-center gap-2">
+                    <Badge variant="secondary" className="tabular-nums">{t.items.length} madde</Badge>
+                    {!t.active && <Badge tone="neutral">Pasif</Badge>}
+                  </span>
+                  <Button variant="outline" size="sm" onClick={() => setDialog({ template: t, n: Date.now() })}>
+                    <SquarePen /> Düzenle
+                  </Button>
+                </CardFooter>
+              </Card>
             </li>
           ))}
         </ul>

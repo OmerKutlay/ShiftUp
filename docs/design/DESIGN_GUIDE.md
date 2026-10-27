@@ -166,6 +166,11 @@ shadcn **Field**: `FieldGroup` > `Field` > `FieldLabel` + kontrol + `FieldDescri
 `FieldError`. İki sütunlu formlar `grid gap-4 sm:grid-cols-2`. Oluştur/düzenle **Dialog**
 içinde (`sm:max-w-lg`, uzun formlar `sm:max-w-2xl`); altta `DialogFooter` (iptal `outline`,
 kaydet varsayılan + `Spinner`).
+- Tek seçim (2–4 seçenek): `ChoiceCards` (RadioGroup + `FieldLabel` seçim kartı, seçili kart
+  `border-primary`). Kısa etiketli çoklu seçim (haftanın günleri): `ChoiceChips` (ToggleGroup,
+  aynı vurgu). Görünüm seçici (`SegmentedControl`) form alanında kullanılmaz.
+- Açma/kapama satırı: `Field orientation="horizontal"` > `FieldContent` (`FieldLabel` +
+  `FieldDescription`) + `Switch`.
 
 ### Geri bildirim
 - İşlem sonucu: **Sonner** toast (`toast.success`, `toast.error`).
@@ -243,5 +248,10 @@ taşıyordu; tablo, boş durum, form alanı ve geri bildirim kalıpları sayfada
 | `/reports` | reports/* | Devam raporu örnek sayfa; puantaj ve fazla çalışma aynı dile |
 | `/settings` | settings/* | Sekmeler korunur; formlar `Field`, denetim kaydı `DataTable` |
 | `/notifications`, `/more` | notifications/*, more/* | `Item` listeleri, boş durum `Empty` |
+| `/checklists` | checklists/* | Bugün / Şablonlar / Geçmiş `Tabs`; uygulama ve şablon kartları `Card`, geçmiş `SectionCard`, maddeler `Dialog` içinde `Field` seçim kartı |
+| `/announcements` | announcements/* | Güncel / Arşiv `Tabs`, `Item` listesi; form `ChoiceCards` + `Field`; alıcılar `Item` |
+| `/gizlilik` | kvkk/* | Okuma sayfası (`Page size="narrow"`), yönetici notu `Alert tone="warning"` |
+| Ayarlar › KVKK / Norm / Hatalar | settings/* | Teyit listesi `Item`; norm satırları `Item`; hatalar `DataTable` + ayrıntı `Dialog` (denetim kaydıyla aynı) |
+| Raporlar › Bordro puantajı | reports/PayrollPanel | Matris tablo (yatay kayar), bilgi `Alert tone="info"`, boş `Empty` |
 | `/attendance/scan`, `/qr-kiosk` | qr/* | Tam ekran deneyim korunur; kartlar/rozetler yeni dilde |
 | `/login`, hata/çevrimdışı sayfaları | auth/*, app/* | shadcn login-01 kalıbı (`Card` + `Field`), `Empty` |

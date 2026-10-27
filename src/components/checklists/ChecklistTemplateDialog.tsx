@@ -10,7 +10,7 @@ import { ArrowDown, ArrowUp, Plus, Trash2, TriangleAlert } from 'lucide-react'
 import type { ChecklistKind, ChecklistTemplate, ChecklistTemplateInput } from '@/types/checklist'
 import { CHECKLIST_KIND_LABELS } from '@/types/checklist'
 import { ALL_WEEKDAYS, MAX_ITEMS, MAX_ITEM_TEXT } from '@/lib/checklistRules'
-import { cn } from '@/lib/utils'
+import { ChoiceCards, ChoiceChips } from '@/components/common'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -49,8 +49,6 @@ export function ChecklistTemplateDialog({ open, template, loading, onClose, onSa
   )
   const [error, setError] = useState<string | null>(null)
 
-  const toggleDay = (d: number) =>
-    setWeekdays((cur) => (cur.includes(d) ? cur.filter((x) => x !== d) : [...cur, d]))
   const patchItem = (key: number, patch: Partial<DraftItem>) =>
     setItems((cur) => cur.map((i) => (i.key === key ? { ...i, ...patch } : i)))
 
@@ -98,43 +96,22 @@ export function ChecklistTemplateDialog({ open, template, loading, onClose, onSa
 
             <Field>
               <FieldLabel>Tür</FieldLabel>
-              <div role="group" aria-label="Liste türü" className="inline-flex rounded-lg bg-muted p-[3px]">
-                {KINDS.map((k) => (
-                  <button
-                    key={k}
-                    type="button"
-                    aria-pressed={kind === k}
-                    onClick={() => setKind(k)}
-                    className={cn(
-                      'h-9 rounded-md px-3 text-sm font-medium transition-colors',
-                      kind === k ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'
-                    )}
-                  >
-                    {CHECKLIST_KIND_LABELS[k]}
-                  </button>
-                ))}
-              </div>
+              <ChoiceCards
+                aria-label="Liste türü"
+                value={kind}
+                onChange={setKind}
+                options={KINDS.map((k) => ({ value: k, label: CHECKLIST_KIND_LABELS[k] }))}
+              />
             </Field>
 
             <Field>
               <FieldLabel>Günler</FieldLabel>
-              <div role="group" aria-label="Günler" className="flex flex-wrap gap-1.5">
-                {WEEKDAY_OPTIONS.map((d) => (
-                  <button
-                    key={d.value}
-                    type="button"
-                    aria-pressed={weekdays.includes(d.value)}
-                    aria-label={d.long}
-                    onClick={() => toggleDay(d.value)}
-                    className={cn(
-                      'h-10 min-w-12 rounded-lg border px-3 text-sm font-medium transition-colors',
-                      weekdays.includes(d.value) ? 'border-primary bg-primary text-primary-foreground' : 'bg-card text-muted-foreground hover:text-foreground'
-                    )}
-                  >
-                    {d.short}
-                  </button>
-                ))}
-              </div>
+              <ChoiceChips
+                aria-label="Günler"
+                value={weekdays.map(String)}
+                onChange={(v) => setWeekdays(v.map(Number))}
+                options={WEEKDAY_OPTIONS.map((d) => ({ value: String(d.value), label: d.short, 'aria-label': d.long }))}
+              />
             </Field>
 
             <Field>

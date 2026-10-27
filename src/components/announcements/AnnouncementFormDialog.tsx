@@ -8,12 +8,12 @@
 import { useState } from 'react'
 import { Send } from 'lucide-react'
 import { toast } from 'sonner'
-import { DateField, SegmentedControl } from '@/components/common'
+import { ChoiceCards, DateField } from '@/components/common'
 import { Button } from '@/components/ui/button'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
+import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
@@ -89,11 +89,10 @@ export function AnnouncementFormDialog({ open, onOpenChange, editing, canCompany
           {!editing && canCompanyWide && (
             <Field>
               <FieldLabel>Mağaza</FieldLabel>
-              <SegmentedControl
+              <ChoiceCards
                 aria-label="Hedef mağaza"
                 value={scope}
                 onChange={setScope}
-                fullWidth
                 options={[
                   { value: 'store', label: storeName ?? 'Bu mağaza' },
                   { value: 'all', label: 'Tüm mağazalar' },
@@ -121,11 +120,10 @@ export function AnnouncementFormDialog({ open, onOpenChange, editing, canCompany
           {!editing && (
             <Field>
               <FieldLabel>Kimler görsün</FieldLabel>
-              <SegmentedControl
+              <ChoiceCards
                 aria-label="Hedef kitle"
                 value={target}
                 onChange={setTarget}
-                fullWidth
                 options={[{ value: 'all', label: 'Herkes' }, { value: 'managers', label: 'Yalnızca yöneticiler' }]}
               />
             </Field>
@@ -135,18 +133,18 @@ export function AnnouncementFormDialog({ open, onOpenChange, editing, canCompany
             min={turkeyToday()} clearable fullWidth
             helperText="Bu günün sonunda duyuru listeden kalkar, Arşiv'e geçer." />
 
-          <div className="flex items-center justify-between gap-4">
-            <FieldLabel htmlFor="ann-pinned" className="flex-1">Listenin başına sabitle</FieldLabel>
+          <Field orientation="horizontal">
+            <FieldLabel htmlFor="ann-pinned">Listenin başına sabitle</FieldLabel>
             <Switch id="ann-pinned" checked={pinned} onCheckedChange={setPinned} />
-          </div>
+          </Field>
           {!editing && (
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex-1">
+            <Field orientation="horizontal">
+              <FieldContent>
                 <FieldLabel htmlFor="ann-ack">&quot;Okudum, anladım&quot; onayı zorunlu</FieldLabel>
                 <FieldDescription>Okuyanların onay verdiği ayrıca izlenir.</FieldDescription>
-              </div>
+              </FieldContent>
               <Switch id="ann-ack" checked={requiresAck} onCheckedChange={setRequiresAck} />
-            </div>
+            </Field>
           )}
 
           {error && <FieldError>{error}</FieldError>}

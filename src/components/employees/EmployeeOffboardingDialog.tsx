@@ -166,10 +166,12 @@ export function EmployeeOffboardingDialog({ employee, onClose, onDone }: Props) 
                       </li>
                     ))}
                   </ul>
-                  <label className="flex items-center gap-2">
-                    <Checkbox checked={convert} onCheckedChange={(v) => setConvert(v === true)} />
-                    <span>Açık vardiyaya çevir (yalnızca bugün ve sonrası; diğer çalışanlar alabilir)</span>
-                  </label>
+                  <Field orientation="horizontal">
+                    <Checkbox id="offboarding-convert" checked={convert} onCheckedChange={(v) => setConvert(v === true)} />
+                    <FieldLabel htmlFor="offboarding-convert" className="font-normal">
+                      Açık vardiyaya çevir (yalnızca bugün ve sonrası; diğer çalışanlar alabilir)
+                    </FieldLabel>
+                  </Field>
                 </div>
               )}
               <p className="rounded-md bg-background p-2">

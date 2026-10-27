@@ -2,18 +2,19 @@
 
 /**
  * HistoryPanel — "Geçmiş" sekmesi (Müdür Yardımcısı+, salt okunur): son 30 günün uygulamaları,
- * şablon başına; tamamlanma durumu, tamamlayan kişi ve saati.
+ * şablon başına bölüm kartı (SectionCard); tamamlanma durumu, tamamlayan kişi ve saati.
  */
 import { useMemo } from 'react'
 import useSWR from 'swr'
-import { Check, TriangleAlert } from 'lucide-react'
+import { History, TriangleAlert } from 'lucide-react'
 
 import type { ChecklistHistoryRun } from '@/types/checklist'
 import { CHECKLISTS_HISTORY_KEY, fetchChecklistHistory } from '@/lib/api/checklists'
 import { formatShortDateTr } from '@/lib/dateUtils'
+import { ListSkeleton, SectionCard, SectionRow } from '@/components/common'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { clock } from './format'
 
 export function HistoryPanel() {
@@ -38,34 +39,40 @@ export function HistoryPanel() {
       </Alert>
     )
   }
-  if (!data) return <Skeleton className="h-40 rounded-xl" />
-  if (groups.length === 0) return <p className="text-sm text-muted-foreground">Son 30 günde kayıt yok.</p>
+  if (!data) return <ListSkeleton count={4} avatar={false} />
+  if (groups.length === 0) {
+    return (
+      <Empty className="border">
+        <EmptyHeader>
+          <EmptyMedia variant="icon"><History /></EmptyMedia>
+          <EmptyTitle>Son 30 günde kayıt yok</EmptyTitle>
+          <EmptyDescription>Kontrol listeleri uygulandıkça burada görünür.</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-4">
-      {groups.map(([templateId, g]) => (
-        <section key={templateId} className="rounded-xl border bg-card shadow-xs">
-          <h3 className="border-b px-4 py-3 font-semibold">{g.name}</h3>
-          <ul className="divide-y">
+      {groups.map(([templateId, g]) => {
+        const completed = g.runs.filter((r) => r.completed_at).length
+        return (
+          <SectionCard key={templateId} title={g.name} description={`${g.runs.length} günün ${completed} tanesi tamamlandı`}>
             {g.runs.map((r) => (
-              <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">
-                <span className="tabular-nums">{formatShortDateTr(r.run_date)}</span>
+              <SectionRow key={r.id} className="flex-wrap justify-between gap-y-1">
+                <span className="font-medium tabular-nums">{formatShortDateTr(r.run_date)}</span>
                 <span className="flex flex-wrap items-center gap-2">
+                  {r.completed_by_name && <span className="text-muted-foreground">{r.completed_by_name}</span>}
                   <span className="text-muted-foreground tabular-nums">{r.done}/{r.total}</span>
-                  {r.completed_at ? (
-                    <>
-                      <Badge tone="success"><Check className="size-3" aria-hidden />Tamamlandı {clock(r.completed_at)}</Badge>
-                      {r.completed_by_name && <span className="text-muted-foreground">{r.completed_by_name}</span>}
-                    </>
-                  ) : (
-                    <Badge tone="danger">Tamamlanmadı</Badge>
-                  )}
+                  {r.completed_at
+                    ? <Badge tone="success">Tamamlandı {clock(r.completed_at)}</Badge>
+                    : <Badge tone="danger">Tamamlanmadı</Badge>}
                 </span>
-              </li>
+              </SectionRow>
             ))}
-          </ul>
-        </section>
-      ))}
+          </SectionCard>
+        )
+      })}
     </div>
   )
 }

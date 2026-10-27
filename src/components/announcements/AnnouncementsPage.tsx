@@ -11,16 +11,19 @@
 import { Suspense, useEffect, useState } from 'react'
 import useSWR from 'swr'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Megaphone, Pin, Plus, ShieldCheck } from 'lucide-react'
+import { Megaphone, Pin, Plus, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { ACCESS, hasRole, MANAGER_ROLES } from '@/lib/auth/roles'
 import { apiFetch } from '@/lib/api/http'
 import { announcementsKey, archiveMoreKey, type AnnouncementsResponse } from '@/lib/api/announcements'
-import { ListSkeleton, Page, PageHeader, SegmentedControl } from '@/components/common'
+import { ListSkeleton, Page, PageHeader } from '@/components/common'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { Item, ItemContent, ItemDescription, ItemGroup, ItemTitle } from '@/components/ui/item'
+import { Spinner } from '@/components/ui/spinner'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { previewText } from '@/lib/announcementText'
 import type { Announcement } from '@/types/announcement'
 import { AnnouncementDetailDialog } from './AnnouncementDetailDialog'
@@ -80,44 +83,53 @@ export function AnnouncementsPage() {
       <PageHeader
         title="Duyurular"
         description="Mağaza duyuruları ve okundu takibi"
-        titleAdornment={data && (data.unread_count ?? 0) > 0 ? <Badge tone="brand">{data.unread_count} yeni</Badge> : undefined}
+        titleAdornment={data && (data.unread_count ?? 0) > 0 ? <Badge variant="secondary" className="tabular-nums">{data.unread_count} yeni</Badge> : undefined}
         actions={isManager ? (
           <Button onClick={() => openForm(null)}><Plus /> Yeni duyuru</Button>
         ) : undefined}
       />
 
-      <SegmentedControl
-        aria-label="Duyuru görünümü"
-        value={view}
-        onChange={setView}
-        options={[{ value: 'active', label: 'Güncel' }, { value: 'archive', label: 'Arşiv' }]}
-      />
+      <Tabs value={view} onValueChange={(v) => setView(v as 'active' | 'archive')} className="gap-4">
+        <TabsList>
+          <TabsTrigger value="active">Güncel</TabsTrigger>
+          <TabsTrigger value="archive">Arşiv</TabsTrigger>
+        </TabsList>
+        <TabsContent value={view} className="flex flex-col gap-4">
+          {isLoading && !data ? <ListSkeleton count={4} avatar={false} lines={3} /> : error && !data ? (
+            <Alert variant="destructive">
+              <TriangleAlert />
+              <AlertTitle>Duyurular yüklenemedi</AlertTitle>
+              <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
+                {error instanceof Error ? error.message : 'Bir hata oluştu.'}
+                <Button variant="outline" size="sm" onClick={() => void mutate()}>Tekrar dene</Button>
+              </AlertDescription>
+            </Alert>
+          ) : items.length === 0 ? (
+            <Empty className="border py-12">
+              <EmptyHeader>
+                <EmptyMedia variant="icon"><Megaphone /></EmptyMedia>
+                <EmptyTitle>{view === 'archive' ? 'Arşivde duyuru yok' : 'Duyuru yok'}</EmptyTitle>
+                <EmptyDescription>
+                  {view === 'archive' ? 'Süresi dolan duyurular burada görünür.' : 'Yeni duyurular burada ve bildirimlerinizde görünür.'}
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          ) : (
+            <ItemGroup className="gap-2">
+              {items.map((a) => (
+                <AnnouncementRow key={a.id} a={a} onOpen={() => setOpenId(a.id)} />
+              ))}
+            </ItemGroup>
+          )}
 
-      {isLoading && !data ? <ListSkeleton count={4} avatar={false} lines={3} /> : error && !data ? (
-        <p className="text-sm text-destructive" role="alert">Duyurular yüklenemedi.</p>
-      ) : items.length === 0 ? (
-        <Empty className="py-12">
-          <EmptyHeader>
-            <EmptyMedia variant="icon"><Megaphone /></EmptyMedia>
-            <EmptyTitle>{view === 'archive' ? 'Arşivde duyuru yok' : 'Duyuru yok'}</EmptyTitle>
-            <EmptyDescription>
-              {view === 'archive' ? 'Süresi dolan duyurular burada görünür.' : 'Yeni duyurular burada ve bildirimlerinizde görünür.'}
-            </EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      ) : (
-        <ItemGroup className="gap-2">
-          {items.map((a) => (
-            <AnnouncementRow key={a.id} a={a} onOpen={() => setOpenId(a.id)} />
-          ))}
-        </ItemGroup>
-      )}
-
-      {cursor && view === 'archive' && (
-        <Button variant="outline" onClick={() => void loadMore()} disabled={loadingMore} className="self-center">
-          Daha fazla göster
-        </Button>
-      )}
+          {cursor && view === 'archive' && (
+            <Button variant="outline" onClick={() => void loadMore()} disabled={loadingMore} className="self-center">
+              {loadingMore && <Spinner />}
+              Daha fazla göster
+            </Button>
+          )}
+        </TabsContent>
+      </Tabs>
 
       <AnnouncementDetailDialog id={openId} onClose={closeDetail} onEdit={(a) => openForm(a)} />
       <AnnouncementFormDialog
