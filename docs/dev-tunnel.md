@@ -82,8 +82,10 @@ Bu URL'yi kopyalayın — telefonda bu adresi kullanacaksınız.
    ```
    https://xxxx-xxxx-xxxx-xxxx.trycloudflare.com/qr-kiosk
    ```
-2. Kiosk rolündeki hesapla (veya Müdür Yardımcısı+) giriş yapın — QR tek kullanımlıktır, okutulunca yenisi Realtime Broadcast ile gelir
-3. QR kodu ekranda görünür (her 10 sn ve her okutmadan sonra yenilenir)
+2. Kiosk rolündeki hesapla (veya Müdür Yardımcısı+) giriş yapın — ekran kısa ömürlü bir kiosk anahtarı alır
+3. QR kodu ekranda görünür ve her dakika tarayıcıda yerel olarak yenilenir (istek yok). Kiosk ekranını
+   açan hesap kendi telefonuyla o ekranın kodunu okutamaz; okutmak için başka bir hesap kullanın.
+   WebCrypto gerektiği için sayfa https (tünel) veya localhost üzerinden açılmalıdır.
 
 #### Telefon tarafı (çalışan):
 
@@ -133,5 +135,5 @@ Safari'de konum "İzin Ver" seçmiş olsanız bile hata alıyorsanız:
 | Konum (GPS) | ✅ HTTPS zorunluluğu Cloudflare ile karşılanıyor |
 | QR içeriği | Relative path değil — QR payload içinde URL yok, sadece token |
 | Tunnel süresi | Geçici — process kapatılınca tunnel sona erer, URL değişir |
-| Rate limit | Kiosk QR okuma: 60/saat (yalnızca açılış ve yeniden bağlanma), okutma: 30 işlem/dakika (çalışan başına) |
+| Rate limit | Kiosk anahtarı: 60/saat (açılış + ~12 saatte bir yenileme), okutma: 30 işlem/dakika (çalışan başına) |
 

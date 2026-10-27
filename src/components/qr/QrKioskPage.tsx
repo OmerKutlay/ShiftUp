@@ -1,16 +1,16 @@
 'use client'
 
 /**
- * QrKioskPage — Tek kullanımlık kiosk QR'ı, Supabase Realtime Broadcast ile güncellenir.
+ * QrKioskPage — Kiosk QR'ı ekranda her dakika yerelde üretilir (bkz. @/lib/kioskQrCode).
  *
- * - Ekran aktif mağazanın private "kiosk-qr:<store_id>" kanalına hemen abone olur (mağaza
- *   oturumdan bilinir; bilinmiyorsa kanal adı GET /api/kiosk/qr yanıtından alınır) (kiosk / yönetici / müdür yalnızca kendi
- *   mağazasının, admin her mağazanın kanalına; yetki realtime.messages RLS politikasıyla
- *   veritabanında denetlenir).
- * - Abonelik kurulunca (ilk açılış ve her yeniden bağlanma) güncel kod yine bir kez alınır.
- *   Sonrasında kod yalnızca biri okutup onaylandığında, sunucunun yayınıyla değişir.
- * - Zamanlayıcı / periyodik istek yoktur.
- * - Tarayıcı çevrimdışıyken bağlantı geri gelince (online olayı) güncel kod yine bir kez alınır.
+ * - Açılışta GET /api/kiosk/qr ile aktif mağazanın kısa ömürlü kiosk anahtarı alınır (kiosk /
+ *   yönetici / müdür yalnızca kendi mağazasının, admin aktif mağazanın). Anahtar bitmeden
+ *   (yaklaşık 12 saatte bir) yenisi istenir; kod yenilemesi için istek yoktur.
+ * - Kod dakika sınırında değişir; sunucu saatiyle fark (server_time) düzeltilir, böylece ekran
+ *   saati yanlış olsa da kod geçerli kalır.
+ * - Bağlantı koparsa ekran anahtar bitene kadar çalışmaya devam eder; anahtar alınamazsa
+ *   artan aralıklarla yeniden denenir, bağlantı geri gelince (online olayı) hemen istenir.
+ * - Kodun fotoğrafı ~1,5 dakika sonra geçersizdir; kodu açan hesap kendi kodunu okutamaz.
  * - Sayfa görünürken ekran kilidi (Screen Wake Lock) istenir; destek yoksa sessizce atlanır.
  *   "Tam ekran" butonu yalnızca Fullscreen API destekleniyorsa ve zaten tam ekran / kurulu
  *   uygulama değilse görünür.
@@ -19,8 +19,7 @@
  * geniş ekranda solda canlı saat ve adımlar, sağda büyük QR kartı (bağlantı durumu rozetiyle);
  * telefonda alt alta.
  */
-import { useState, useEffect, useRef, useSyncExternalStore } from 'react'
-import type { RealtimeChannel } from '@supabase/supabase-js'
+import { useState, useEffect, useSyncExternalStore } from 'react'
 import { useRouter } from 'next/navigation'
 import { CircleAlert, LayoutDashboard, LogOut, Maximize, WifiOff } from 'lucide-react'
 import { QrCodeDisplay } from './QrCodeDisplay'
@@ -34,10 +33,13 @@ import { BrandMark } from '@/components/common/BrandMark'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
 import { isKioskRole } from '@/lib/auth/roles'
-import { getSupabaseBrowserClient } from '@/lib/supabase/browser'
+import { computeKioskQr, KIOSK_QR_STEP_MS, type KioskSeed } from '@/lib/kioskQrCode'
 import { isStandaloneDisplay } from '@/lib/pwa/deviceInfo'
 
-const EVENT = 'qr'
+/** Anahtar bitmeden bu kadar önce yenisi istenir */
+const SEED_REFRESH_LEAD_MS = 10 * 60 * 1000
+/** Anahtar alınamazsa yeniden deneme aralığının üst sınırı */
+const SEED_RETRY_MAX_MS = 60 * 1000
 
 type LinkState = 'connecting' | 'live' | 'offline'
 
@@ -134,16 +136,20 @@ export function QrKioskPage() {
   /** Kod her değiştiğinde artar → QR kutusu kısa bir vurgu animasyonuyla yeniden çizilir */
   const [changeCount, setChangeCount] = useState(0)
 
-  /** Her yayında artar: yayından eski bir GET yanıtı yeni kodun üzerine yazmasın */
-  const versionRef = useRef(0)
-
   useScreenWakeLock()
   const canEnterFullscreen = useCanEnterFullscreen()
   const clock = useClock()
 
   useEffect(() => {
-    const supabase = getSupabaseBrowserClient()
     let disposed = false
+    let seed: KioskSeed | null = null
+    /** Sunucu saati − cihaz saati: kod sunucunun dakika penceresine göre üretilir */
+    let offsetMs = 0
+    let tickTimer: ReturnType<typeof setTimeout> | undefined
+    let seedTimer: ReturnType<typeof setTimeout> | undefined
+    let retryAttempt = 0
+    let loading = false
+    const now = () => Date.now() + offsetMs
 
     const showQr = (data: string) => {
       setQrData((prev) => {
@@ -152,38 +158,46 @@ export function QrKioskPage() {
       })
     }
 
-    /** Abone olunan mağaza kanalı; API'nin döndürdüğü kanal değişirse (ör. admin mağaza değiştirdi) yeniden abone olunur */
-    let channel: RealtimeChannel | null = null
-    let topic: string | null = null
-    let authReady = false
-
-    const subscribeTo = (nextTopic: string) => {
-      if (disposed || !authReady || nextTopic === topic) return
-      if (channel) void supabase.removeChannel(channel)
-      topic = nextTopic
-      channel = supabase.channel(nextTopic, { config: { private: true } })
-      channel
-        .on('broadcast', { event: EVENT }, ({ payload }) => {
-          const data = (payload as { qr_data?: unknown })?.qr_data
-          if (typeof data !== 'string') return
-          versionRef.current += 1
-          showQr(data)
-        })
-        .subscribe((status) => {
-          if (disposed) return
-          if (status === 'SUBSCRIBED') {
-            setLink('live')
-            // İlk açılış / yeniden bağlanma: arada kaçan yayınlar olabilir → güncel kodu bir kez al
-            void fetchCurrent()
-          } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-            setLink('offline')
-          }
-        })
+    const render = async () => {
+      if (!seed) return
+      const current = seed
+      if (now() >= current.expires_at * 1000) {
+        // Anahtar bitti (ör. cihaz uzun süre çevrimdışı kaldı): kod gösterilmez, yenisi istenir
+        seed = null
+        setQrData(null)
+        setLink('connecting')
+        void loadSeed()
+        return
+      }
+      try {
+        const data = await computeKioskQr(current, now())
+        if (!disposed && seed === current) showQr(data)
+      } catch {
+        // WebCrypto yalnızca güvenli bağlamda (https / localhost) çalışır
+        if (!disposed) setError('QR kodu bu tarayıcıda üretilemiyor. Sayfayı https üzerinden açın.')
+      }
     }
 
-    const fetchCurrent = async () => {
-      const startedAt = versionRef.current
+    /** Bir sonraki dakika sınırında kodu yenile */
+    const scheduleTick = () => {
+      clearTimeout(tickTimer)
+      const delay = KIOSK_QR_STEP_MS - (now() % KIOSK_QR_STEP_MS) + 50
+      tickTimer = setTimeout(() => {
+        void render()
+        scheduleTick()
+      }, delay)
+    }
+
+    const scheduleSeed = (delayMs: number) => {
+      clearTimeout(seedTimer)
+      seedTimer = setTimeout(() => void loadSeed(), delayMs)
+    }
+
+    const loadSeed = async () => {
+      if (disposed || loading) return
+      loading = true
       try {
+        const sentAt = Date.now()
         const res = await fetch('/api/kiosk/qr', { credentials: 'same-origin', cache: 'no-store' })
         if (res.status === 401) {
           router.replace('/login?next=/qr-kiosk')
@@ -193,44 +207,50 @@ export function QrKioskPage() {
           const body = (await res.json().catch(() => ({}))) as { error?: string }
           throw new Error(body.error ?? 'QR kodu alınamadı.')
         }
-        const { qr_data, topic: apiTopic } = (await res.json()) as { qr_data: string; topic: string }
-        if (!disposed && versionRef.current === startedAt) showQr(qr_data)
+        const body = (await res.json()) as { seed: KioskSeed; server_time: number }
+        if (disposed) return
+        // Gidiş-dönüş süresinin yarısı kadar düzeltme
+        offsetMs = body.server_time - (sentAt + Date.now()) / 2
+        seed = body.seed
+        retryAttempt = 0
         setError(null)
-        // Kanal adı sunucudan gelir (mağaza başına); henüz abone değilsek / kanal değiştiyse abone ol
-        if (typeof apiTopic === 'string') subscribeTo(apiTopic)
+        setLink('live')
+        await render()
+        scheduleTick()
+        scheduleSeed(Math.max(60_000, body.seed.expires_at * 1000 - now() - SEED_REFRESH_LEAD_MS))
       } catch (err) {
-        if (!disposed) setError(err instanceof Error ? err.message : 'QR kodu alınamadı.')
+        if (disposed) return
+        setError(err instanceof Error ? err.message : 'QR kodu alınamadı.')
+        // Geçerli anahtar varsa ekran çalışmaya devam eder; yoksa bağlantı yok görünür
+        if (!seed) setLink('offline')
+        retryAttempt += 1
+        scheduleSeed(Math.min(SEED_RETRY_MAX_MS, 2_000 * 2 ** retryAttempt))
+      } finally {
+        loading = false
       }
     }
 
-    const start = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (disposed) return
-      if (!session) {
-        setLink('offline')
-        setError('Gerçek zamanlı bağlantı için oturum bulunamadı. Çıkış yapıp yeniden giriş yapın.')
-        return
-      }
-      await supabase.realtime.setAuth(session.access_token)
-      authReady = true
-      // Mağaza oturumdan biliniyorsa ilk istek beklenmeden abone olunur (ilk istek başarısız olsa
-      // da kanal kurulur; SUBSCRIBED olunca güncel kod alınır). Bilinmiyorsa kanal adı API'den gelir.
-      if (storeId) subscribeTo(`kiosk-qr:${storeId}`)
-      else await fetchCurrent()
-    }
-    void start()
+    void loadSeed()
 
-    // Tarayıcı çevrimdışıyken kaçan yayınlar olabilir: bağlantı geri gelince güncel kodu bir kez al
-    // (Realtime kendi yeniden bağlanmasında da alır; versionRef çakışan yanıtları ayıklar)
+    // Bağlantı geri gelince anahtar yoksa hemen iste
     const onOnline = () => {
-      if (!disposed) void fetchCurrent()
+      if (!disposed && !seed) void loadSeed()
+    }
+    // Arka planda zamanlayıcılar yavaşlar: görünür olunca kodu hemen güncelle
+    const onVisibility = () => {
+      if (disposed || document.visibilityState !== 'visible') return
+      void render()
+      scheduleTick()
     }
     window.addEventListener('online', onOnline)
+    document.addEventListener('visibilitychange', onVisibility)
 
     return () => {
       disposed = true
+      clearTimeout(tickTimer)
+      clearTimeout(seedTimer)
       window.removeEventListener('online', onOnline)
-      if (channel) void supabase.removeChannel(channel)
+      document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [router, storeId])
 
@@ -358,7 +378,7 @@ export function QrKioskPage() {
               </div>
             </CardContent>
             <CardFooter className="border-t px-5 text-sm text-muted-foreground md:px-6 [.border-t]:pt-5">
-              Kod tek kullanımlıktır; biri okutup onaylandığında otomatik olarak yenisi gelir.
+              Kod her dakika otomatik yenilenir; fotoğrafı kısa sürede geçersiz olur.
               Okutmak için ShiftUp&apos;a giriş yapmış olmanız gerekir.
             </CardFooter>
           </Card>

@@ -17,12 +17,14 @@ export async function GET(req: NextRequest) {
   const dateParam = req.nextUrl.searchParams.get('date')
   if (dateParam && !isValidDate(dateParam)) return badRequest('Geçersiz tarih.')
   const date = dateParam ?? turkeyToday()
-  if (date !== turkeyToday() && !hasRole(auth.employee.access_level, MANAGER_ROLES)) {
+  const isManager = hasRole(auth.employee.access_level, MANAGER_ROLES)
+  if (date !== turkeyToday() && !isManager) {
     return forbidden('Yalnızca bugünün operasyonunu görüntüleyebilirsiniz.')
   }
 
   try {
-    const entries = await fetchDailyShifts(date, auth.employee.store_id)
+    // Çalışanlar iş arkadaşlarının düzeltme notunu / konum ölçümünü görmez
+    const entries = await fetchDailyShifts(date, auth.employee.store_id, isManager ? {} : { viewerId: auth.employee.id })
     return NextResponse.json({ date, entries })
   } catch (err) {
     return serverError('GET /api/attendance/daily', err)

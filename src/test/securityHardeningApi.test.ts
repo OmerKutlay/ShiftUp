@@ -5,6 +5,7 @@
  *    değişince / pasifleştirmede oturumlar revoke_employee_access ile gerçekten kapatılır.
  *  - POST /api/shift-swap/review: yönetici, kendinden yüksek yetkilinin takasına karar veremez.
  *  - POST /api/qr/generate: yönetici kendi adına QR üretemez (kiosk'u atlayarak giriş yapamaz).
+ *  - POST /api/leave (weekly_rest): üst yetkiliye atanamaz; kendine ve geçmiş haftalara geriye dönük atanamaz.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
@@ -22,6 +23,8 @@ vi.mock('@/lib/db', () => ({
 import { PATCH as employeePATCH } from '@/app/api/employees/[id]/route'
 import { POST as swapReview } from '@/app/api/shift-swap/review/route'
 import { POST as qrGenerate } from '@/app/api/qr/generate/route'
+import { POST as leavePOST } from '@/app/api/leave/route'
+import { turkeyToday, addDaysToDateString, mondayOfDateString } from '@/lib/dateUtils'
 
 const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
 const STORE = uuid(1)
@@ -173,5 +176,54 @@ describe('POST /api/qr/generate — kendi adına kod', () => {
     const res = await qrGenerate(json('/api/qr/generate', 'POST', { employee_id: MGR, action_type: 'clock_in' }))
     expect(res.status).toBe(403)
     expect(db().tables.qr_tokens).toHaveLength(0)
+  })
+})
+
+describe('POST /api/leave — haftalık tatil (doğrudan onaylı, vardiyayı siler)', () => {
+  const rest = (employeeId: string, date: string) =>
+    leavePOST(json('/api/leave', 'POST', { employee_id: employeeId, leave_type: 'weekly_rest', start_date: date, end_date: date }))
+
+  it('Yönetici, Müdüre haftalık tatil atayamaz (403); vardiyası silinmez', async () => {
+    asManager()
+    const res = await rest(SM, FUTURE)
+    expect(res.status).toBe(403)
+    expect(db().tables.leave_requests).toHaveLength(0)
+    expect(db().tables.shift_assignments.some((s) => s.id === SH_SM)).toBe(true)
+  })
+
+  it('Yönetici kendine geçmiş tarihli haftalık tatil atayamaz (gelinmeyen günü tatile çevirme)', async () => {
+    asManager()
+    const res = await rest(MGR, addDaysToDateString(turkeyToday(), -1))
+    expect(res.status).toBe(403)
+    expect(db().tables.leave_requests).toHaveLength(0)
+  })
+
+  it('geçmiş haftalara haftalık tatil atanamaz (400)', async () => {
+    asManager()
+    const res = await rest(EMP1, addDaysToDateString(mondayOfDateString(turkeyToday()), -3))
+    expect(res.status).toBe(400)
+    expect(db().tables.leave_requests).toHaveLength(0)
+  })
+
+  it('Yönetici çalışana ileri tarihli haftalık tatil atayabilir; o günün vardiyası kaldırılır', async () => {
+    asManager()
+    const res = await rest(EMP2, FUTURE)
+    expect(res.status).toBeLessThan(300)
+    expect(db().tables.leave_requests[0]).toMatchObject({ employee_id: EMP2, status: 'approved' })
+    expect(db().tables.shift_assignments.some((s) => s.id === SH_E2)).toBe(false)
+  })
+
+  it('planlayıcı kendi ileri tarihli haftalık tatilini işaretleyebilir', async () => {
+    asManager()
+    const res = await rest(MGR, FUTURE)
+    expect(res.status).toBeLessThan(300)
+  })
+})
+
+describe('mondayOfDateString', () => {
+  it('haftanın pazartesisini verir', () => {
+    expect(mondayOfDateString('2026-10-27')).toBe('2026-10-26') // salı
+    expect(mondayOfDateString('2026-10-26')).toBe('2026-10-26') // pazartesi
+    expect(mondayOfDateString('2026-11-01')).toBe('2026-10-26') // pazar
   })
 })

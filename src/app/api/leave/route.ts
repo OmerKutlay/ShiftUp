@@ -24,7 +24,7 @@ import {
 import { checkRateLimit } from '@/lib/rateLimiter'
 import { badRequest, conflict, notFound, readJson, serverError, tooManyRequests } from '@/lib/apiErrors'
 import { isUuid, isValidDate } from '@/lib/validation'
-import { turkeyToday, addDaysToDateString } from '@/lib/dateUtils'
+import { turkeyToday, addDaysToDateString, mondayOfDateString } from '@/lib/dateUtils'
 import { removePlannedShiftsInRange } from '@/lib/leaveService'
 import { getAnnualLeaveBalance, requestedLeaveDays } from '@/lib/annualLeaveService'
 import { logAudit } from '@/lib/auditLog'
@@ -118,11 +118,19 @@ export async function POST(req: NextRequest) {
     const isWeeklyRest = body.leave_type === 'weekly_rest'
     let actorId: string
     let activeStoreId: string
+    let actorIsAdmin = false
     if (isWeeklyRest) {
       const managerAuth = await requireMinRole(req, ACCESS.MANAGER)
       if ('response' in managerAuth) return managerAuth.response
       actorId = managerAuth.employee.id
       activeStoreId = managerAuth.employee.store_id
+      actorIsAdmin = managerAuth.employee.access_level === ACCESS.ADMIN
+      // Haftalık tatil doğrudan onaylıdır ve o günün vardiyasını siler: izin onayıyla aynı kural,
+      // kendinden yüksek yetkili birine atanamaz
+      if (body.employee_id !== actorId) {
+        const denied = await forbidIfOutranked(managerAuth.employee, body.employee_id)
+        if (denied) return denied
+      }
     } else {
       const accessCheck = await canAccessEmployee(req, body.employee_id, MANAGER_ROLES)
       if ('response' in accessCheck) return accessCheck.response
@@ -158,6 +166,15 @@ export async function POST(req: NextRequest) {
         }
       } else if (body.leave_type !== 'weekly_rest') {
         return badRequest('Geçmiş tarih için izin talebi oluşturulamaz (hastalık izni hariç).')
+      } else if (!actorIsAdmin) {
+        // Geçmiş güne haftalık tatil, gelinmemiş bir vardiyayı onaysız "tatil"e çevirir.
+        // Planlayıcı bu haftanın günlerini düzeltebilir; kendine ve geçmiş haftalara atanamaz.
+        if (body.employee_id === actorId) {
+          return forbidden('Kendinize geçmiş tarihli haftalık tatil atayamazsınız.')
+        }
+        if (body.start_date < mondayOfDateString(today)) {
+          return badRequest('Haftalık tatil geçmiş haftalara atanamaz.')
+        }
       }
     }
     const diffDays = (Date.parse(body.end_date) - Date.parse(body.start_date)) / 86400000

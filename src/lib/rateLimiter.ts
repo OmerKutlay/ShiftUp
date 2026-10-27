@@ -4,7 +4,9 @@
  * Birincil depo: Postgres (rate_limit_hit RPC) — tüm sunucu instance'ları ve
  * serverless cold start'lar arasında paylaşılır, sayaç artışı atomiktir.
  * RPC yoksa / hata verirse (ör. migration uygulanmamış yerel ortam) bellek içi
- * sayaca düşer; bu yalnızca tek process için geçerlidir.
+ * sayaca düşer; bu yalnızca tek process için geçerlidir (Cloudflare'de isolate başına —
+ * sınır fiilen katlanır). Kaba kuvvete açık uçlar (OTP) { failClosed: true } ile çağırır:
+ * sayaç okunamazsa istek reddedilir.
  */
 import { createAdminClient } from '@/lib/supabaseAdmin'
 
@@ -57,8 +59,14 @@ export function checkRateLimitLocal(key: string, limit: number, windowMs: number
  * @param key      — tanımlayıcı (örn: `otp_send:email:${email}`)
  * @param limit    — pencere içinde izin verilen maks. istek
  * @param windowMs — pencere süresi (ms)
+ * @param failClosed — paylaşılan sayaç okunamazsa bellek içi sayaca düşmek yerine reddet
  */
-export async function checkRateLimit(key: string, limit: number, windowMs: number): Promise<RateLimitResult> {
+export async function checkRateLimit(
+  key: string,
+  limit: number,
+  windowMs: number,
+  { failClosed = false }: { failClosed?: boolean } = {}
+): Promise<RateLimitResult> {
   try {
     const admin = createAdminClient()
     const { data, error } = await admin.rpc('rate_limit_hit', {
@@ -70,6 +78,7 @@ export async function checkRateLimit(key: string, limit: number, windowMs: numbe
     const row = (Array.isArray(data) ? data[0] : data) as { allowed: boolean; remaining: number; reset_at: string }
     return { allowed: row.allowed, remaining: row.remaining, resetAt: new Date(row.reset_at).getTime() }
   } catch {
+    if (failClosed) return { allowed: false, remaining: 0, resetAt: Date.now() + windowMs }
     return checkRateLimitLocal(key, limit, windowMs)
   }
 }

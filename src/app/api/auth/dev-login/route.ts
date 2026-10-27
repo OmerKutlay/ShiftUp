@@ -58,6 +58,13 @@ export async function POST(req: NextRequest) {
 
   // ── Aşama 1: Email + aktiflik kontrolü ──────────────────────
   if (step === 'check-email') {
+    // Yanıt e-postanın kayıtlı olup olmadığını söyler: tünelle açılmış dev sunucusunda
+    // çalışan listesi taranmasın
+    const rate = await checkRateLimit(`dev_check_email:ip:${clientIp(req)}`, 20, 15 * 60 * 1000)
+    if (!rate.allowed) {
+      return NextResponse.json({ ok: false, reason: 'RATE_LIMITED' }, { status: 429 })
+    }
+
     const { data: employee } = await admin
       .from('employees')
       .select('id, full_name, active, termination_date, email, role_id')
@@ -94,8 +101,11 @@ export async function POST(req: NextRequest) {
 
     // Dev OTP kontrolü — yalnızca burada, tek yerde
     // Sabit DEV_OTP'ye kaba kuvvet denemesine karşı IP bazlı limit
-    const rate = await checkRateLimit(`dev_otp:ip:${clientIp(req)}`, 10, 15 * 60 * 1000)
-    if (!rate.allowed) {
+    const [rate, byEmail] = await Promise.all([
+      checkRateLimit(`dev_otp:ip:${clientIp(req)}`, 10, 15 * 60 * 1000),
+      checkRateLimit(`dev_otp:email:${email}`, 10, 15 * 60 * 1000),
+    ])
+    if (!rate.allowed || !byEmail.allowed) {
       return NextResponse.json({ ok: false, reason: 'RATE_LIMITED' }, { status: 429 })
     }
 

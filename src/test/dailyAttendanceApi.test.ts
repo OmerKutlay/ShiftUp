@@ -47,7 +47,13 @@ describe('GET /api/attendance/daily', () => {
   it('liste yalnızca oturumun aktif mağazası için istenir', async () => {
     state.employee = { ...manager, home_store_id: 'store-A', store_id: 'store-B' } // admin başka mağazaya geçmiş gibi
     await get()
-    expect(fetchDailyShifts).toHaveBeenLastCalledWith(turkeyToday(), 'store-B')
+    expect(fetchDailyShifts).toHaveBeenLastCalledWith(turkeyToday(), 'store-B', {})
+  })
+
+  it('çalışan için iş arkadaşlarının hassas alanları gizlenerek istenir', async () => {
+    state.employee = employee
+    await get()
+    expect(fetchDailyShifts).toHaveBeenLastCalledWith(turkeyToday(), 'store-A', { viewerId: 'emp-1' })
   })
 
   it('çalışan başka günü göremez, yönetici görebilir', async () => {

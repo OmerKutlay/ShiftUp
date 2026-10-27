@@ -1727,7 +1727,20 @@ const ROUTES: Route[] = [
   get('/api/dashboard', ({ ctx }) => json(dashboard(ctx)), 'manager'),
 
   // ── QR / kiosk ────────────────────────────────────────────
-  get('/api/kiosk/qr', ({ ctx }) => json({ qr_data: `SU2.${hashStr(`kiosk:${ctx.today}`).toString(36)}Kd1kY0yM4gaZ${hashStr(ctx.today).toString(16)}` }), 'manager'),
+  get('/api/kiosk/qr', () => {
+    const store_id = '00000000-0000-4000-8000-000000000001'
+    return json({
+      seed: {
+        store_id,
+        issuer_id: '00000000-0000-4000-8000-000000000002',
+        expires_at: Math.floor(Date.now() / 1000) + 12 * 3600,
+        secret: 'c2hpZnR1cC11aS1zdHVkaW8ta2lvc2stc2VlZC0wMDE',
+      },
+      store_id,
+      server_time: Date.now(),
+      step_ms: 60_000,
+    })
+  }, 'manager'),
   post('/api/qr/generate', ({ body }) => {
     const employee_id = str(body, 'employee_id') ?? empId(5)
     const action = (str(body, 'action_type') ?? 'clock_in') as QrActionType

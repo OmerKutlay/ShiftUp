@@ -1,44 +1,45 @@
 /**
- * kioskQrService — Tek kullanımlık kiosk QR'ı + Supabase Realtime Broadcast (sunucu tarafı).
+ * kioskQrService — Kiosk QR anahtarı ve kod doğrulama (sunucu tarafı).
  *
  * Akış:
- *   - Her mağazanın her an tek bir aktif kiosk QR'ı vardır (qr_tokens: employee_id NULL,
- *     used_at NULL, store_id = mağaza — kısmi unique index ile garanti). QR zamanla değişmez;
- *     yalnızca okutulunca değişir. Bir mağazanın kodu başka mağazada geçersizdir.
- *   - Kiosk / yönetici ekranı açılışta (ve Realtime yeniden bağlandığında) GET /api/kiosk/qr ile
- *     güncel kodu ve kanal adını bir kez alır, sonra private "kiosk-qr:<store_id>" kanalını
- *     dinler. Periyodik istek yoktur.
- *   - Okutma onaylanınca kod atomik olarak tüketilir (aynı anda okutanlardan yalnızca ilki
- *     kazanır), yeni kod üretilir ve REST üzerinden mağazanın kanalına yayınlanır.
+ *   - Kiosk / yönetici ekranı açılışta GET /api/kiosk/qr ile mağazası için kısa ömürlü bir
+ *     anahtar (KioskSeed, KIOSK_SEED_TTL_MS) alır; anahtar bitmeden yenisini ister.
+ *   - Kod tarayıcıda her dakika yerelde üretilir (bkz. kioskQrCode) — periyodik istek, veritabanı
+ *     yazımı veya Realtime yayını yoktur.
+ *   - Okutmada (POST /api/qr/process) sunucu anahtarı kendi sırrından yeniden türetip imzayı,
+ *     mağazayı ve zaman penceresini doğrular. Kodun fotoğrafı ~1,5 dakika sonra geçersizdir.
+ *   - Anahtarı alan çalışan (issuer) okutma anında hâlâ aktif ve yetkili olmalıdır; pasifleştirilen
+ *     kiosk hesabının anahtarı hemen geçersizleşir.
+ *   - Kendi oturumundan alınan anahtarla üretilen kod okutulamaz: yönetici evde kiosk ekranını açıp
+ *     kendi telefonuyla okutarak uzaktan giriş yapamaz.
  *
- * Kanal güvenliği: Realtime "private_only" + realtime.messages RLS politikası
- * (private.can_view_kiosk_qr_topic: admin her mağaza; Kiosk / Yönetici / Müdür yalnızca kendi
- * mağazası). İstemcilerin kanala mesaj göndermesine izin veren politika yoktur; yalnızca
- * sunucu (secret key) yayınlar.
+ * Sunucu sırrı: KIOSK_QR_SECRET (yoksa SUPABASE_SECRET_KEY'den türetilir). Değiştirilirse açık kiosk
+ * ekranlarının anahtarı geçersizleşir; ekranlar yeni anahtarı otomatik alır.
  */
-import { randomBytes } from 'crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { QrTokenError } from '@/lib/qrTokenService'
-import { isKioskRole, roleAtLeast, ACCESS, type AccessLevel } from '@/lib/auth/roles'
+import { isKioskRole, roleAtLeast, ACCESS, accessLevelOf, type AccessLevel } from '@/lib/auth/roles'
+import { isEffectivelyActive } from '@/lib/employment'
+import {
+  KIOSK_QR_STEP_MS,
+  base64UrlEncode,
+  hmacSha256,
+  kioskQrMac,
+  parseKioskQr,
+  type KioskSeed,
+} from '@/lib/kioskQrCode'
 
-/** Realtime kanal öneki; tam ad mağaza başınadır: "kiosk-qr:<store_id>" */
-export const KIOSK_QR_TOPIC_PREFIX = 'kiosk-qr'
-export const KIOSK_QR_EVENT = 'qr'
-export const KIOSK_QR_PREFIX = 'SU2'
-/** Kiosk QR'ı zamanla değil okutmayla değişir; expires_at yalnızca terk edilmiş kodlar için üst sınır */
-const KIOSK_QR_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000
+/** Kiosk anahtarının ömrü — ekran bitmeden yenisini alır (günde birkaç istek) */
+export const KIOSK_SEED_TTL_MS = 12 * 60 * 60 * 1000
+/** Kod, penceresi bittikten sonra bu kadar daha kabul edilir (okutma + ağ gecikmesi) */
+const KIOSK_QR_GRACE_MS = 30 * 1000
+/** Kiosk saatinin sunucudan ileride olmasına tolerans (ekran sunucu saatine göre düzeltilir) */
+const KIOSK_QR_CLOCK_SKEW_MS = 10 * 1000
 
-export interface KioskQr {
-  qr_data: string
-}
-
-/** Mağazanın kiosk Realtime kanalı (SQL: can_view_kiosk_qr_topic ile aynı biçim) */
-export function kioskQrTopic(storeId: string): string {
-  return `${KIOSK_QR_TOPIC_PREFIX}:${storeId}`
-}
+const encoder = new TextEncoder()
 
 /**
- * Kiosk QR'ını görebilir / kanala katılabilir mi? SQL kuralının (can_view_kiosk_qr_topic) aynısı:
+ * Kiosk QR'ını görebilir / anahtar alabilir mi?
  *   - Admin: her mağaza
  *   - Kiosk / Yönetici / Müdür: yalnızca kendi (ana) mağazası
  */
@@ -53,98 +54,83 @@ export function canViewKioskQr(
   return allowedLevel && !!homeStoreId && homeStoreId === storeId
 }
 
-export function isKioskQr(qrData: string): boolean {
-  return qrData.startsWith(`${KIOSK_QR_PREFIX}.`)
-}
+let masterKeyPromise: Promise<Uint8Array> | null = null
+let masterKeySource: string | null = null
 
-function toQrData(token: string): string {
-  return `${KIOSK_QR_PREFIX}.${token}`
-}
-
-/** Mağazanın güncel aktif kiosk QR'ı; yoksa oluşturur (eşzamanlı oluşturmada unique index tek kodu garanti eder) */
-export async function getOrCreateActiveKioskQr(admin: SupabaseClient, storeId: string): Promise<KioskQr> {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const { data: active, error } = await admin
-      .from('qr_tokens')
-      .select('token')
-      .eq('store_id', storeId)
-      .is('employee_id', null)
-      .is('used_at', null)
-      .limit(1)
-      .maybeSingle()
-    if (error) throw new QrTokenError('Kiosk QR okunamadı.', 'DB_ERROR')
-    if (active) return { qr_data: toQrData(active.token as string) }
-
-    const token = randomBytes(24).toString('base64url')
-    const { error: insertError } = await admin.from('qr_tokens').insert({
-      token,
-      employee_id: null,
-      store_id: storeId,
-      action_type: null,
-      expires_at: new Date(Date.now() + KIOSK_QR_MAX_AGE_MS).toISOString(),
-    })
-    if (!insertError) return { qr_data: toQrData(token) }
-    // 23505: başka bir istek aynı anda aktif kodu oluşturdu — onu oku
-    if (insertError.code !== '23505') throw new QrTokenError('Kiosk QR oluşturulamadı.', 'DB_ERROR')
+/** Sunucu sırrı → 32 baytlık ana anahtar (ortam değişkeni değişirse yeniden türetilir) */
+function masterKey(): Promise<Uint8Array> {
+  const raw = process.env.KIOSK_QR_SECRET || process.env.SUPABASE_SECRET_KEY
+  if (!raw) throw new QrTokenError('Kiosk QR sırrı tanımlı değil.', 'DB_ERROR')
+  if (!masterKeyPromise || masterKeySource !== raw) {
+    masterKeySource = raw
+    masterKeyPromise = hmacSha256(encoder.encode(raw), 'shiftup:kiosk-qr:v3')
   }
-  throw new QrTokenError('Kiosk QR oluşturulamadı.', 'DB_ERROR')
+  return masterKeyPromise
+}
+
+async function deriveSeedSecret(storeId: string, issuerId: string, expiresAt: number): Promise<Uint8Array> {
+  return hmacSha256(await masterKey(), `SU3|${storeId.toLowerCase()}|${issuerId.toLowerCase()}|${expiresAt}`)
+}
+
+/** Kiosk ekranına verilecek anahtar */
+export async function issueKioskSeed(storeId: string, issuerId: string, nowMs = Date.now()): Promise<KioskSeed> {
+  const expiresAt = Math.floor((nowMs + KIOSK_SEED_TTL_MS) / 1000)
+  const secret = await deriveSeedSecret(storeId, issuerId, expiresAt)
+  return { store_id: storeId, issuer_id: issuerId, expires_at: expiresAt, secret: base64UrlEncode(secret) }
+}
+
+function constantTimeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return diff === 0
 }
 
 /**
- * Okutulan kiosk QR'ını atomik olarak tüketir. Aynı kodu aynı anda okutanlardan yalnızca
- * ilki başarılı olur; diğerleri QR_USED alır. Kod, okutan çalışanın mağazasına (storeId) ait
- * olmalıdır; başka mağazanın kodu tüketilmez ve QR_WRONG_STORE ile reddedilir.
+ * Kiosk kodunu doğrular (imza, mağaza, zaman, okutan ≠ anahtarı alan). Veritabanına gitmez.
+ * Dönüş: anahtarı alan çalışanın kimliği — çağıran verifyKioskIssuer ile yetkisini doğrular.
  */
-export async function consumeKioskQr(admin: SupabaseClient, qrData: string, storeId: string): Promise<void> {
-  const token = qrData.slice(KIOSK_QR_PREFIX.length + 1)
-  if (!/^[A-Za-z0-9_-]{32}$/.test(token)) throw new QrTokenError('Geçersiz QR kodu.', 'QR_INVALID')
+export async function verifyKioskQr(
+  qrData: string,
+  { storeId, scannerId, nowMs = Date.now() }: { storeId: string; scannerId: string; nowMs?: number }
+): Promise<{ issuerId: string }> {
+  const parsed = parseKioskQr(qrData)
+  if (!parsed) throw new QrTokenError('Geçersiz QR kodu.', 'QR_INVALID')
 
-  const nowIso = new Date().toISOString()
-  const { data: consumed, error } = await admin
-    .from('qr_tokens')
-    .update({ used_at: nowIso })
-    .eq('token', token)
-    .eq('store_id', storeId)
-    .is('employee_id', null)
-    .is('used_at', null)
-    .gt('expires_at', nowIso)
-    .select('id')
-    .maybeSingle()
-  if (error) throw new QrTokenError('QR doğrulanamadı.', 'DB_ERROR')
-  if (consumed) return
+  const secret = await deriveSeedSecret(parsed.storeId, parsed.issuerId, parsed.expiresAt)
+  const expected = await kioskQrMac(secret, parsed.window)
+  if (!constantTimeEqual(parsed.mac, expected)) throw new QrTokenError('Geçersiz QR kodu.', 'QR_INVALID')
 
-  const { data: existing } = await admin
-    .from('qr_tokens')
-    .select('used_at, store_id')
-    .eq('token', token)
-    .is('employee_id', null)
-    .maybeSingle()
-  if (existing && existing.store_id !== storeId) {
+  // İmza geçerli: alanlar sunucunun ürettiği değerlerdir
+  if (parsed.storeId.toLowerCase() !== storeId.toLowerCase()) {
     throw new QrTokenError('Bu QR kodu başka bir mağazaya ait.', 'QR_WRONG_STORE')
   }
-  if (existing?.used_at) {
-    throw new QrTokenError('Bu QR kodu az önce okutuldu. Ekrandaki yeni kodu okutun.', 'QR_USED')
+  const windowStart = parsed.window * KIOSK_QR_STEP_MS
+  if (windowStart > nowMs + KIOSK_QR_CLOCK_SKEW_MS) {
+    throw new QrTokenError('Geçersiz QR kodu.', 'QR_INVALID')
   }
-  throw new QrTokenError('Geçersiz QR kodu.', 'QR_INVALID')
+  if (nowMs >= windowStart + KIOSK_QR_STEP_MS + KIOSK_QR_GRACE_MS || windowStart >= parsed.expiresAt * 1000) {
+    throw new QrTokenError('QR kodunun süresi doldu. Ekrandaki güncel kodu okutun.', 'QR_EXPIRED')
+  }
+  if (parsed.issuerId.toLowerCase() === scannerId.toLowerCase()) {
+    throw new QrTokenError(
+      'Kendi oturumunuzda açılan kiosk ekranının kodunu okutamazsınız. Mağazadaki kiosk ekranını kullanın.',
+      'QR_SELF_ISSUED'
+    )
+  }
+  return { issuerId: parsed.issuerId }
 }
 
-/** Mağazanın yeni aktif kodunu üretir ve o mağazanın abonelerine yayınlar. Yayın hatası okutmayı bozmaz (loglanır). */
-export async function rotateAndBroadcastKioskQr(admin: SupabaseClient, storeId: string): Promise<KioskQr> {
-  const next = await getOrCreateActiveKioskQr(admin, storeId)
-
-  const channel = admin.channel(kioskQrTopic(storeId), { config: { private: true } })
-  try {
-    await channel.httpSend(KIOSK_QR_EVENT, next)
-  } catch (err) {
-    console.error('[kioskQrService] broadcast:', err instanceof Error ? err.message : err)
-  } finally {
-    void admin.removeChannel(channel)
+/** Anahtarı alan hesap okutma anında hâlâ aktif ve bu mağazanın kiosk kodunu görmeye yetkili mi? */
+export async function verifyKioskIssuer(admin: SupabaseClient, issuerId: string, storeId: string): Promise<void> {
+  const { data, error } = await admin
+    .from('employees')
+    .select('id, active, store_id, termination_date, roles ( access_level )')
+    .eq('id', issuerId)
+    .maybeSingle()
+  if (error) throw new QrTokenError('QR doğrulanamadı.', 'DB_ERROR')
+  const level = accessLevelOf((data as { roles?: unknown } | null)?.roles)
+  if (!data || !isEffectivelyActive(data) || !canViewKioskQr(level, data.store_id as string, storeId)) {
+    throw new QrTokenError('Kiosk ekranının oturumu geçersiz. Kiosk ekranını yeniden açın.', 'QR_INVALID')
   }
-
-  // Kullanılmış eski kiosk kodlarını ara sıra temizle
-  if (Math.random() < 0.05) {
-    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-    await admin.from('qr_tokens').delete().eq('store_id', storeId).is('employee_id', null).lt('used_at', cutoff)
-  }
-  return next
 }

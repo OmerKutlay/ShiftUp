@@ -1,102 +1,138 @@
 /**
- * kioskQrService — mağaza başına kiosk QR'ı (bellek içi fake Supabase ile).
- * Aktif kod arama, üretim, tüketim ve yayın mağaza kapsamındadır.
+ * kioskQrService / kioskQrCode — yerel üretilen, imzalı kiosk QR'ı.
+ * Anahtar türetme, kod biçimi, zaman penceresi, mağaza ve "kendi kodu" kuralları.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { createFakeDb, type FakeDb } from './helpers/fakeSupabase'
-import {
-  getOrCreateActiveKioskQr,
-  consumeKioskQr,
-  rotateAndBroadcastKioskQr,
-  kioskQrTopic,
-} from '@/lib/kioskQrService'
-import { QrTokenError } from '@/lib/qrTokenService'
+import { createFakeDb } from './helpers/fakeSupabase'
+import { issueKioskSeed, verifyKioskQr, verifyKioskIssuer, KIOSK_SEED_TTL_MS } from '@/lib/kioskQrService'
+import { computeKioskQr, parseKioskQr, kioskQrWindow, base64UrlDecode, base64UrlEncode, KIOSK_QR_STEP_MS } from '@/lib/kioskQrCode'
 
-const STORE_A = 'store-A'
-const STORE_B = 'store-B'
-const TOKEN_A = 'a'.repeat(32)
-const TOKEN_B = 'b'.repeat(32)
-const FUTURE = '2999-01-01T00:00:00Z'
-
-const httpSend = vi.fn()
-const channel = vi.fn(() => ({ httpSend }))
-
-let db: FakeDb
-const admin = () => db as unknown as SupabaseClient
-
-function kioskRow(token: string, storeId: string, extra: Record<string, unknown> = {}) {
-  return { id: `kq-${token[0]}`, token, store_id: storeId, employee_id: null, action_type: null, used_at: null, expires_at: FUTURE, ...extra }
-}
+const STORE_A = '00000000-0000-4000-8000-00000000000a'
+const STORE_B = '00000000-0000-4000-8000-00000000000b'
+const KIOSK = '00000000-0000-4000-8000-0000000000c1'
+const SCANNER = '00000000-0000-4000-8000-0000000000e1'
+const T0 = Date.UTC(2026, 9, 27, 9, 0, 30)
 
 beforeEach(() => {
-  vi.clearAllMocks()
-  httpSend.mockResolvedValue({ success: true })
-  db = createFakeDb({ qr_tokens: [] })
-  Object.assign(db, { channel, removeChannel: vi.fn().mockResolvedValue('ok') })
+  process.env.KIOSK_QR_SECRET = 'test-kiosk-secret'
 })
 
-describe('kioskQrService — getOrCreateActiveKioskQr', () => {
-  it('kod yoksa mağaza kimliğiyle oluşturur', async () => {
-    const { qr_data } = await getOrCreateActiveKioskQr(admin(), STORE_A)
-    expect(qr_data).toMatch(/^SU2\.[A-Za-z0-9_-]{32}$/)
-    expect(db.tables.qr_tokens).toHaveLength(1)
-    expect(db.tables.qr_tokens[0]).toMatchObject({ store_id: STORE_A, employee_id: null })
+describe('kioskQrCode', () => {
+  it('base64url gidiş-dönüş', () => {
+    const bytes = new Uint8Array([0, 1, 250, 251, 252, 253, 254, 255])
+    expect(base64UrlDecode(base64UrlEncode(bytes))).toEqual(bytes)
+    expect(base64UrlEncode(bytes)).not.toMatch(/[+/=]/)
   })
 
-  it('başka mağazanın aktif kodunu döndürmez; her mağazanın kendi kodu olur', async () => {
-    db.tables.qr_tokens.push(kioskRow(TOKEN_B, STORE_B))
-    const a = await getOrCreateActiveKioskQr(admin(), STORE_A)
-    expect(a.qr_data).not.toBe(`SU2.${TOKEN_B}`)
-    expect(db.tables.qr_tokens).toHaveLength(2)
-
-    const b = await getOrCreateActiveKioskQr(admin(), STORE_B)
-    expect(b.qr_data).toBe(`SU2.${TOKEN_B}`)
-    expect(db.tables.qr_tokens).toHaveLength(2)
+  it('kod biçimi: SU3.<store>.<issuer>.<exp>.<pencere>.<mac>', async () => {
+    const seed = await issueKioskSeed(STORE_A, KIOSK, T0)
+    const qr = await computeKioskQr(seed, T0)
+    expect(parseKioskQr(qr)).toMatchObject({ storeId: STORE_A, issuerId: KIOSK, window: kioskQrWindow(T0) })
+    expect(qr.length).toBeLessThan(140)
   })
 
-  it('mağazanın aktif kodu varsa yenisi oluşturulmaz', async () => {
-    db.tables.qr_tokens.push(kioskRow(TOKEN_A, STORE_A))
-    const { qr_data } = await getOrCreateActiveKioskQr(admin(), STORE_A)
-    expect(qr_data).toBe(`SU2.${TOKEN_A}`)
-    expect(db.tables.qr_tokens).toHaveLength(1)
-  })
-})
-
-describe('kioskQrService — consumeKioskQr', () => {
-  it('kendi mağazasının kodunu tüketir', async () => {
-    db.tables.qr_tokens.push(kioskRow(TOKEN_A, STORE_A))
-    await consumeKioskQr(admin(), `SU2.${TOKEN_A}`, STORE_A)
-    expect(db.tables.qr_tokens[0].used_at).toBeTruthy()
+  it('kod dakika sınırında değişir, dakika içinde aynı kalır', async () => {
+    const seed = await issueKioskSeed(STORE_A, KIOSK, T0)
+    const start = kioskQrWindow(T0) * KIOSK_QR_STEP_MS
+    expect(await computeKioskQr(seed, start)).toBe(await computeKioskQr(seed, start + KIOSK_QR_STEP_MS - 1))
+    expect(await computeKioskQr(seed, start)).not.toBe(await computeKioskQr(seed, start + KIOSK_QR_STEP_MS))
   })
 
-  it('başka mağazanın kodu QR_WRONG_STORE ile reddedilir ve tüketilmez', async () => {
-    db.tables.qr_tokens.push(kioskRow(TOKEN_A, STORE_A))
-    await expect(consumeKioskQr(admin(), `SU2.${TOKEN_A}`, STORE_B)).rejects.toMatchObject({
-      code: 'QR_WRONG_STORE',
-      message: 'Bu QR kodu başka bir mağazaya ait.',
-    })
-    expect(db.tables.qr_tokens[0].used_at).toBeNull()
-  })
-
-  it('kendi mağazasında kullanılmış kod QR_USED, bilinmeyen kod QR_INVALID verir', async () => {
-    db.tables.qr_tokens.push(kioskRow(TOKEN_A, STORE_A, { used_at: new Date().toISOString() }))
-    await expect(consumeKioskQr(admin(), `SU2.${TOKEN_A}`, STORE_A)).rejects.toMatchObject({ code: 'QR_USED' })
-    await expect(consumeKioskQr(admin(), `SU2.${'z'.repeat(32)}`, STORE_A)).rejects.toBeInstanceOf(QrTokenError)
+  it('bozuk biçimler ayrıştırılmaz', () => {
+    expect(parseKioskQr('SU3.a.b.c.d.e')).toBeNull()
+    expect(parseKioskQr(`SU2.${STORE_A}.${KIOSK}.1.1.${'a'.repeat(22)}`)).toBeNull()
+    expect(parseKioskQr(`SU3.${STORE_A}.${KIOSK}.1.1.${'a'.repeat(22)}.fazla`)).toBeNull()
   })
 })
 
-describe('kioskQrService — rotateAndBroadcastKioskQr', () => {
-  it('yeni kodu mağazanın kanalına yayınlar', async () => {
-    const next = await rotateAndBroadcastKioskQr(admin(), STORE_A)
-    expect(channel).toHaveBeenCalledWith(kioskQrTopic(STORE_A), { config: { private: true } })
-    expect(httpSend).toHaveBeenCalledWith('qr', next)
-    expect(db.tables.qr_tokens[0].store_id).toBe(STORE_A)
+describe('issueKioskSeed', () => {
+  it('anahtar mağazaya, alan hesaba ve bitişe bağlıdır', async () => {
+    const a = await issueKioskSeed(STORE_A, KIOSK, T0)
+    expect(a.expires_at).toBe(Math.floor((T0 + KIOSK_SEED_TTL_MS) / 1000))
+    expect((await issueKioskSeed(STORE_B, KIOSK, T0)).secret).not.toBe(a.secret)
+    expect((await issueKioskSeed(STORE_A, SCANNER, T0)).secret).not.toBe(a.secret)
+    expect((await issueKioskSeed(STORE_A, KIOSK, T0)).secret).toBe(a.secret)
   })
 
-  it('diğer mağazanın kanalına yayın yapmaz', async () => {
-    await rotateAndBroadcastKioskQr(admin(), STORE_B)
-    expect(channel).toHaveBeenCalledTimes(1)
-    expect(channel).not.toHaveBeenCalledWith(kioskQrTopic(STORE_A), expect.anything())
+  it('sunucu sırrı değişince eski anahtarın kodları geçersizdir', async () => {
+    const qr = await computeKioskQr(await issueKioskSeed(STORE_A, KIOSK, T0), T0)
+    process.env.KIOSK_QR_SECRET = 'yeni-sir'
+    await expect(verifyKioskQr(qr, { storeId: STORE_A, scannerId: SCANNER, nowMs: T0 })).rejects.toMatchObject({ code: 'QR_INVALID' })
+  })
+})
+
+describe('verifyKioskQr', () => {
+  async function qrAt(atMs: number, storeId = STORE_A, issuerId = KIOSK, seedAt = T0) {
+    return computeKioskQr(await issueKioskSeed(storeId, issuerId, seedAt), atMs)
+  }
+
+  it('geçerli kod: anahtarı alan hesap döner', async () => {
+    await expect(verifyKioskQr(await qrAt(T0), { storeId: STORE_A, scannerId: SCANNER, nowMs: T0 })).resolves.toEqual({ issuerId: KIOSK })
+  })
+
+  it('pencere bittikten 30 sn sonrasına kadar kabul, sonrası QR_EXPIRED', async () => {
+    const qr = await qrAt(T0)
+    const windowEnd = (kioskQrWindow(T0) + 1) * KIOSK_QR_STEP_MS
+    await expect(verifyKioskQr(qr, { storeId: STORE_A, scannerId: SCANNER, nowMs: windowEnd + 29_000 })).resolves.toBeTruthy()
+    await expect(verifyKioskQr(qr, { storeId: STORE_A, scannerId: SCANNER, nowMs: windowEnd + 30_000 })).rejects.toMatchObject({ code: 'QR_EXPIRED' })
+  })
+
+  it('ileri tarihli kod reddedilir (önceden üretip saklama)', async () => {
+    const qr = await qrAt(T0 + 5 * KIOSK_QR_STEP_MS)
+    await expect(verifyKioskQr(qr, { storeId: STORE_A, scannerId: SCANNER, nowMs: T0 })).rejects.toMatchObject({ code: 'QR_INVALID' })
+  })
+
+  it('anahtarın ömrü bittikten sonraki pencereler reddedilir', async () => {
+    const after = T0 + KIOSK_SEED_TTL_MS + KIOSK_QR_STEP_MS
+    const qr = await qrAt(after)
+    await expect(verifyKioskQr(qr, { storeId: STORE_A, scannerId: SCANNER, nowMs: after })).rejects.toMatchObject({ code: 'QR_EXPIRED' })
+  })
+
+  it('mağaza alanı değiştirilirse imza tutmaz', async () => {
+    const qr = (await qrAt(T0)).replace(STORE_A, STORE_B)
+    await expect(verifyKioskQr(qr, { storeId: STORE_B, scannerId: SCANNER, nowMs: T0 })).rejects.toMatchObject({ code: 'QR_INVALID' })
+  })
+
+  it('pencere alanı değiştirilirse imza tutmaz', async () => {
+    const parsed = parseKioskQr(await qrAt(T0))!
+    const forged = ['SU3', parsed.storeId, parsed.issuerId, parsed.expiresAt, parsed.window + 1, parsed.mac].join('.')
+    await expect(verifyKioskQr(forged, { storeId: STORE_A, scannerId: SCANNER, nowMs: T0 + KIOSK_QR_STEP_MS })).rejects.toMatchObject({ code: 'QR_INVALID' })
+  })
+
+  it('başka mağazanın kodu QR_WRONG_STORE', async () => {
+    await expect(verifyKioskQr(await qrAt(T0), { storeId: STORE_B, scannerId: SCANNER, nowMs: T0 })).rejects.toMatchObject({ code: 'QR_WRONG_STORE' })
+  })
+
+  it('kendi anahtarıyla üretilen kod QR_SELF_ISSUED', async () => {
+    await expect(verifyKioskQr(await qrAt(T0), { storeId: STORE_A, scannerId: KIOSK, nowMs: T0 })).rejects.toMatchObject({ code: 'QR_SELF_ISSUED' })
+  })
+})
+
+describe('verifyKioskIssuer', () => {
+  const admin = (employees: Record<string, unknown>[]) => createFakeDb({ employees }) as unknown as SupabaseClient
+  const row = (extra: Record<string, unknown> = {}) => ({
+    id: KIOSK, active: true, store_id: STORE_A, termination_date: null, roles: { access_level: 'kiosk' }, ...extra,
+  })
+
+  it('aktif kiosk hesabı kendi mağazası için geçerli', async () => {
+    await expect(verifyKioskIssuer(admin([row()]), KIOSK, STORE_A)).resolves.toBeUndefined()
+  })
+
+  it('admin her mağaza için geçerli', async () => {
+    await expect(verifyKioskIssuer(admin([row({ roles: { access_level: 'admin' } })]), KIOSK, STORE_B)).resolves.toBeUndefined()
+  })
+
+  it.each([
+    ['pasif hesap', row({ active: false })],
+    ['işten çıkmış hesap', row({ termination_date: '2026-01-01' })],
+    ['başka mağaza', row({ store_id: STORE_B })],
+    ['çalışan seviyesine düşürülmüş', row({ roles: { access_level: 'employee' } })],
+  ])('%s → QR_INVALID', async (_label, r) => {
+    await expect(verifyKioskIssuer(admin([r]), KIOSK, STORE_A)).rejects.toMatchObject({ code: 'QR_INVALID' })
+  })
+
+  it('silinmiş hesap → QR_INVALID', async () => {
+    await expect(verifyKioskIssuer(admin([]), KIOSK, STORE_A)).rejects.toMatchObject({ code: 'QR_INVALID' })
   })
 })
