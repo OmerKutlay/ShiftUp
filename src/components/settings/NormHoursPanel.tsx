@@ -18,18 +18,18 @@ import {
 } from '@/lib/api/storeNorm'
 import { defaultDerivation, formatHours, monthLabelTr } from '@/lib/storeNorm'
 import { turkeyToday } from '@/lib/dateUtils'
-import { PeriodStepper, StatusBadge, useConfirm } from '@/components/common'
+import { ListSkeleton, PeriodStepper, StatusBadge, useConfirm } from '@/components/common'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
-import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
-import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from '@/components/ui/item'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from '@/components/ui/item'
 import { Spinner } from '@/components/ui/spinner'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 /** 'YYYY-MM-01' ± n ay */
 function shiftMonth(month: string, n: number): string {
@@ -92,9 +92,9 @@ function EditDialog({ item, month, onClose, onSaved }: {
               aria-invalid={!!error}
               autoFocus
             />
-            <p className="text-xs text-muted-foreground">
+            <FieldDescription>
               Hesaplanan tahmin: {formatHours(item.defaultHours)} sa ({defaultDerivation(item.employeeCount, month)}, yukarı 10’a yuvarlı)
-            </p>
+            </FieldDescription>
             {error && <FieldError>{error}</FieldError>}
           </Field>
           <Field>
@@ -103,7 +103,7 @@ function EditDialog({ item, month, onClose, onSaved }: {
           </Field>
         </FieldGroup>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={saving}>Vazgeç</Button>
+          <Button variant="outline" onClick={onClose} disabled={saving}>İptal</Button>
           <Button onClick={() => void submit()} disabled={saving}>
             {saving && <Spinner />}
             Kaydet
@@ -165,9 +165,9 @@ export function NormHoursPanel() {
             <AlertDescription>{error instanceof Error ? error.message : 'Yükleme hatası.'}</AlertDescription>
           </Alert>
         )}
-        {isLoading && <Skeleton className="h-24 w-full rounded-lg" />}
+        {isLoading && <ListSkeleton count={3} avatar={false} />}
 
-        <div className="flex flex-col gap-2">
+        <ItemGroup className="gap-2">
           {(data?.stores ?? []).map((s) => (
             <Item key={s.storeId} variant="outline" size="sm" className="flex-wrap">
               <ItemContent className="min-w-0">
@@ -189,14 +189,19 @@ export function NormHoursPanel() {
                   {s.source === 'set' ? 'Düzenle' : 'Norm gir'}
                 </Button>
                 {s.source === 'set' && (
-                  <Button variant="ghost" size="icon-sm" aria-label={`${s.storeName} normunu sil`} onClick={() => void reset(s)}>
-                    <RotateCcw />
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon-sm" aria-label={`${s.storeName} normunu sil`} onClick={() => void reset(s)}>
+                        <RotateCcw />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Varsayılana dön</TooltipContent>
+                  </Tooltip>
                 )}
               </ItemActions>
             </Item>
           ))}
-        </div>
+        </ItemGroup>
       </CardContent>
 
       {editing && (

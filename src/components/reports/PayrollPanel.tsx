@@ -6,13 +6,15 @@
  */
 import { useMemo, useState } from 'react'
 import useSWR from 'swr'
-import { Download, FileSpreadsheet, TriangleAlert } from 'lucide-react'
+import { Download, FileSpreadsheet, Info, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiDownload, apiFetch, ApiError } from '@/lib/api/http'
 import type { PayrollRow } from '@/lib/payrollTimesheet'
 import { PeriodStepper, TableSkeleton } from '@/components/common'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
+import { Spinner } from '@/components/ui/spinner'
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { turkeyToday } from '@/lib/dateUtils'
 import { monthLabel, shiftMonth } from './timesheetSummary'
@@ -58,7 +60,8 @@ export function PayrollPanel() {
 
   const button = (format: 'xlsx' | 'csv', label: string, icon: React.ReactNode) => (
     <Button variant="outline" disabled={!ready || downloading !== null} onClick={() => void download(format)}>
-      {icon} {downloading === format ? 'Hazırlanıyor…' : label}
+      {downloading === format ? <Spinner /> : icon}
+      {downloading === format ? 'Hazırlanıyor…' : label}
     </Button>
   )
 
@@ -79,10 +82,14 @@ export function PayrollPanel() {
         </div>
       </div>
 
-      <p className="text-sm text-muted-foreground">
-        Muhasebe için aylık özet: SGK prim günü, eksik gün nedeni, normal ve fazla mesai saati. Sicil ve TC kimlik
-        no sütunları boş gelir (saklanmaz); muhasebe doldurur. Ay bitmeden alınan çıktı geçicidir.
-      </p>
+      <Alert tone="info">
+        <Info />
+        <AlertTitle>Muhasebe için aylık özet</AlertTitle>
+        <AlertDescription>
+          SGK prim günü, eksik gün nedeni, normal ve fazla mesai saati. Sicil ve TC kimlik no sütunları boş gelir
+          (saklanmaz); muhasebe doldurur. Ay bitmeden alınan çıktı geçicidir.
+        </AlertDescription>
+      </Alert>
 
       {error && (
         <Alert variant="destructive">
@@ -95,9 +102,13 @@ export function PayrollPanel() {
       {isLoading && !data ? (
         <TableSkeleton rows={8} columns={6} />
       ) : data && rows.length === 0 ? (
-        <p className="rounded-lg border py-10 text-center text-sm text-muted-foreground">
-          {monthLabel(month)} için puantaj kaydı yok.
-        </p>
+        <Empty className="border py-12">
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><FileSpreadsheet /></EmptyMedia>
+            <EmptyTitle>Puantaj kaydı yok</EmptyTitle>
+            <EmptyDescription>{monthLabel(month)} için bordroya aktarılacak kayıt bulunmuyor.</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       ) : data && (
         <div className="max-h-[70dvh] overflow-auto rounded-lg border">
           <table className="w-full border-separate border-spacing-0 text-sm">

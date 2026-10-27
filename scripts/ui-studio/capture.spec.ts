@@ -27,6 +27,8 @@ const DEVICE = process.env.STUDIO_DEVICE
 const PERSONA = process.env.STUDIO_PERSONA
 const FOLD = process.env.STUDIO_FOLD === '1'
 const CLOCK = process.env.STUDIO_CLOCK !== '0' && mockOptions.demoTime !== 'real'
+// STUDIO_ADMIN=1: yönetici personası Admin (Admin'e özel Ayarlar sekmeleri için)
+if (process.env.STUDIO_ADMIN === '1') mockOptions.managerIsAdmin = true
 
 /** Bugünün İstanbul tarihi + demoTime → an (İstanbul UTC+3, yaz saati yok) */
 function demoNow(): Date {

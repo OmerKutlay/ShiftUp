@@ -30,6 +30,12 @@ import type { DraftAssignment, EmployeeDraftStats, PlannerResult, PlanWarning, S
 import type { DaySummary, EmployeeWeekSummary, WorkingTimeViolation } from '../../src/lib/workingTimeService'
 import type { PushDiagnosticStep } from '../../src/lib/pushDiagnostics'
 import type { AnnualLeaveBalance } from '../../src/lib/annualLeave'
+import type {
+  ChecklistHistoryResponse, ChecklistHistoryRun, ChecklistRun, ChecklistTemplate, TodayChecklistsResponse,
+} from '../../src/types/checklist'
+import type { Announcement } from '../../src/types/announcement'
+import type { AnnouncementDetailResponse, AnnouncementsResponse } from '../../src/lib/api/announcements'
+import type { PayrollRow } from '../../src/lib/payrollTimesheet'
 
 // ═════════════════════════════════════════════════════════════
 // Dış arayüz
@@ -44,6 +50,8 @@ export const mockOptions = {
   demoTime: '15:40' as string,
   /** /api/push/config — true ise "Bildirimleri aç" kartları görünür */
   pushEnabled: false,
+  /** Yönetici personası Admin olsun (Admin'e özel Ayarlar sekmeleri: norm saatleri, uygulama hataları) */
+  managerIsAdmin: false,
 }
 
 /** Personaların çalışan id'leri (çerez / fixture eşlemesi için) */
@@ -360,7 +368,7 @@ interface Ctx {
 function makeCtx(persona: Persona): Ctx {
   const now = istanbulNow()
   const nowMin = mockOptions.demoTime === 'real' ? now.minutes : toMin(mockOptions.demoTime)
-  const me = persona === 'manager' ? E(1) : E(5)
+  const me = persona === 'manager' ? (mockOptions.managerIsAdmin ? { ...E(1), role: R.admin } : E(1)) : E(5)
   const ctx: Ctx = {
     persona, me, isManager: hasAccess(me.role.access_level, 'manager'), today: now.date, nowMin,
     leaves: [], corrections: [], forced: new Map(), shiftCache: new Map(), attCache: new Map(),
@@ -1999,4 +2007,163 @@ const ROUTES: Route[] = [
     const n = Array.isArray(body?.assignments) ? (body!.assignments as unknown[]).length : 0
     return json({ created: n, replaced: Math.max(0, n - 6), skipped: 0, restDays: 14, warnings: [], errors: [] })
   }, 'manager'),
+
+  // ── Kontrol listeleri ─────────────────────────────────────
+  get('/api/checklists/today', ({ ctx }) => json({
+    date: ctx.today, runs: checklistRuns(ctx), can_tick: true, is_manager: ctx.isManager, current_employee_id: ctx.me.id,
+  } satisfies TodayChecklistsResponse)),
+  get('/api/checklists/templates', () => json({ templates: CHECKLIST_TEMPLATES }), 'manager'),
+  get('/api/checklists/history', ({ ctx }) => json(checklistHistory(ctx)), 'manager'),
+
+  // ── Duyurular ─────────────────────────────────────────────
+  get('/api/announcements/unread-count', () => json({ count: 1 })),
+  get('/api/announcements', ({ ctx, q }) => {
+    const all = announcements(ctx)
+    const archive = q.get('archive') === '1'
+    return json({
+      announcements: archive ? all.slice(3) : all.slice(0, 3),
+      next_before: null,
+      unread_count: all.filter((a) => a.is_recipient && !a.read_at).length,
+    } satisfies AnnouncementsResponse)
+  }),
+  get('/api/announcements/:id', ({ ctx, params }) => {
+    const a = announcements(ctx).find((x) => x.id === params.id)
+    if (!a) return json({ error: 'Duyuru bulunamadı.', code: 'NOT_FOUND' }, 404)
+    const recipients = a.can_manage
+      ? EMPLOYEES.filter((e) => e.active).map((e, i) => ({
+        employee_id: e.id, full_name: e.full_name,
+        read_at: i % 3 === 2 ? null : `${ctx.today}T09:${String(10 + i).padStart(2, '0')}:00+03:00`,
+        ack_at: i % 3 === 0 ? `${ctx.today}T10:${String(10 + i).padStart(2, '0')}:00+03:00` : null,
+      }))
+      : undefined
+    return json({ announcement: a, recipients } satisfies AnnouncementDetailResponse)
+  }),
+  post('/api/announcements/:id/read', () => json({ ok: true })),
+
+  // ── KVKK ──────────────────────────────────────────────────
+  get('/api/kvkk/ack', () => json({ version: '2026-10-27', acknowledged: true, acknowledged_at: nowIso(), acknowledged_version: '2026-10-27' })),
+  get('/api/kvkk/acknowledgements', ({ ctx }) => json({
+    version: '2026-10-27',
+    employees: EMPLOYEES.filter((e) => e.active).map((e, i) => ({
+      id: e.id, full_name: e.full_name,
+      kvkk_notice_ack_at: i % 4 === 3 ? null : `${addDays(ctx.today, -i)}T10:15:00+03:00`,
+      kvkk_notice_version: i % 4 === 3 ? null : i % 5 === 4 ? '2026-09' : '2026-10-27',
+    })),
+  }), 'store_manager'),
+  get('/api/company-settings', () => json({ settings: { legal_name: 'Örnek Perakende A.Ş.', address: 'Caferağa Mah. Moda Cad. No: 1, Kadıköy / İstanbul', kvkk_email: 'kvkk@ornek.com.tr' } })),
+
+  // ── Norm saati ────────────────────────────────────────────
+  get('/api/stores/norm', ({ ctx, q }) => {
+    const month = `${q.get('month') ?? ctx.today.slice(0, 7)}-01`
+    if (q.get('scope') === 'all') {
+      return json({ stores: [
+        { ...storeNorm(month, 1620, 1490, 'set'), storeId: '00000000-0000-0000-0003-000000000001', storeName: STORE_NAME, updatedAt: nowIso() },
+        { ...storeNorm(month, 1170, 1104, 'default'), storeId: '00000000-0000-0000-0003-000000000002', storeName: 'Bağdat Caddesi Mağazası', updatedAt: null },
+      ] })
+    }
+    return json(storeNorm(month, 1620, 1490, 'set'))
+  }, 'manager'),
+
+  // ── Bordro puantajı ───────────────────────────────────────
+  get('/api/reports/payroll', ({ q, ctx }) => json({ month: q.get('month') ?? ctx.today.slice(0, 7), rows: payrollRows() }), 'manager'),
+
+  // ── Uygulama hataları ─────────────────────────────────────
+  get('/api/app-errors', ({ ctx }) => json({ errors: [
+    { id: seqId('ae', 1), created_at: `${ctx.today}T11:42:07+03:00`, source: 'api:/api/reports/timesheet', message: 'canceling statement due to statement timeout', stack: 'Error: canceling statement due to statement timeout\n    at loadTimesheet (timesheetQuery.ts:88:11)\n    at GET (route.ts:41:20)', request_id: '8d5f1c2b3a4e-IST', employee_id: empId(1), store_id: '00000000-0000-0000-0003-000000000001', meta: { month: ctx.today.slice(0, 7) } },
+    { id: seqId('ae', 2), created_at: `${addDays(ctx.today, -1)}T18:03:51+03:00`, source: 'client:window', message: "TypeError: Cannot read properties of undefined (reading 'full_name')", stack: "TypeError: Cannot read properties of undefined (reading 'full_name')\n    at ShiftCell (WeeklySchedulePage.tsx:412:27)", request_id: null, employee_id: empId(3), store_id: null, meta: { path: '/schedule', ua: 'iPhone; iOS 26.1' } },
+    { id: seqId('ae', 3), created_at: `${addDays(ctx.today, -3)}T08:57:12+03:00`, source: 'api:/api/qr/process', message: 'fetch failed', stack: null, request_id: '8d4a9e0f1b2c-IST', employee_id: null, store_id: null, meta: null },
+  ] }), 'admin'),
 ]
+
+// ═════════════════════════════════════════════════════════════
+// Yeni modüller (kontrol listeleri, duyurular, norm, bordro) — basit sabit veri
+// ═════════════════════════════════════════════════════════════
+
+const CHECKLIST_TEMPLATES: ChecklistTemplate[] = [
+  { id: seqId('c1', 1), name: 'Açılış', kind: 'opening', weekdays: [0, 1, 2, 3, 4, 5, 6], due_time: '10:00', active: true, items: [
+    'Alarm kapatıldı, ışıklar açıldı', 'Kasa açılış tutarı sayıldı', 'Vitrin ve manken kontrolü', 'Deneme kabinleri temiz',
+    'Mağaza müziği açık', 'Günlük hedef ekibe iletildi',
+  ].map((text, i) => ({ id: seqId('c2', i + 1), position: i, text, required: i < 2 })) },
+  { id: seqId('c1', 2), name: 'Kapanış', kind: 'closing', weekdays: [0, 1, 2, 3, 4, 5, 6], due_time: '22:15', active: true, items: [
+    'Kasa kapanışı yapıldı', 'Z raporu alındı', 'Reyonlar toplandı', 'Deneme kabinleri boşaltıldı', 'Depo kapısı kilitli',
+    'Işıklar kapatıldı', 'Alarm kuruldu', 'Çöp çıkarıldı', 'Klimalar kapatıldı',
+  ].map((text, i) => ({ id: seqId('c3', i + 1), position: i, text, required: i < 2 || i === 6 })) },
+  { id: seqId('c1', 3), name: 'Haftalık depo sayımı', kind: 'custom', weekdays: [1], due_time: null, active: false, items: [
+    'Gelen koliler sayıldı', 'Eksik ürün listesi çıkarıldı', 'Sayım sisteme girildi',
+  ].map((text, i) => ({ id: seqId('c4', i + 1), position: i, text, required: false })) },
+]
+
+function checklistRuns(ctx: Ctx): ChecklistRun[] {
+  const at = (hm: string) => `${ctx.today}T${hm}:00+03:00`
+  const [opening, closing] = CHECKLIST_TEMPLATES
+  const run = (t: ChecklistTemplate, n: number, doneCount: number, completed: string | null): ChecklistRun => ({
+    id: seqId('c5', n), template_id: t.id, run_date: ctx.today, name: t.name, kind: t.kind, due_time: t.due_time,
+    completed_at: completed, completed_by_name: completed ? 'Zeynep Arslan' : null, note: null, overdue: false,
+    items: t.items.map((it, i) => ({
+      id: seqId('c6', n * 100 + i), position: it.position, text: it.text, required: it.required,
+      done_at: i < doneCount ? at(`09:${String(30 + i * 3).padStart(2, '0')}`) : null,
+      done_by: i < doneCount ? empId(2) : null, done_by_name: i < doneCount ? 'Zeynep Arslan' : null,
+    })),
+  })
+  return [run(opening, 1, opening.items.length, at('09:52')), run(closing, 2, 2, null)]
+}
+
+function checklistHistory(ctx: Ctx): ChecklistHistoryResponse {
+  const runs: ChecklistHistoryRun[] = []
+  for (let d = 1; d <= 6; d++) {
+    const date = addDays(ctx.today, -d)
+    CHECKLIST_TEMPLATES.slice(0, 2).forEach((t, k) => {
+      const missed = (d + k) % 4 === 0
+      runs.push({
+        id: seqId('c7', d * 10 + k), template_id: t.id, run_date: date, name: t.name, kind: t.kind, due_time: t.due_time,
+        completed_at: missed ? null : `${date}T${k === 0 ? '09:5' + d : '22:0' + d}:00+03:00`,
+        completed_by_name: missed ? null : k === 0 ? 'Zeynep Arslan' : 'Burak Şahin',
+        done: missed ? t.items.length - 3 : t.items.length, total: t.items.length,
+      })
+    })
+  }
+  return { from: addDays(ctx.today, -30), to: ctx.today, runs }
+}
+
+function announcements(ctx: Ctx): Announcement[] {
+  const base = (n: number, over: Partial<Announcement>): Announcement => ({
+    id: seqId('a1', n), store_id: '00000000-0000-0000-0003-000000000001', title: '', body: '', pinned: false, requires_ack: false,
+    target_roles: 'all', expires_at: null, created_at: `${addDays(ctx.today, -n)}T09:30:00+03:00`,
+    updated_at: `${addDays(ctx.today, -n)}T09:30:00+03:00`, edited_at: null, author_name: 'Mehmet Kaya',
+    is_recipient: true, read_at: `${addDays(ctx.today, -n)}T12:00:00+03:00`, ack_at: null, can_manage: ctx.isManager,
+    ...(ctx.isManager && { stats: { recipients: 16, read: 16 - n * 2, acked: 0 }, last_reminded_at: null }),
+    ...over,
+  })
+  return [
+    base(0, { title: 'Yeni kasa prosedürü', pinned: true, requires_ack: true, read_at: null,
+      body: 'Pazartesiden itibaren kasa açılışında iki kişilik sayım zorunludur. Ayrıntılar: https://ornek.com.tr/kasa',
+      ...(ctx.isManager && { stats: { recipients: 16, read: 11, acked: 7 } }) }),
+    base(1, { title: 'Kasım kampanya takvimi', body: 'Efsane Kasım indirimleri 13 Kasım’da başlıyor. Vitrin değişimi 12 Kasım akşamı kapanış ekibiyle yapılacak.' }),
+    base(2, { title: 'Personel otoparkı', store_id: null, body: 'AVM otoparkının B2 katı personele ayrılmıştır; kartınızı güvenlikten alabilirsiniz.' }),
+    base(9, { title: 'Ekim envanter sayımı', body: 'Sayım 3 Ekim gece yapılacaktır.', expires_at: `${addDays(ctx.today, -5)}T23:59:59+03:00` }),
+  ]
+}
+
+function storeNorm(month: string, normHours: number, plannedHours: number, source: 'set' | 'default') {
+  const percent = Math.round((plannedHours / normHours) * 100)
+  return {
+    month, normHours, source, defaultHours: 1170, employeeCount: 26, monthDays: 31, note: source === 'set' ? 'Kasım kampanyası için +%10' : null,
+    plannedHours, remainingHours: normHours - plannedHours, percent, level: percent > 100 ? 'over' : percent >= 90 ? 'warn' : 'ok',
+    workedHours: Math.round(plannedHours * 0.8),
+  } as const
+}
+
+function payrollRows(): PayrollRow[] {
+  return EMPLOYEES.filter((e) => e.active).map((e, i) => {
+    const sick = i % 7 === 3 ? 2 : 0, annual = i % 5 === 1 ? 3 : 0, unpaid = i % 9 === 4 ? 1 : 0
+    const missing = sick + unpaid
+    return {
+      employeeId: e.id, fullName: e.full_name, sicilNo: '', tcKimlikNo: '', days: {},
+      workedDays: 26 - annual - missing - (i % 3), normalHours: 195 - (i % 4) * 7.5, overtimeHours: i % 4 === 0 ? 6.5 : 0,
+      holidayWorkedHours: 0, holidayWorkedDays: i % 6 === 0 ? 1 : 0, nightHours: 0, weeklyRestDays: 4, holidayRestDays: 0,
+      annualLeaveDays: annual, sickDays: sick, unpaidDays: unpaid, excuseDays: 0, absentDays: 0, employedDays: 30,
+      missingDays: missing, missingReasonCode: sick && unpaid ? '12' : sick ? '01' : unpaid ? '05' : '',
+      sgkDays: 30 - missing, noRecords: false, notes: [],
+    }
+  })
+}

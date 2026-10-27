@@ -19,6 +19,7 @@ import {
   computeNormUsage, defaultDerivation, formatHours, majorityMonthOfWeek, monthEnd, monthLabelTr, normWarningFor,
   type NormLevel,
 } from '@/lib/storeNorm'
+import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
@@ -115,16 +116,12 @@ export function MonthlyNormIndicator({ weekStart, saved, projected, className }:
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button
-          type="button"
+        <Button
+          variant="outline"
           aria-label={`Aylık norm: ${monthName} ${formatHours(usage.plannedHours)} / ${formatHours(norm.normHours)} saat, yüzde ${usage.percent}`}
-          className={cn(
-            'flex h-9 min-w-0 items-center gap-2 rounded-md border bg-background px-3 text-sm shadow-xs',
-            'outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
-            className,
-          )}
+          className={cn('min-w-0 px-3 font-normal', className)}
         >
-          <Gauge className="size-4 shrink-0 text-muted-foreground" />
+          <Gauge className="text-muted-foreground" />
           <span className={cn('truncate tabular-nums', tone.text)}>
             {monthName}: {formatHours(usage.plannedHours)} / {formatHours(norm.normHours)} sa (%{usage.percent})
           </span>
@@ -134,7 +131,7 @@ export function MonthlyNormIndicator({ weekStart, saved, projected, className }:
             className="hidden h-1.5 w-16 shrink-0 sm:block"
             aria-hidden
           />
-        </button>
+        </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-72 text-sm">
         <p className="font-medium">{monthLabelTr(month)} norm saati</p>

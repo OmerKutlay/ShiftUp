@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -120,27 +121,34 @@ function RunCard({ run, previousDay, onOpen }: { run: ChecklistRun; previousDay:
     <button
       type="button"
       onClick={onOpen}
-      className={cn(
-        'flex w-full flex-col gap-3 rounded-xl border bg-card p-4 text-left shadow-xs transition-colors outline-none',
-        'hover:bg-accent/40 focus-visible:ring-[3px] focus-visible:ring-ring/50',
-        run.overdue && 'border-destructive/40',
-        complete && 'border-success/40'
-      )}
+      className="block h-full w-full rounded-xl text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
     >
-      <span className="flex items-start justify-between gap-2">
-        <span className="min-w-0 text-base font-semibold break-words">{run.name}</span>
-        <span className="text-lg font-semibold tabular-nums">{done}/{total}</span>
-      </span>
-      <Progress value={total ? (done / total) * 100 : 0} aria-label={`${run.name} ilerlemesi`} />
-      <span className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-        {run.due_time && (
-          <span className="inline-flex items-center gap-1 tabular-nums"><Clock className="size-3.5" aria-hidden />Son saat {run.due_time}</span>
+      <Card
+        className={cn(
+          'h-full gap-4 py-4 shadow-xs transition-colors hover:border-primary/40 md:py-5',
+          run.overdue && 'border-destructive/40',
+          complete && 'border-success/40'
         )}
-        {previousDay && <Badge tone="neutral">Dün</Badge>}
-        {complete && <Badge tone="success">Tamamlandı {clock(run.completed_at)}</Badge>}
-        {run.overdue && <Badge tone="danger">Gecikti</Badge>}
-        {!complete && !run.overdue && done > 0 && <Badge tone="info">Devam ediyor</Badge>}
-      </span>
+      >
+        <CardHeader className="px-4 md:px-5">
+          <CardTitle className="break-words">{run.name}</CardTitle>
+          <CardDescription className="flex items-center gap-1 tabular-nums">
+            {run.due_time ? <><Clock className="size-3.5" aria-hidden />Son saat {run.due_time}</> : 'Son saat yok'}
+          </CardDescription>
+          <CardAction className="text-lg font-semibold tabular-nums">{done}/{total}</CardAction>
+        </CardHeader>
+        <CardContent className="px-4 md:px-5">
+          <Progress value={total ? (done / total) * 100 : 0} aria-label={`${run.name} ilerlemesi`} />
+        </CardContent>
+        {(previousDay || complete || run.overdue || done > 0) && (
+          <CardFooter className="flex-wrap gap-2 px-4 md:px-5">
+            {previousDay && <Badge tone="neutral">Dün</Badge>}
+            {complete && <Badge tone="success">Tamamlandı {clock(run.completed_at)}</Badge>}
+            {run.overdue && <Badge tone="danger">Gecikti</Badge>}
+            {!complete && !run.overdue && done > 0 && <Badge tone="info">Devam ediyor</Badge>}
+          </CardFooter>
+        )}
+      </Card>
     </button>
   )
 }

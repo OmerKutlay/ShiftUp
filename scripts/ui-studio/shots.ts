@@ -67,11 +67,29 @@ export const SHOTS: Shot[] = [
   { name: 'reports-timesheet', path: '/reports', personas: M, steps: [{ tab: /puantaj/i }] },
   { name: 'reports-timesheet-table', path: '/reports', personas: M, steps: [{ tab: /puantaj/i }, { button: /^tablo$/i }], devices: ['desktop'] },
   { name: 'reports-overtime', path: '/reports', personas: M, steps: [{ tab: /fazla çalışma/i }] },
+  { name: 'reports-payroll', path: '/reports', personas: M, steps: [{ tab: /bordro/i }] },
+
+  { name: 'checklists', path: '/checklists', personas: ALL },
+  { name: 'checklists-run', path: '/checklists', personas: E, steps: [{ button: /kapanış/i }], viewportOnly: true },
+  { name: 'checklists-templates', path: '/checklists', personas: M, steps: [{ tab: /şablonlar/i }] },
+  { name: 'checklists-template-edit', path: '/checklists', personas: M, steps: [{ tab: /şablonlar/i }, { button: /düzenle/i }], viewportOnly: true },
+  { name: 'checklists-history', path: '/checklists', personas: M, steps: [{ tab: /geçmiş/i }] },
+
+  { name: 'announcements', path: '/announcements', personas: ALL },
+  { name: 'announcements-archive', path: '/announcements', personas: M, steps: [{ tab: /arşiv/i }] },
+  { name: 'announcements-detail', path: '/announcements', personas: M, steps: [{ button: /yeni kasa prosedürü/i }], viewportOnly: true },
+  { name: 'announcements-new', path: '/announcements', personas: M, steps: [{ button: /yeni duyuru/i }], viewportOnly: true },
+
+  { name: 'privacy', path: '/gizlilik', personas: M },
 
   { name: 'settings-location', path: '/settings', personas: M },
   { name: 'settings-holidays', path: '/settings', personas: M, steps: [{ tab: /tatil/i }] },
   { name: 'settings-audit', path: '/settings', personas: M, steps: [{ tab: /denetim/i }] },
   { name: 'settings-notifications', path: '/settings', personas: M, steps: [{ tab: /bildirim/i }] },
+  { name: 'settings-kvkk', path: '/settings', personas: M, steps: [{ tab: /kvkk/i }] },
+  // Admin'e özel sekmeler: STUDIO_ADMIN=1 ile çekilir (aksi halde sekme bulunamaz, rapora yazılır)
+  { name: 'settings-norms', path: '/settings', personas: M, steps: [{ tab: /norm/i }] },
+  { name: 'settings-errors', path: '/settings', personas: M, steps: [{ tab: /hata/i }] },
 
   { name: 'notifications', path: '/notifications', personas: ALL },
   { name: 'more', path: '/more', personas: ALL, devices: ['mobile'] },

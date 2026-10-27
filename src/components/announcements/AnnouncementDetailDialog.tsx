@@ -5,16 +5,18 @@
  * Alıcı: açılınca okundu işaretlenir; onay zorunluysa "Okudum, anladım" düğmesi.
  * Yönetici: okundu/onay istatistiği, okumayan / okuyanların adları, düzenle · hatırlat · sil.
  */
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import useSWR, { useSWRConfig } from 'swr'
-import { BellRing, CheckCheck, Pencil, Pin, Trash2 } from 'lucide-react'
+import { BellRing, CheckCheck, Pencil, Pin, Trash2, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
-import { useConfirm } from '@/components/common'
+import { PersonAvatar, useConfirm } from '@/components/common'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
+import { Item, ItemActions, ItemContent, ItemGroup, ItemMedia, ItemSeparator, ItemTitle } from '@/components/ui/item'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -123,7 +125,13 @@ export function AnnouncementDetailDialog({ id, onClose, onEdit }: Props) {
         </DialogHeader>
 
         {isLoading && <div className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-4/5" /></div>}
-        {error && !a && <p className="text-sm text-destructive">Duyuru yüklenemedi.</p>}
+        {error && !a && (
+          <Alert variant="destructive">
+            <TriangleAlert />
+            <AlertTitle>Duyuru yüklenemedi</AlertTitle>
+            <AlertDescription>{error instanceof Error ? error.message : 'Bir hata oluştu.'}</AlertDescription>
+          </Alert>
+        )}
 
         {a && (
           <>
@@ -151,10 +159,12 @@ export function AnnouncementDetailDialog({ id, onClose, onEdit }: Props) {
                 <Tabs defaultValue="pending">
                   <TabsList className="w-full">
                     <TabsTrigger value="pending" className="flex-1">
-                      {a.requires_ack ? 'Onaylamayanlar' : 'Okumayanlar'} ({pendingList.length})
+                      {a.requires_ack ? 'Onaylamayanlar' : 'Okumayanlar'}
+                      <Badge variant="secondary" className="tabular-nums">{pendingList.length}</Badge>
                     </TabsTrigger>
                     <TabsTrigger value="done" className="flex-1">
-                      {a.requires_ack ? 'Onaylayanlar' : 'Okuyanlar'} ({doneList.length})
+                      {a.requires_ack ? 'Onaylayanlar' : 'Okuyanlar'}
+                      <Badge variant="secondary" className="tabular-nums">{doneList.length}</Badge>
                     </TabsTrigger>
                   </TabsList>
                   <TabsContent value="pending">
@@ -206,15 +216,21 @@ function NameList({ items, empty, note, when }: {
   note?: (r: { read_at: string | null; ack_at: string | null }) => string
   when?: (r: { read_at: string | null; ack_at: string | null }) => string
 }) {
-  if (items.length === 0) return <p className="py-3 text-sm text-muted-foreground">{empty}</p>
+  if (items.length === 0) return <p className="py-6 text-center text-sm text-muted-foreground">{empty}</p>
   return (
-    <ul className="max-h-56 divide-y overflow-y-auto text-sm">
-      {items.map((r) => (
-        <li key={r.employee_id} className="flex items-center justify-between gap-3 py-2">
-          <span className="min-w-0 truncate">{r.full_name}</span>
-          <span className="shrink-0 text-xs text-muted-foreground">{note?.(r) ?? when?.(r)}</span>
-        </li>
+    <ItemGroup className="max-h-56 overflow-y-auto">
+      {items.map((r, i) => (
+        <Fragment key={r.employee_id}>
+          {i > 0 && <ItemSeparator />}
+          <Item size="sm" className="px-1 py-2">
+            <ItemMedia><PersonAvatar name={r.full_name} size={24} /></ItemMedia>
+            <ItemContent className="min-w-0">
+              <ItemTitle className="truncate font-normal">{r.full_name}</ItemTitle>
+            </ItemContent>
+            <ItemActions className="text-xs text-muted-foreground tabular-nums">{note?.(r) ?? when?.(r)}</ItemActions>
+          </Item>
+        </Fragment>
       ))}
-    </ul>
+    </ItemGroup>
   )
 }
