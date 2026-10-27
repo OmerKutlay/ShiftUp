@@ -62,7 +62,7 @@ export function SettingsPage() {
           : 'Mağaza konumu, resmi tatiller, denetim kaydı, bildirimler ve KVKK'}
       />
       <Tabs value={tab} onValueChange={(v) => setTab(v as SettingsTab)} className="gap-4 md:gap-6">
-        <TabsList className="w-full justify-start overflow-x-auto sm:w-fit">
+        <TabsList className="w-full justify-start overflow-x-auto overflow-y-hidden scrollbar-none sm:w-fit">
           {tabs.map((t) => (
             <TabsTrigger key={t.value} value={t.value} className="sm:px-3">
               <span className="hidden sm:contents">{t.icon}</span>

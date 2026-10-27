@@ -21,7 +21,7 @@ export function ChecklistsPage() {
       <PageHeader title="Kontrol listeleri" description="Açılış, kapanış ve özel kontrol listeleri" />
       {isManager ? (
         <Tabs defaultValue="today" className="gap-4">
-          <TabsList className="max-w-full justify-start overflow-x-auto">
+          <TabsList>
             <TabsTrigger value="today">Bugün</TabsTrigger>
             <TabsTrigger value="templates">Şablonlar</TabsTrigger>
             <TabsTrigger value="history">Geçmiş</TabsTrigger>

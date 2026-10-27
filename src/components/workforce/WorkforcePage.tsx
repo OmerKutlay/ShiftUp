@@ -118,7 +118,7 @@ export function WorkforcePage() {
       </Suspense>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as WorkforceTab)} className="gap-4 md:gap-6">
-        <TabsList className="max-w-full justify-start overflow-x-auto">
+        <TabsList className="max-w-full justify-start overflow-x-auto overflow-y-hidden scrollbar-none">
           <TabsTrigger value="availability" className="flex-none">
             <CalendarClock />Müsaitlik<Count n={availabilityCount} />
           </TabsTrigger>

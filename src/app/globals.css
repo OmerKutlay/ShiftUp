@@ -183,6 +183,14 @@
   --color-shift-close: var(--shift-close);
 }
 
+/* Yatay kayan sekme çubukları: kaydırma çalışır, çubuk görünmez */
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
