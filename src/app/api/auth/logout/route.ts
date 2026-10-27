@@ -9,9 +9,13 @@
 import { NextResponse } from 'next/server'
 import { IS_DEV_AUTH, DEV_SESSION_COOKIE } from '@/lib/authConfig'
 import { ACTIVE_STORE_COOKIE } from '@/lib/storeScope'
+import { ADMIN_PENDING_COOKIE, ADMIN_VERIFIED_COOKIE } from '@/lib/auth/adminLogin'
 
+/** Aktif mağaza seçimi ve admin girişi çerezleri de silinir */
 function clearActiveStore(res: NextResponse): NextResponse {
-  res.cookies.set(ACTIVE_STORE_COOKIE, '', { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 0 })
+  for (const name of [ACTIVE_STORE_COOKIE, ADMIN_VERIFIED_COOKIE, ADMIN_PENDING_COOKIE]) {
+    res.cookies.set(name, '', { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 0 })
+  }
   return res
 }
 

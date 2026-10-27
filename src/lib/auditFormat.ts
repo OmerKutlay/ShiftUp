@@ -52,6 +52,7 @@ const ACTION_LABELS: Record<string, string> = {
   'employee.delete': 'Çalışan silindi',
   'employee.terminate': 'İşten çıkış kaydedildi',
   'employee.terminate_undo': 'İşten çıkış geri alındı',
+  'employee.admin_password_set': 'Admin giriş şifresi belirlendi',
   'workforce.apply': 'Haftalık plan yayınlandı',
   'store.create': 'Mağaza oluşturuldu',
   'store.update': 'Mağaza güncellendi',

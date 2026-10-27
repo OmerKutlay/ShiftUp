@@ -12,18 +12,26 @@
  * 3. Sayfa yetkisi: oturumdaki çalışan aktif olmalı; yönetici sayfalarına yalnızca
  *    ilgili roller girebilir (diğerleri /my-schedule'a yönlendirilir).
  *    API route'ları kendi yetki kontrolünü yapar (requireAuth / requireMinRole).
+ * 4. Admin: oturum yalnızca /login/admin akışıyla (admin şifresi + e-posta kodu) açılmışsa
+ *    geçerlidir (bkz. @/lib/auth/adminLogin); değilse çerezler silinip admin girişine yönlendirilir.
  *
- * Public path'ler: /login, /gizlilik (KVKK aydınlatma metni), /api/auth/*, cron, static dosyalar
+ * Public path'ler: /login, /login/admin, /gizlilik (KVKK aydınlatma metni), /api/auth/*, cron, static dosyalar
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { DEV_SESSION_COOKIE, IS_DEV_AUTH } from '@/lib/authConfig'
 import { verifyDevSessionEdge } from '@/lib/auth/devSessionEdge'
-import { isSessionExpired } from '@/lib/auth/sessionAge'
+import { isSessionExpired, sessionIdOf } from '@/lib/auth/sessionAge'
+import {
+  ADMIN_PENDING_COOKIE, ADMIN_VERIFIED_COOKIE, devSessionId, passesAdminLogin,
+} from '@/lib/auth/adminLogin'
 import { isKioskRole, roleAtLeast, accessLevelOf, ACCESS, type AccessLevel } from '@/lib/auth/roles'
 import { startTrace } from '@/lib/requestTrace'
 import { isEffectivelyActive } from '@/lib/employment'
 
-const PUBLIC_PATHS = ['/login', '/offline', '/gizlilik']
+const LOGIN_PAGE = '/login'
+/** Admin hesaplarının tek giriş sayfası */
+const ADMIN_LOGIN_PAGE = '/login/admin'
+const PUBLIC_PATHS = [LOGIN_PAGE, ADMIN_LOGIN_PAGE, '/offline', '/gizlilik']
 const PUBLIC_API_PREFIX = '/api/auth/'
 // Cron çağrısı oturumsuz gelir; route kendi içinde CRON_SECRET / rol kontrolü yapar
 const CRON_API_PATHS = ['/api/attendance/alerts/scan']
@@ -87,7 +95,7 @@ function isCrossOriginWrite(request: NextRequest): boolean {
 }
 
 type EmployeeLookup =
-  | { status: 'ok'; active: boolean; role: AccessLevel | null }
+  | { status: 'ok'; id: string; active: boolean; role: AccessLevel | null }
   | { status: 'missing' }
   | { status: 'error' }
 
@@ -96,22 +104,25 @@ async function loadEmployee(by: { id?: string; authUserId?: string }): Promise<E
   try {
     const { createAdminClient } = await import('@/lib/supabaseAdmin')
     const admin = createAdminClient()
-    let query = admin.from('employees').select('active, termination_date, roles ( access_level )')
+    let query = admin.from('employees').select('id, active, termination_date, roles ( access_level )')
     query = by.id ? query.eq('id', by.id) : query.eq('auth_user_id', by.authUserId!)
     const { data, error } = await query.maybeSingle()
     if (error) return { status: 'error' }
     if (!data) return { status: 'missing' }
     const role = accessLevelOf(data.roles)
-    return { status: 'ok', active: isEffectivelyActive({ active: Boolean(data.active), termination_date: data.termination_date as string | null }), role }
+    return { status: 'ok', id: data.id as string, active: isEffectivelyActive({ active: Boolean(data.active), termination_date: data.termination_date as string | null }), role }
   } catch {
     return { status: 'error' }
   }
 }
 
-/** Geçersiz kalmış oturum çerezlerini sil (Supabase sb-*-auth-token parçaları + dev çerezi) */
+/** Geçersiz kalmış oturum çerezlerini sil (Supabase sb-*-auth-token parçaları, dev ve admin girişi çerezleri) */
 function clearSessionCookies(request: NextRequest, response: NextResponse) {
   for (const { name } of request.cookies.getAll()) {
-    if (name === DEV_SESSION_COOKIE || (name.startsWith('sb-') && name.includes('-auth-token'))) {
+    if (
+      name === DEV_SESSION_COOKIE || name === ADMIN_VERIFIED_COOKIE || name === ADMIN_PENDING_COOKIE ||
+      (name.startsWith('sb-') && name.includes('-auth-token'))
+    ) {
       response.cookies.delete(name)
     }
   }
@@ -134,8 +145,8 @@ function redirectWithSession(url: URL, session: NextResponse | null) {
   return res
 }
 
-function redirectToLogin(request: NextRequest, session: NextResponse | null, clearCookies = false) {
-  const loginUrl = new URL('/login', request.url)
+function redirectToLogin(request: NextRequest, session: NextResponse | null, clearCookies = false, page = LOGIN_PAGE) {
+  const loginUrl = new URL(page, request.url)
   loginUrl.searchParams.set('next', request.nextUrl.pathname)
   if (clearCookies) return clearSessionCookies(request, NextResponse.redirect(loginUrl))
   return redirectWithSession(loginUrl, session)
@@ -153,16 +164,22 @@ export async function middleware(request: NextRequest) {
     // burada ikinci kez Supabase'e gitmek her API çağrısında CPU/istek maliyetini ikiye katlar.
     return NextResponse.next()
   }
-  if (pathname !== '/login' && isPublicPath(pathname)) return NextResponse.next()
+  const isLoginPage = pathname === LOGIN_PAGE || pathname === ADMIN_LOGIN_PAGE
+  if (!isLoginPage && isPublicPath(pathname)) return NextResponse.next()
 
   // ── Oturum ────────────────────────────────────────────────
   const trace = startTrace('middleware', request, { path: pathname })
   const response = NextResponse.next({ request: { headers: request.headers } })
   let identity: { id?: string; authUserId?: string } | null = null
+  /** Admin girişi çerezinin bağlandığı oturum kimliği (bkz. adminLogin) */
+  let sessionId: string | null = null
 
   if (IS_DEV_AUTH) {
     const session = await verifyDevSessionEdge(request.cookies.get(DEV_SESSION_COOKIE)?.value)
-    if (session) identity = { id: session.employeeId }
+    if (session) {
+      identity = { id: session.employeeId }
+      sessionId = devSessionId(session.createdAt)
+    }
   } else {
     const { createSupabaseMiddlewareClient } = await import('@/lib/supabase/middleware-client')
     const supabase = createSupabaseMiddlewareClient(request, response)
@@ -173,11 +190,12 @@ export async function middleware(request: NextRequest) {
       if (isSessionExpired(session?.access_token, user.last_sign_in_at)) {
         await supabase.auth.signOut().catch(() => {})
         trace.step('session', { ok: false, expired: true })
-        return pathname === '/login'
+        return isLoginPage
           ? clearSessionCookies(request, response)
           : redirectToLogin(request, null, true)
       }
       identity = { authUserId: user.id }
+      sessionId = sessionIdOf(session?.access_token)
     }
   }
 
@@ -188,9 +206,18 @@ export async function middleware(request: NextRequest) {
   const lookup = identity ? await loadEmployee(identity) : null
   trace.step('employee', { lookup: lookup?.status ?? null })
 
-  if (pathname === '/login') {
+  // Admin hesabının oturumu admin girişiyle (şifre + kod) açılmamışsa geçersizdir
+  const adminLoginOk = lookup?.status === 'ok'
+    && await passesAdminLogin(lookup.role, request.cookies.get(ADMIN_VERIFIED_COOKIE)?.value, lookup.id, sessionId)
+
+  if (isLoginPage) {
     if (lookup?.status === 'ok' && lookup.active) {
-      return redirectWithSession(new URL(homeFor(lookup.role), request.url), response)
+      if (adminLoginOk) return redirectWithSession(new URL(homeFor(lookup.role), request.url), response)
+      // Admin girişi yapılmamış admin oturumu: çerezleri temizle, admin giriş formunu göster
+      if (pathname === ADMIN_LOGIN_PAGE) return clearSessionCookies(request, response)
+      const adminUrl = new URL(ADMIN_LOGIN_PAGE, request.url)
+      adminUrl.search = request.nextUrl.search
+      return clearSessionCookies(request, NextResponse.redirect(adminUrl))
     }
     // Çalışan kaydı olmayan / pasif oturum: çerezleri temizle, giriş formunu göster
     return lookup?.status === 'missing' || (lookup?.status === 'ok' && !lookup.active)
@@ -206,6 +233,7 @@ export async function middleware(request: NextRequest) {
   // Bağlı / aktif çalışan kaydı olmayan oturum (ör. pasifleştirilmiş hesap)
   if (lookup?.status !== 'ok' || !lookup.active) return redirectToLogin(request, null, true)
   const employee = lookup
+  if (!adminLoginOk) return redirectToLogin(request, null, true, ADMIN_LOGIN_PAGE)
 
   // Kiosk hesabı yalnızca kiosk ekranını görür; kiosk ekranı da yalnızca kiosk + yöneticilere açık
   if (isKioskRole(employee.role)) {
