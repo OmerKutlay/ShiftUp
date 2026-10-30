@@ -10,10 +10,16 @@ SET LOCAL app.allow_bulk_delete = 'on';
 CREATE TEMP TABLE _ds ON COMMIT DROP AS SELECT tbl, id FROM public._dummy_seed;
 CREATE TEMP TABLE _ds_shift ON COMMIT DROP AS SELECT id::uuid AS id FROM _ds WHERE tbl = 'shift_assignments';
 
--- Bildirimler: dummy olanlar + uygulamanın dummy kayıtlar için ürettikleri (related_id)
+-- Bildirimler: dummy olanlar + uygulamanın dummy kayıtlar için ürettikleri (related_id) —
+-- dummy kontrol listesi şablonlarının seed'den sonra uygulamaca oluşturulan günlük uygulamaları dahil
 DELETE FROM notifications
 WHERE id::text IN (SELECT id FROM _ds WHERE tbl = 'notifications')
-   OR related_id::text IN (SELECT id FROM _ds);
+   OR related_id::text IN (SELECT id FROM _ds)
+   OR related_id IN (SELECT r.id FROM checklist_runs r WHERE r.template_id::text IN (SELECT id FROM _ds WHERE tbl = 'checklist_templates'));
+
+-- Duyurular (alıcılar CASCADE) ve kontrol listesi şablonları (maddeler, uygulamalar ve uygulama maddeleri CASCADE)
+DELETE FROM announcements       WHERE id::text IN (SELECT id FROM _ds WHERE tbl = 'announcements');
+DELETE FROM checklist_templates WHERE id::text IN (SELECT id FROM _ds WHERE tbl = 'checklist_templates');
 
 -- Audit log silmeye kapalı (immutable trigger) → yalnızca bu işlem için kapatılır
 ALTER TABLE audit_logs DISABLE TRIGGER trg_audit_logs_immutable;

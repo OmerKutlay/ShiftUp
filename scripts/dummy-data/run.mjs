@@ -59,7 +59,8 @@ switch (mode) {
   case 'seed-yonetici-dry': sql = "BEGIN;\nSET LOCAL dummy.mode = 'yonetici';\n" + read('seed.sql') + DRY_TAIL; break
   case 'seed-yonetici':     sql = "BEGIN;\nSET LOCAL dummy.mode = 'yonetici';\n" + read('seed.sql') + '\nCOMMIT;'; break
   case 'status':      sql = "SELECT tbl, count(*) FROM public._dummy_seed GROUP BY tbl ORDER BY tbl"; break
-  case 'cleanup-dry': sql = read('cleanup.sql').replace(/COMMIT;\s*$/, CLEAN_DRY_TAIL); break
+  // replace'e fonksiyon verilir: metin olarak verilen "$$" tek "$"a dönüşürdü
+  case 'cleanup-dry': sql = read('cleanup.sql').replace(/COMMIT;\s*$/, () => CLEAN_DRY_TAIL); break
   case 'cleanup':     sql = read('cleanup.sql'); break
   default:
     console.error('Kullanım: node scripts/dummy-data/run.mjs <seed-dry|seed|seed-yonetici-dry|seed-yonetici|status|cleanup-dry|cleanup>')
