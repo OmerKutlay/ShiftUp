@@ -14,7 +14,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "cf:build": "node scripts/patch-opennext.mjs && opennextjs-cloudflare build",
+    "cf:build": "node scripts/patch-opennext.mjs && opennextjs-cloudflare build && opennextjs-cloudflare populateCache local",
     "preview": "npm run cf:build && opennextjs-cloudflare preview",
     "deploy": "npm run cf:build && opennextjs-cloudflare deploy",
     "test:e2e": "playwright test"

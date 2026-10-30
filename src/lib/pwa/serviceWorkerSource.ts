@@ -91,30 +91,47 @@ async function trimCache(cacheName, max) {
   await Promise.all(keys.slice(0, keys.length - max).map((k) => cache.delete(k)))
 }
 
+/** Cloudflare limit hatasında (503) ek denemelerden önceki bekleme süreleri (ms) */
+const LIMIT_RETRY_DELAYS = [400, 1200]
+
 /**
- * Sayfa isteği — Cloudflare 503 (ör. 1102: ücretsiz planda soğuk başlangıç CPU sınırı aşıldı)
- * dönerse kısa bir beklemeyle bir kez daha dener; kullanıcı hata sayfasını görmez.
+ * Sayfa / RSC isteği — Cloudflare 503 (ör. 1102: ücretsiz planda soğuk başlangıç CPU sınırı
+ * aşıldı) dönerse kısa beklemelerle yeniden dener; kullanıcı hata sayfasını görmez.
  * Uygulama sayfaları hiçbir zaman kasıtlı 503 döndürmez.
  */
 async function fetchRetryingLimit(request) {
-  const response = await fetch(request)
-  if (response.status !== 503) return response
-  await new Promise((resolve) => setTimeout(resolve, 400))
-  return fetch(request)
+  let response = await fetch(request)
+  for (const delay of LIMIT_RETRY_DELAYS) {
+    if (response.status !== 503) break
+    await new Promise((resolve) => setTimeout(resolve, delay))
+    response = await fetch(request)
+  }
+  return response
+}
+
+/** Next.js RSC / router isteği mi (sayfa geçişi, prefetch)? */
+function isRscRequest(request, url) {
+  return url.searchParams.has('_rsc') ||
+    request.headers.has('RSC') ||
+    request.headers.has('Next-Router-State-Tree')
 }
 
 self.addEventListener('fetch', (event) => {
   const { request } = event
   const url = new URL(request.url)
 
-  // 0. Yalnızca GET; diğer origin'ler ve Next.js RSC / router istekleri — SW devre dışı.
-  // Cache'ten gelen eski RSC payload'ı güncel HTML/JS ile karışırsa hydration mismatch oluşur.
+  // 0. Yalnızca GET; diğer origin'ler ve /_next iç istekleri — SW devre dışı.
   if (request.method !== 'GET' ||
       url.origin !== self.location.origin ||
-      url.searchParams.has('_rsc') ||
-      request.headers.has('RSC') ||
-      request.headers.has('Next-Router-State-Tree') ||
       (url.pathname.startsWith('/_next/') && !url.pathname.startsWith('/_next/static/'))) {
+    return
+  }
+
+  // RSC istekleri asla önbelleğe alınmaz (eski payload güncel HTML/JS ile karışırsa hydration
+  // mismatch oluşur); yalnızca 1102 503'ünde yeniden denenir. Aksi halde router hata sayfasına
+  // tam sayfa geçişi yapar ve kullanıcı Cloudflare hata ekranını görür.
+  if (isRscRequest(request, url)) {
+    event.respondWith(fetchRetryingLimit(request))
     return
   }
 
