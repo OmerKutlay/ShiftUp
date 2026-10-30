@@ -76,6 +76,8 @@ export function SchedulePrintPage({ week, auto }: { week?: string; auto?: boolea
 
   return (
     <div className="print-root min-h-svh bg-muted/30">
+      {/* Sayfa kuralı yalnızca bu sayfa açıkken geçerli (genel CSS'te olsa uygulamanın her sayfası yatay basılırdı) */}
+      <style>{'@page { size: A4 landscape; margin: 8mm; }'}</style>
       <div className="print-hide mx-auto flex max-w-[1200px] flex-wrap items-center gap-2 p-4">
         <Button asChild variant="outline">
           <Link href="/schedule"><ArrowLeft /> Plana dön</Link>

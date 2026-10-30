@@ -2,7 +2,8 @@
  * WeekPrintSheet — haftalık planın A4 yatay çıktı tablosu (saf sunum; veri dışarıdan gelir).
  * Siyah-beyaz yazıcıya uygun: renge dayanmaz, kenarlıklar görünür, dolgular açık gri.
  * Satırlar planla aynı sırada ve rol gruplarına ayrılmıştır; izin etiketi plan hücreleriyle aynıdır
- * (OFF_META). 25 kişiye kadar tek sayfa; fazlasında yazı küçülür, başlık satırı her sayfada tekrarlanır.
+ * (OFF_META). Satırlar tek satırlıktır (ad · rol, saat + vardiya adı) ki tipik bir mağaza tek sayfaya sığsın;
+ * 30 kişiden fazlasında yazı küçülür, yine taşarsa başlık satırı her sayfada tekrarlanır.
  */
 import type { WeeklyScheduleEntry } from '@/types/schedule'
 import type { PublicHoliday } from '@/types/holiday'
@@ -32,7 +33,7 @@ export function dayHeadcount(entries: WeeklyScheduleEntry[], day: string, leave:
   }).length
 }
 
-const CELL = 'border border-black px-1 py-0.5 align-middle'
+const CELL = 'border border-black px-1 py-px align-middle leading-tight'
 
 export function WeekPrintSheet({
   storeName, weekDays, entries, holidayMap, statsMap, approvedLeaveMap, restDayMap, printedAt,
@@ -40,7 +41,7 @@ export function WeekPrintSheet({
   const groups = ROLE_GROUPS
     .map((g) => ({ ...g, entries: entries.filter((e) => roleGroupOf(e.employee.roles) === g.key) }))
     .filter((g) => g.entries.length > 0)
-  const dense = entries.length > 25
+  const dense = entries.length > 30
   const totalMins = entries.reduce((s, e) => s + (statsMap.get(e.employee.id)?.totalMins ?? 0), 0)
 
   const cellContent = (e: WeeklyScheduleEntry, d: string) => {
@@ -52,13 +53,13 @@ export function WeekPrintSheet({
     return (
       <>
         <span className="font-semibold tabular-nums">{fmtRange(a.start_time, a.end_time)}</span>
-        {a.shift_templates?.name && <span className="block text-[0.85em]">{a.shift_templates.name}</span>}
+        {a.shift_templates?.name && <span className="ml-1 text-[0.85em]">{a.shift_templates.name}</span>}
       </>
     )
   }
 
   return (
-    <section className={cn('print-sheet bg-white text-black', dense ? 'text-[9px]' : 'text-[11px]')}>
+    <section className={cn('print-sheet bg-white text-black', dense ? 'text-[9px]' : 'text-[10px]')}>
       <header className="mb-2 flex items-end justify-between gap-4">
         <div>
           <h1 className="text-lg font-bold leading-tight">{storeName} · Haftalık vardiya planı</h1>
@@ -69,9 +70,9 @@ export function WeekPrintSheet({
 
       <table className="w-full table-fixed border-collapse border border-black">
         <colgroup>
-          <col style={{ width: '15%' }} />
+          <col style={{ width: '18%' }} />
           {weekDays.map((d) => <col key={d} />)}
-          <col style={{ width: '7%' }} />
+          <col style={{ width: '5%' }} />
         </colgroup>
         <thead className="print-thead bg-gray-200">
           <tr>
@@ -94,8 +95,8 @@ export function WeekPrintSheet({
               {g.entries.map((e) => (
                 <tr key={e.employee.id} className="break-inside-avoid">
                   <td className={cn(CELL, 'text-left')}>
-                    <span className="block font-semibold">{e.employee.full_name}</span>
-                    {e.employee.roles?.name && <span className="block text-[0.85em]">{e.employee.roles.name}</span>}
+                    <span className="font-semibold">{e.employee.full_name}</span>
+                    {e.employee.roles?.name && <span className="text-[0.85em]"> · {e.employee.roles.name}</span>}
                   </td>
                   {weekDays.map((d) => (
                     <td key={d} className={cn(CELL, 'text-center', holidayMap.has(d) && 'bg-gray-100')}>

@@ -222,9 +222,9 @@
 }
 
 
-/* Haftalık plan çıktısı: yalnızca .print-sheet içeren sayfa A4 yatay basılır (adlandırılmış sayfa) */
-@page plan { size: A4 landscape; margin: 10mm; }
-.print-sheet { page: plan; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+/* Haftalık plan çıktısı. A4 yatay sayfa kuralı yalnızca /schedule/print'te (SchedulePrintPage içindeki <style>):
+   adlandırılmış sayfa (@page plan) sonda varsayılan boyutta boş bir sayfa daha üretiyor, karışık boyutlar önizlemeyi bozuyordu. */
+.print-sheet { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
 @media print {
   .print-hide, [data-sonner-toaster] { display: none !important; }
   .print-root { background: #fff !important; min-height: 0 !important; }
