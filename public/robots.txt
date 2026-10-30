@@ -2,3 +2,14 @@
 # AI tarayıcıları ayrıca sunucuda User-Agent'larına göre engellenir (src/lib/aiBots.ts).
 User-agent: *
 Disallow: /
+Disallow: /wp-admin/admin-ajax.php
+
+# Kendi grubu olan bot "*" grubunu yok sayar; bu yüzden her birine ayrıca Disallow verilir.
+User-agent: GPTBot
+Disallow: /
+
+User-agent: ClaudeBot
+Disallow: /
+
+User-agent: Google-Extended
+Disallow: /
