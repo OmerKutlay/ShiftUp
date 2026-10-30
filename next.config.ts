@@ -103,6 +103,15 @@ const nextConfig: NextConfig = {
         ],
       },
       {
+        // Sayfalar (HTML + RSC) tarayıcıda önbelleğe alınmaz. OpenNext önbellekten sunduğu sayfaya
+        // "s-maxage=31536000, stale-while-revalidate=2592000" ekliyor; tarayıcı stale-while-revalidate
+        // ile deploy sonrası ESKİ HTML'i (eski JS, silinmiş chunk'lar) gösteriyordu. Anahtar küçük harf:
+        // OpenNext'in kendi "cache-control" başlığının üzerine yazılır (büyük harfle iki ayrı başlık olur).
+        // Worker tarafındaki önbellek (static assets) etkilenmez.
+        source: "/((?!api/|_next/|sw\\.js|sw-push\\.js|manifest\\.json).*)",
+        headers: [{ key: "cache-control", value: "private, no-cache, must-revalidate" }],
+      },
+      {
         // API rotaları için ek güvenlik — CORS sadece same-origin
         source: "/api/(.*)",
         headers: [

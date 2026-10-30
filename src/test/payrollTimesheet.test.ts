@@ -266,7 +266,7 @@ describe('GET /api/reports/payroll', () => {
   })
   it('geçersiz ay / format 400', { timeout: 30_000 }, async () => {
     expect((await call(asManager, 'month=2026-13')).status).toBe(400)
-    expect((await call(asManager, 'month=2026-09&format=pdf')).status).toBe(400)
+    expect((await call(asManager, 'month=2026-09&export=pdf')).status).toBe(400)
   })
   it('yalnızca aktif mağaza çalışanları (store isolation)', { timeout: 30_000 }, async () => {
     const a = await (await call(asManager, 'month=2026-09')).json()
@@ -274,8 +274,8 @@ describe('GET /api/reports/payroll', () => {
     const b = await (await call(asAdminInB, 'month=2026-09')).json()
     expect(b.rows.map((r: { employeeId: string }) => r.employeeId)).toEqual(['b1'])
   })
-  it('format=csv: JSON + mağaza adı döner (dosya tarayıcıda üretilir), denetim kaydı mağazaya yazılır', { timeout: 30_000 }, async () => {
-    const res = await call(asManager, 'month=2026-09&format=csv')
+  it('export=csv: JSON + mağaza adı döner (dosya tarayıcıda üretilir), denetim kaydı mağazaya yazılır', { timeout: 30_000 }, async () => {
+    const res = await call(asManager, 'month=2026-09&export=csv')
     expect(res.status).toBe(200)
     expect(res.headers.get('Content-Type')).toContain('application/json')
     expect(res.headers.get('Content-Disposition')).toBeNull()
@@ -287,19 +287,27 @@ describe('GET /api/reports/payroll', () => {
     expect(log?.store_id).toBe(STORE_A)
   })
   it('hız sınırı aşılınca 429 döner, dosya üretilmez ve denetim kaydı yazılmaz', { timeout: 30_000 }, async () => {
-    const res = await call(asManager, 'month=2026-09&format=csv', false)
+    const res = await call(asManager, 'month=2026-09&export=csv', false)
     expect(res.status).toBe(429)
     expect((await res.json()).code).toBe('RATE_LIMITED')
     expect(db.tables.audit_logs).toHaveLength(0)
     // JSON önizleme hız sınırına takılmaz
     expect((await call(asManager, 'month=2026-09', false)).status).toBe(200)
   })
-  it('format=xlsx: sunucu dosya üretmez, JSON + mağaza adı döner ve denetim yazar', { timeout: 30_000 }, async () => {
-    const res = await call(asManager, 'month=2026-09&format=xlsx')
+  it('export=xlsx: sunucu dosya üretmez, JSON + mağaza adı döner ve denetim yazar', { timeout: 30_000 }, async () => {
+    const res = await call(asManager, 'month=2026-09&export=xlsx')
     expect(res.status).toBe(200)
     expect(res.headers.get('Content-Type')).toContain('application/json')
     expect((await res.json()).storeName).toBe('Kadıköy Şube')
     expect(db.tables.audit_logs.some((l) => l.action === 'report.payroll.export')).toBe(true)
+  })
+  it('eski istemci (format=xlsx|csv) 409 CLIENT_OUTDATED alır, denetim yazılmaz', { timeout: 30_000 }, async () => {
+    for (const f of ['xlsx', 'csv']) {
+      const res = await call(asManager, `month=2026-09&format=${f}`, false)
+      expect(res.status).toBe(409)
+      expect((await res.json()).code).toBe('CLIENT_OUTDATED')
+    }
+    expect(db.tables.audit_logs).toHaveLength(0)
   })
 })
 

@@ -1,16 +1,17 @@
 /**
- * GET /api/reports/timesheet?month=YYYY-MM[&format=xlsx]
+ * GET /api/reports/timesheet?month=YYYY-MM[&export=xlsx]
  * Aylık puantaj — çalışan × gün kodları, net saat, fazla çalışma, gece çalışması,
  * resmi tatil çalışması, izinler, SGK prim günü. Müdür Yardımcısı+.
  * Yalnızca aktif mağazada çalışılan vardiyalar sayılır (mağaza değiştiren çalışanın eski
  * ayları eski mağazanın puantajında kalır).
- * Her zaman JSON döner. format=xlsx → indirme niyeti: Excel TARAYICIDA üretilir (Worker CPU sınırı),
- * sunucu yalnızca mağaza adını ekler ve denetim kaydını yazar.
+ * Her zaman JSON döner. export=xlsx → indirme niyeti: Excel TARAYICIDA üretilir (Worker CPU sınırı),
+ * sunucu yalnızca mağaza adını ekler ve denetim kaydını yazar. Eski `format=` parametresi (dosyayı
+ * sunucuda üreten önceki istemci) 409 CLIENT_OUTDATED alır.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { requireMinRole, ACCESS } from '@/lib/auth'
-import { badRequest, serverError } from '@/lib/apiErrors'
+import { badRequest, clientOutdated, serverError } from '@/lib/apiErrors'
 import { queryTimesheet } from '@/lib/timesheetQuery'
 import { logAudit } from '@/lib/auditLog'
 
@@ -23,13 +24,15 @@ export async function GET(req: NextRequest) {
 
   const month = req.nextUrl.searchParams.get('month') ?? ''
   if (!MONTH_RE.test(month)) return badRequest('month YYYY-MM formatında olmalıdır.')
-  const format = req.nextUrl.searchParams.get('format')
+  // Eski istemci format=xlsx ile dosyanın kendisini bekler; artık JSON döndüğü için bozuk dosya inerdi
+  if (req.nextUrl.searchParams.has('format')) return clientOutdated()
+  const exportFormat = req.nextUrl.searchParams.get('export')
 
   try {
     const admin = createAdminClient()
     const { rows, holidays } = await queryTimesheet(admin, storeId, month)
 
-    if (format === 'xlsx') {
+    if (exportFormat === 'xlsx') {
       const { data: store, error: storeErr } = await admin.from('stores').select('name').eq('id', storeId).maybeSingle()
       if (storeErr) throw storeErr
       const storeName = (store as { name: string } | null)?.name ?? ''

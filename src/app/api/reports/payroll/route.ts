@@ -1,16 +1,17 @@
 /**
- * GET /api/reports/payroll?month=YYYY-MM[&format=xlsx|csv]
+ * GET /api/reports/payroll?month=YYYY-MM[&export=xlsx|csv]
  * Bordro puantajı — muhasebeye verilecek aylık çalışan toplamları (çalışılan gün, normal/fazla mesai
  * saati, tatil/izin/rapor günleri, SGK prim günü, eksik gün nedeni kodu). Müdür Yardımcısı+ (timesheet ile aynı).
  * Yalnızca aktif mağazanın vardiyaları. Her zaman JSON döner.
- * format=xlsx|csv → indirme niyeti: dosya TARAYICIDA üretilir (Worker CPU sınırı), sunucu yalnızca
+ * export=xlsx|csv → indirme niyeti: dosya TARAYICIDA üretilir (Worker CPU sınırı), sunucu yalnızca
  * mağaza adını ekler, hız sınırını uygular ve denetim kaydını yazar. İndirmeler kişisel veri dışa
- * aktarımıdır: kullanıcı başına hız sınırı + denetim kaydı.
+ * aktarımıdır: kullanıcı başına hız sınırı + denetim kaydı. Eski `format=` parametresi (dosyayı sunucuda
+ * üreten önceki istemci) 409 CLIENT_OUTDATED alır.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { requireMinRole, ACCESS } from '@/lib/auth'
-import { badRequest, serverError, tooManyRequests } from '@/lib/apiErrors'
+import { badRequest, clientOutdated, serverError, tooManyRequests } from '@/lib/apiErrors'
 import { queryTimesheet } from '@/lib/timesheetQuery'
 import { toPayrollRows } from '@/lib/payrollTimesheet'
 import { checkRateLimit } from '@/lib/rateLimiter'
@@ -27,8 +28,10 @@ export async function GET(req: NextRequest) {
 
   const month = req.nextUrl.searchParams.get('month') ?? ''
   if (!MONTH_RE.test(month)) return badRequest('month YYYY-MM formatında olmalıdır.')
-  const format = req.nextUrl.searchParams.get('format')
-  if (format !== null && format !== 'xlsx' && format !== 'csv') return badRequest('format xlsx veya csv olmalıdır.')
+  // Eski istemci format= ile dosyanın kendisini bekler; artık JSON döndüğü için bozuk dosya inerdi
+  if (req.nextUrl.searchParams.has('format')) return clientOutdated()
+  const format = req.nextUrl.searchParams.get('export')
+  if (format !== null && format !== 'xlsx' && format !== 'csv') return badRequest('export xlsx veya csv olmalıdır.')
 
   try {
     if (format) {

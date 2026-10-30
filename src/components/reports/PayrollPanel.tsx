@@ -41,7 +41,7 @@ export function PayrollPanel() {
   // Dosya tarayıcıda üretilir (Worker CPU sınırı): sunucu yalnızca hız sınırı + denetim kaydı + mağaza adı verir.
   // Hata (429, 5xx) apiFetch ile ApiError olur ve ExportMenu toast'a çevirir.
   const download = async (format: 'xlsx' | 'csv') => {
-    const res = await apiFetch<{ rows: PayrollRow[]; storeName: string }>(`/api/reports/payroll?month=${month}&format=${format}`)
+    const res = await apiFetch<{ rows: PayrollRow[]; storeName: string }>(`/api/reports/payroll?month=${month}&export=${format}`)
     if (format === 'csv') {
       saveCsv(payrollToCsv(res.rows), `bordro-puantaj-${month}-${storeFileSlug(res.storeName)}.csv`)
     } else {

@@ -88,7 +88,7 @@ export function TimesheetPanel() {
   // Excel tarayıcıda üretilir (Worker CPU sınırı); sunucu denetim kaydını yazar ve mağaza adını verir
   const exportExcel = async () => {
     const res = await apiFetch<{ rows: TimesheetRow[]; holidays: PublicHoliday[]; storeName: string }>(
-      `/api/reports/timesheet?month=${month}&format=xlsx`
+      `/api/reports/timesheet?month=${month}&export=xlsx`
     )
     await downloadTimesheetXlsx(month, res.rows, res.holidays, res.storeName)
   }

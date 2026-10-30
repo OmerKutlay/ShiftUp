@@ -19,6 +19,17 @@ export function conflict(error: string, code = 'CONFLICT') {
   return NextResponse.json({ error, code }, { status: 409 })
 }
 
+/**
+ * Güncellenmemiş istemci (eski JS) artık desteklenmeyen bir istek gönderdi — ör. dosyayı sunucunun
+ * üretmesini bekleyen `format=xlsx`. Eski istemci JSON hatayı mesaj olarak gösterir (bozuk dosya inmez).
+ */
+export function clientOutdated() {
+  return NextResponse.json(
+    { error: 'Uygulama güncellendi. Sayfayı yenileyip tekrar deneyin.', code: 'CLIENT_OUTDATED' },
+    { status: 409 }
+  )
+}
+
 export function tooManyRequests(error = 'Çok fazla istek. Lütfen biraz sonra tekrar deneyin.') {
   return NextResponse.json({ error, code: 'RATE_LIMITED' }, { status: 429 })
 }

@@ -262,14 +262,21 @@ describe('GET /api/reports/timesheet', () => {
     expect(moved.days['2026-10-20']).toBeTruthy()
   })
 
-  it('format=xlsx JSON + mağaza adı döner ve denetim mağazaya yazılır', { timeout: 30_000 }, async () => {
+  it('export=xlsx JSON + mağaza adı döner ve denetim mağazaya yazılır', { timeout: 30_000 }, async () => {
     const { GET } = await mod(asManager, 'timesheet')
-    const res = await GET(req('http://localhost/api/reports/timesheet?month=2026-10&format=xlsx'))
+    const res = await GET(req('http://localhost/api/reports/timesheet?month=2026-10&export=xlsx'))
     expect(res.status).toBe(200)
     expect(res.headers.get('Content-Type')).toContain('application/json')
     expect((await res.json()).storeName).toBe('Kadıköy Şube')
     const log = db.tables.audit_logs.find((l) => l.action === 'report.timesheet.export')
     expect(log?.store_id).toBe(STORE_A)
+  })
+
+  it('eski istemci (format=xlsx) 409 CLIENT_OUTDATED alır', async () => {
+    const { GET } = await mod(asManager, 'timesheet')
+    const res = await GET(req('http://localhost/api/reports/timesheet?month=2026-10&format=xlsx'))
+    expect(res.status).toBe(409)
+    expect((await res.json()).code).toBe('CLIENT_OUTDATED')
   })
 })
 
