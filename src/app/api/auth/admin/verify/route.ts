@@ -26,7 +26,7 @@ import { DEV_SESSION_COOKIE, DEV_SESSION_MAX_AGE, IS_DEV_AUTH, getDevOtp } from 
 import { signDevSession } from '@/lib/auth/devSession'
 import { SESSION_MAX_AGE, sessionIdOf } from '@/lib/auth/sessionAge'
 import {
-  ADMIN_PENDING_COOKIE, ADMIN_VERIFIED_COOKIE, adminCookieOptions, devSessionId, readAdminToken, signAdminToken,
+  ADMIN_DEVICE_COOKIE, ADMIN_DEVICE_MAX_AGE, ADMIN_PENDING_COOKIE, ADMIN_VERIFIED_COOKIE, adminCookieOptions, devSessionId, readAdminToken, signAdminToken,
 } from '@/lib/auth/adminLogin'
 import { ACCESS, accessLevelOf } from '@/lib/auth/roles'
 import { checkRateLimit, clientIp } from '@/lib/rateLimiter'
@@ -136,6 +136,8 @@ export async function POST(req: NextRequest) {
       adminCookieOptions(secure, IS_DEV_AUTH ? DEV_SESSION_MAX_AGE : SESSION_MAX_AGE)
     )
     res.cookies.set(ADMIN_PENDING_COOKIE, '', adminCookieOptions(secure, 0))
+    // Çıkıştan sonra da bu cihaz (PWA dahil) /login yerine admin giriş formunu açar
+    res.cookies.set(ADMIN_DEVICE_COOKIE, '1', adminCookieOptions(secure, ADMIN_DEVICE_MAX_AGE))
     return res
   } catch (err) {
     console.error('[POST /api/auth/admin/verify]', err)

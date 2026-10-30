@@ -23,6 +23,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { IS_DEV_AUTH } from '@/lib/authConfig'
 import { ACCESS, accessLevelOf } from '@/lib/auth/roles'
+import { ADMIN_DEVICE_COOKIE } from '@/lib/auth/adminLogin'
 import { checkRateLimit, clientIp } from '@/lib/rateLimiter'
 import { isValidEmail } from '@/lib/validation'
 
@@ -98,7 +99,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, reason: 'INVALID_OTP' }, { status: 401 })
     }
 
-    return NextResponse.json({ ok: true })
+    // Cihaz artık bir çalışanın: sonraki /login çalışan formunu açsın (bkz. ADMIN_DEVICE_COOKIE)
+    const res = NextResponse.json({ ok: true })
+    res.cookies.delete(ADMIN_DEVICE_COOKIE)
+    return res
   } catch (err) {
     console.error('[POST /api/auth/verify-otp]', err)
     return NextResponse.json({ ok: false, reason: 'UNKNOWN' }, { status: 500 })

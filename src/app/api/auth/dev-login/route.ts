@@ -28,6 +28,7 @@ import {
   DEV_SESSION_MAX_AGE,
 } from '@/lib/authConfig'
 import { signDevSession } from '@/lib/auth/devSession'
+import { ADMIN_DEVICE_COOKIE } from '@/lib/auth/adminLogin'
 import { ACCESS, accessLevelOf } from '@/lib/auth/roles'
 import { checkRateLimit, clientIp } from '@/lib/rateLimiter'
 import { timingSafeEqual } from 'crypto'
@@ -173,6 +174,8 @@ export async function POST(req: NextRequest) {
       // Tünel (https) üzerinden erişimde secure; localhost http'de false
       secure: req.nextUrl.protocol === 'https:',
     })
+    // Cihaz artık bir çalışanın: sonraki /login çalışan formunu açsın (bkz. ADMIN_DEVICE_COOKIE)
+    res.cookies.delete(ADMIN_DEVICE_COOKIE)
 
     return res
   }

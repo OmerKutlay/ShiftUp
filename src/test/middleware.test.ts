@@ -296,6 +296,24 @@ describe('middleware — admin yalnızca admin girişiyle (şifre + kod) açılm
     expect(location(form)).toBeNull()
   })
 
+  it('admin cihazı (admin_device): oturumsuz /login ve korumalı sayfa → /login/admin; ?employee=1 çalışan formunu açar', async () => {
+    getUser.mockResolvedValue({ user: null })
+    const cookie = 'admin_device=1'
+    expect(location(await middleware(req('/login?next=%2Freports', { cookie })))).toBe('/login/admin?next=%2Freports')
+    expect(location(await middleware(req('/employees', { cookie })))).toBe('/login/admin?next=%2Femployees')
+    const employeeForm = await middleware(req('/login?employee=1', { cookie }))
+    expect(employeeForm.status).toBe(200)
+    expect(location(employeeForm)).toBeNull()
+    // İşaretsiz cihaz eskisi gibi çalışan formuna gider
+    expect((await middleware(req('/login'))).status).toBe(200)
+    expect(location(await middleware(req('/employees')))).toBe('/login?next=%2Femployees')
+  })
+
+  it('admin cihazında çalışanın açık oturumu yönlendirilmez', async () => {
+    asEmployee('employee')
+    expect(location(await middleware(req('/login', { cookie: `${OLD_COOKIE}; admin_device=1` })))).toBe('/')
+  })
+
   it('oturumsuz /login/admin herkese açık; çalışan çerez gerektirmez', async () => {
     getUser.mockResolvedValue({ user: null })
     expect((await middleware(req('/login/admin'))).status).toBe(200)

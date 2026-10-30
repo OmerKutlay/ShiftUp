@@ -497,7 +497,8 @@ export function LoginForm({ authMode, variant = 'employee' }: Props) {
         </p>
         {isAdmin && (
           <p className="px-6 text-center text-xs">
-            <Link href="/login" prefetch={false} className="text-muted-foreground underline underline-offset-4 hover:text-foreground">
+            {/* ?employee=1: admin girişi yapılmış cihazda middleware /login'i admin formuna çevirmesin */}
+            <Link href="/login?employee=1" prefetch={false} className="text-muted-foreground underline underline-offset-4 hover:text-foreground">
               Çalışan girişi
             </Link>
           </p>

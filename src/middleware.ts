@@ -14,6 +14,8 @@
  *    API route'ları kendi yetki kontrolünü yapar (requireAuth / requireMinRole).
  * 4. Admin: oturum yalnızca /login/admin akışıyla (admin şifresi + e-posta kodu) açılmışsa
  *    geçerlidir (bkz. @/lib/auth/adminLogin); değilse çerezler silinip admin girişine yönlendirilir.
+ *    Bu cihazda daha önce admin girişi yapıldıysa (admin_device çerezi) oturumsuz kullanıcı /login
+ *    yerine /login/admin'e gider — PWA'da adres çubuğu yoktur. /login?employee=1 çalışan formunu açar.
  *
  * 5. AI tarayıcıları (bkz. @/lib/aiBots) her yolda 403 alır.
  *
@@ -25,7 +27,8 @@ import { DEV_SESSION_COOKIE, IS_DEV_AUTH } from '@/lib/authConfig'
 import { verifyDevSessionEdge } from '@/lib/auth/devSessionEdge'
 import { isSessionExpired, sessionIdOf } from '@/lib/auth/sessionAge'
 import {
-  ADMIN_PENDING_COOKIE, ADMIN_VERIFIED_COOKIE, devSessionId, passesAdminLogin,
+  ADMIN_DEVICE_COOKIE, ADMIN_PENDING_COOKIE, ADMIN_VERIFIED_COOKIE, EMPLOYEE_LOGIN_PARAM, devSessionId,
+  passesAdminLogin,
 } from '@/lib/auth/adminLogin'
 import { isKioskRole, roleAtLeast, accessLevelOf, ACCESS, type AccessLevel } from '@/lib/auth/roles'
 import { startTrace } from '@/lib/requestTrace'
@@ -149,7 +152,17 @@ function redirectWithSession(url: URL, session: NextResponse | null) {
   return res
 }
 
-function redirectToLogin(request: NextRequest, session: NextResponse | null, clearCookies = false, page = LOGIN_PAGE) {
+/** Bu cihazda admin girişi yapılmış ve çalışan formu açıkça istenmemiş mi? (bkz. ADMIN_DEVICE_COOKIE) */
+function prefersAdminLogin(request: NextRequest): boolean {
+  return request.cookies.has(ADMIN_DEVICE_COOKIE) && !request.nextUrl.searchParams.has(EMPLOYEE_LOGIN_PARAM)
+}
+
+function redirectToLogin(
+  request: NextRequest,
+  session: NextResponse | null,
+  clearCookies = false,
+  page = prefersAdminLogin(request) ? ADMIN_LOGIN_PAGE : LOGIN_PAGE
+) {
   const loginUrl = new URL(page, request.url)
   loginUrl.searchParams.set('next', request.nextUrl.pathname)
   if (clearCookies) return clearSessionCookies(request, NextResponse.redirect(loginUrl))
@@ -227,9 +240,16 @@ export async function middleware(request: NextRequest) {
       return clearSessionCookies(request, NextResponse.redirect(adminUrl))
     }
     // Çalışan kaydı olmayan / pasif oturum: çerezleri temizle, giriş formunu göster
-    return lookup?.status === 'missing' || (lookup?.status === 'ok' && !lookup.active)
-      ? clearSessionCookies(request, response)
-      : response
+    const stale = lookup?.status === 'missing' || (lookup?.status === 'ok' && !lookup.active)
+    // Admin cihazı: çalışan formu yerine admin formu (next korunur)
+    if (pathname === LOGIN_PAGE && prefersAdminLogin(request)) {
+      const adminUrl = new URL(ADMIN_LOGIN_PAGE, request.url)
+      adminUrl.search = request.nextUrl.search
+      return stale
+        ? clearSessionCookies(request, NextResponse.redirect(adminUrl))
+        : redirectWithSession(adminUrl, response)
+    }
+    return stale ? clearSessionCookies(request, response) : response
   }
 
   if (!identity) return redirectToLogin(request, response)

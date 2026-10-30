@@ -45,7 +45,7 @@ vi.mock('@/lib/supabase/server', () => ({
 }))
 
 import {
-  ADMIN_PENDING_COOKIE, ADMIN_VERIFIED_COOKIE, passesAdminLogin, readAdminToken, signAdminToken,
+  ADMIN_DEVICE_COOKIE, ADMIN_PENDING_COOKIE, ADMIN_VERIFIED_COOKIE, passesAdminLogin, readAdminToken, signAdminToken,
 } from '@/lib/auth/adminLogin'
 import { POST as adminPassword } from '@/app/api/auth/admin/password/route'
 import { POST as adminVerify } from '@/app/api/auth/admin/verify/route'
@@ -184,6 +184,8 @@ describe('POST /api/auth/admin/verify', () => {
     expect(await passesAdminLogin('admin', verified, ADMIN.id, 'sess-1')).toBe(true)
     expect(await passesAdminLogin('admin', verified, ADMIN.id, 'sess-2')).toBe(false)
     expect(res.cookies.get(ADMIN_PENDING_COOKIE)?.value).toBe('')
+    // Cihaz işareti: çıkıştan sonra da (PWA) /login admin formuna yönlenir
+    expect(res.cookies.get(ADMIN_DEVICE_COOKIE)?.value).toBe('1')
   })
 
   it('kod doğru ama hesap artık admin değil: oturum kapatılır, çerez yazılmaz', async () => {
@@ -212,5 +214,12 @@ describe('normal giriş admin hesabına oturum açmaz', () => {
     expect(res.status).toBe(401)
     expect((await res.json()).reason).toBe('INVALID_OTP')
     expect(signOut).toHaveBeenCalledWith({ scope: 'local' })
+  })
+
+  it('verify-otp: çalışan girişi cihazın admin işaretini siler', async () => {
+    db.employee = EMPLOYEE
+    const res = await verifyOtpRoute(req('/api/auth/verify-otp', { email: EMPLOYEE.email, token: '123456' }, `${ADMIN_DEVICE_COOKIE}=1`))
+    expect(res.status).toBe(200)
+    expect(res.cookies.get(ADMIN_DEVICE_COOKIE)?.value).toBe('')
   })
 })

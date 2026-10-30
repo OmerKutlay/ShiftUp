@@ -25,6 +25,17 @@ export const ADMIN_PENDING_COOKIE = 'admin_login_pending'
 /** Şifre ile kod arasında geçebilecek en uzun süre (saniye) */
 export const ADMIN_PENDING_MAX_AGE = 10 * 60
 
+/**
+ * admin_device — "bu cihazda admin girişi yapıldı" işareti. Hiçbir yetki vermez; yalnızca oturumsuz
+ * /login isteğinin admin giriş formuna yönlenmesini sağlar (PWA'da adres çubuğu yoktur, admin
+ * /login/admin yazamaz). Çıkışta silinmez; bu cihazda çalışan girişi yapılınca silinir.
+ */
+export const ADMIN_DEVICE_COOKIE = 'admin_device'
+/** Tarayıcıların izin verdiği en uzun çerez ömrü (400 gün) */
+export const ADMIN_DEVICE_MAX_AGE = 400 * 24 * 60 * 60
+/** /login?employee=1 — admin cihazında çalışan giriş formunu açar (bkz. middleware) */
+export const EMPLOYEE_LOGIN_PARAM = 'employee'
+
 type TokenKind = 'verified' | 'pending'
 
 const MAX_AGE: Record<TokenKind, number> = {
