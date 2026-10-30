@@ -30,6 +30,12 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
   }
 }
 
+/** Supabase oturum kimliği (`session_id` claim'i; token yenilemede korunur) — yoksa null */
+export function sessionIdOf(accessToken?: string | null): string | null {
+  const sid = accessToken ? decodeJwtPayload(accessToken)?.session_id : undefined
+  return typeof sid === 'string' && sid ? sid : null
+}
+
 /** Oturumun giriş anı (ms) — belirlenemezse null */
 export function sessionStartedAt(accessToken?: string | null, lastSignInAt?: string | null): number | null {
   const amr = accessToken ? decodeJwtPayload(accessToken)?.amr : undefined

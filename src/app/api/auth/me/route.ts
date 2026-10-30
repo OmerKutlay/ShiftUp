@@ -13,7 +13,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { IS_DEV_AUTH, DEV_SESSION_COOKIE } from '@/lib/authConfig'
 import { verifyDevSession } from '@/lib/auth/devSession'
-import { isSessionExpired } from '@/lib/auth/sessionAge'
+import { isSessionExpired, sessionIdOf } from '@/lib/auth/sessionAge'
+import { ADMIN_VERIFIED_COOKIE, devSessionId, passesAdminLogin } from '@/lib/auth/adminLogin'
 import { accessLevelOf } from '@/lib/auth/roles'
 import { ACTIVE_STORE_COOKIE, canSwitchStore, resolveActiveStoreId } from '@/lib/storeScope'
 import type { StoreContextInfo } from '@/types/store'
@@ -62,6 +63,9 @@ export async function GET(req: NextRequest) {
       if (!employee || !isEffectivelyActive(employee)) {
         return NextResponse.json({ employee: null }, { status: 403 })
       }
+      if (!(await passesAdminLoginFor(employee, req, devSessionId(session.createdAt)))) {
+        return adminLoginRequired()
+      }
 
       return NextResponse.json({ employee, store: await storeContext(admin, employee, req) })
     }
@@ -92,12 +96,28 @@ export async function GET(req: NextRequest) {
     if (!employee || !isEffectivelyActive(employee)) {
       return NextResponse.json({ employee: null }, { status: 403 })
     }
+    if (!(await passesAdminLoginFor(employee, req, sessionIdOf(session?.access_token)))) {
+      return adminLoginRequired()
+    }
 
     return NextResponse.json({ employee, store: await storeContext(admin, employee, req) })
   } catch (err) {
     console.error('[GET /api/auth/me]', err)
     return NextResponse.json({ employee: null }, { status: 500 })
   }
+}
+
+/** Admin hesabı yalnızca admin girişiyle (şifre + kod) açılmış oturumda geçerlidir — bkz. adminLogin */
+function passesAdminLoginFor(
+  employee: { id: string; roles: unknown },
+  req: NextRequest,
+  sessionId: string | null
+): Promise<boolean> {
+  return passesAdminLogin(accessLevelOf(employee.roles), req.cookies.get(ADMIN_VERIFIED_COOKIE)?.value, employee.id, sessionId)
+}
+
+function adminLoginRequired() {
+  return NextResponse.json({ employee: null, reason: 'ADMIN_LOGIN_REQUIRED' }, { status: 401 })
 }
 
 /** Aktif mağaza bağlamı (admin: çerezdeki seçim; diğerleri: ana mağaza) */

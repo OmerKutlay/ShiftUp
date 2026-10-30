@@ -28,6 +28,7 @@ import {
   DEV_SESSION_MAX_AGE,
 } from '@/lib/authConfig'
 import { signDevSession } from '@/lib/auth/devSession'
+import { ACCESS, accessLevelOf } from '@/lib/auth/roles'
 import { checkRateLimit, clientIp } from '@/lib/rateLimiter'
 import { timingSafeEqual } from 'crypto'
 
@@ -67,7 +68,7 @@ export async function POST(req: NextRequest) {
 
     const { data: employee } = await admin
       .from('employees')
-      .select('id, full_name, active, termination_date, email, role_id')
+      .select('id, full_name, active, termination_date, email, role_id, roles ( access_level )')
       .eq('email', email)
       .maybeSingle()
 
@@ -82,6 +83,10 @@ export async function POST(req: NextRequest) {
         { ok: false, reason: 'EMPLOYEE_INACTIVE' },
         { status: 403 }
       )
+    }
+    // Admin yalnızca admin girişinden (şifre + kod) girer — bkz. /api/auth/admin/password
+    if (accessLevelOf(employee.roles) === ACCESS.ADMIN) {
+      return NextResponse.json({ ok: false, reason: 'ADMIN_LOGIN_REQUIRED' }, { status: 403 })
     }
 
     // Başarılı — OTP adımına geç (dev modunda email gönderilmez)
@@ -149,6 +154,9 @@ export async function POST(req: NextRequest) {
         { ok: false, reason: 'EMPLOYEE_NOT_FOUND' },
         { status: 403 }
       )
+    }
+    if (accessLevelOf(employee.roles) === ACCESS.ADMIN) {
+      return NextResponse.json({ ok: false, reason: 'ADMIN_LOGIN_REQUIRED' }, { status: 403 })
     }
 
     // İmzalı session — sadece employee ID (HMAC ile; istemci değiştiremez)

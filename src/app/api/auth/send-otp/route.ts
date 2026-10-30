@@ -12,6 +12,8 @@
  *
  * Kullanıcı numaralandırma önlemi: kayıtlı olmayan / pasif e-posta için de
  * { ok: true } döner (kod gönderilmez). Yanıt, adresin kayıtlı olup olmadığını ele vermez.
+ * Admin hesapları da aynı sessiz yanıtı alır: admin yalnızca /login/admin'den (şifre + kod)
+ * girer — bkz. /api/auth/admin/password.
  *
  * Response:
  *   200 { ok: true }
@@ -27,6 +29,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { IS_DEV_AUTH } from '@/lib/authConfig'
 import { ensureAuthUserForEmployee } from '@/lib/auth/authUser'
+import { ACCESS, accessLevelOf } from '@/lib/auth/roles'
 import { checkRateLimit, clientIp } from '@/lib/rateLimiter'
 import { isValidEmail } from '@/lib/validation'
 
@@ -72,13 +75,13 @@ export async function POST(req: NextRequest) {
 
     const { data: employee, error: empErr } = await admin
       .from('employees')
-      .select('id, email, active, auth_user_id, termination_date')
+      .select('id, email, active, auth_user_id, termination_date, roles ( access_level )')
       .eq('email', email)
       .maybeSingle()
     if (empErr) throw empErr
 
-    // Kayıtlı değil / pasif → sessizce başarı (numaralandırma önlemi)
-    if (!employee || !isEffectivelyActive(employee)) {
+    // Kayıtlı değil / pasif / admin → sessizce başarı (numaralandırma önlemi)
+    if (!employee || !isEffectivelyActive(employee) || accessLevelOf(employee.roles) === ACCESS.ADMIN) {
       return NextResponse.json({ ok: true })
     }
 

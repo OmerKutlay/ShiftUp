@@ -5,6 +5,8 @@
  * Başarılıysa Supabase Auth session cookie'leri response'a yazılır.
  *
  * Kaba kuvvet önlemi: e-posta başına ve IP başına deneme sınırı (paylaşılan sayaç).
+ * Admin hesabı burada oturum açamaz (oturum kapatılır, INVALID_OTP): admin girişi şifre ister —
+ * bkz. /api/auth/admin/verify.
  *
  * Body: { email: string, token: string }
  * Response:
@@ -20,6 +22,7 @@ import { isEffectivelyActive } from '@/lib/employment'
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { IS_DEV_AUTH } from '@/lib/authConfig'
+import { ACCESS, accessLevelOf } from '@/lib/auth/roles'
 import { checkRateLimit, clientIp } from '@/lib/rateLimiter'
 import { isValidEmail } from '@/lib/validation'
 
@@ -80,13 +83,19 @@ export async function POST(req: NextRequest) {
     const admin = createAdminClient()
     const { data: employee } = await admin
       .from('employees')
-      .select('id, active, termination_date')
+      .select('id, active, termination_date, roles ( access_level )')
       .eq('auth_user_id', data.user.id)
       .maybeSingle()
 
     if (!employee || !isEffectivelyActive(employee)) {
       await supabase.auth.signOut()
       return NextResponse.json({ ok: false, reason: 'EMPLOYEE_NOT_FOUND' }, { status: 403 })
+    }
+    // Admin bu akışla giremez; yanıt kod hatasından ayırt edilmez (admin hesabını ele vermez).
+    // scope 'local': yalnızca bu oturum kapanır, adminin diğer cihazlardaki oturumları kalır.
+    if (accessLevelOf(employee.roles) === ACCESS.ADMIN) {
+      await supabase.auth.signOut({ scope: 'local' })
+      return NextResponse.json({ ok: false, reason: 'INVALID_OTP' }, { status: 401 })
     }
 
     return NextResponse.json({ ok: true })
