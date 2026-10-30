@@ -616,7 +616,7 @@ BEGIN
     END IF;
 
     IF v_status = 'pending' THEN
-      PERFORM pg_temp.notify(m, 'time_correction_submitted', 'Yeni Mesai Düzeltme Talebi',
+      PERFORM pg_temp.notify(m, 'time_correction_submitted', 'Yeni mesai düzeltme talebi',
         emp_names[rec.ei] || ' — ' || to_char(rec.work_date, 'DD.MM.YYYY') || ' için ' || to_char(rec.start_time, 'HH24:MI') || '–' || to_char(rec.end_time, 'HH24:MI')
           || ' mesai düzeltme talebi oluşturdu.', v_id, LEAST(pg_temp.tr_ts(rec.work_date + 1, '09:05'), v_now - INTERVAL '2 hours'), FALSE)
       FROM unnest(mgr_ids) m WHERE m <> rec.employee_id;
@@ -666,7 +666,7 @@ BEGIN
       PERFORM pg_temp.notify(rec.employee_id, 'time_correction_approved', 'Mesai düzeltme talebiniz onaylandı',
         to_char(rec.work_date, 'DD.MM.YYYY') || ' tarihli mesai düzeltme talebiniz onaylandı.', v_id, LEAST(pg_temp.tr_ts(rec.work_date + 1, '12:00'), v_now), TRUE);
     ELSE
-      PERFORM pg_temp.notify(m, 'time_correction_submitted', 'Yeni Mesai Düzeltme Talebi',
+      PERFORM pg_temp.notify(m, 'time_correction_submitted', 'Yeni mesai düzeltme talebi',
         emp_names[rec.ei] || ' — ' || to_char(rec.work_date, 'DD.MM.YYYY') || ' için çıkış saati düzeltme talebi oluşturdu.',
         v_id, LEAST(pg_temp.tr_ts(rec.work_date + 1, '08:40'), v_now - INTERVAL '2 hours'), FALSE)
       FROM unnest(mgr_ids) m WHERE m <> rec.employee_id;
@@ -699,7 +699,7 @@ BEGIN
     RETURNING id INTO v_id;
     PERFORM pg_temp.trk('open_shifts', v_id);
     IF spec.ostatus = 'open' AND spec.off <= 4 THEN
-      PERFORM pg_temp.notify(emp_ids[gs], 'open_shift_available', 'Yeni Açık Vardiya',
+      PERFORM pg_temp.notify(emp_ids[gs], 'open_shift_available', 'Yeni açık vardiya',
         to_char(v_today + spec.off, 'DD.MM.YYYY') || ' tarihinde ' || to_char(tpl_s[t], 'HH24:MI') || '–' || to_char(tpl_e[t], 'HH24:MI')
           || ' için açık vardiya oluşturuldu. Üstlenmek için Açık Vardiyalar sayfasını ziyaret edin.',
         v_id, v_now - INTERVAL '30 hours', gs % 3 = 0)

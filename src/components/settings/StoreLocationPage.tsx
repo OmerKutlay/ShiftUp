@@ -81,12 +81,11 @@ function LocationItem({ loc, selected, onEdit }: { loc: StoreLocation; selected:
           {selected && <Badge variant="secondary">Düzenleniyor</Badge>}
         </ItemTitle>
         <ItemDescription className="tabular-nums">
+          Yarıçap {loc.allowed_radius_meters} m · GPS ≤ {loc.max_accuracy_meters} m
+        </ItemDescription>
+        <p className="text-xs text-muted-foreground tabular-nums">
           {loc.latitude.toFixed(5)}, {loc.longitude.toFixed(5)}
-        </ItemDescription>
-        <ItemDescription className="flex flex-wrap gap-x-3 tabular-nums">
-          <span>Yarıçap {loc.allowed_radius_meters} m</span>
-          <span>GPS ≤ {loc.max_accuracy_meters} m</span>
-        </ItemDescription>
+        </p>
       </ItemContent>
       <ItemActions className="self-start">
         <StatusBadge tone={loc.active ? 'success' : 'neutral'} label={loc.active ? 'Aktif' : 'Pasif'} />

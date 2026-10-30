@@ -33,6 +33,10 @@ export function QrCodeDisplay({ data, size = 240, loading = false, expired = fal
         light: RAW.white,
       },
       errorCorrectionLevel: 'M',
+    }).then(() => {
+      // qrcode canvas'a satır içi px genişlik/yükseklik yazar; dar ekranda CSS ölçeği (w-full, aspect-square) geçerli olsun
+      canvas.style.removeProperty('width')
+      canvas.style.removeProperty('height')
     }).catch((err: unknown) => {
       console.error('QR kod oluşturulamadı:', err)
     })
@@ -74,7 +78,7 @@ export function QrCodeDisplay({ data, size = 240, loading = false, expired = fal
        * Canvas: width/height attribute'u piksel çözünürlüğünü belirler.
        * CSS w-full ile container'a göre ölçeklenir — mobilde taşmaz.
        */}
-      <canvas ref={canvasRef} width={size} height={size} className="block h-auto w-full rounded-md" />
+      <canvas ref={canvasRef} width={size} height={size} className="block aspect-square h-auto w-full max-w-full rounded-md" />
     </div>
   )
 }

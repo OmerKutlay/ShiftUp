@@ -267,7 +267,7 @@ export async function POST(req: NextRequest) {
         currentEmployee.home_store_id,
         {
           type: 'time_correction_submitted',
-          title: 'Yeni Mesai Düzeltme Talebi',
+          title: 'Yeni mesai düzeltme talebi',
           message: `${currentEmployee.full_name} — ${dateLabel(date)} için ${start}–${end} mesai düzeltme talebi oluşturdu.`,
           related_id: data.id,
         },

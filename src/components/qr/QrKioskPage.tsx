@@ -305,7 +305,7 @@ export function QrKioskPage() {
       </header>
 
       <main className="flex flex-1 items-center justify-center py-6 md:py-10">
-        <div className="grid w-full max-w-5xl items-center gap-6 md:gap-10 lg:grid-cols-[minmax(0,1fr)_auto] lg:gap-16">
+        <div className="grid w-full max-w-5xl items-center grid-cols-[minmax(0,1fr)] gap-6 md:gap-10 lg:grid-cols-[minmax(0,1fr)_auto] lg:gap-16">
           {/* Saat + yönerge */}
           <section className="flex flex-col items-center gap-1 text-center lg:items-start lg:text-left">
             <p className="text-sm text-muted-foreground first-letter:uppercase" suppressHydrationWarning>
@@ -335,7 +335,7 @@ export function QrKioskPage() {
           </section>
 
           {/* QR kartı */}
-          <Card className="mx-auto w-full max-w-sm gap-5 py-5 shadow-xs md:max-w-md md:py-6">
+          <Card className="mx-auto w-full min-w-0 max-w-sm gap-5 py-5 shadow-xs md:max-w-md md:py-6">
             <CardContent className="flex flex-col items-center gap-5 px-5 md:px-6">
               {error && (
                 <Alert variant="destructive">

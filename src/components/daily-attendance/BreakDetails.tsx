@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Coffee } from 'lucide-react'
 import type { BreakItem } from '@/lib/attendanceDurations'
+import { Badge } from '@/components/ui/badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { clock, formatDelay } from './attendanceTime'
@@ -98,12 +99,12 @@ export function BreakList({ breaks, now, className }: { breaks: BreakItem[]; now
 
 /**
  * Günlük operasyon satırındaki mola özeti: toplam süre + "2 mola" (ya da "2. mola sürüyor").
- * stack: tablo hücresi (iki satır), inline: mobil kart (tek satır, kahve simgesiyle).
+ * stack: tablo hücresi (iki satır), inline: tek satır (kahve simgesiyle), badge: mobil kart rozeti.
  */
 export function BreakCell({ breaks, now, variant = 'stack' }: {
   breaks: BreakItem[]
   now: number
-  variant?: 'stack' | 'inline'
+  variant?: 'stack' | 'inline' | 'badge'
 }) {
   if (breaks.length === 0) return variant === 'stack' ? <span className="text-muted-foreground">—</span> : null
   const stats = breakStats(breaks, now)
@@ -117,7 +118,15 @@ export function BreakCell({ breaks, now, variant = 'stack' }: {
 
   return (
     <BreakDetails breaks={breaks} now={now} label={label}>
-      {variant === 'stack' ? (
+      {variant === 'badge' ? (
+        <Badge variant="secondary" className="tabular-nums whitespace-nowrap">
+          <Coffee aria-hidden />
+          Mola {formatDelay(stats.total)}
+          {stats.active
+            ? <span className="text-warning">· {activeBreakLabel(stats.active)} sürüyor</span>
+            : stats.count !== null && <span className="text-muted-foreground">· {stats.count} mola</span>}
+        </Badge>
+      ) : variant === 'stack' ? (
         <span className="flex flex-col tabular-nums whitespace-nowrap">
           <span className="w-fit underline decoration-muted-foreground/40 decoration-dotted underline-offset-4">
             {formatDelay(stats.total)}

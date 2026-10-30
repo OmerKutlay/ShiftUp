@@ -4,7 +4,7 @@
  * NotificationList — bildirim satırı (shadcn Item) ve güne göre gruplama.
  * /notifications sayfası ve zil açılır paneli aynı satırı kullanır.
  */
-import { format, formatDistanceToNow, isToday, isYesterday } from 'date-fns'
+import { format, formatDistanceToNowStrict, isToday, isYesterday } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import type { Notification } from '@/types/notification'
 import { humanizeIsoDates } from '@/lib/dateUtils'
@@ -48,7 +48,7 @@ function whenLabel(iso: string): { short: string; full: string } {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return { short: '', full: '' }
   return {
-    short: isToday(d) ? formatDistanceToNow(d, { addSuffix: true, locale: tr }) : format(d, 'HH:mm'),
+    short: isToday(d) ? formatDistanceToNowStrict(d, { addSuffix: true, locale: tr }) : format(d, 'HH:mm'),
     full: format(d, 'd MMMM yyyy, HH:mm', { locale: tr }),
   }
 }

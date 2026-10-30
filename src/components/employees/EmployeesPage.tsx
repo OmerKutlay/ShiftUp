@@ -35,7 +35,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group'
-import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '@/components/ui/item'
+import { Item, ItemActions, ItemContent, ItemDescription, ItemFooter, ItemMedia, ItemTitle } from '@/components/ui/item'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmployeeDeleteDialog } from './EmployeeDeleteDialog'
@@ -306,9 +306,9 @@ export function EmployeesPage() {
       cell: ({ row }) => {
         const e = row.original
         if (isKioskRole(e.roles?.access_level)) return <span className="text-muted-foreground">—</span>
-        // Olağan durum sade tarih, istisna (onay yok) uyarı rozeti
+        // Sütun durum olarak okunsun: onay varsa tarihiyle yeşil rozet, yoksa uyarı
         return e.overtime_consent_at
-          ? <span className="whitespace-nowrap tabular-nums">{fmtDate(e.overtime_consent_at)}</span>
+          ? <StatusBadge tone="success" label={`Var · ${fmtDate(e.overtime_consent_at)}`} />
           : <StatusBadge tone="warning" label="Onay yok" />
       },
     },
@@ -328,21 +328,25 @@ export function EmployeesPage() {
   ]
 
   // ── Mobil kart ──
+  const needsConsent = (e: EmployeeWithRole) => isEffectivelyActive(e) && !isKioskRole(e.roles?.access_level) && !e.overtime_consent_at
   const mobileItem = (e: EmployeeWithRole) => (
     <Item variant="outline" size="sm">
       <ItemMedia><PersonAvatar name={e.full_name} size={36} className={cn(!e.active && 'opacity-60')} /></ItemMedia>
       <ItemContent className="min-w-0">
         <ItemTitle className={cn(!e.active && 'text-muted-foreground')}>{e.full_name}</ItemTitle>
-        <ItemDescription className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span>{e.roles?.name ?? 'Rol yok'}</span>
-          <span aria-hidden>·</span>
-          <span>{EMPLOYMENT_LABELS[e.employment_type]}</span>
-        </ItemDescription>
+        <ItemDescription>{e.roles?.name ?? 'Rol yok'}</ItemDescription>
       </ItemContent>
       <ItemActions className="gap-1">
         {(!e.active || e.termination_date) && <EmployeeStatusChip active={e.active} employee={e} />}
         <RowActions employee={e} {...rowActionProps} canOffboard={canOffboardFor(e)} />
       </ItemActions>
+      {/* Yalnızca istisnalar: yarı zamanlı ve fazla çalışma onayı eksik */}
+      {(e.employment_type === 'part_time' || needsConsent(e)) && (
+        <ItemFooter className="justify-start gap-1.5 pl-12">
+          {e.employment_type === 'part_time' && <StatusBadge tone="plum" label={EMPLOYMENT_LABELS.part_time} />}
+          {needsConsent(e) && <StatusBadge tone="warning" label="Onay yok" />}
+        </ItemFooter>
+      )}
     </Item>
   )
 
@@ -469,7 +473,7 @@ export function EmployeesPage() {
             />
             <StatCard
               icon={<FileSignature />}
-              label="Fazla çalışma onayı"
+              label="Fazla çalışma"
               value={`${staff.length - missingConsent}/${staff.length}`}
               footer={missingConsent > 0 && (
                 <>
@@ -477,7 +481,7 @@ export function EmployeesPage() {
                   {missingConsent} kişide onay yok
                 </>
               )}
-              hint={missingConsent > 0 ? undefined : 'Tüm aktif çalışanlarda var'}
+              hint={missingConsent > 0 ? undefined : 'Onay tüm aktif çalışanlarda var'}
             />
           </StatCards>
 

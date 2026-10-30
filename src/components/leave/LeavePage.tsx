@@ -53,6 +53,7 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/in
 import {
   Item, ItemActions, ItemContent, ItemDescription, ItemFooter, ItemGroup, ItemMedia, ItemTitle,
 } from '@/components/ui/item'
+import { Progress } from '@/components/ui/progress'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
@@ -115,7 +116,6 @@ function BalanceCard({ balance }: { balance: AnnualLeaveBalance }) {
   const remaining = Math.max(0, balance.remainingDays)
   const total = Math.max(1, balance.entitlementDays)
   const usedPct = Math.min(100, (balance.usedDays / total) * 100)
-  const pendingPct = Math.min(100 - usedPct, (balance.pendingDays / total) * 100)
   const low = balance.remainingDays <= 2
 
   return (
@@ -131,25 +131,21 @@ function BalanceCard({ balance }: { balance: AnnualLeaveBalance }) {
         </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <div
-          role="img"
+        {/* Çubuk kullanılan günü gösterir; onay bekleyen gün aşağıda düz metin */}
+        <Progress
+          value={usedPct}
           aria-label={`${balance.usedDays} gün kullanıldı, ${balance.pendingDays} gün onay bekliyor, ${remaining} gün kaldı`}
-          className="flex h-2 overflow-hidden rounded-full bg-muted"
-        >
-          <div className="h-full bg-foreground/70" style={{ width: `${usedPct}%` }} />
-          <div className="h-full bg-warning" style={{ width: `${pendingPct}%` }} />
-        </div>
+          className="h-2 bg-muted"
+          indicatorClassName="bg-foreground/70"
+        />
         <dl className="grid grid-cols-3 gap-2 text-sm">
           {[
-            { label: 'Hak', value: balance.entitlementDays, dot: 'bg-muted-foreground/30' },
-            { label: 'Kullanılan', value: balance.usedDays, dot: 'bg-foreground/70' },
-            { label: 'Bekleyen', value: balance.pendingDays, dot: 'bg-warning' },
+            { label: 'Hak', value: balance.entitlementDays },
+            { label: 'Kullanılan', value: balance.usedDays },
+            { label: 'Bekleyen', value: balance.pendingDays },
           ].map((s) => (
             <div key={s.label} className="flex flex-col gap-0.5">
-              <dt className="flex items-center gap-1.5 text-muted-foreground">
-                <span aria-hidden className={cn('size-2 rounded-full', s.dot)} />
-                {s.label}
-              </dt>
+              <dt className="text-muted-foreground">{s.label}</dt>
               <dd className="font-medium tabular-nums">{s.value} gün</dd>
             </div>
           ))}
@@ -616,12 +612,18 @@ export function LeavePage() {
             <ItemTitle>{opts.showPerson ? emp?.full_name ?? '—' : typeLabel(r.leave_type)}</ItemTitle>
             <span className={cn('-my-0.5', !opts.outline && 'sm:hidden')}><LeaveStatusBadge status={r.status} /></span>
           </div>
-          <ItemDescription className="text-pretty tabular-nums">
-            {opts.showPerson && `${typeLabel(r.leave_type)} · `}{fmtRange(r.start_date, r.end_date)} · {days} gün
+          {/* Sabit yapı: 1. satır izin türü, 2. satır tarih aralığı · süre (bölünmez) */}
+          {opts.showPerson && <ItemDescription>{typeLabel(r.leave_type)}</ItemDescription>}
+          <ItemDescription className="whitespace-nowrap tabular-nums">
+            {fmtRange(r.start_date, r.end_date)} · {days} gün
           </ItemDescription>
-          {r.reason && <ItemDescription className="line-clamp-1 text-pretty [overflow-wrap:anywhere]">{r.reason}</ItemDescription>}
-          {r.reviewer_note && (
-            <ItemDescription className="line-clamp-2 text-xs text-pretty [overflow-wrap:anywhere]">Yönetici notu: {r.reviewer_note}</ItemDescription>
+          {(r.reason || r.reviewer_note) && (
+            <div className="mt-1 flex flex-col gap-0.5 text-sm text-muted-foreground">
+              {r.reason && <p className="line-clamp-3 text-pretty [overflow-wrap:anywhere]">{r.reason}</p>}
+              {r.reviewer_note && (
+                <p className="line-clamp-3 text-xs text-pretty [overflow-wrap:anywhere]">Yönetici notu: {r.reviewer_note}</p>
+              )}
+            </div>
           )}
         </ItemContent>
         {(!opts.outline || actions.onDelete) && (
