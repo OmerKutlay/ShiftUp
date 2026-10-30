@@ -7,10 +7,12 @@
 import { useMemo, useState } from 'react'
 import useSWR from 'swr'
 import { FileSpreadsheet, Info, TriangleAlert } from 'lucide-react'
-import { apiDownload, apiFetch } from '@/lib/api/http'
-import { saveBlob } from '@/lib/export/download'
+import { apiFetch } from '@/lib/api/http'
+import { saveCsv } from '@/lib/export/download'
+import { downloadPayrollXlsx } from '@/lib/export/excel'
+import { storeFileSlug } from '@/lib/export/fileName'
 import { useAuth } from '@/context/AuthContext'
-import type { PayrollRow } from '@/lib/payrollTimesheet'
+import { payrollToCsv, type PayrollRow } from '@/lib/payrollTimesheet'
 import { ExportMenu, PeriodStepper, TableSkeleton } from '@/components/common'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
@@ -36,11 +38,15 @@ export function PayrollPanel() {
   const isMobile = useIsMobile()
   const ready = !!data && rows.length > 0
   const num = 'px-3 text-right tabular-nums'
-
-  // Excel ve CSV sunucuda üretilir (hız sınırı + denetim kaydı); a[href] yerine blob: hata JSON'u toast olur
+  // Dosya tarayıcıda üretilir (Worker CPU sınırı): sunucu yalnızca hız sınırı + denetim kaydı + mağaza adı verir.
+  // Hata (429, 5xx) apiFetch ile ApiError olur ve ExportMenu toast'a çevirir.
   const download = async (format: 'xlsx' | 'csv') => {
-    const { blob, filename } = await apiDownload(`/api/reports/payroll?month=${month}&format=${format}`)
-    saveBlob(blob, filename ?? `bordro-puantaj-${month}.${format}`)
+    const res = await apiFetch<{ rows: PayrollRow[]; storeName: string }>(`/api/reports/payroll?month=${month}&format=${format}`)
+    if (format === 'csv') {
+      saveCsv(payrollToCsv(res.rows), `bordro-puantaj-${month}-${storeFileSlug(res.storeName)}.csv`)
+    } else {
+      await downloadPayrollXlsx(month, res.rows, res.storeName)
+    }
   }
 
   return (

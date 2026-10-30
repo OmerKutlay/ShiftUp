@@ -274,14 +274,15 @@ describe('GET /api/reports/payroll', () => {
     const b = await (await call(asAdminInB, 'month=2026-09')).json()
     expect(b.rows.map((r: { employeeId: string }) => r.employeeId)).toEqual(['b1'])
   })
-  it('csv: başlıklar, dosya adı, denetim kaydı mağazaya yazılır', { timeout: 30_000 }, async () => {
+  it('format=csv: JSON + mağaza adı döner (dosya tarayıcıda üretilir), denetim kaydı mağazaya yazılır', { timeout: 30_000 }, async () => {
     const res = await call(asManager, 'month=2026-09&format=csv')
     expect(res.status).toBe(200)
-    expect(res.headers.get('Content-Type')).toContain('text/csv')
-    expect(res.headers.get('Content-Disposition')).toBe('attachment; filename="bordro-puantaj-2026-09-kadikoy-sube.csv"')
-    const text = await res.text()
-    expect(text).toContain('Ayşe')
-    expect(text).not.toContain('Berk')
+    expect(res.headers.get('Content-Type')).toContain('application/json')
+    expect(res.headers.get('Content-Disposition')).toBeNull()
+    const body = await res.json()
+    expect(body.storeName).toBe('Kadıköy Şube')
+    expect(JSON.stringify(body.rows)).toContain('Ayşe')
+    expect(JSON.stringify(body.rows)).not.toContain('Berk')
     const log = db.tables.audit_logs.find((l) => l.action === 'report.payroll.export')
     expect(log?.store_id).toBe(STORE_A)
   })
@@ -293,10 +294,30 @@ describe('GET /api/reports/payroll', () => {
     // JSON önizleme hız sınırına takılmaz
     expect((await call(asManager, 'month=2026-09', false)).status).toBe(200)
   })
-  it('xlsx üretir', { timeout: 30_000 }, async () => {
+  it('format=xlsx: sunucu dosya üretmez, JSON + mağaza adı döner ve denetim yazar', { timeout: 30_000 }, async () => {
     const res = await call(asManager, 'month=2026-09&format=xlsx')
     expect(res.status).toBe(200)
-    expect(res.headers.get('Content-Type')).toContain('spreadsheetml')
-    expect((await res.arrayBuffer()).byteLength).toBeGreaterThan(1000)
+    expect(res.headers.get('Content-Type')).toContain('application/json')
+    expect((await res.json()).storeName).toBe('Kadıköy Şube')
+    expect(db.tables.audit_logs.some((l) => l.action === 'report.payroll.export')).toBe(true)
+  })
+})
+
+describe('payrollExcel (tarayıcıda çalışan oluşturucu)', () => {
+  it('Uint8Array döner; geçerli xlsx: başlık, kodlar, formül kaçışı', { timeout: 30_000 }, async () => {
+    const { buildPayrollWorkbook } = await import('@/lib/payrollExcel')
+    const ExcelJS = (await import('exceljs')).default
+    const { rows } = buildPayrollTimesheet({
+      ...base, employees: [{ ...EMP, full_name: '=KÖTÜ()' }], shifts: [worked('2026-10-05', '09:00', '17:30', 30)], leaves: [],
+    })
+    const bytes = await buildPayrollWorkbook('2026-10', rows, 'Kadıköy Şube', '30.10.2026')
+    expect(bytes).toBeInstanceOf(Uint8Array)
+    expect(Buffer.isBuffer(bytes)).toBe(false)
+    const wb = new ExcelJS.Workbook()
+    await wb.xlsx.load(bytes as unknown as ArrayBuffer)
+    const ws = wb.getWorksheet('Puantaj')!
+    expect(String(ws.getRow(1).getCell(1).value)).toContain('Kadıköy Şube')
+    expect(ws.getRow(6).getCell(3).value).toBe("'=KÖTÜ()")
+    expect(wb.getWorksheet('Açıklamalar')).toBeTruthy()
   })
 })

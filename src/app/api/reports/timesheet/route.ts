@@ -4,14 +4,14 @@
  * resmi tatil çalışması, izinler, SGK prim günü. Müdür Yardımcısı+.
  * Yalnızca aktif mağazada çalışılan vardiyalar sayılır (mağaza değiştiren çalışanın eski
  * ayları eski mağazanın puantajında kalır).
- * format=xlsx → Excel dosyası indirir; aksi halde JSON.
+ * Her zaman JSON döner. format=xlsx → indirme niyeti: Excel TARAYICIDA üretilir (Worker CPU sınırı),
+ * sunucu yalnızca mağaza adını ekler ve denetim kaydını yazar.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { requireMinRole, ACCESS } from '@/lib/auth'
 import { badRequest, serverError } from '@/lib/apiErrors'
 import { queryTimesheet } from '@/lib/timesheetQuery'
-import { buildTimesheetWorkbook, storeFileSlug } from '@/lib/timesheetExcel'
 import { logAudit } from '@/lib/auditLog'
 
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/
@@ -34,17 +34,10 @@ export async function GET(req: NextRequest) {
       if (storeErr) throw storeErr
       const storeName = (store as { name: string } | null)?.name ?? ''
 
-      const buffer = await buildTimesheetWorkbook(month, rows, holidays, storeName || undefined)
       await logAudit({
         actorId: auth.employee.id, storeId, action: 'report.timesheet.export', entityType: 'report', entityId: month,
       })
-      return new NextResponse(new Uint8Array(buffer), {
-        headers: {
-          'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          'Content-Disposition': `attachment; filename="puantaj-${storeFileSlug(storeName)}-${month}.xlsx"`,
-          'Cache-Control': 'no-store',
-        },
-      })
+      return NextResponse.json({ month, rows, holidays, storeName }, { headers: { 'Cache-Control': 'no-store' } })
     }
 
     return NextResponse.json({ month, rows, holidays })

@@ -156,6 +156,7 @@ describe('timesheetExcel', () => {
       shifts: [worked('2026-10-05')], leaves: [],
     })
     const buf = await buildTimesheetWorkbook('2026-10', [row], [])
+    expect(buf).toBeInstanceOf(Uint8Array)
     const wb = new ExcelJS.Workbook()
     await wb.xlsx.load(buf as unknown as ArrayBuffer)
     const ws = wb.getWorksheet('Puantaj')!

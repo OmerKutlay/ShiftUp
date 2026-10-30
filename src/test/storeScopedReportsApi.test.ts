@@ -262,11 +262,12 @@ describe('GET /api/reports/timesheet', () => {
     expect(moved.days['2026-10-20']).toBeTruthy()
   })
 
-  it('xlsx dosya adı mağaza slug içerir ve denetim mağazaya yazılır', { timeout: 30_000 }, async () => {
+  it('format=xlsx JSON + mağaza adı döner ve denetim mağazaya yazılır', { timeout: 30_000 }, async () => {
     const { GET } = await mod(asManager, 'timesheet')
     const res = await GET(req('http://localhost/api/reports/timesheet?month=2026-10&format=xlsx'))
     expect(res.status).toBe(200)
-    expect(res.headers.get('Content-Disposition')).toBe('attachment; filename="puantaj-kadikoy-sube-2026-10.xlsx"')
+    expect(res.headers.get('Content-Type')).toContain('application/json')
+    expect((await res.json()).storeName).toBe('Kadıköy Şube')
     const log = db.tables.audit_logs.find((l) => l.action === 'report.timesheet.export')
     expect(log?.store_id).toBe(STORE_A)
   })

@@ -1,5 +1,5 @@
 /**
- * timesheetExcel — aylık puantajı .xlsx olarak üretir (yalnızca server).
+ * timesheetExcel — aylık puantajı .xlsx olarak üretir (yalnızca tarayıcıda, indirme anında yüklenir).
  *
  * Sayfa 1 "Puantaj": (mağaza adı verilmişse üstte başlık satırı) çalışan × gün kod tablosu + toplam sütunları
  * Sayfa 2 "Açıklama": kod listesi ve hesaplama notları
@@ -34,8 +34,8 @@ export async function buildTimesheetWorkbook(
   rows: TimesheetRow[],
   holidays: PublicHoliday[],
   storeName?: string
-): Promise<Buffer> {
-  // Ağır kütüphane: worker açılışında değil, yalnızca puantaj üretilirken yüklenir
+): Promise<Uint8Array> {
+  // Ağır kütüphane: yalnızca kullanıcı Excel indirirken (tarayıcıda) yüklenir
   const ExcelJS = (await import('exceljs')).default
   const wb = new ExcelJS.Workbook()
   wb.creator = 'ShiftUp'
@@ -138,5 +138,5 @@ export async function buildTimesheetWorkbook(
   legend.getColumn(2).width = 110
 
   const buf = await wb.xlsx.writeBuffer()
-  return Buffer.from(buf as ArrayBuffer)
+  return new Uint8Array(buf as ArrayBuffer)
 }

@@ -1,5 +1,5 @@
 /**
- * payrollExcel — bordro puantajını .xlsx olarak üretir (yalnızca server; exceljs tembel yüklenir).
+ * payrollExcel — bordro puantajını .xlsx olarak üretir (yalnızca tarayıcıda, indirme anında yüklenir).
  *
  * Sayfa 1 "Puantaj": başlık bloğu (mağaza, dönem, oluşturma zamanı) + çalışan başına bir satır:
  *   Sicil No, TC Kimlik No (boş — muhasebe doldurur), Ad Soyad, gün 1..N kodları, toplam sütunları.
@@ -25,7 +25,7 @@ export async function buildPayrollWorkbook(
   rows: PayrollRow[],
   storeName: string,
   generatedAt: string
-): Promise<Buffer> {
+): Promise<Uint8Array> {
   const ExcelJS = (await import('exceljs')).default
   const wb = new ExcelJS.Workbook()
   wb.creator = 'ShiftUp'
@@ -113,5 +113,5 @@ export async function buildPayrollWorkbook(
   }
 
   const buf = await wb.xlsx.writeBuffer()
-  return Buffer.from(buf as ArrayBuffer)
+  return new Uint8Array(buf as ArrayBuffer)
 }

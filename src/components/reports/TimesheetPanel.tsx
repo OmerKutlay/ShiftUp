@@ -13,8 +13,8 @@ import useSWR from 'swr'
 import {
   ArrowRight, CalendarDays, CalendarX2, ChevronLeft, Clock3, Search, Timer, TriangleAlert, UserX,
 } from 'lucide-react'
-import { apiDownload, apiFetch } from '@/lib/api/http'
-import { saveBlob } from '@/lib/export/download'
+import { apiFetch } from '@/lib/api/http'
+import { downloadTimesheetXlsx } from '@/lib/export/excel'
 import { useAuth } from '@/context/AuthContext'
 import { monthDays, TIMESHEET_CODE_LABELS, type TimesheetRow } from '@/lib/timesheet'
 import { dayOfWeekFromDateString, turkeyToday } from '@/lib/dateUtils'
@@ -85,10 +85,12 @@ export function TimesheetPanel() {
     )
   }
 
-  // Excel sunucuda üretilir (denetim kaydı); hata JSON'u blob indirmeyle yakalanır, sayfadan çıkılmaz
+  // Excel tarayıcıda üretilir (Worker CPU sınırı); sunucu denetim kaydını yazar ve mağaza adını verir
   const exportExcel = async () => {
-    const { blob, filename } = await apiDownload(`/api/reports/timesheet?month=${month}&format=xlsx`)
-    saveBlob(blob, filename ?? `puantaj-${month}.xlsx`)
+    const res = await apiFetch<{ rows: TimesheetRow[]; holidays: PublicHoliday[]; storeName: string }>(
+      `/api/reports/timesheet?month=${month}&format=xlsx`
+    )
+    await downloadTimesheetXlsx(month, res.rows, res.holidays, res.storeName)
   }
   const exportFilter = query.trim() ? `Arama: "${query.trim()}"` : undefined
 
