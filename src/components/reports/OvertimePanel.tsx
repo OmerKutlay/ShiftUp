@@ -3,7 +3,7 @@
 /**
  * OvertimePanel — Raporlar › Fazla çalışma: yıllık takip (İş K. Md. 41), 270 saat sınırı ve yazılı onay.
  *
- * Devam raporuyla aynı dil (DESIGN_GUIDE §9): araç çubuğu (yıl, arama, durum) → kural notu → KPI kartları →
+ * Devam raporuyla aynı dil (DESIGN_GUIDE §9): araç çubuğu (yıl, arama, durum, dışa aktar) → kural notu → KPI kartları →
  * aylık dağılım + en çok fazla çalışanlar grafikleri → DataTable (mobilde Item kartları).
  */
 import { useMemo, useState } from 'react'
@@ -11,11 +11,12 @@ import useSWR from 'swr'
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, ReferenceLine, XAxis, YAxis } from 'recharts'
 import { CircleCheck, FileWarning, Gauge, Scale, Search, Timer, TriangleAlert, TrendingUp } from 'lucide-react'
 import { apiFetch } from '@/lib/api/http'
+import { useAuth } from '@/context/AuthContext'
 import type { OvertimeSummary } from '@/lib/overtime'
 import { ANNUAL_OVERTIME_CAP_HOURS } from '@/lib/laborLaw'
 import { addDaysToDateString, formatShortDateTr, turkeyToday } from '@/lib/dateUtils'
 import {
-  DataTable, PersonAvatar, StatCard, StatCards, StatusBadge, TableSkeleton, type ColumnDef,
+  DataTable, ExportMenu, PersonAvatar, StatCard, StatCards, StatusBadge, TableSkeleton, type ColumnDef,
 } from '@/components/common'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge, type BadgeTone } from '@/components/ui/badge'
@@ -28,6 +29,7 @@ import { Progress } from '@/components/ui/progress'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
+import { exportOvertimeCsv, exportOvertimePdf } from './reportExports'
 
 const hours = (mins: number) => (Math.round((mins / 60) * 10) / 10).toLocaleString('tr-TR')
 
@@ -193,6 +195,7 @@ function TopChart({ rows }: { rows: OvertimeSummary[] }) {
 // ─── Panel ───────────────────────────────────────────────────
 
 export function OvertimePanel() {
+  const storeName = useAuth().store?.active.name ?? ''
   const currentYear = Number(turkeyToday().slice(0, 4))
   const [year, setYear] = useState(currentYear)
   const [query, setQuery] = useState('')
@@ -293,9 +296,16 @@ export function OvertimePanel() {
 
   const topLevel = top ? levelOf(top) : 'ok'
 
+  // Dışa aktarma: filtre/arama uygulanmış satırlar, en çok fazla çalışan üstte (tablonun varsayılan sırası)
+  const exportRows = [...visible].sort((a, b) => b.totalOvertimeMins - a.totalOvertimeMins)
+  const exportFilter = [
+    filter !== 'all' && FILTER_LABELS[filter],
+    query.trim() && `Arama: "${query.trim()}"`,
+  ].filter(Boolean).join(' · ') || undefined
+
   return (
     <div className="flex flex-col gap-4 md:gap-6">
-      {/* Araç çubuğu: yıl · arama · durum */}
+      {/* Araç çubuğu: yıl · arama · durum · dışa aktar */}
       <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center">
         <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
           <SelectTrigger className="w-full md:w-32" aria-label="Yıl"><SelectValue /></SelectTrigger>
@@ -315,6 +325,14 @@ export function OvertimePanel() {
             {(Object.keys(FILTER_LABELS) as Filter[]).map((k) => <SelectItem key={k} value={k}>{FILTER_LABELS[k]}</SelectItem>)}
           </SelectContent>
         </Select>
+        <ExportMenu
+          disabled={exportRows.length === 0}
+          className="md:ml-auto"
+          options={[
+            { format: 'pdf', run: () => exportOvertimePdf(year, exportRows, storeName, exportFilter) },
+            { format: 'csv', run: () => exportOvertimeCsv(year, exportRows, storeName) },
+          ]}
+        />
       </div>
 
       <Alert tone="info" role="note">

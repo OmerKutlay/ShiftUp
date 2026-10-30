@@ -3,7 +3,7 @@
 /**
  * SchedulePrintPage — /schedule/print?week=YYYY-MM-DD: haftalık planın yazdırılabilir çıktısı.
  * Aynı veri katmanı (useWeeklySchedule) ve aynı rol/mağaza kapsamı kullanılır; ekranda küçük bir araç
- * çubuğu (Yazdır, hafta gezgini, Plana dön), yazdırırken yalnızca çıktı tablosu görünür.
+ * çubuğu (Yazdır, PDF/CSV indir, hafta gezgini, Plana dön), yazdırırken yalnızca çıktı tablosu görünür.
  * ?auto=1 → veri yüklenince yazdırma penceresi kendiliğinden açılır.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -17,11 +17,12 @@ import { useAuth } from '@/context/AuthContext'
 import { turkeyToday } from '@/lib/dateUtils'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
-import { PeriodStepper } from '@/components/common'
+import { ExportMenu, PeriodStepper } from '@/components/common'
 import { useWeeklySchedule } from '../useWeeklySchedule'
 import { buildScheduleEntries, calcEmployeeStats, type EmployeeWeekStats } from '../scheduleHelpers'
 import { WeekPrintSheet } from './WeekPrintSheet'
 import { formatPrintedAt, formatWeekRangeTr, parseWeekParam } from './printHelpers'
+import { exportWeekCsv, exportWeekPdf, type WeekExportInput } from './weekExport'
 
 export function SchedulePrintPage({ week, auto }: { week?: string; auto?: boolean }) {
   const router = useRouter()
@@ -61,6 +62,16 @@ export function SchedulePrintPage({ week, auto }: { week?: string; auto?: boolea
     return () => clearTimeout(t)
   }, [auto, ready])
 
+  const exportInput: WeekExportInput = {
+    storeName: store?.active.name ?? '',
+    weekDays,
+    entries,
+    holidayMap: data.holidayMap,
+    statsMap,
+    approvedLeaveMap: data.approvedLeaveMap,
+    restDayMap: data.restDayMap,
+  }
+
   const go = (d: Date) => router.replace(`/schedule/print?week=${format(d, 'yyyy-MM-dd')}`)
 
   return (
@@ -77,7 +88,15 @@ export function SchedulePrintPage({ week, auto }: { week?: string; auto?: boolea
           nextLabel="Sonraki hafta"
           minLabelWidth={180}
         />
-        <Button className="ml-auto" onClick={() => window.print()} disabled={!ready || entries.length === 0}>
+        <ExportMenu
+          className="ml-auto"
+          disabled={!ready || entries.length === 0}
+          options={[
+            { format: 'pdf', run: () => exportWeekPdf(exportInput) },
+            { format: 'csv', run: () => exportWeekCsv(exportInput) },
+          ]}
+        />
+        <Button onClick={() => window.print()} disabled={!ready || entries.length === 0}>
           <Printer /> Yazdır
         </Button>
         {invalidWeek && (
@@ -91,7 +110,7 @@ export function SchedulePrintPage({ week, auto }: { week?: string; auto?: boolea
           </p>
         )}
         <p className="w-full text-xs text-muted-foreground">
-          Yazdırma penceresinde hedef olarak &quot;PDF olarak kaydet&quot; seçerek PDF alabilirsiniz. Sayfa A4 yatay ayarlanmıştır.
+          PDF ve CSV doğrudan indirilir. Yazdırırken sayfa A4 yatay ayarlanmıştır.
         </p>
       </div>
 

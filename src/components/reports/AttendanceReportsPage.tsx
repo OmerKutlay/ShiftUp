@@ -11,7 +11,7 @@ import { useMemo, useState } from 'react'
 import useSWR from 'swr'
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts'
 import {
-  CalendarCheck2, Clock3, Download, MoreHorizontal, Search, SquarePen, TriangleAlert, UserX, Users,
+  CalendarCheck2, Clock3, MoreHorizontal, Search, SquarePen, TriangleAlert, UserX, Users,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { endOfMonth, format, startOfMonth, startOfWeek, subDays, subMonths } from 'date-fns'
@@ -19,14 +19,20 @@ import { tr } from 'date-fns/locale'
 
 import type { EmployeeWithRole } from '@/types/employee'
 import type { AttendanceReportRow, AttendanceReportSummary, ManualAttendanceOverride } from '@/types/report'
-import { fetchAttendanceReport, buildReportSummary, exportReportToCsv } from '@/lib/reportRepository'
+import {
+  ATTENDANCE_EXPORT_HEADERS, attendanceExportRows, buildReportSummary, exportReportToCsv, fetchAttendanceReport,
+} from '@/lib/reportRepository'
+import { saveCsv } from '@/lib/export/download'
+import { downloadPdf } from '@/lib/export/pdf'
+import { storeFileSlug } from '@/lib/export/fileName'
+import { useAuth } from '@/context/AuthContext'
 import { fetchEmployees } from '@/lib/api/employees'
 import { isKioskRole } from '@/lib/auth/roles'
 import { SHIFT_KIND_TONES } from '@/lib/palette'
 import { cn } from '@/lib/utils'
 import { shiftKindOf } from '@/components/schedule/scheduleHelpers'
 import {
-  DataTable, DateField, EmployeeSelect, Page, PageHeader, PersonAvatar, StatCard, StatCards, StatusBadge,
+  DataTable, DateField, EmployeeSelect, ExportMenu, Page, PageHeader, PersonAvatar, StatCard, StatCards, StatusBadge,
   TableSkeleton, type BadgeTone, type ColumnDef,
 } from '@/components/common'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -77,6 +83,9 @@ function formatMinutes(mins: number | null): string {
   if (mins === null) return '—'
   return `${Math.floor(mins / 60)}s ${mins % 60}d`
 }
+
+/** 2026-10-01 → 01.10.2026 */
+const trDate = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}`
 
 function formatHours(mins: number): string {
   return `${(mins / 60).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} s`
@@ -341,6 +350,7 @@ export function AttendanceReportsPage({ embedded = false }: { embedded?: boolean
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [query, setQuery] = useState('')
   const [overrideRow, setOverrideRow] = useState<AttendanceReportRow | null>(null)
+  const storeName = useAuth().store?.active.name ?? ''
 
   const rangeError = range.from && range.to && range.from > range.to ? 'Başlangıç tarihi bitişten sonra olamaz.' : null
 
@@ -386,16 +396,29 @@ export function AttendanceReportsPage({ embedded = false }: { embedded?: boolean
     if (p !== 'custom') setRange(presetRange(p))
   }
 
-  const handleExport = () => {
-    const blob = new Blob([exportReportToCsv(visibleRows)], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `shiftup-devam-${range.from}-${range.to}.csv`
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    URL.revokeObjectURL(url)
+  // Dışa aktarma ekrandaki kayıtları (durum filtresi ve arama uygulanmış) verir
+  const exportName = (ext: string) => `devam-raporu-${storeFileSlug(storeName)}-${range.from}_${range.to}.${ext}`
+  const exportCsv = () => saveCsv(exportReportToCsv(visibleRows), exportName('csv'))
+  const exportPdf = () => {
+    const filters = [
+      employeeId && `Çalışan: ${employees.find((e) => e.id === employeeId)?.full_name ?? '—'}`,
+      statusFilter !== 'all' && `Durum: ${STATUS_FILTER_LABELS[statusFilter]}`,
+      query.trim() && `Arama: "${query.trim()}"`,
+    ].filter(Boolean)
+    const worked = visibleRows.reduce((t, r) => t + (r.worked_minutes ?? 0), 0)
+    return downloadPdf({
+      title: 'Devam raporu',
+      subtitle: [storeName, `${trDate(range.from)} – ${trDate(range.to)}`].filter(Boolean).join(' · '),
+      meta: [
+        `${visibleRows.length} kayıt · toplam çalışma ${formatHours(worked)}${attendanceRate !== null ? ` · katılım %${attendanceRate}` : ''}`,
+        ...(filters.length > 0 ? [`Filtre: ${filters.join(' · ')}`] : []),
+      ],
+      head: [...ATTENDANCE_EXPORT_HEADERS],
+      body: attendanceExportRows(visibleRows),
+      orientation: 'landscape',
+      columnStyles: { 0: { fontStyle: 'bold' }, 11: { cellWidth: 50 } },
+      filename: exportName('pdf'),
+    })
   }
 
   const handleOverrideSave = async (override: ManualAttendanceOverride) => {
@@ -613,10 +636,11 @@ export function AttendanceReportsPage({ embedded = false }: { embedded?: boolean
           onChange={setEmployeeId}
           className="md:w-56"
         />
-        <Button variant="outline" onClick={handleExport} disabled={visibleRows.length === 0} className="md:ml-auto">
-          <Download />
-          CSV indir
-        </Button>
+        <ExportMenu
+          disabled={visibleRows.length === 0}
+          className="md:ml-auto"
+          options={[{ format: 'pdf', run: exportPdf }, { format: 'csv', run: exportCsv }]}
+        />
       </div>
 
       {rangeError && (

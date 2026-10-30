@@ -4,6 +4,7 @@
  * Tüm hesaplamalar burada yapılır — UI sadece görüntüler.
  */
 import { isUuid } from '@/lib/validation'
+import { toCsv } from '@/lib/export/csv'
 import type {
   AttendanceReportRow,
   AttendanceReportFilters,
@@ -101,14 +102,36 @@ export function buildReportSummary(rows: AttendanceReportRow[]): AttendanceRepor
 }
 
 // ============================================================
-// CSV Export
+// Dışa aktarma (CSV / PDF)
 // ============================================================
 
-/**
- * AttendanceReportRow listesini CSV string'e dönüştürür.
- * Tarayıcıda indirme için kullanılır.
- */
-export function exportReportToCsv(rows: AttendanceReportRow[]): string {
+const STATUS_TR: Record<string, string> = {
+  shift_waiting: 'Gelmedi',
+  working: 'Çalışıyor',
+  on_break: 'Molada',
+  working_after_break: 'Çalışıyor',
+  clocked_out: 'Çıkış yaptı',
+  on_leave: 'İzinli',
+  upcoming: 'Başlamadı',
+}
+
+const VERIFICATION_TR: Record<string, string> = {
+  qr: 'QR',
+  qr_location: 'QR + konum',
+  manual_override: 'Yönetici düzeltmesi',
+  manual_correction: 'Düzeltme talebi',
+}
+
+// Çoklu molada yalnızca son molanın saatleri tutulduğundan tek tek mola saatleri
+// yerine toplam mola süresi verilir (yanıltıcı olmasın).
+export const ATTENDANCE_EXPORT_HEADERS = [
+  'Çalışan', 'Tarih', 'Vardiya', 'Başlangıç', 'Bitiş',
+  'Durum', 'Giriş', 'Çıkış',
+  'Çalışma Süresi', 'Toplam Mola', 'Doğrulama', 'Not',
+] as const
+
+/** Devam raporu satırlarının dışa aktarma tablosu — CSV ve PDF aynı sütunları kullanır */
+export function attendanceExportRows(rows: AttendanceReportRow[]): string[][] {
   const formatTime = (iso: string | null): string => {
     if (!iso) return ''
     try {
@@ -130,55 +153,29 @@ export function exportReportToCsv(rows: AttendanceReportRow[]): string {
     return `${h}s ${m}d`
   }
 
-  const STATUS_TR: Record<string, string> = {
-    shift_waiting: 'Gelmedi',
-    working: 'Çalışıyor',
-    on_break: 'Molada',
-    working_after_break: 'Çalışıyor',
-    clocked_out: 'Çıkış yaptı',
-    on_leave: 'İzinli',
-    upcoming: 'Başlamadı',
-  }
+  // 2026-10-01 → 01.10.2026 (Türkçe Excel tarih olarak okur)
+  const formatDate = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}`
 
-  // Çoklu molada yalnızca son molanın saatleri tutulduğundan tek tek mola saatleri
-  // yerine toplam mola süresi verilir (yanıltıcı olmasın).
-  const headers = [
-    'Çalışan', 'Tarih', 'Vardiya', 'Başlangıç', 'Bitiş',
-    'Durum', 'Giriş', 'Çıkış',
-    'Çalışma Süresi', 'Toplam Mola', 'Doğrulama', 'Not',
-  ]
+  return rows.map((r) => [
+    r.full_name,
+    formatDate(r.work_date),
+    r.shift_name ?? '',
+    r.start_time.slice(0, 5),
+    r.end_time.slice(0, 5),
+    STATUS_TR[r.status] ?? r.status,
+    formatTime(r.clock_in_at),
+    formatTime(r.clock_out_at),
+    formatMinutes(r.worked_minutes),
+    formatMinutes(r.break_minutes),
+    r.verification_method ? (VERIFICATION_TR[r.verification_method] ?? r.verification_method) : '',
+    r.exception_note ?? '',
+  ])
+}
 
-  const escape = (v: string | null | undefined): string => {
-    if (!v) return ''
-    let s = String(v)
-    // CSV formül enjeksiyonu: = + - @ (ve tab/CR) ile başlayan hücre Excel'de formül olarak çalışır
-    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`
-    if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes(';')) {
-      return `"${s.replace(/"/g, '""')}"`
-    }
-    return s
-  }
-
-  const lines = [
-    headers.join(','),
-    ...rows.map((r) =>
-      [
-        escape(r.full_name),
-        escape(r.work_date),
-        escape(r.shift_name),
-        escape(r.start_time.slice(0, 5)),
-        escape(r.end_time.slice(0, 5)),
-        escape(STATUS_TR[r.status] ?? r.status),
-        escape(formatTime(r.clock_in_at)),
-        escape(formatTime(r.clock_out_at)),
-        escape(formatMinutes(r.worked_minutes)),
-        escape(formatMinutes(r.break_minutes)),
-        escape(r.verification_method),
-        escape(r.exception_note),
-      ].join(',')
-    ),
-  ]
-
-  // BOM — Excel'in Türkçe karakterleri doğru okuması için
-  return '\uFEFF' + lines.join('\n')
+/**
+ * AttendanceReportRow listesini CSV string'e dönüştürür (BOM, `;` ayraç — Türkçe Excel).
+ * Tarayıcıda indirme için kullanılır.
+ */
+export function exportReportToCsv(rows: AttendanceReportRow[]): string {
+  return toCsv(ATTENDANCE_EXPORT_HEADERS, attendanceExportRows(rows))
 }

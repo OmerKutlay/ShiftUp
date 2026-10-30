@@ -2,26 +2,27 @@
 
 /**
  * PayrollPanel — Raporlar › Bordro puantajı.
- * Muhasebeye verilecek aylık toplamlar: önizleme tablosu + Excel (gün kodlu) ve CSV (yalnızca toplamlar) indirme.
+ * Muhasebeye verilecek aylık toplamlar: önizleme tablosu + Excel (gün kodlu), CSV (yalnızca toplamlar) ve PDF indirme.
  */
 import { useMemo, useState } from 'react'
 import useSWR from 'swr'
-import { Download, FileSpreadsheet, Info, TriangleAlert } from 'lucide-react'
-import { toast } from 'sonner'
-import { apiDownload, apiFetch, ApiError } from '@/lib/api/http'
+import { FileSpreadsheet, Info, TriangleAlert } from 'lucide-react'
+import { apiDownload, apiFetch } from '@/lib/api/http'
+import { saveBlob } from '@/lib/export/download'
+import { useAuth } from '@/context/AuthContext'
 import type { PayrollRow } from '@/lib/payrollTimesheet'
-import { PeriodStepper, TableSkeleton } from '@/components/common'
+import { ExportMenu, PeriodStepper, TableSkeleton } from '@/components/common'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Button } from '@/components/ui/button'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
-import { Spinner } from '@/components/ui/spinner'
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { turkeyToday } from '@/lib/dateUtils'
 import { monthLabel, shiftMonth } from './timesheetSummary'
+import { exportPayrollPdf } from './reportExports'
 
 const fmt = (n: number) => (n === 0 ? '—' : n.toLocaleString('tr-TR'))
 
 export function PayrollPanel() {
+  const storeName = useAuth().store?.active.name ?? ''
   const [month, setMonth] = useState(turkeyToday().slice(0, 7))
   const { data, error, isLoading } = useSWR(
     `/api/reports/payroll?month=${month}`,
@@ -31,39 +32,11 @@ export function PayrollPanel() {
   const ready = !!data && rows.length > 0
   const num = 'px-3 text-right tabular-nums'
 
-  const [downloading, setDownloading] = useState<'xlsx' | 'csv' | null>(null)
-
-  // a[href] ile gezinmek hata durumunda ham JSON'a götürür (standalone PWA'da geri dönüş yok): blob olarak indirilir
+  // Excel ve CSV sunucuda üretilir (hız sınırı + denetim kaydı); a[href] yerine blob: hata JSON'u toast olur
   const download = async (format: 'xlsx' | 'csv') => {
-    setDownloading(format)
-    try {
-      const { blob, filename } = await apiDownload(`/api/reports/payroll?month=${month}&format=${format}`)
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = filename ?? `bordro-puantaj-${month}.${format}`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      setTimeout(() => URL.revokeObjectURL(url), 10_000)
-    } catch (err) {
-      const status = err instanceof ApiError ? err.status : undefined
-      toast.error(
-        status === 429 ? 'Çok fazla indirme isteği. Lütfen birkaç dakika sonra tekrar deneyin.'
-          : status && status >= 500 ? 'Dosya şu an hazırlanamadı. Lütfen tekrar deneyin.'
-          : err instanceof Error ? err.message : 'İndirme başarısız oldu.'
-      )
-    } finally {
-      setDownloading(null)
-    }
+    const { blob, filename } = await apiDownload(`/api/reports/payroll?month=${month}&format=${format}`)
+    saveBlob(blob, filename ?? `bordro-puantaj-${month}.${format}`)
   }
-
-  const button = (format: 'xlsx' | 'csv', label: string, icon: React.ReactNode) => (
-    <Button variant="outline" disabled={!ready || downloading !== null} onClick={() => void download(format)}>
-      {downloading === format ? <Spinner /> : icon}
-      {downloading === format ? 'Hazırlanıyor…' : label}
-    </Button>
-  )
 
   return (
     <div className="flex flex-col gap-4 md:gap-6">
@@ -76,10 +49,15 @@ export function PayrollPanel() {
           nextLabel="Sonraki ay"
           minLabelWidth={112}
         />
-        <div className="flex flex-wrap gap-2 md:ml-auto">
-          {button('xlsx', 'Excel (gün kodlarıyla)', <FileSpreadsheet />)}
-          {button('csv', 'CSV (toplamlar)', <Download />)}
-        </div>
+        <ExportMenu
+          disabled={!ready}
+          className="md:ml-auto"
+          options={[
+            { format: 'xlsx', label: 'Excel indir (gün kodlarıyla)', run: () => download('xlsx') },
+            { format: 'csv', label: 'CSV indir (toplamlar)', run: () => download('csv') },
+            { format: 'pdf', run: () => exportPayrollPdf(month, rows, storeName) },
+          ]}
+        />
       </div>
 
       <Alert tone="info">

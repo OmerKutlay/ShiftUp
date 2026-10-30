@@ -3,7 +3,7 @@
 /**
  * TimesheetPanel — Raporlar › Aylık puantaj.
  *
- * Devam raporuyla aynı dil (DESIGN_GUIDE §9): araç çubuğu (ay, görünüm, arama, Excel) → onay uyarısı →
+ * Devam raporuyla aynı dil (DESIGN_GUIDE §9): araç çubuğu (ay, görünüm, arama, dışa aktar) → onay uyarısı →
  * KPI kartları → "Kişiler" (gün şeritli ekip listesi + seçilen kişinin takvim kartı) ya da
  * "Tablo" (çalışan × gün kod matrisi, yapışkan ad sütunu).
  */
@@ -11,12 +11,14 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
 import {
-  ArrowRight, CalendarDays, CalendarX2, ChevronLeft, Clock3, Download, Search, Timer, TriangleAlert, UserX,
+  ArrowRight, CalendarDays, CalendarX2, ChevronLeft, Clock3, Search, Timer, TriangleAlert, UserX,
 } from 'lucide-react'
-import { apiFetch } from '@/lib/api/http'
+import { apiDownload, apiFetch } from '@/lib/api/http'
+import { saveBlob } from '@/lib/export/download'
+import { useAuth } from '@/context/AuthContext'
 import { monthDays, TIMESHEET_CODE_LABELS, type TimesheetRow } from '@/lib/timesheet'
 import { dayOfWeekFromDateString, turkeyToday } from '@/lib/dateUtils'
-import { PeriodStepper, SegmentedControl, StatCard, StatCards, TableSkeleton } from '@/components/common'
+import { ExportMenu, PeriodStepper, SegmentedControl, StatCard, StatCards, TableSkeleton } from '@/components/common'
 import type { PublicHoliday } from '@/types/holiday'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -33,6 +35,7 @@ import { PEOPLE_GRID, PersonDetailCard, PersonItem, PersonRow, StripAxis, StripL
 import {
   CALENDAR_TONE, LEGEND_ORDER, hoursLabel, monthLabel, shiftMonth, summarizeTimesheet, type TimesheetKpis,
 } from './timesheetSummary'
+import { exportTimesheetCsv, exportTimesheetPdf, WEEKDAY_INITIALS } from './reportExports'
 
 type View = 'people' | 'table'
 
@@ -40,6 +43,7 @@ const normalize = (s: string) => s.toLocaleLowerCase('tr-TR')
 
 export function TimesheetPanel() {
   const isMobile = useIsMobile()
+  const storeName = useAuth().store?.active.name ?? ''
   const today = turkeyToday()
   const [month, setMonth] = useState(today.slice(0, 7))
   const [view, setView] = useState<View>('people')
@@ -81,11 +85,16 @@ export function TimesheetPanel() {
     )
   }
 
-  const excelLabel = 'Excel olarak indir'
+  // Excel sunucuda üretilir (denetim kaydı); hata JSON'u blob indirmeyle yakalanır, sayfadan çıkılmaz
+  const exportExcel = async () => {
+    const { blob, filename } = await apiDownload(`/api/reports/timesheet?month=${month}&format=xlsx`)
+    saveBlob(blob, filename ?? `puantaj-${month}.xlsx`)
+  }
+  const exportFilter = query.trim() ? `Arama: "${query.trim()}"` : undefined
 
   return (
     <div className="flex flex-col gap-4 md:gap-6">
-      {/* Araç çubuğu: ay · görünüm · arama · Excel */}
+      {/* Araç çubuğu: ay · görünüm · arama · dışa aktar */}
       <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center">
         <div className="flex items-center gap-2">
           <PeriodStepper
@@ -109,15 +118,15 @@ export function TimesheetPanel() {
           <InputGroupInput placeholder="Çalışan ara…" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Çalışan ara" />
           <InputGroupAddon><Search /></InputGroupAddon>
         </InputGroup>
-        {data ? (
-          <Button variant="outline" asChild className="md:ml-auto">
-            <a href={`/api/reports/timesheet?month=${month}&format=xlsx`}>
-              <Download /> {excelLabel}
-            </a>
-          </Button>
-        ) : (
-          <Button variant="outline" disabled className="md:ml-auto"><Download /> {excelLabel}</Button>
-        )}
+        <ExportMenu
+          disabled={!data || filtered.length === 0}
+          className="md:ml-auto"
+          options={[
+            { format: 'pdf', run: () => exportTimesheetPdf(month, filtered, data?.holidays ?? [], storeName, exportFilter) },
+            { format: 'csv', run: () => exportTimesheetCsv(month, filtered, storeName) },
+            { format: 'xlsx', label: 'Excel indir (tüm ekip)', run: exportExcel },
+          ]}
+        />
       </div>
 
       {error && (
@@ -283,7 +292,6 @@ function KpiCards({ kpis }: { kpis: TimesheetKpis }) {
 
 // ─── Tablo görünümü: çalışan × gün kodları ────────────────────
 
-const WEEKDAY_INITIALS = ['Pz', 'Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct']
 const isWeekend = (d: string) => {
   const w = dayOfWeekFromDateString(d)
   return w === 0 || w === 6
