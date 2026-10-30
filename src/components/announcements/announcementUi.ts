@@ -27,13 +27,6 @@ export function endOfDayIso(date: string): string {
   return `${date}T23:59:59+03:00`
 }
 
-/** "Okundu 12/18 · Onay 9/18" */
-export function statsLabel(a: Announcement): string | null {
-  if (!a.stats) return null
-  const base = `Okundu ${a.stats.read}/${a.stats.recipients}`
-  return a.requires_ack ? `${base} · Onay ${a.stats.acked}/${a.stats.recipients}` : base
-}
-
 /** Çalışan açısından duyuru bekleyen bir işlem içeriyor mu (okunmadı ya da onay bekliyor)? */
 export function needsAttention(a: Announcement): boolean {
   if (!a.is_recipient) return false

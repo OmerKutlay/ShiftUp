@@ -2,8 +2,9 @@
  * Kontrol listesi görünüm yardımcıları (saf).
  */
 import { formatInTimeZone } from '@/lib/dateUtils'
-import { isRunComplete, isRunOverdue } from '@/lib/checklistRules'
-import type { ChecklistRun, TodayChecklistsResponse } from '@/types/checklist'
+import { dueInstantMs, isRunComplete, isRunOverdue, OVERDUE_GRACE_MINS } from '@/lib/checklistRules'
+import type { ChecklistHistoryRun, ChecklistRun, TodayChecklistsResponse } from '@/types/checklist'
+import type { BadgeTone } from '@/components/ui/badge'
 
 /** Pazartesi başlangıçlı gün sırası (değerler 0 = Pazar … 6 = Cumartesi) */
 export const WEEKDAY_OPTIONS: { value: number; short: string; long: string }[] = [
@@ -26,6 +27,24 @@ export function progress(run: Pick<ChecklistRun, 'items'>): { done: number; tota
 }
 
 export const clock = (iso: string | null): string => (iso ? formatInTimeZone(iso) : '—')
+
+/** Geçmiş kaydının sonucu: son saat yoksa yalnızca tamamlandı / tamamlanmadı */
+export type HistoryStatus = 'on_time' | 'late' | 'done' | 'missed'
+
+export const HISTORY_STATUS: Record<HistoryStatus, { label: string; tone: BadgeTone }> = {
+  on_time: { label: 'Zamanında', tone: 'success' },
+  done: { label: 'Tamamlandı', tone: 'success' },
+  late: { label: 'Geç tamamlandı', tone: 'warning' },
+  missed: { label: 'Tamamlanmadı', tone: 'danger' },
+}
+
+/** Gecikme toleransı bugünkü "Gecikti" rozetiyle aynı (OVERDUE_GRACE_MINS) */
+export function historyStatus(run: Pick<ChecklistHistoryRun, 'run_date' | 'due_time' | 'completed_at'>): HistoryStatus {
+  if (!run.completed_at) return 'missed'
+  if (!run.due_time) return 'done'
+  const late = Date.parse(run.completed_at) > dueInstantMs(run.run_date, run.due_time) + OVERDUE_GRACE_MINS * 60_000
+  return late ? 'late' : 'on_time'
+}
 
 /**
  * Bir madde işaretlenince / geri alınınca bugünün listesini yerel olarak günceller (iyimser güncelleme).

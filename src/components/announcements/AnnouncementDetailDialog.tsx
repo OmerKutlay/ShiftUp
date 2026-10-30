@@ -17,6 +17,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 import { Item, ItemActions, ItemContent, ItemGroup, ItemMedia, ItemSeparator, ItemTitle } from '@/components/ui/item'
+import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -24,9 +25,10 @@ import {
   ANNOUNCEMENTS_KEY, ANNOUNCEMENTS_UNREAD_KEY, ackAnnouncement, announcementKey, deleteAnnouncement,
   markAnnouncementRead, remindAnnouncement, type AnnouncementDetailResponse,
 } from '@/lib/api/announcements'
+import { cn } from '@/lib/utils'
 import type { Announcement } from '@/types/announcement'
 import { AnnouncementBody } from './AnnouncementBody'
-import { fmtDay, fmtWhen, statsLabel } from './announcementUi'
+import { fmtDay, fmtWhen } from './announcementUi'
 
 interface Props {
   id: string | null
@@ -149,13 +151,16 @@ export function AnnouncementDetailDialog({ id, onClose, onEdit }: Props) {
             )}
 
             {a.can_manage && a.stats && (
-              <section className="flex flex-col gap-3 rounded-lg border p-3" aria-label="Okunma durumu">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-medium tabular-nums">{statsLabel(a)}</p>
-                  {a.last_reminded_at && (
-                    <span className="text-xs text-muted-foreground">Son hatırlatma {fmtWhen(a.last_reminded_at)}</span>
-                  )}
+              <section className="flex flex-col gap-4 rounded-xl border p-4" aria-label="Okunma durumu">
+                <div className={cn('grid gap-3', a.requires_ack && 'sm:grid-cols-2')}>
+                  <StatMeter label="Okundu" value={a.stats.read} total={a.stats.recipients} />
+                  {a.requires_ack && <StatMeter label="Onaylandı" value={a.stats.acked} total={a.stats.recipients} />}
                 </div>
+                {a.last_reminded_at && (
+                  <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <BellRing className="size-3.5" aria-hidden /> Son hatırlatma {fmtWhen(a.last_reminded_at)}
+                  </p>
+                )}
                 <Tabs defaultValue="pending">
                   <TabsList className="w-full">
                     <TabsTrigger value="pending" className="flex-1">
@@ -169,7 +174,9 @@ export function AnnouncementDetailDialog({ id, onClose, onEdit }: Props) {
                   </TabsList>
                   <TabsContent value="pending">
                     <NameList items={pendingList} empty={a.requires_ack ? 'Herkes onayladı.' : 'Herkes okudu.'}
-                      note={a.requires_ack ? (r) => (r.read_at ? 'okudu, onaylamadı' : 'okumadı') : undefined} />
+                      note={a.requires_ack ? (r) => (r.read_at
+                        ? <Badge tone="warning">Okudu, onay yok</Badge>
+                        : <Badge tone="neutral">Okumadı</Badge>) : undefined} />
                   </TabsContent>
                   <TabsContent value="done">
                     <NameList items={doneList} empty="Henüz kimse yok."
@@ -210,10 +217,23 @@ export function AnnouncementDetailDialog({ id, onClose, onEdit }: Props) {
   )
 }
 
+/** "Okundu 11/16" + ilerleme çubuğu */
+function StatMeter({ label, value, total }: { label: string; value: number; total: number }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-baseline justify-between gap-2 text-sm">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="font-medium tabular-nums">{value}/{total}</span>
+      </div>
+      <Progress value={total ? (value / total) * 100 : 0} aria-label={`${label} ${value}/${total}`} className="h-1.5" />
+    </div>
+  )
+}
+
 function NameList({ items, empty, note, when }: {
   items: { employee_id: string; full_name: string; read_at: string | null; ack_at: string | null }[]
   empty: string
-  note?: (r: { read_at: string | null; ack_at: string | null }) => string
+  note?: (r: { read_at: string | null; ack_at: string | null }) => React.ReactNode
   when?: (r: { read_at: string | null; ack_at: string | null }) => string
 }) {
   if (items.length === 0) return <p className="py-6 text-center text-sm text-muted-foreground">{empty}</p>
