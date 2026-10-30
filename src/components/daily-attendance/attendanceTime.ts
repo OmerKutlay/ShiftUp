@@ -70,16 +70,18 @@ export function formatDelay(mins: number): string {
 
 // ─── Anlık durum ─────────────────────────────────────────────
 
-export type DayStatus = 'upcoming' | 'late' | 'absent' | 'working' | 'on_break' | 'done' | 'leave'
+/** no_out: geçmiş günde giriş var, çıkış okutulmamış (o gün "Çalışıyor" / "Molada" kalmış kayıt) */
+export type DayStatus = 'upcoming' | 'late' | 'absent' | 'no_out' | 'working' | 'on_break' | 'done' | 'leave'
 
 export const DAY_STATUS: Record<DayStatus, { label: string; tone: BadgeTone; order: number }> = {
   absent: { label: 'Gelmedi', tone: 'danger', order: 0 },
-  late: { label: 'Gecikiyor', tone: 'warning', order: 1 },
-  on_break: { label: 'Molada', tone: 'warning', order: 2 },
-  working: { label: 'Çalışıyor', tone: 'success', order: 3 },
-  upcoming: { label: 'Başlamadı', tone: 'neutral', order: 4 },
-  done: { label: 'Çıkış yaptı', tone: 'plum', order: 5 },
-  leave: { label: 'İzinli', tone: 'info', order: 6 },
+  no_out: { label: 'Çıkış yok', tone: 'danger', order: 1 },
+  late: { label: 'Gecikiyor', tone: 'warning', order: 2 },
+  on_break: { label: 'Molada', tone: 'warning', order: 3 },
+  working: { label: 'Çalışıyor', tone: 'success', order: 4 },
+  upcoming: { label: 'Başlamadı', tone: 'neutral', order: 5 },
+  done: { label: 'Çıkış yaptı', tone: 'plum', order: 6 },
+  leave: { label: 'İzinli', tone: 'info', order: 7 },
 }
 
 /**

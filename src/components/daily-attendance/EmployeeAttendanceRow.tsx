@@ -32,7 +32,7 @@ export function EmployeeAttendanceRow({ row, range, now }: { row: DailyRow; rang
             </span>
           )}
           {row.late !== null && <span className="text-warning">+{row.late} dk</span>}
-          <BreakCell breaks={row.breaks} now={now} variant="inline" />
+          <BreakCell breaks={row.breaks} now={row.now} variant="inline" />
           {row.worked !== null && <span className="ml-auto font-medium tabular-nums">{formatDuration(row.worked)}</span>}
         </div>
         {range && <AttendanceTimeline segments={row.segments} range={range} now={now} label={row.summary} />}

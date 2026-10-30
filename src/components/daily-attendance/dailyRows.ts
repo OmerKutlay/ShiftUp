@@ -24,15 +24,23 @@ export interface DailyRow {
   segments: Segment[]
   /** Günün molaları sırayla (son öğe sürüyor olabilir) */
   breaks: BreakItem[]
+  /** Satırın "şimdi"si: bugün gerçek an, geçmiş günde vardiya bitişi (süren mola / çizelge orada durur) */
+  now: number
   /** Zaman çizelgesinin ekran okuyucu metni */
   summary: string
 }
 
-export function buildDailyRows(entries: DailyShiftEntry[], now: number): DailyRow[] {
+/**
+ * past: geçmiş bir gün gösteriliyor. O gün açık kalmış kayıt (çıkış okutulmamış) "Çıkış yok" olur;
+ * net süresi bilinmez (—), çizelgesi ve süren molası vardiya bitişinde durur.
+ */
+export function buildDailyRows(entries: DailyShiftEntry[], now: number, { past = false }: { past?: boolean } = {}): DailyRow[] {
   return entries.map((entry) => {
     const { employee, shiftAssignment: sa, attendanceRecord: rec } = entry
     const win = shiftWindow(sa.work_date, sa.start_time, sa.end_time)
-    const status = dayStatusOf(rec?.status, win, now, sa.is_on_leave)
+    const rowNow = past ? Math.max(win.end, win.start + 31 * 60_000) : now
+    const liveStatus = dayStatusOf(rec?.status, win, rowNow, sa.is_on_leave)
+    const status: DayStatus = past && (liveStatus === 'working' || liveStatus === 'on_break') ? 'no_out' : liveStatus
     const breaks = rec ? listBreaks(rec) : []
     const parts = [
       rec?.clock_in_at && `giriş ${clock(rec.clock_in_at)}`,
@@ -51,9 +59,10 @@ export function buildDailyRows(entries: DailyShiftEntry[], now: number): DailyRo
       win,
       status,
       late: lateMinutes(rec?.clock_in_at, win),
-      worked: workedMinutes(rec, now, sa),
-      segments: timelineSegments(win, rec, status, now),
+      worked: status === 'no_out' ? null : workedMinutes(rec, rowNow, sa),
+      segments: timelineSegments(win, rec, liveStatus, rowNow),
       breaks,
+      now: rowNow,
       summary: `Vardiya ${sa.start_time.slice(0, 5)}–${sa.end_time.slice(0, 5)}${parts.length ? `, ${parts.join(', ')}` : ', okutma yok'}`,
     }
   })

@@ -5,7 +5,9 @@
 import { apiFetch } from './http'
 import type { DailyShiftEntry } from '@/types/attendance'
 
-/** Bugünün (Europe/Istanbul) vardiyaları + devam kayıtları */
-export async function fetchDailyShifts(): Promise<{ date: string; entries: DailyShiftEntry[] }> {
-  return apiFetch<{ date: string; entries: DailyShiftEntry[] }>('/api/attendance/daily')
+/** Bir günün (varsayılan: bugün, Europe/Istanbul) vardiyaları + devam kayıtları; geçmiş gün yalnızca yöneticiye açık */
+export async function fetchDailyShifts(date?: string): Promise<{ date: string; entries: DailyShiftEntry[] }> {
+  return apiFetch<{ date: string; entries: DailyShiftEntry[] }>(
+    date ? `/api/attendance/daily?date=${encodeURIComponent(date)}` : '/api/attendance/daily'
+  )
 }
