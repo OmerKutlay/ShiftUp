@@ -14,7 +14,10 @@ import type { PayrollRow } from '@/lib/payrollTimesheet'
 import { ExportMenu, PeriodStepper, TableSkeleton } from '@/components/common'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
+import { Item, ItemActions, ItemContent, ItemDescription, ItemFooter, ItemGroup, ItemTitle } from '@/components/ui/item'
+import { Badge } from '@/components/ui/badge'
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { turkeyToday } from '@/lib/dateUtils'
 import { monthLabel, shiftMonth } from './timesheetSummary'
 import { exportPayrollPdf } from './reportExports'
@@ -29,6 +32,8 @@ export function PayrollPanel() {
     (url: string) => apiFetch<{ rows: PayrollRow[] }>(url)
   )
   const rows = useMemo(() => data?.rows ?? [], [data])
+  // Telefonda 13 sütunluk tablo sığmıyor: kişi başına kart (DESIGN_GUIDE §5 "Tablolar")
+  const isMobile = useIsMobile()
   const ready = !!data && rows.length > 0
   const num = 'px-3 text-right tabular-nums'
 
@@ -87,6 +92,10 @@ export function PayrollPanel() {
             <EmptyDescription>{monthLabel(month)} için bordroya aktarılacak kayıt bulunmuyor.</EmptyDescription>
           </EmptyHeader>
         </Empty>
+      ) : data && isMobile ? (
+        <ItemGroup className="gap-2">
+          {rows.map((r) => <PayrollItem key={r.employeeId} r={r} />)}
+        </ItemGroup>
       ) : data && (
         <div className="max-h-[70dvh] overflow-auto rounded-lg border">
           <table className="w-full border-separate border-spacing-0 text-sm">
@@ -133,5 +142,44 @@ export function PayrollPanel() {
         </div>
       )}
     </div>
+  )
+}
+
+/** Mobil kart: çalışılan gün ve saatler; sağda SGK günü, altta sıfır olmayan eksik gün kalemleri */
+function PayrollItem({ r }: { r: PayrollRow }) {
+  const absences = [
+    { label: 'Yıllık izin', value: r.annualLeaveDays },
+    { label: 'Rapor', value: r.sickDays },
+    { label: 'Ücretsiz', value: r.unpaidDays },
+    { label: 'Devamsız', value: r.absentDays },
+    { label: 'Genel tatilde çalıştı', value: r.holidayWorkedDays },
+  ].filter((a) => a.value > 0)
+  return (
+    <Item variant="outline" size="sm" className="bg-card">
+      <ItemContent className="min-w-0">
+        <ItemTitle className="truncate">{r.fullName}</ItemTitle>
+        <ItemDescription className="tabular-nums">
+          {r.workedDays} gün · {fmt(r.normalHours)} s normal
+          {r.overtimeHours > 0 && <> · <span className="text-foreground">{fmt(r.overtimeHours)} s fazla</span></>}
+        </ItemDescription>
+        {r.noRecords && <ItemDescription className="text-warning">Kontrol edin: ay içinde kayıt yok</ItemDescription>}
+      </ItemContent>
+      <ItemActions className="flex-col items-end gap-0">
+        <span className="text-lg font-semibold tabular-nums">{r.sgkDays}</span>
+        <span className="text-xs text-muted-foreground">SGK gün</span>
+      </ItemActions>
+      {(absences.length > 0 || r.missingDays > 0) && (
+        <ItemFooter className="flex-wrap justify-start gap-1.5">
+          {absences.map((a) => (
+            <Badge key={a.label} variant="secondary" className="tabular-nums">{a.label} {a.value}</Badge>
+          ))}
+          {r.missingDays > 0 && (
+            <Badge tone="warning" className="tabular-nums">
+              Eksik {r.missingDays} gün{r.missingReasonCode && ` · kod ${r.missingReasonCode}`}
+            </Badge>
+          )}
+        </ItemFooter>
+      )}
+    </Item>
   )
 }

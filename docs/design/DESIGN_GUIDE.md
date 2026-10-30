@@ -248,10 +248,10 @@ taşıyordu; tablo, boş durum, form alanı ve geri bildirim kalıpları sayfada
 | `/reports` | reports/* | Devam raporu örnek sayfa; puantaj ve fazla çalışma aynı dile |
 | `/settings` | settings/* | Sekmeler korunur; formlar `Field`, denetim kaydı `DataTable` |
 | `/notifications`, `/more` | notifications/*, more/* | `Item` listeleri, boş durum `Empty` |
-| `/checklists` | checklists/* | Bugün / Şablonlar / Geçmiş `Tabs`; uygulama ve şablon kartları `Card`, geçmiş `SectionCard`, maddeler `Dialog` içinde `Field` seçim kartı |
-| `/announcements` | announcements/* | Güncel / Arşiv `Tabs`, `Item` listesi; form `ChoiceCards` + `Field`; alıcılar `Item` |
+| `/checklists` | checklists/* | Bugün / Şablonlar / Geçmiş `Tabs`; uygulama ve şablon kartları `Card`; geçmiş: liste + sonuç filtresi → `StatCards` → `DataTable` (mobilde `Item`); maddeler `Dialog` içinde `Field` seçim kartı |
+| `/announcements` | announcements/* | Güncel / Arşiv `Tabs`, `Item` listesi (meta + rozetler `ItemFooter`); form `ChoiceCards` + `Field`; detayda okundu/onay `Progress`, alıcılar `Item` + durum rozeti |
 | `/gizlilik` | kvkk/* | Okuma sayfası (`Page size="narrow"`), yönetici notu `Alert tone="warning"` |
 | Ayarlar › KVKK / Norm / Hatalar | settings/* | Teyit listesi `Item`; norm satırları `Item`; hatalar `DataTable` + ayrıntı `Dialog` (denetim kaydıyla aynı) |
-| Raporlar › Bordro puantajı | reports/PayrollPanel | Matris tablo (yatay kayar), bilgi `Alert tone="info"`, boş `Empty` |
+| Raporlar › Bordro puantajı | reports/PayrollPanel | Masaüstünde matris tablo (yatay kayar), mobilde kişi başına `Item` (SGK gün + eksik gün rozetleri); bilgi `Alert tone="info"`, boş `Empty` |
 | `/attendance/scan`, `/qr-kiosk` | qr/* | Tam ekran deneyim korunur; kartlar/rozetler yeni dilde |
 | `/login`, hata/çevrimdışı sayfaları | auth/*, app/* | shadcn login-01 kalıbı (`Card` + `Field`), `Empty` |

@@ -9,7 +9,7 @@ import {
   ChecklistValidationError, isOverdueRecipient, activeRunDates, isRunEditable, shiftGrantsTick, appliesOnDate, canTickChecklist, canUntickItem, dueInstantMs, historyFrom,
   isRunComplete, isRunOverdue, parseTemplateInput, templatesMissingRun, type PlannableTemplate,
 } from '@/lib/checklistRules'
-import { applyItemToggle, moveItem } from '@/components/checklists/format'
+import { applyItemToggle, historyStatus, moveItem } from '@/components/checklists/format'
 import type { TodayChecklistsResponse } from '@/types/checklist'
 
 const tpl = (over: Partial<PlannableTemplate> = {}): PlannableTemplate => ({
@@ -169,5 +169,18 @@ describe('gecikme bildirimi alıcıları', () => {
     expect(isOverdueRecipient(e('employee'), 'A')).toBe(false)
     expect(isOverdueRecipient(e('admin', 'A', false), 'A')).toBe(false)
     expect(isOverdueRecipient(e(null), 'A')).toBe(false)
+  })
+})
+
+describe('geçmiş sonucu', () => {
+  const run = (completed_at: string | null, due_time: string | null = '10:00') => ({ run_date: '2026-10-29', due_time, completed_at })
+  it('tamamlanmayan, zamanında, tolerans içinde ve geç tamamlananı ayırır', () => {
+    expect(historyStatus(run(null))).toBe('missed')
+    expect(historyStatus(run('2026-10-29T09:55:00+03:00'))).toBe('on_time')
+    expect(historyStatus(run('2026-10-29T10:10:00+03:00'))).toBe('on_time')
+    expect(historyStatus(run('2026-10-29T10:30:00+03:00'))).toBe('late')
+  })
+  it('son saat yoksa yalnızca tamamlandı', () => {
+    expect(historyStatus(run('2026-10-29T23:00:00+03:00', null))).toBe('done')
   })
 })
