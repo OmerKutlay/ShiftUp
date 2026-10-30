@@ -8,6 +8,7 @@
 # başlıklarını next.config.ts'ten alır). Content-Type burada ezilmez (uzantıdan otomatik belirlenir).
 
 /*
+  X-Robots-Tag: noindex, nofollow, noarchive, nosnippet, noimageindex
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Strict-Transport-Security: max-age=63072000; includeSubDomains

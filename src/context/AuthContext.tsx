@@ -27,6 +27,7 @@ import { runBeforeSignOut } from '@/lib/pwa/sessionEvents'
 import { UNAUTHORIZED_EVENT, apiFetch, setRequestStoreId } from '@/lib/api/http'
 import { STORE_BROADCAST_CHANNEL, STORE_CHANGED_EVENT } from '@/lib/storeHeader'
 import type { StoreContextInfo } from '@/types/store'
+import { ACCESS } from '@/lib/auth/roles'
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -75,7 +76,7 @@ interface AuthContextValue {
 }
 
 /** Oturumsuz açılabilen sayfalar — oturum düştüğünde buralardan /login'e yönlendirilmez */
-const PUBLIC_PAGES = ['/login', '/offline', '/gizlilik']
+const PUBLIC_PAGES = ['/login', '/login/admin', '/offline', '/gizlilik']
 
 /** /api/auth/me ağ hatası / 5xx'te (ör. Cloudflare soğuk başlangıç 503) ek deneme bekleme süreleri (ms) */
 const ME_RETRY_DELAYS = [500, 1500]
@@ -160,6 +161,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchSession, applySession])
 
   const signOut = useCallback(async () => {
+    // Admin kendi giriş sayfasına döner (admin normal girişi kullanamaz)
+    const loginPage = employee?.roles?.access_level === ACCESS.ADMIN ? '/login/admin' : '/login'
     // PWA temizliği (push aboneliği, çevrimdışı önbellek) — oturum hâlâ geçerliyken
     await runBeforeSignOut()
     try {
@@ -173,9 +176,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStore(null)
       setStatus('unauthenticated')
     }
-    router.replace('/login')
+    router.replace(loginPage)
     router.refresh()
-  }, [mutate, router])
+  }, [employee, mutate, router])
 
   const refreshEmployee = useCallback(async () => {
     const session = await fetchSession()

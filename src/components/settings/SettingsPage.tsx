@@ -6,7 +6,7 @@
  */
 import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Bell, Bug, CalendarDays, Gauge, History, MapPin, ShieldCheck, Store } from 'lucide-react'
+import { Bell, Bug, CalendarDays, Gauge, History, KeyRound, MapPin, ShieldCheck, Store } from 'lucide-react'
 import { Page, PageHeader } from '@/components/common'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PushPermissionCard } from '@/components/pwa/PushPermissionCard'
@@ -20,8 +20,9 @@ import { AuditLogPanel } from './AuditLogPanel'
 import { AppErrorsPanel } from './AppErrorsPanel'
 import { KvkkPanel } from './KvkkPanel'
 import { NormHoursPanel } from './NormHoursPanel'
+import { AdminLoginPanel } from './AdminLoginPanel'
 
-type SettingsTab = 'location' | 'stores' | 'norms' | 'holidays' | 'audit' | 'errors' | 'notifications' | 'kvkk'
+type SettingsTab = 'location' | 'stores' | 'norms' | 'holidays' | 'audit' | 'errors' | 'admin' | 'notifications' | 'kvkk'
 
 /** Sekme etiketi: masaüstünde ikon + tam ad, dar ekranda kısa ad (dört sekme 390px'e sığsın) */
 const TABS: { value: SettingsTab; icon: React.ReactNode; label: string; short: string; adminOnly?: boolean }[] = [
@@ -31,6 +32,7 @@ const TABS: { value: SettingsTab; icon: React.ReactNode; label: string; short: s
   { value: 'holidays', icon: <CalendarDays />, label: 'Resmi tatiller', short: 'Tatiller' },
   { value: 'audit', icon: <History />, label: 'Denetim kaydı', short: 'Denetim' },
   { value: 'errors', icon: <Bug />, label: 'Hatalar', short: 'Hatalar', adminOnly: true },
+  { value: 'admin', icon: <KeyRound />, label: 'Admin girişi', short: 'Admin', adminOnly: true },
   { value: 'notifications', icon: <Bell />, label: 'Bildirimler', short: 'Bildirimler' },
   { value: 'kvkk', icon: <ShieldCheck />, label: 'KVKK', short: 'KVKK' },
 ]
@@ -58,7 +60,7 @@ export function SettingsPage() {
       <PageHeader
         title="Ayarlar"
         description={isAdmin
-          ? 'Mağazalar, mağaza konumu, resmi tatiller, denetim kaydı, bildirimler ve KVKK'
+          ? 'Mağazalar, mağaza konumu, resmi tatiller, denetim kaydı, admin girişi, bildirimler ve KVKK'
           : 'Mağaza konumu, resmi tatiller, denetim kaydı, bildirimler ve KVKK'}
       />
       <Tabs value={tab} onValueChange={(v) => setTab(v as SettingsTab)} className="gap-4 md:gap-6">
@@ -78,6 +80,7 @@ export function SettingsPage() {
         <TabsContent value="holidays"><HolidaysPanel /></TabsContent>
         <TabsContent value="audit"><AuditLogPanel /></TabsContent>
         {isAdmin && <TabsContent value="errors"><AppErrorsPanel /></TabsContent>}
+        {isAdmin && <TabsContent value="admin"><AdminLoginPanel /></TabsContent>}
         <TabsContent value="kvkk"><KvkkPanel /></TabsContent>
         <TabsContent value="notifications">
           <div className="flex max-w-3xl flex-col gap-4 md:gap-6">

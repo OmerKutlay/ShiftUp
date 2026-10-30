@@ -20,13 +20,13 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
-import { Bug, CircleAlert, Mail, MailCheck } from 'lucide-react'
+import { Bug, CircleAlert, Eye, EyeOff, KeyRound, Mail, MailCheck, ShieldCheck } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field'
-import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group'
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@/components/ui/input-group'
 import { Spinner } from '@/components/ui/spinner'
 import { BrandMark } from '@/components/common/BrandMark'
 import { ThemeSwitch } from '@/components/common/ThemeSwitch'
@@ -44,16 +44,22 @@ const EMAIL_ERRORS: Record<string, string> = {
   EMPLOYEE_NOT_FOUND: 'Bu e-posta adresiyle kayıtlı çalışan bulunamadı.',
   INVALID_EMAIL: 'Geçerli bir e-posta adresi girin.',
   RATE_LIMITED: 'Çok fazla deneme yapıldı. Lütfen biraz bekleyip tekrar deneyin.',
+  // Yalnızca dev modunda döner (prod'da admin e-postası kayıtsız gibi yanıtlanır)
+  ADMIN_LOGIN_REQUIRED: 'Admin hesapları admin giriş sayfasını kullanır.',
+  INVALID_CREDENTIALS: 'E-posta adresi veya admin şifresi hatalı.',
 }
 
 const OTP_ERRORS: Record<string, string> = {
   OTP_EXPIRED: 'Kodun süresi dolmuş. Yeni kod isteyin.',
   RATE_LIMITED: 'Çok fazla hatalı deneme. Lütfen 15 dakika sonra tekrar deneyin.',
   EMPLOYEE_NOT_FOUND: 'Bu hesap aktif bir çalışana bağlı değil.',
+  ADMIN_LOGIN_REQUIRED: 'Admin hesapları admin giriş sayfasını kullanır.',
 }
 
 interface FormState {
   email: string
+  /** Yalnızca admin girişi: kod adımında "Tekrar gönder" için bellekte tutulur */
+  password: string
   otp: string
   step: Step
   loading: boolean
@@ -63,6 +69,11 @@ interface FormState {
 
 interface Props {
   authMode: string
+  /**
+   * 'admin' → /login/admin: e-posta kodundan önce admin şifresi istenir
+   * (/api/auth/admin/password → /api/auth/admin/verify). Admin hesabı normal girişi kullanamaz.
+   */
+  variant?: 'employee' | 'admin'
 }
 
 /**
@@ -89,10 +100,12 @@ export function safeNextPath(search: string): string {
 /** safeNextPath'in göreli yolu çözerken kullandığı sahte origin */
 const NEXT_BASE = 'https://app.invalid'
 
-export function LoginForm({ authMode }: Props) {
+export function LoginForm({ authMode, variant = 'employee' }: Props) {
   const router = useRouter()
   const { refreshEmployee, status } = useAuth()
   const isDevMode = authMode === 'development'
+  const isAdmin = variant === 'admin'
+  const [showPassword, setShowPassword] = useState(false)
 
   // OTP başarıyla doğrulandıktan sonra refreshEmployee çağrılır.
   // AuthContext status 'authenticated' olduğunda buradan navigate edilir —
@@ -117,6 +130,7 @@ export function LoginForm({ authMode }: Props) {
 
   const [state, setState] = useState<FormState>({
     email: '',
+    password: '',
     otp: '',
     step: 'email',
     loading: false,
@@ -137,16 +151,23 @@ export function LoginForm({ authMode }: Props) {
       setPartial({ error: 'Geçerli bir e-posta adresi girin.' })
       return
     }
+    if (isAdmin && !state.password) {
+      setPartial({ error: 'Admin şifrenizi girin.' })
+      return
+    }
 
     setPartial({ loading: true, error: null, info: null })
 
     try {
       // Development ve production akışı aynı endpoint üzerinden gider.
       // /api/auth/dev-login AUTH_MODE=development'ta aktif,
-      // /api/auth/send-otp AUTH_MODE=production'da aktif.
+      // /api/auth/send-otp AUTH_MODE=production'da aktif;
+      // admin girişi her iki modda /api/auth/admin/password (şifre doğrulanınca kod gönderilir).
       // Bu bileşen Supabase Auth'u HİÇBİR ZAMAN çağırmaz.
-      const endpoint = isDevMode ? '/api/auth/dev-login' : '/api/auth/send-otp'
-      const body = isDevMode
+      const endpoint = isAdmin ? '/api/auth/admin/password' : isDevMode ? '/api/auth/dev-login' : '/api/auth/send-otp'
+      const body = isAdmin
+        ? { email, password: state.password }
+        : isDevMode
         ? { step: 'check-email', email }
         : { email }
 
@@ -174,6 +195,8 @@ export function LoginForm({ authMode }: Props) {
         otp: '',
         info: isDevMode
           ? 'Geliştirme modu etkin. Giriş kodunuzu girin.'
+          : isAdmin
+          ? 'Şifre doğrulandı. Giriş kodu e-posta adresinize gönderildi.'
           : 'Bu adres kayıtlı bir çalışana aitse giriş kodu gönderildi.',
         email,
       })
@@ -195,8 +218,10 @@ export function LoginForm({ authMode }: Props) {
     setPartial({ loading: true, error: null })
 
     try {
-      const endpoint = isDevMode ? '/api/auth/dev-login' : '/api/auth/verify-otp'
-      const body = isDevMode
+      const endpoint = isAdmin ? '/api/auth/admin/verify' : isDevMode ? '/api/auth/dev-login' : '/api/auth/verify-otp'
+      const body = isAdmin
+        ? { email: state.email, token }
+        : isDevMode
         ? { step: 'verify-otp', email: state.email, otp: token }
         : { email: state.email, token }
 
@@ -208,6 +233,18 @@ export function LoginForm({ authMode }: Props) {
       const data = (await res.json()) as { ok: boolean; reason?: string }
 
       if (!data.ok) {
+        if (data.reason === 'PASSWORD_REQUIRED') {
+          // Şifre adımının süresi (10 dk) doldu — şifre yeniden istenir
+          setPartial({
+            loading: false,
+            step: 'email',
+            otp: '',
+            password: '',
+            info: null,
+            error: 'Süre doldu. Admin şifrenizi yeniden girin.',
+          })
+          return
+        }
         setPartial({
           loading: false,
           error: OTP_ERRORS[data.reason ?? ''] ?? 'Kod hatalı. Tekrar deneyin.',
@@ -216,6 +253,7 @@ export function LoginForm({ authMode }: Props) {
       }
 
       // Session cookie set edildi — AuthContext'i güncelle, state propagate olunca navigate et
+      setPartial({ password: '' })
       await refreshEmployee()
       setReadyToNavigate(true)
     } catch {
@@ -242,6 +280,12 @@ export function LoginForm({ authMode }: Props) {
         <div className="flex items-center justify-center gap-2.5">
           <BrandMark size={32} />
           <span className="text-lg font-semibold tracking-tight">ShiftUp</span>
+          {isAdmin && (
+            <Badge tone="brand">
+              <ShieldCheck aria-hidden />
+              Admin
+            </Badge>
+          )}
           {isDevMode && (
             <Badge tone="warning">
               <Bug aria-hidden />
@@ -253,11 +297,13 @@ export function LoginForm({ authMode }: Props) {
         <Card className="gap-6 shadow-xs">
           <CardHeader className="px-6 text-center">
             <CardTitle className="text-xl">
-              <h1>{isEmail ? 'Hoş geldiniz' : 'Giriş kodunu girin'}</h1>
+              <h1>{isEmail ? (isAdmin ? 'Admin girişi' : 'Hoş geldiniz') : 'Giriş kodunu girin'}</h1>
             </CardTitle>
             <CardDescription>
               {isEmail
-                ? 'Devam etmek için iş e-posta adresinizi girin.'
+                ? isAdmin
+                  ? 'E-posta adresinizi ve admin şifrenizi girin; ardından e-postanıza giriş kodu gönderilir.'
+                  : 'Devam etmek için iş e-posta adresinizi girin.'
                 : isDevMode
                 ? 'Geliştirme kodunu girin (varsayılan: 12345).'
                 : 'E-posta adresinize gönderilen 6 haneli kodu girin.'}
@@ -294,6 +340,34 @@ export function LoginForm({ authMode }: Props) {
                       <InputGroupAddon><Mail /></InputGroupAddon>
                     </InputGroup>
                   </Field>
+                  {isAdmin && (
+                    <Field data-invalid={state.error ? true : undefined}>
+                      <FieldLabel htmlFor="login-password">Admin şifresi</FieldLabel>
+                      <InputGroup className="h-11">
+                        <InputGroupInput
+                          id="login-password"
+                          type={showPassword ? 'text' : 'password'}
+                          value={state.password}
+                          onChange={(e) => setPartial({ password: e.target.value, error: null })}
+                          autoComplete="current-password"
+                          disabled={state.loading}
+                          aria-invalid={state.error ? true : undefined}
+                          className="text-base"
+                        />
+                        <InputGroupAddon><KeyRound /></InputGroupAddon>
+                        <InputGroupAddon align="inline-end">
+                          <InputGroupButton
+                            size="icon-xs"
+                            onClick={() => setShowPassword((v) => !v)}
+                            aria-label={showPassword ? 'Şifreyi gizle' : 'Şifreyi göster'}
+                            aria-pressed={showPassword}
+                          >
+                            {showPassword ? <EyeOff /> : <Eye />}
+                          </InputGroupButton>
+                        </InputGroupAddon>
+                      </InputGroup>
+                    </Field>
+                  )}
                   <Button type="submit" size="lg" className="h-11 w-full" disabled={state.loading}>
                     {state.loading && <Spinner />}
                     {state.loading ? 'Gönderiliyor…' : 'Devam et'}
@@ -329,7 +403,7 @@ export function LoginForm({ authMode }: Props) {
                       variant="ghost"
                       size="sm"
                       disabled={state.loading}
-                      onClick={() => setPartial({ step: 'email', otp: '', error: null, info: null })}
+                      onClick={() => setPartial({ step: 'email', otp: '', password: '', error: null, info: null })}
                     >
                       Değiştir
                     </Button>
@@ -418,8 +492,17 @@ export function LoginForm({ authMode }: Props) {
         </Card>
 
         <p className="px-6 text-center text-xs text-muted-foreground">
-          Giriş sorunu yaşıyorsanız mağaza yöneticinize başvurun.
+          {isAdmin
+            ? 'Admin şifrenizi unuttuysanız başka bir admin Ayarlar → Admin girişi bölümünden yeni şifre belirleyebilir.'
+            : 'Giriş sorunu yaşıyorsanız mağaza yöneticinize başvurun.'}
         </p>
+        {isAdmin && (
+          <p className="px-6 text-center text-xs">
+            <Link href="/login" prefetch={false} className="text-muted-foreground underline underline-offset-4 hover:text-foreground">
+              Çalışan girişi
+            </Link>
+          </p>
+        )}
         <p className="px-6 text-center text-xs">
           <Link href="/gizlilik" prefetch={false} className="text-muted-foreground underline underline-offset-4 hover:text-foreground">
             Kişisel verilerin işlenmesi — aydınlatma metni

@@ -1,0 +1,4 @@
+# ShiftUp şirket içi bir uygulamadır; hiçbir sayfası taranmaz veya dizine eklenmez.
+# AI tarayıcıları ayrıca sunucuda User-Agent'larına göre engellenir (src/lib/aiBots.ts).
+User-agent: *
+Disallow: /

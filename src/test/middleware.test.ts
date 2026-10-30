@@ -40,6 +40,7 @@ vi.mock('@/lib/supabaseAdmin', () => ({
 }))
 
 import { middleware } from '@/middleware'
+import { signAdminToken } from '@/lib/auth/adminLogin'
 
 const BASE = 'https://shiftup.test'
 function req(path: string, init: { method?: string; cookie?: string; origin?: string } = {}) {
@@ -52,7 +53,7 @@ const OLD_COOKIE = 'sb-proj-auth-token=OLD_TOKEN'
 const location = (res: Response) => res.headers.get('location')?.replace(BASE, '') ?? null
 
 function asEmployee(accessLevel: string, active = true) {
-  employeeRow = { data: { active, roles: { access_level: accessLevel } }, error: null }
+  employeeRow = { data: { id: 'emp-1', active, roles: { access_level: accessLevel } }, error: null }
 }
 
 beforeEach(() => {
@@ -180,6 +181,36 @@ describe('middleware — PWA dosyaları oturumsuz erişilebilir', () => {
   })
 })
 
+describe('middleware — AI tarayıcıları engellenir, robots.txt açık', () => {
+  const ua = (path: string, userAgent: string) =>
+    new NextRequest(BASE + path, { headers: { 'user-agent': userAgent } })
+
+  it('AI botları sayfa, giriş ve API isteklerinde 403 alır; oturuma bakılmaz', async () => {
+    for (const agent of [
+      'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; GPTBot/1.2; +https://openai.com/gptbot)',
+      'Mozilla/5.0 (compatible; ClaudeBot/1.0; +claudebot@anthropic.com)',
+      'Mozilla/5.0 (compatible; PerplexityBot/1.0; +https://perplexity.ai/perplexitybot)',
+      'meta-externalagent/1.1 (+https://developers.facebook.com/docs/sharing/webmasters/crawler)',
+      'CCBot/2.0 (https://commoncrawl.org/faq/)',
+    ]) {
+      for (const path of ['/', '/login', '/api/auth/me']) {
+        expect((await middleware(ua(path, agent))).status).toBe(403)
+      }
+    }
+    expect(getUser).not.toHaveBeenCalled()
+  })
+
+  it('normal tarayıcı ve arama motoru botları engellenmez; robots.txt oturumsuz açılır', async () => {
+    getUser.mockResolvedValue({ user: null })
+    const chrome = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36'
+    expect((await middleware(ua('/login', chrome))).status).toBe(200)
+    const googlebot = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
+    const robots = await middleware(ua('/robots.txt', googlebot))
+    expect(robots.status).toBe(200)
+    expect(location(robots)).toBeNull()
+  })
+})
+
 describe('middleware — oturum girişten 30 gün sonra kesin kapanır', () => {
   const DAY = 24 * 60 * 60
   /** amr claim'inde giriş anı taşıyan (imzasız) test token'ı */
@@ -224,5 +255,52 @@ describe('middleware — /schedule/print erişimi /schedule ile aynı', () => {
     }
     getUser.mockResolvedValue({ user: null })
     expect(location(await middleware(req('/schedule/print')))).toBe('/login?next=%2Fschedule%2Fprint')
+  })
+})
+
+describe('middleware — admin yalnızca admin girişiyle (şifre + kod) açılmış oturumla girer', () => {
+  process.env.SUPABASE_SECRET_KEY ??= 'test-secret-key'
+  const tokenWithSession = (sid: string) => `h.${Buffer.from(JSON.stringify({ session_id: sid })).toString('base64url')}.s`
+  const adminCookie = async (sid: string, employeeId = 'emp-1') =>
+    `${OLD_COOKIE}; admin_verified=${await signAdminToken('verified', employeeId, sid)}`
+
+  beforeEach(() => {
+    asEmployee('admin')
+    accessToken = tokenWithSession('sess-1')
+  })
+
+  it('admin çerezi yoksa: korumalı sayfa → /login/admin, oturum çerezleri silinir', async () => {
+    const res = await middleware(req('/employees', { cookie: OLD_COOKIE }))
+    expect(location(res)).toBe('/login/admin?next=%2Femployees')
+    expect(res.headers.get('set-cookie')).toMatch(/sb-proj-auth-token=;/)
+  })
+
+  it('geçerli admin çerezi: sayfa açılır; /login ve /login/admin ana sayfaya döner', async () => {
+    const cookie = await adminCookie('sess-1')
+    expect(location(await middleware(req('/employees', { cookie })))).toBeNull()
+    expect(location(await middleware(req('/login', { cookie })))).toBe('/')
+    expect(location(await middleware(req('/login/admin', { cookie })))).toBe('/')
+  })
+
+  it('başka oturuma ya da başka çalışana ait çerez geçmez', async () => {
+    expect(location(await middleware(req('/employees', { cookie: await adminCookie('sess-OLD') })))).toBe('/login/admin?next=%2Femployees')
+    expect(location(await middleware(req('/employees', { cookie: await adminCookie('sess-1', 'emp-2') })))).toBe('/login/admin?next=%2Femployees')
+  })
+
+  it('admin çerezsiz /login → /login/admin (next korunur); /login/admin formu gösterir', async () => {
+    const res = await middleware(req('/login?next=%2Freports', { cookie: OLD_COOKIE }))
+    expect(location(res)).toBe('/login/admin?next=%2Freports')
+    expect(res.headers.get('set-cookie')).toMatch(/sb-proj-auth-token=;/)
+    const form = await middleware(req('/login/admin', { cookie: OLD_COOKIE }))
+    expect(form.status).toBe(200)
+    expect(location(form)).toBeNull()
+  })
+
+  it('oturumsuz /login/admin herkese açık; çalışan çerez gerektirmez', async () => {
+    getUser.mockResolvedValue({ user: null })
+    expect((await middleware(req('/login/admin'))).status).toBe(200)
+    getUser.mockResolvedValue({ user: { id: 'auth-1' } })
+    asEmployee('employee')
+    expect(location(await middleware(req('/my-schedule', { cookie: OLD_COOKIE })))).toBeNull()
   })
 })

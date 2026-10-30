@@ -11,6 +11,7 @@
  * null → unauthenticated
  *
  * Aktif mağaza (store_id) burada belirlenir — bkz. @/lib/storeScope.
+ * Admin hesabı, admin girişi (şifre + kod) çerezi yoksa oturumsuz sayılır — bkz. ./adminLogin.
  *
  * NOT: 'next/headers' dynamic import kullanılır — top-level import
  * Next.js'in modülü Client Component chain'i olarak işaretlemesine yol açar.
@@ -19,7 +20,8 @@ import { createAdminClient } from '@/lib/supabaseAdmin'
 import { IS_DEV_AUTH, DEV_SESSION_COOKIE } from '@/lib/authConfig'
 import { ACTIVE_STORE_COOKIE, resolveActiveStoreId } from '@/lib/storeScope'
 import { verifyDevSession } from './devSession'
-import { isSessionExpired } from './sessionAge'
+import { isSessionExpired, sessionIdOf } from './sessionAge'
+import { ADMIN_VERIFIED_COOKIE, devSessionId, passesAdminLogin } from './adminLogin'
 import { isEffectivelyActive } from '@/lib/employment'
 import { accessLevelOf, type AccessLevel } from './roles'
 
@@ -90,7 +92,13 @@ export async function getCurrentEmployee(
 
       if (!data || !isEffectivelyActive(data)) return null
 
-      return withActiveStore(admin, mapToSessionEmployee(data), await readCookie(ACTIVE_STORE_COOKIE))
+      const employee = mapToSessionEmployee(data)
+      // Admin oturumu yalnızca admin girişiyle (şifre + kod) açılmış olmalı — bkz. adminLogin
+      const adminCookie = await readCookie(ADMIN_VERIFIED_COOKIE)
+      if (!(await passesAdminLogin(employee.access_level, adminCookie, employee.id, devSessionId(session.createdAt)))) {
+        return null
+      }
+      return withActiveStore(admin, employee, await readCookie(ACTIVE_STORE_COOKIE))
     }
 
     // Production: Supabase Auth
@@ -114,7 +122,12 @@ export async function getCurrentEmployee(
 
     if (!data || !isEffectivelyActive(data)) return null
 
-    return withActiveStore(admin, mapToSessionEmployee(data), await readCookie(ACTIVE_STORE_COOKIE))
+    const employee = mapToSessionEmployee(data)
+    const adminCookie = await readCookie(ADMIN_VERIFIED_COOKIE)
+    if (!(await passesAdminLogin(employee.access_level, adminCookie, employee.id, sessionIdOf(session?.access_token)))) {
+      return null
+    }
+    return withActiveStore(admin, employee, await readCookie(ACTIVE_STORE_COOKIE))
   } catch {
     return null
   }

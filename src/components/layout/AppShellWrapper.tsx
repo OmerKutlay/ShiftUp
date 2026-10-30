@@ -9,7 +9,7 @@ import { usePathname } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
 import { AppShell } from './AppShell'
 
-const NO_SHELL_PATHS = ['/login', '/qr-kiosk', '/schedule/print']
+const NO_SHELL_PATHS = ['/login', '/login/admin', '/qr-kiosk', '/schedule/print']
 const SHELL_WHEN_SIGNED_IN = ['/gizlilik']
 
 export function AppShellWrapper({ children }: { children: React.ReactNode }) {

@@ -12,6 +12,8 @@ export const metadata: Metadata = {
   title: { default: 'ShiftUp — Mağaza Vardiya Yönetimi', template: '%s — ShiftUp' },
   description: 'Günlük operasyon, vardiya planlama ve personel devam takip sistemi',
   manifest: '/manifest.json',
+  // Şirket içi uygulama: arama motorlarına kapalı (X-Robots-Tag başlığı da gönderilir)
+  robots: { index: false, follow: false, nocache: true, googleBot: { index: false, follow: false } },
   icons: {
     icon: [
       { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
