@@ -279,5 +279,6 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  // GEÇİCİ: api/diag middleware dışında (1102 ölçümü: middleware'in /api isteğine maliyeti)
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|api/diag).*)'],
 }
