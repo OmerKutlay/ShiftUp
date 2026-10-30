@@ -30,7 +30,7 @@ import { apiFetch } from '@/lib/api/http'
 import { fetchActiveEmployees } from '@/lib/api/employees'
 import { useAuth } from '@/context/AuthContext'
 import { cn } from '@/lib/utils'
-import { CorrectionStatusBadge, fmtDateTime, fmtDay, fmtTime, TimeRange, ViolationList } from './timeCorrectionUi'
+import { CorrectionStatusBadge, fmtDateTime, fmtDay, fmtTime, ViolationList } from './timeCorrectionUi'
 
 /** 422 WORKING_TIME_VIOLATION yanıtındaki ihlal listesi */
 interface ApiResult { error?: string; code?: string; violations?: string[] }
@@ -183,18 +183,14 @@ export function EmployeeRequestsReview() {
                       <ItemMedia><PersonAvatar name={name} size={32} /></ItemMedia>
                       <ItemContent className="min-w-0 gap-1.5">
                         <div className="flex items-start justify-between gap-2">
-                          <ItemTitle className="flex-wrap">
-                            {name}
-                            {r.employee?.roles?.name && (
-                              <span className="font-normal text-muted-foreground">{r.employee.roles.name}</span>
-                            )}
-                          </ItemTitle>
+                          <ItemTitle>{name}</ItemTitle>
                           {!pending && <span className="-my-0.5 sm:hidden"><CorrectionStatusBadge status={r.status} /></span>}
                         </div>
-                        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                          <span>{fmtDay(r.date)}</span>
-                          <TimeRange start={r.requested_start_time} end={r.requested_end_time} />
-                        </div>
+                        {r.employee?.roles?.name && <ItemDescription>{r.employee.roles.name}</ItemDescription>}
+                        {/* Sabit tek satır: gün · saat aralığı */}
+                        <p className="text-sm whitespace-nowrap tabular-nums">
+                          {fmtDay(r.date, 'd MMM EEE')} · {fmtTime(r.requested_start_time)}–{fmtTime(r.requested_end_time)}
+                        </p>
                         <ItemDescription className="line-clamp-none text-pretty text-foreground [overflow-wrap:anywhere]">
                           {r.reason}
                         </ItemDescription>
@@ -339,6 +335,7 @@ export function DirectCorrectionCard() {
               employees={employees.filter((emp) => emp.id !== me?.id)}
               value={directForm.employee_id}
               label="Çalışan"
+              emptyLabel="Çalışan seçin"
               showRole
               onChange={(id) => {
                 setDirectViolations([])
@@ -384,7 +381,7 @@ export function DirectCorrectionCard() {
         </FieldGroup>
       </CardContent>
       <CardFooter className="justify-end border-t px-4 py-4 md:px-6 [.border-t]:pt-4">
-        <Button onClick={() => void handleDirect(directViolations.length > 0)} disabled={directSaving}>
+        <Button className="max-sm:w-full" onClick={() => void handleDirect(directViolations.length > 0)} disabled={directSaving}>
           {directSaving ? <Spinner /> : <Plus />}
           {directViolations.length > 0 ? 'İhlalleri onaylayarak uygula' : 'Düzeltmeyi uygula'}
         </Button>

@@ -3,19 +3,20 @@
 /**
  * PushDiagnosticsPanel — anlık bildirim zincirinin adım adım teşhisi (Mağaza Müdürü+).
  *
- * GET /api/push/diagnostics'in `steps` listesini durum ikonlu bir Item listesiyle gösterir; ilk
+ * GET /api/push/diagnostics'in `steps` listesini durum rozetli bir Item listesiyle gösterir; ilk
  * başarısız adımın ipucu ne yapılacağını söyler (çoğunlukla scripts/setup-push.sh).
  * Bu cihazın aboneliği sunucuda kayıtlı mı diye kontrol için endpoint de gönderilir.
  *
  * collapsible: başlıktaki düğmeyle açılır ve ancak o zaman yüklenir (varsayılan: hep açık).
  */
 import { Fragment, useCallback, useEffect, useState } from 'react'
-import { ChevronDown, CircleCheck, CircleHelp, CircleX, RefreshCw } from 'lucide-react'
+import { ChevronDown, CircleCheck, CircleX, RefreshCw } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Item, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemSeparator, ItemTitle } from '@/components/ui/item'
+import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemSeparator, ItemTitle } from '@/components/ui/item'
+import { StatusBadge } from '@/components/common'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
@@ -43,10 +44,11 @@ async function fetchDiagnostics(): Promise<{ steps: PushDiagnosticStep[] } | { e
   }
 }
 
-function StepIcon({ ok }: { ok: boolean | null }) {
-  if (ok === true) return <CircleCheck className="text-success" aria-label="Tamam" />
-  if (ok === false) return <CircleX className="text-destructive" aria-label="Sorun" />
-  return <CircleHelp className="text-muted-foreground" aria-label="Bilinmiyor" />
+/** Adım durumu: renk tek başına değil, metin rozetiyle de iletilir */
+function StepBadge({ ok }: { ok: boolean | null }) {
+  if (ok === true) return <StatusBadge tone="success" label="Tamam" />
+  if (ok === false) return <StatusBadge tone="danger" label="Eksik" />
+  return <StatusBadge tone="neutral" label="Bilinmiyor" />
 }
 
 export function PushDiagnosticsPanel({ collapsible = false }: Props) {
@@ -159,15 +161,15 @@ export function PushDiagnosticsPanel({ collapsible = false }: Props) {
                 <Fragment key={s.key}>
                   {i > 0 && <ItemSeparator />}
                   <Item size="sm" className={cn('rounded-none', s === firstFailure && 'bg-destructive/5')}>
-                    <ItemMedia className="self-start pt-0.5 [&_svg]:size-4.5">
-                      <StepIcon ok={s.ok} />
-                    </ItemMedia>
                     <ItemContent className="min-w-0">
                       <ItemTitle className={cn('w-full', s === firstFailure && 'text-destructive')}>{s.label}</ItemTitle>
                       {s.hint && (
                         <ItemDescription className="line-clamp-none [overflow-wrap:anywhere]">{s.hint}</ItemDescription>
                       )}
                     </ItemContent>
+                    <ItemActions className="self-start">
+                      <StepBadge ok={s.ok} />
+                    </ItemActions>
                   </Item>
                 </Fragment>
               ))}

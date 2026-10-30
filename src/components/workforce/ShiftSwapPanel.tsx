@@ -398,7 +398,7 @@ export function ShiftSwapPanel({ employees, assignments, currentEmployeeId, isMa
           </>
         )}
         {canCancel && (
-          <Button variant="ghost" size="sm" onClick={() => void handleReview(swap.id, 'cancelled')} disabled={busy}>
+          <Button variant="outline" size="sm" onClick={() => void handleReview(swap.id, 'cancelled')} disabled={busy}>
             {spin('cancelled') && <Spinner />}
             İptal et
           </Button>

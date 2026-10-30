@@ -171,10 +171,15 @@ function AckList() {
                     <ItemMedia><PersonAvatar name={r.full_name} /></ItemMedia>
                     <ItemContent className="min-w-0">
                       <ItemTitle className="truncate">{r.full_name}</ItemTitle>
-                      <ItemDescription className="tabular-nums">
-                        {r.kvkk_notice_ack_at
-                          ? `Sürüm ${r.kvkk_notice_version ?? '?'} · ${formatInTimeZone(r.kvkk_notice_ack_at, 'dd.MM.yyyy HH:mm')}`
-                          : 'Henüz teyit etmedi'}
+                      <ItemDescription className="flex flex-wrap gap-x-2 tabular-nums">
+                        {r.kvkk_notice_ack_at ? (
+                          <>
+                            <span>Sürüm {r.kvkk_notice_version ?? '?'}</span>
+                            <span>{formatInTimeZone(r.kvkk_notice_ack_at, 'dd.MM.yyyy HH:mm')}</span>
+                          </>
+                        ) : (
+                          'Henüz teyit etmedi'
+                        )}
                       </ItemDescription>
                     </ItemContent>
                     <ItemActions>

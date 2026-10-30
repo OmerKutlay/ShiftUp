@@ -16,7 +16,7 @@ import {
   CalendarClock, CalendarX2, Clock3, Coffee, RotateCw, TriangleAlert, UserX, WifiOff,
 } from 'lucide-react'
 import {
-  addMonths, endOfMonth, endOfWeek, format, isSameMonth, parseISO, startOfMonth, startOfWeek, subMonths,
+  addMonths, endOfMonth, endOfWeek, format, isSameMonth, parseISO, startOfMonth, startOfWeek, subDays, subMonths,
 } from 'date-fns'
 import { tr } from 'date-fns/locale'
 
@@ -123,6 +123,7 @@ function fmtTime(iso: string | null): string {
 const STATUS_LABELS: Record<string, string> = {
   clocked_out: 'Tamamlandı',
   working: 'Devam ediyor',
+  no_clock_out: 'Çıkış eksik',
   on_break: 'Molada',
   working_after_break: 'Devam ediyor',
   absent: 'Gelmedi',
@@ -133,6 +134,7 @@ const STATUS_LABELS: Record<string, string> = {
 const STATUS_TONES: Record<string, BadgeTone> = {
   clocked_out: 'success',
   working: 'info',
+  no_clock_out: 'warning',
   on_break: 'warning',
   working_after_break: 'info',
   absent: 'danger',
@@ -141,13 +143,24 @@ const STATUS_TONES: Record<string, BadgeTone> = {
   leave: 'info',
 }
 
+const ACTIVE_STATUSES = new Set(['working', 'on_break', 'working_after_break'])
+
 /**
  * Kayıt yoksa (shift_waiting) vardiyanın zamanına göre anlamlı durum: ileri tarihli vardiya
  * "Planlandı", bugün bitiş saati geçmemişse "Bekleniyor", ancak vardiya geçmişte kaldıysa "Gelmedi".
+ * Geçmiş günde girişi olup çıkışı olmayan kayıt "Devam ediyor" değil "Çıkış eksik" sayılır.
  */
-function displayStatus(entry: DayEntry, now: Date): string {
-  if (entry.status !== 'shift_waiting') return entry.status
+export function displayStatus(entry: DayEntry, now: Date): string {
   const todayStr = format(now, 'yyyy-MM-dd')
+  if (ACTIVE_STATUSES.has(entry.status) && entry.work_date < todayStr) {
+    // Dün başlayıp gece yarısını geçen vardiya bitiş saatine kadar sürüyor sayılır
+    const end = entry.end_time.slice(0, 5)
+    const overnight = end <= entry.start_time.slice(0, 5)
+    const yesterday = format(subDays(now, 1), 'yyyy-MM-dd')
+    if (!(overnight && entry.work_date === yesterday && format(now, 'HH:mm') < end)) return 'no_clock_out'
+    return entry.status
+  }
+  if (entry.status !== 'shift_waiting') return entry.status
   if (entry.work_date > todayStr) return 'planned'
   if (entry.work_date === todayStr) {
     const nowHm = format(now, 'HH:mm')
@@ -157,8 +170,6 @@ function displayStatus(entry: DayEntry, now: Date): string {
   }
   return 'absent'
 }
-
-const ACTIVE_STATUSES = new Set(['working', 'on_break', 'working_after_break'])
 
 // ─── Gün satırı ───────────────────────────────────────────────
 
@@ -203,8 +214,13 @@ function DayRow({ entry, isToday, now }: { entry: DayEntry; isToday: boolean; no
   const active = ACTIVE_STATUSES.has(entry.status)
   const hasClock = done || active
 
+  // Çıkış yoksa "13:54–…" yerine açık ifade: bugün "Giriş 13:54", geçmiş günde "13:54 · çıkış yok"
   const actual = hasClock
-    ? `${fmtTime(entry.clock_in_at)}–${done ? fmtTime(entry.clock_out_at) : '…'}`
+    ? done
+      ? `${fmtTime(entry.clock_in_at)}–${fmtTime(entry.clock_out_at)}`
+      : status === 'no_clock_out'
+        ? `${fmtTime(entry.clock_in_at)} · çıkış yok`
+        : `Giriş ${fmtTime(entry.clock_in_at)}`
     : '—'
   const breakText = done ? fmtMins(entry.break_minutes) : '—'
   const workedText = done ? fmtMins(entry.worked_minutes) : '—'
@@ -215,7 +231,7 @@ function DayRow({ entry, isToday, now }: { entry: DayEntry; isToday: boolean; no
     : done
       ? actual
       : active
-        ? `Giriş ${fmtTime(entry.clock_in_at)}`
+        ? actual
         : status === 'absent'
           ? 'Giriş kaydı yok'
           : null

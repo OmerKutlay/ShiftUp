@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
         targets.map((emp) => ({
           employee_id: emp.id as string,
           type: 'open_shift_available' as const,
-          title: 'Yeni Açık Vardiya',
+          title: 'Yeni açık vardiya',
           message: `${dateLabel} tarihinde ${timeLabel}${roleLabel} için açık vardiya oluşturuldu. Üstlenmek için Açık Vardiyalar sayfasını ziyaret edin.`,
           related_id: shift.id,
         }))

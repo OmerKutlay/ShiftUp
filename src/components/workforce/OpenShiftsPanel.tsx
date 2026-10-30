@@ -402,11 +402,10 @@ export function OpenShiftsPanel() {
     <Item variant="outline" size="sm" className="items-stretch">
       <KindBar kind={kindOf(s.start_time, s.end_time)} />
       <ItemContent className="min-w-0">
-        <ItemTitle>
-          {fmtDay(s.work_date, 'd MMM EEEE')}
-          <span className="font-normal text-muted-foreground tabular-nums">{timeRange(s)}</span>
-        </ItemTitle>
+        <ItemTitle>{fmtDay(s.work_date, 'd MMM EEEE')}</ItemTitle>
         <ItemDescription className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="font-medium text-foreground tabular-nums">{timeRange(s)}</span>
+          <span aria-hidden>·</span>
           <span>{relativeDay(s.work_date)}</span>
           <span aria-hidden>·</span>
           <span>{s.role_needed ?? 'Herkes'}</span>
@@ -414,8 +413,11 @@ export function OpenShiftsPanel() {
         </ItemDescription>
         {s.description && <ItemDescription className="line-clamp-2">{s.description}</ItemDescription>}
       </ItemContent>
-      <ItemActions className="flex-col items-end justify-between gap-2">
-        <StatusBadge tone={STATUS_TONES[s.status] ?? 'neutral'} label={STATUS_LABELS[s.status] ?? s.status} />
+      {/* Liste duruma göre süzülü: "Açık" rozeti yalnızca açık olmayanlarda gösterilir */}
+      <ItemActions className="self-start">
+        {s.status !== 'open' && (
+          <StatusBadge tone={STATUS_TONES[s.status] ?? 'neutral'} label={STATUS_LABELS[s.status] ?? s.status} />
+        )}
         {actions(s)}
       </ItemActions>
     </Item>

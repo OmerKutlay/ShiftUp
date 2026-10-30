@@ -1,5 +1,5 @@
 /**
- * HolidaysPanel — kapsam rozeti (Ulusal / Mağazaya özel), kapsam seçimi (Admin) ve yetkiye göre işlemler.
+ * HolidaysPanel — kapsam rozeti (yalnızca Mağazaya özel), kapsam seçimi (Admin) ve yetkiye göre işlemler.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
@@ -45,10 +45,10 @@ beforeEach(() => {
 })
 
 describe('HolidaysPanel — çoklu mağaza', () => {
-  it('her satırda kapsam rozeti gösterir', async () => {
+  it('kapsam rozetini yalnızca mağazaya özel tatillerde gösterir', async () => {
     renderWithProviders(<HolidaysPanel />)
     await screen.findByText('Cumhuriyet Bayramı')
-    expect(screen.getAllByText('Ulusal').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Ulusal')).not.toBeInTheDocument()
     expect(screen.getAllByText('Mağazaya özel').length).toBeGreaterThan(0)
   })
 

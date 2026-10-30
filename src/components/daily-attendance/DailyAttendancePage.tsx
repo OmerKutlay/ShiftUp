@@ -285,7 +285,7 @@ export function DailyAttendancePage() {
           <StatCards>
             <StatCard
               icon={<CalendarClock />}
-              label="Planlanan vardiya"
+              label="Planlı vardiya"
               value={rows.length}
               hint={
                 [counts.leave && `${counts.leave} izinli`, counts.upcoming && `${counts.upcoming} başlamadı`, counts.done && `${counts.done} çıkış yaptı`]

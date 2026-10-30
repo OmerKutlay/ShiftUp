@@ -384,14 +384,12 @@ export function AttendanceScanPage() {
                   <Button
                     key={btn.action}
                     type="button"
-                    variant={primary ? 'default' : 'secondary'}
+                    variant={primary ? 'default' : 'outline'}
                     disabled={!online}
                     onClick={() => handleSelectAction(btn.action)}
                     className={cn(
                       'w-full justify-start gap-3 rounded-xl px-5 has-[>svg]:px-5 [&_svg:not([class*=size-])]:size-5',
-                      primary ? 'h-16 text-lg font-semibold' : 'h-12 text-base',
-                      // İkincil: marka renginin açık tonu (temadaki secondary neredeyse beyaz, outline'dan ayırt edilmiyor)
-                      !primary && 'border border-primary/25 bg-primary/10 text-primary hover:bg-primary/15'
+                      primary ? 'h-16 text-lg font-semibold' : 'h-12 text-base'
                     )}
                   >
                     <Icon aria-hidden />

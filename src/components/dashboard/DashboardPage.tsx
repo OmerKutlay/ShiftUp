@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/item'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
+import { PlanActualLines } from '@/components/daily-attendance/PlanActualLines'
 import { ShiftTime } from '@/components/daily-attendance/ShiftTime'
 import { clock, formatDelay, lateMinutes, shiftWindow, turkeyDate, useNow } from '@/components/daily-attendance/attendanceTime'
 import { StaffingChart } from './StaffingChart'
@@ -273,10 +274,7 @@ export function DashboardPage() {
         <ItemMedia><PersonAvatar name={r.full_name} size={32} /></ItemMedia>
         <ItemContent className="min-w-0">
           <ItemTitle className="w-full truncate">{r.full_name}</ItemTitle>
-          <ItemDescription className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <ShiftTime start={r.start_time} end={r.end_time} />
-            {r.clock_in_at && <span className="tabular-nums">{clock(r.clock_in_at)}–{r.clock_out_at ? clock(r.clock_out_at) : '…'}</span>}
-          </ItemDescription>
+          <PlanActualLines start={r.start_time} end={r.end_time} clockIn={r.clock_in_at} clockOut={r.clock_out_at} />
         </ItemContent>
         <ItemActions><StatusBadge tone={s.tone} label={s.label} /></ItemActions>
       </Item>
@@ -357,7 +355,7 @@ export function DashboardPage() {
             />
             <StatCard
               icon={<Inbox />}
-              label="Onay bekleyen izin"
+              label="Bekleyen izin"
               value={stats.pending_leaves}
               valueClassName={stats.pending_leaves > 0 ? 'text-warning' : undefined}
               hint={stats.pending_leaves > 0 ? 'Onayınızı bekliyor' : 'Bekleyen talep yok'}

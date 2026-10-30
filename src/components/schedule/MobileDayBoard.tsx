@@ -278,15 +278,15 @@ export function MobileDayBoard({
                         <div className="flex min-w-0 items-center gap-2.5">
                           <PersonAvatar name={r.emp.full_name} size={28} />
                           <div className="min-w-0">
-                            <p className="flex items-center gap-1.5 text-sm font-medium">
-                              <span className="truncate md:hidden">{shortName(r.emp.full_name)}</span>
-                              <span className="truncate max-md:hidden">{r.emp.full_name}</span>
-                              {r.emp.employment_type === 'part_time' && (
-                                <Badge variant="secondary" className="px-1.5">PT</Badge>
-                              )}
+                            <p className="text-sm font-medium">
+                              <span className="block truncate md:hidden">{shortName(r.emp.full_name)}</span>
+                              <span className="block truncate max-md:hidden">{r.emp.full_name}</span>
                             </p>
                             <p className="flex items-center gap-1 text-xs text-muted-foreground">
                               <span className={cn('shrink-0 whitespace-nowrap tabular-nums', danger && 'text-destructive')}>{fmtRange(start, end)}</span>
+                              {r.emp.employment_type === 'part_time' && (
+                                <Badge variant="secondary" className="shrink-0 px-1.5 py-0">PT</Badge>
+                              )}
                               {r.warn && (
                                 <TriangleAlert
                                   aria-label={warnLabel}
@@ -308,7 +308,7 @@ export function MobileDayBoard({
                               color: tone.text,
                             }}
                           >
-                            <span className="hidden truncate text-xs font-medium @[4.5rem]:inline">{name}</span>
+                            <span className="hidden truncate text-xs font-medium @[2.5rem]:inline">{name}</span>
                             <span className="ml-auto hidden shrink-0 pl-2 text-xs tabular-nums @[9rem]:inline">
                               {fmtDuration(r.net)}
                             </span>

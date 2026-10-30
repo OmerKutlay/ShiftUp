@@ -25,7 +25,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group'
-import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '@/components/ui/item'
+import { Item, ItemActions, ItemContent, ItemDescription, ItemFooter, ItemMedia, ItemTitle } from '@/components/ui/item'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ShiftTemplateFormDialog } from './ShiftTemplateFormDialog'
 import { SHIFT_KIND_LABELS, SHIFT_KIND_ORDER, fmtMins, shiftTiming, type ShiftTiming } from './format'
@@ -47,6 +47,16 @@ function ShiftTime({ timing }: { timing: ShiftTiming }) {
       <span aria-hidden className="h-4 w-1 rounded-full" style={{ backgroundColor: timing.tone.fill }} />
       {timing.start}–{timing.end}
     </span>
+  )
+}
+
+/** Vardiya türü rozeti — tür renginde nokta (DESIGN_GUIDE §2); tablo ve mobil kart aynı rozeti kullanır */
+function KindBadge({ timing }: { timing: ShiftTiming }) {
+  return (
+    <Badge variant="outline" className="gap-1.5">
+      <span aria-hidden className="size-1.5 shrink-0 rounded-full" style={{ backgroundColor: timing.tone.fill }} />
+      {SHIFT_KIND_LABELS[timing.kind]}
+    </Badge>
   )
 }
 
@@ -104,7 +114,11 @@ function DayTimeline({ rows }: { rows: Row[] }) {
         <ul className="flex flex-col gap-1.5" aria-label="Aktif şablonlar">
           {spans.map(({ row, s }) => (
             <li key={row.id} className="flex items-center gap-3">
-              <span className="w-24 shrink-0 truncate text-sm sm:w-40" title={row.name}>{row.name}</span>
+              {/* Mobilde ad iki satıra sarılır, saat adın altında; masaüstünde tek satır */}
+              <span className="flex w-28 shrink-0 flex-col sm:w-40" title={row.name}>
+                <span className="line-clamp-2 text-sm leading-tight sm:truncate">{row.name}</span>
+                <span className="text-xs text-muted-foreground tabular-nums sm:hidden">{row.timing.start}–{row.timing.end}</span>
+              </span>
               <div className="relative h-7 flex-1">
                 {grid}
                 <div
@@ -117,7 +131,7 @@ function DayTimeline({ rows }: { rows: Row[] }) {
                     color: row.timing.tone.text,
                   }}
                 >
-                  <span className="truncate">{row.timing.start}–{row.timing.end}</span>
+                  <span className="truncate max-sm:hidden">{row.timing.start}–{row.timing.end}</span>
                   <span className="sr-only">, {SHIFT_KIND_LABELS[row.timing.kind]}</span>
                 </div>
               </div>
@@ -126,7 +140,7 @@ function DayTimeline({ rows }: { rows: Row[] }) {
         </ul>
         {/* Saat ekseni */}
         <div aria-hidden className="flex items-center gap-3">
-          <span className="w-24 shrink-0 sm:w-40" />
+          <span className="w-28 shrink-0 sm:w-40" />
           <div className="relative h-4 flex-1 text-xs text-muted-foreground tabular-nums">
             {ticks.map((t, i) => (
               <span
@@ -248,8 +262,7 @@ export function ShiftTemplatesPage() {
       id: 'kind',
       accessorFn: (t) => SHIFT_KIND_ORDER.indexOf(t.timing.kind),
       header: 'Tür',
-      meta: { className: 'text-muted-foreground' },
-      cell: ({ row }) => SHIFT_KIND_LABELS[row.original.timing.kind],
+      cell: ({ row }) => <KindBadge timing={row.original.timing} />,
     },
     {
       id: 'gross',
@@ -303,9 +316,12 @@ export function ShiftTemplatesPage() {
         </ItemDescription>
       </ItemContent>
       <ItemActions className="gap-1">
-        {!t.active && <StatusBadge tone="neutral" label="Pasif" />}
         <RowActions template={t} onEdit={openEdit} />
       </ItemActions>
+      <ItemFooter className="justify-start gap-1.5 pl-5">
+        <KindBadge timing={t.timing} />
+        {!t.active && <StatusBadge tone="neutral" label="Pasif" />}
+      </ItemFooter>
     </Item>
   )
 

@@ -34,7 +34,7 @@ import {
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
-import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '@/components/ui/item'
+import { Item, ItemActions, ItemContent, ItemDescription, ItemFooter, ItemMedia, ItemTitle } from '@/components/ui/item'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
@@ -296,7 +296,6 @@ export function HolidaysPanel() {
           <span className="flex items-center gap-3">
             <DateTile date={h.date} muted={past} />
             <span className={cn('flex flex-col', past && 'text-muted-foreground')}>
-              <span className="font-medium tabular-nums">{dateFmt.format(toDate(h.date))}</span>
               <span className="text-muted-foreground">{weekdayFmt.format(toDate(h.date))}</span>
             </span>
           </span>
@@ -314,12 +313,12 @@ export function HolidaysPanel() {
           <span className={cn('inline-flex items-center gap-2 font-medium', h.date < today && 'font-normal text-muted-foreground')}>
             {h.name}
             {h === next && <Badge variant="secondary">Sıradaki</Badge>}
+            {scopeOf(h) !== 'national' && <ScopeBadge h={h} />}
           </span>
         )
       },
     },
     { id: 'kind', header: 'Tür', enableSorting: false, cell: ({ row }) => <KindBadge h={row.original} /> },
-    { id: 'scope', header: 'Kapsam', enableSorting: false, cell: ({ row }) => <ScopeBadge h={row.original} /> },
     {
       id: 'actions',
       header: () => <span className="sr-only">İşlemler</span>,
@@ -339,15 +338,13 @@ export function HolidaysPanel() {
             {h.name}
             {h === next && <Badge variant="secondary">Sıradaki</Badge>}
           </ItemTitle>
-          <ItemDescription className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span>{weekdayFmt.format(toDate(h.date))}</span>
-            <ScopeBadge h={h} />
-          </ItemDescription>
+          <ItemDescription>{weekdayFmt.format(toDate(h.date))}</ItemDescription>
         </ItemContent>
-        <ItemActions>
+        <ItemActions className="self-start">{rowActions(h)}</ItemActions>
+        <ItemFooter className="justify-start gap-2">
           <KindBadge h={h} />
-          {rowActions(h)}
-        </ItemActions>
+          {scopeOf(h) !== 'national' && <ScopeBadge h={h} />}
+        </ItemFooter>
       </Item>
     )
   }

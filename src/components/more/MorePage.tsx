@@ -81,23 +81,29 @@ export function MorePage() {
         </section>
       ))}
 
-      <ItemGroup className="overflow-hidden rounded-xl border bg-card shadow-xs">
-        <div role="listitem">
-          <Item asChild size="sm" className="min-h-14 rounded-none">
-            <Link href="/gizlilik" prefetch={false} className="select-none">
-              <ItemMedia variant="icon" className="size-9 rounded-md bg-background text-muted-foreground">
-                <ShieldCheck />
-              </ItemMedia>
-              <ItemContent>
-                <ItemTitle>Aydınlatma metni (KVKK)</ItemTitle>
-              </ItemContent>
-              <ItemActions>
-                <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
-              </ItemActions>
-            </Link>
-          </Item>
-        </div>
-      </ItemGroup>
+      {/* Hesap: yasal metin ve tema; "Yönetim" grubundan ayrı başlık altında */}
+      <section aria-labelledby="more-account" className="flex flex-col gap-2">
+        <h2 id="more-account" className="px-1 text-sm font-medium text-muted-foreground">
+          Hesap
+        </h2>
+        <ItemGroup className="overflow-hidden rounded-xl border bg-card shadow-xs">
+          <div role="listitem">
+            <Item asChild size="sm" className="min-h-14 rounded-none">
+              <Link href="/gizlilik" prefetch={false} className="select-none">
+                <ItemMedia variant="icon" className="size-9 rounded-md bg-background text-muted-foreground">
+                  <ShieldCheck />
+                </ItemMedia>
+                <ItemContent>
+                  <ItemTitle>Aydınlatma metni (KVKK)</ItemTitle>
+                </ItemContent>
+                <ItemActions>
+                  <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
+                </ItemActions>
+              </Link>
+            </Item>
+          </div>
+        </ItemGroup>
+      </section>
 
       <section aria-labelledby="more-theme" className="flex flex-col gap-2">
         <h2 id="more-theme" className="px-1 text-sm font-medium text-muted-foreground">
