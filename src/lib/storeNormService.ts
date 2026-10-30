@@ -30,9 +30,16 @@ export function plannedNetHours(shifts: ShiftForNorm[]): number {
   return Math.round((mins / 60) * 10) / 10
 }
 
+/** Map'teki listeye ekler (her satırda diziyi kopyalamadan — ay içi yüzlerce vardiya için O(n)) */
+function pushTo<K, V>(m: Map<K, V[]>, key: K, value: V) {
+  const list = m.get(key)
+  if (list) list.push(value)
+  else m.set(key, [value])
+}
+
 const groupBy = <T extends { store_id: string }>(rows: T[]): Map<string, T[]> => {
   const m = new Map<string, T[]>()
-  for (const r of rows) m.set(r.store_id, [...(m.get(r.store_id) ?? []), r])
+  for (const r of rows) pushTo(m, r.store_id, r)
   return m
 }
 
@@ -56,14 +63,14 @@ export async function fetchNormEmployees(admin: SupabaseClient, storeIds: string
     for (const r of rows) {
       const role = unwrapJoin(r.roles as { planning_group?: string | null } | null)
       const level = accessLevelOf(r.roles)
-      out.set(r.store_id, [...(out.get(r.store_id) ?? []), {
+      pushTo(out, r.store_id, {
         active: r.active,
         hire_date: r.hire_date,
         termination_date: r.termination_date,
         isKiosk: isKioskRole(level),
         isAdmin: level === ACCESS.ADMIN,
         planned: !!role?.planning_group,
-      }])
+      })
     }
     if (rows.length < PAGE) return out
   }
@@ -92,15 +99,27 @@ export async function fetchNormRow(admin: SupabaseClient, storeId: string, month
   return (await fetchNormRows(admin, [storeId], month)).get(storeId) ?? null
 }
 
-type MonthShift = ShiftForNorm & { id: string; store_id: string }
+type MonthShift = ShiftForNorm & {
+  id: string
+  store_id: string
+  /** Yalnızca withAttendance ile gömülür */
+  attendance_records?: AttendanceTimes[] | AttendanceTimes | null
+}
+
+const SHIFT_COLUMNS = 'id, store_id, work_date, start_time, end_time, is_on_leave'
+/** Fiili çalışma için devam kaydı vardiyaya gömülür: ayrı `.in(id listesi)` sorguları (URL'de yüzlerce id) gerekmez */
+const SHIFT_WITH_ATTENDANCE_COLUMNS =
+  `${SHIFT_COLUMNS}, attendance_records ( clock_in_at, clock_out_at, break_start_at, break_end_at, completed_break_minutes )`
 
 /** Mağazaların ay içi vardiyaları (sayfalı, tek akış) */
-export async function fetchMonthShifts(admin: SupabaseClient, storeIds: string[], month: string): Promise<MonthShift[]> {
+export async function fetchMonthShifts(
+  admin: SupabaseClient, storeIds: string[], month: string, { withAttendance = false } = {},
+): Promise<MonthShift[]> {
   const out: MonthShift[] = []
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await admin
       .from('shift_assignments')
-      .select('id, store_id, work_date, start_time, end_time, is_on_leave')
+      .select(withAttendance ? SHIFT_WITH_ATTENDANCE_COLUMNS : SHIFT_COLUMNS)
       .in('store_id', storeIds)
       .gte('work_date', month)
       .lte('work_date', monthEnd(month))
@@ -108,30 +127,21 @@ export async function fetchMonthShifts(admin: SupabaseClient, storeIds: string[]
       .order('id')
       .range(from, from + PAGE - 1)
     if (error) throw error
-    const rows = (data ?? []) as MonthShift[]
-    out.push(...rows)
+    const rows = (data ?? []) as unknown as MonthShift[]
+    for (const r of rows) out.push(r)
     if (rows.length < PAGE) return out
   }
 }
 
-/** Çıkışı yapılmış vardiyalardaki fiili net çalışma (saat); yalnızca verilen vardiyalar için */
-export async function actualWorkedHours(
-  admin: SupabaseClient, shifts: Array<ShiftForNorm & { id: string }>,
-): Promise<number> {
-  const byId = new Map(shifts.filter((s) => !s.is_on_leave).map((s) => [s.id, s]))
-  const ids = [...byId.keys()]
+/** Çıkışı yapılmış vardiyalardaki fiili net çalışma (saat) — gömülü devam kayıtlarından, saf */
+export function workedHoursOf(shifts: MonthShift[]): number {
   let mins = 0
-  for (let i = 0; i < ids.length; i += 200) {
-    const { data, error } = await admin
-      .from('attendance_records')
-      .select('shift_assignment_id, clock_in_at, clock_out_at, break_start_at, break_end_at, completed_break_minutes')
-      .in('shift_assignment_id', ids.slice(i, i + 200))
-      .not('clock_out_at', 'is', null)
-    if (error) throw error
-    for (const rec of (data ?? []) as Array<AttendanceTimes & { shift_assignment_id: string }>) {
-      const shift = byId.get(rec.shift_assignment_id)
-      if (shift) mins += workedMinutes(rec, shift) ?? 0
-    }
+  for (const s of shifts) {
+    if (s.is_on_leave) continue
+    const recs = s.attendance_records
+    const rec = Array.isArray(recs) ? recs[0] : recs
+    if (!rec?.clock_out_at) continue
+    mins += workedMinutes(rec, s) ?? 0
   }
   return Math.round((mins / 60) * 10) / 10
 }
@@ -154,7 +164,7 @@ export async function getStoreNormStatuses(
   const [employees, rows, shifts] = await Promise.all([
     fetchNormEmployees(admin, storeIds),
     fetchNormRows(admin, storeIds, month),
-    fetchMonthShifts(admin, storeIds, month),
+    fetchMonthShifts(admin, storeIds, month, { withAttendance: withWorked }),
   ])
   const shiftsByStore = groupBy(shifts)
   for (const id of storeIds) {
@@ -164,7 +174,7 @@ export async function getStoreNormStatuses(
     out.set(id, {
       ...norm,
       ...computeNormUsage(plannedNetHours(own), norm.normHours),
-      workedHours: withWorked ? await actualWorkedHours(admin, own) : null,
+      workedHours: withWorked ? workedHoursOf(own) : null,
       updatedAt: row?.updated_at ?? null,
     })
   }

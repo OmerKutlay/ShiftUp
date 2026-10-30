@@ -122,3 +122,25 @@ describe('ay yardımcıları', () => {
     expect(majorityMonthOfWeek('2026-11-23')).toBe('2026-11-01')
   })
 })
+
+describe('workedHoursOf — gömülü devam kayıtlarından fiili saat', () => {
+  it('yalnızca çıkışı yapılmış, izinli olmayan vardiyaları sayar; dizi veya tekil gömme kabul edilir', async () => {
+    const { workedHoursOf } = await import('@/lib/storeNormService')
+    const { workedMinutes } = await import('@/lib/attendanceDurations')
+    const shift = { id: 's1', store_id: 'A', work_date: '2026-11-02', start_time: '09:00', end_time: '18:00', is_on_leave: false }
+    const rec = {
+      clock_in_at: '2026-11-02T06:00:00Z', clock_out_at: '2026-11-02T15:00:00Z',
+      break_start_at: null, break_end_at: null, completed_break_minutes: 60,
+    }
+    const expected = Math.round(((workedMinutes(rec, shift) ?? 0) / 60) * 10) / 10
+    expect(expected).toBeGreaterThan(0)
+    expect(workedHoursOf([
+      { ...shift, attendance_records: [rec] },
+      { ...shift, id: 's2', attendance_records: rec },                                   // tekil gömme
+      { ...shift, id: 's3', attendance_records: [{ ...rec, clock_out_at: null }] },      // çıkış yok
+      { ...shift, id: 's4', is_on_leave: true, attendance_records: [rec] },              // izinli
+      { ...shift, id: 's5', attendance_records: [] },
+      { ...shift, id: 's6' },
+    ])).toBe(Math.round(expected * 2 * 10) / 10)
+  })
+})
