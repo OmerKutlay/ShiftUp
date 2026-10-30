@@ -28,12 +28,13 @@ import type { ShiftKind } from '@/lib/workforcePlanner'
 import { useAuth } from '@/context/AuthContext'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { BOTTOM_NAV_OVERLAY_OFFSET } from '@/components/layout/MobileBottomNav'
-import { Page, PageHeader, PeriodStepper, SegmentedControl, useConfirm } from '@/components/common'
+import { ExportMenu, Page, PageHeader, PeriodStepper, SegmentedControl, useConfirm } from '@/components/common'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import {
   AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
+import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
@@ -42,6 +43,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 import { useWeeklySchedule } from './useWeeklySchedule'
+import { exportWeekCsv, exportWeekPdf, type WeekExportInput } from './print/weekExport'
 import { ShiftAssignDialog, type ShiftSavePayload } from './ShiftAssignDialog'
 import {
   buildScheduleEntries, JS_DAY_TO_KEY, calcEmployeeStats, fmtHoursTr, fmtRange, getAvailStatus, shiftKindOf,
@@ -148,7 +150,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
   const isMobile = useIsMobile()
   const config = useMemo(() => getWorkingTimeConfig(), [])
   const confirm = useConfirm()
-  const { employee: authEmployee } = useAuth()
+  const { employee: authEmployee, store } = useAuth()
 
   const [currentWeek, setCurrentWeek] = useState(new Date())
   const {
@@ -633,6 +635,16 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     <MonthlyNormIndicator weekStart={weekDays[0]} saved={savedAssignments} projected={assignments} />
   ) : null
 
+  const exportInput = (): WeekExportInput => ({
+    storeName: store?.active.name ?? '',
+    weekDays,
+    entries: scheduleEntries,
+    holidayMap,
+    statsMap,
+    approvedLeaveMap,
+    restDayMap,
+  })
+
   const leaveIsRest = !!leaveDeleteDialog && restDayMap.has(`${leaveDeleteDialog.employee.id}:${leaveDeleteDialog.date}`)
 
   return (
@@ -653,13 +665,23 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
         ) : undefined}
         actions={hasData && !editing ? (
           <>
-            {/* Aynı sekmede açılır: iOS ana ekran uygulamasında target=_blank tarayıcıya atar */}
-            <Button asChild variant="outline" size={isMobile ? 'icon' : 'default'}>
-              <Link href={`/schedule/print?week=${weekDays[0]}`} aria-label="Yazdır">
-                <Printer />
-                {!isMobile && 'Yazdır'}
-              </Link>
-            </Button>
+            {/* Kaydedilmiş plan dışa aktarılır (düzenleme modunda menü gizli) */}
+            <ExportMenu
+              iconOnly={isMobile}
+              options={[
+                { format: 'pdf', run: () => exportWeekPdf(exportInput()) },
+                { format: 'csv', run: () => exportWeekCsv(exportInput()) },
+              ]}
+              extra={
+                // Aynı sekmede açılır: iOS ana ekran uygulamasında target=_blank tarayıcıya atar
+                <DropdownMenuItem asChild>
+                  <Link href={`/schedule/print?week=${weekDays[0]}`}>
+                    <Printer />
+                    Yazdır
+                  </Link>
+                </DropdownMenuItem>
+              }
+            />
             {!readOnly && !isMobile && (
               <Button onClick={startEditing}>
                 <Plus />
