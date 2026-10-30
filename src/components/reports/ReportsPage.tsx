@@ -10,17 +10,27 @@ import { TimesheetPanel } from './TimesheetPanel'
 import { OvertimePanel } from './OvertimePanel'
 import { PayrollPanel } from './PayrollPanel'
 
+const TABS = [
+  { value: 'attendance', label: 'Devam raporu', short: 'Devam' },
+  { value: 'timesheet', label: 'Aylık puantaj', short: 'Puantaj' },
+  { value: 'overtime', label: 'Fazla çalışma', short: 'Fazla mesai' },
+  { value: 'payroll', label: 'Bordro puantajı', short: 'Bordro' },
+]
+
 export function ReportsPage() {
   return (
     <Page>
       <PageHeader title="Raporlar" description="Ekibin devamı, aylık puantaj ve fazla çalışma takibi" />
       {/* İçerik sekme değişince söküldüğü için (Radix varsayılanı) her panel kendi verisini yalnızca açıkken çeker */}
       <Tabs defaultValue="attendance" className="gap-4 md:gap-6">
-        <TabsList className="max-w-full justify-start overflow-x-auto">
-          <TabsTrigger value="attendance">Devam raporu</TabsTrigger>
-          <TabsTrigger value="timesheet">Aylık puantaj</TabsTrigger>
-          <TabsTrigger value="overtime">Fazla çalışma</TabsTrigger>
-          <TabsTrigger value="payroll">Bordro puantajı</TabsTrigger>
+        {/* Mobilde kısa etiketlerle tam genişlik: kaydırma olmadan sığar */}
+        <TabsList className="w-full sm:w-fit">
+          {TABS.map((t) => (
+            <TabsTrigger key={t.value} value={t.value} aria-label={t.label}>
+              <span className="sm:hidden" aria-hidden>{t.short}</span>
+              <span className="max-sm:hidden">{t.label}</span>
+            </TabsTrigger>
+          ))}
         </TabsList>
         <TabsContent value="attendance"><AttendanceReportsPage embedded /></TabsContent>
         <TabsContent value="timesheet"><TimesheetPanel /></TabsContent>
