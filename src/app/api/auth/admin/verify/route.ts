@@ -2,7 +2,9 @@
  * POST /api/auth/admin/verify
  *
  * Admin girişi — 2. adım: e-postaya gelen kod. Yalnızca 1. adımda (/api/auth/admin/password)
- * şifresi doğrulanmış aynı e-posta için, 10 dakika içinde kabul edilir. Başarılıysa oturum
+ * şifresi doğrulanmış aynı e-posta için, 10 dakika içinde kabul edilir. 1. adım hatalıysa da
+ * bekleme çerezi yazılır ama rastgele bir kimliğe bağlıdır ve kod gönderilmemiştir — her kod
+ * INVALID_OTP ile reddedilir. Başarılıysa oturum
  * açılır ve oturuma bağlı ADMIN_VERIFIED_COOKIE yazılır (bkz. @/lib/auth/adminLogin).
  *
  * AUTH_MODE=production  → Supabase verifyOtp
@@ -92,8 +94,9 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: false, reason: 'INVALID_OTP' }, { status: 401 })
       }
       const { data: employee } = await admin.from('employees').select(EMPLOYEE_SELECT).eq('email', email).maybeSingle()
+      // Şifre adımı hatalıyken yazılan çerez buraya düşer; prod'daki gibi "kod hatalı" görünür
       if (!isActiveAdmin(employee as EmployeeRow | null, pending.sub)) {
-        return NextResponse.json({ ok: false, reason: 'EMPLOYEE_NOT_FOUND' }, { status: 403 })
+        return NextResponse.json({ ok: false, reason: 'INVALID_OTP' }, { status: 401 })
       }
       const createdAt = Date.now()
       res.cookies.set(DEV_SESSION_COOKIE, signDevSession({ employeeId: pending.sub, createdAt }), {

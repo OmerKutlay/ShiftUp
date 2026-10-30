@@ -3,12 +3,13 @@
  * adminLogin.test.ts — Admin girişi: admin şifresi → e-posta kodu → oturuma bağlı çerez.
  *
  *   - İmzalı çerez: değiştirilmiş / türü yanlış / süresi dolmuş / başka oturuma ait çerez geçmez
- *   - /api/auth/admin/password: yanlış şifre ya da admin olmayan hesap → aynı yanıt, kod gönderilmez
+ *   - /api/auth/admin/password: yanlış şifre / kayıtsız / admin olmayan hesap → başarılı gibi yanıt,
+ *     kod gönderilmez, kod adımında hiçbir kod geçmez (deneme yanılmayla admin e-postası bulunamaz)
  *   - /api/auth/admin/verify: şifre adımı (bu e-posta için) olmadan kod kabul edilmez
  *   - Normal giriş (send-otp / verify-otp) admin hesabına oturum açmaz
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
 process.env.SUPABASE_SECRET_KEY = 'test-secret-key'
 
@@ -101,22 +102,44 @@ describe('admin çerezi', () => {
   })
 })
 
+/** Hatalı bilgide yanıt başarılıdan ayırt edilemez: 200 + bu e-postaya bağlı ama rastgele kimlikli çerez */
+async function expectDecoy(res: NextResponse, email: string) {
+  expect(res.status).toBe(200)
+  expect(await res.json()).toEqual({ ok: true })
+  expect(signInWithOtp).not.toHaveBeenCalled()
+  const pending = await readAdminToken(res.cookies.get(ADMIN_PENDING_COOKIE)?.value, 'pending')
+  expect(pending?.sid).toBe(email)
+  expect(pending?.sub).toMatch(/^[0-9a-f-]{36}$/)
+  expect(pending?.sub).not.toBe(ADMIN.id)
+}
+
 describe('POST /api/auth/admin/password', () => {
-  it('yanlış şifre: 401, kod gönderilmez, çerez yazılmaz', async () => {
+  it('yanlış şifre: başarılı gibi yanıtlanır, kod gönderilmez', async () => {
     const res = await adminPassword(req('/api/auth/admin/password', { email: ADMIN.email, password: 'yanlis-sifre-1' }))
-    expect(res.status).toBe(401)
-    expect((await res.json()).reason).toBe('INVALID_CREDENTIALS')
-    expect(signInWithOtp).not.toHaveBeenCalled()
-    expect(res.cookies.get(ADMIN_PENDING_COOKIE)).toBeUndefined()
+    await expectDecoy(res, ADMIN.email)
+  })
+
+  it('kayıtsız e-posta: başarılı gibi yanıtlanır, kod gönderilmez', async () => {
+    db.employee = null
+    const res = await adminPassword(req('/api/auth/admin/password', { email: 'yok@test.com', password: 'dogru-sifre-123' }))
+    await expectDecoy(res, 'yok@test.com')
   })
 
   it('admin olmayan hesap aynı yanıtı alır; şifre karşılaştırması yine yapılır (sabit süre)', async () => {
     db.employee = EMPLOYEE
     const res = await adminPassword(req('/api/auth/admin/password', { email: EMPLOYEE.email, password: 'dogru-sifre-123' }))
-    expect(res.status).toBe(401)
-    expect((await res.json()).reason).toBe('INVALID_CREDENTIALS')
+    await expectDecoy(res, EMPLOYEE.email)
     expect(verifyPasswordRpc).toHaveBeenCalledOnce()
-    expect(signInWithOtp).not.toHaveBeenCalled()
+  })
+
+  it('hatalı bilgiyle geçilen kod adımında doğru kod bile kabul edilmez', async () => {
+    db.employee = null
+    const step1 = await adminPassword(req('/api/auth/admin/password', { email: ADMIN.email, password: 'yanlis-sifre-1' }))
+    const cookie = `${ADMIN_PENDING_COOKIE}=${step1.cookies.get(ADMIN_PENDING_COOKIE)?.value}`
+    db.employee = ADMIN
+    const res = await adminVerify(req('/api/auth/admin/verify', { email: ADMIN.email, token: '123456' }, cookie))
+    expect(res.status).not.toBe(200)
+    expect(res.cookies.get(ADMIN_VERIFIED_COOKIE)).toBeUndefined()
   })
 
   it('doğru şifre: kod gönderilir, bu e-postaya bağlı bekleme çerezi yazılır', async () => {
@@ -133,7 +156,7 @@ describe('POST /api/auth/admin/password', () => {
       body: JSON.stringify({ email: 'kaba-kuvvet@test.com', password: 'yanlis-sifre-1' }),
       headers: { 'content-type': 'application/json', 'cf-connecting-ip': '203.0.113.99' },
     })
-    for (let i = 0; i < 5; i++) expect((await adminPassword(make())).status).toBe(401)
+    for (let i = 0; i < 5; i++) expect((await adminPassword(make())).status).toBe(200)
     expect((await adminPassword(make())).status).toBe(429)
   })
 })

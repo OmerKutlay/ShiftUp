@@ -7,13 +7,14 @@
  *
  * Body: { email: string, password: string }
  *
- * Hesap yok / pasif / admin değil / şifresi yok / şifre yanlış → hepsi aynı yanıt
- * (INVALID_CREDENTIALS); şifre karşılaştırması her durumda yapılır (sabit süre).
+ * Hesap yok / pasif / admin değil / şifresi yok / şifre yanlış → başarılı gibi yanıtlanır:
+ * kod gönderilmez ama rastgele kimlikli bir bekleme çerezi yine yazılır, istemci kod adımına geçer
+ * ve girilen her kod reddedilir. Böylece deneme yanılmayla hangi e-postanın admin olduğu (ya da
+ * şifrenin doğru olduğu) anlaşılamaz. Şifre karşılaştırması her durumda yapılır (sabit süre).
  *
  * Response:
  *   200 { ok: true }
  *   400 { ok: false, reason: 'INVALID_EMAIL' | 'INVALID_JSON' }
- *   401 { ok: false, reason: 'INVALID_CREDENTIALS' }
  *   429 { ok: false, reason: 'RATE_LIMITED' }
  *   500 { ok: false, reason: 'SEND_FAILED' }
  */
@@ -39,8 +40,18 @@ const PER_EMAIL_PER_IP = 5
 const PER_EMAIL = 20
 const PER_IP = 20
 
-function invalidCredentials() {
-  return NextResponse.json({ ok: false, reason: 'INVALID_CREDENTIALS' }, { status: 401 })
+/**
+ * Kod gönderildi + bekleme çerezi yazıldı yanıtı. Bilgiler hatalıysa çerez rastgele bir kimliğe
+ * bağlanır (çerez içeriği okunabilir; gerçek kimlik gibi görünmeli) — 2. adımda hiçbir kod geçmez.
+ */
+async function codeStepResponse(req: NextRequest, employeeId: string, email: string) {
+  const res = NextResponse.json({ ok: true })
+  res.cookies.set(
+    ADMIN_PENDING_COOKIE,
+    await signAdminToken('pending', employeeId, email),
+    adminCookieOptions(req.nextUrl.protocol === 'https:', ADMIN_PENDING_MAX_AGE)
+  )
+  return res
 }
 
 export async function POST(req: NextRequest) {
@@ -55,7 +66,7 @@ export async function POST(req: NextRequest) {
   if (!isValidEmail(email)) {
     return NextResponse.json({ ok: false, reason: 'INVALID_EMAIL' }, { status: 400 })
   }
-  if (typeof body.password !== 'string' || !body.password) return invalidCredentials()
+  const password = typeof body.password === 'string' ? body.password : ''
 
   const ip = clientIp(req)
   const limits = await Promise.all([
@@ -78,8 +89,8 @@ export async function POST(req: NextRequest) {
 
     const isAdmin = !!employee && isEffectivelyActive(employee) && accessLevelOf(employee.roles) === ACCESS.ADMIN
     // Admin olmayan hesapta da karşılaştırma yapılır (NO_EMPLOYEE_ID) — süre farkı hesabı ele vermez
-    const passwordOk = await verifyAdminPassword(admin, isAdmin ? employee.id : null, body.password)
-    if (!isAdmin || !passwordOk) return invalidCredentials()
+    const passwordOk = !!password && await verifyAdminPassword(admin, isAdmin ? employee.id : null, password)
+    if (!isAdmin || !passwordOk) return codeStepResponse(req, crypto.randomUUID(), email)
 
     if (!IS_DEV_AUTH) {
       const provision = await ensureAuthUserForEmployee(admin, {
@@ -104,13 +115,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const res = NextResponse.json({ ok: true })
-    res.cookies.set(
-      ADMIN_PENDING_COOKIE,
-      await signAdminToken('pending', employee.id, email),
-      adminCookieOptions(req.nextUrl.protocol === 'https:', ADMIN_PENDING_MAX_AGE)
-    )
-    return res
+    return codeStepResponse(req, employee.id, email)
   } catch (err) {
     console.error('[POST /api/auth/admin/password]', err)
     return NextResponse.json({ ok: false, reason: 'SEND_FAILED' }, { status: 500 })

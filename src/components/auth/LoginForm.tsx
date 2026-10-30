@@ -46,7 +46,6 @@ const EMAIL_ERRORS: Record<string, string> = {
   RATE_LIMITED: 'Çok fazla deneme yapıldı. Lütfen biraz bekleyip tekrar deneyin.',
   // Yalnızca dev modunda döner (prod'da admin e-postası kayıtsız gibi yanıtlanır)
   ADMIN_LOGIN_REQUIRED: 'Admin hesapları admin giriş sayfasını kullanır.',
-  INVALID_CREDENTIALS: 'E-posta adresi veya admin şifresi hatalı.',
 }
 
 const OTP_ERRORS: Record<string, string> = {
@@ -196,7 +195,7 @@ export function LoginForm({ authMode, variant = 'employee' }: Props) {
         info: isDevMode
           ? 'Geliştirme modu etkin. Giriş kodunuzu girin.'
           : isAdmin
-          ? 'Şifre doğrulandı. Giriş kodu e-posta adresinize gönderildi.'
+          ? 'Bilgileriniz doğruysa giriş kodu e-posta adresinize gönderildi.'
           : 'Bu adres kayıtlı bir çalışana aitse giriş kodu gönderildi.',
         email,
       })
