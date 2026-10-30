@@ -141,11 +141,11 @@ export interface Segment {
   to: number
 }
 
-/** Bir vardiyanın çizelge parçaları: plan (zemin) + çalışılan / mola / kaçırılan */
+/** Bir vardiyanın çizelge parçaları: plan (zemin) + çalışılan / molalar / kaçırılan */
 export function timelineSegments(
   win: ShiftWindow,
   rec: Pick<AttendanceRecord, 'status' | 'clock_in_at' | 'clock_out_at'> &
-    Partial<Pick<AttendanceRecord, 'break_start_at' | 'break_end_at'>> | null,
+    Partial<Pick<AttendanceRecord, 'break_start_at' | 'break_end_at' | 'previous_breaks'>> | null,
   status: DayStatus,
   now: number,
 ): Segment[] {
@@ -153,15 +153,25 @@ export function timelineSegments(
   const inAt = ms(rec?.clock_in_at)
   if (rec && inAt !== null) {
     const outAt = ms(rec.clock_out_at) ?? Math.max(inAt, now)
+    // Önceki molalar (saatleri biliniyorsa) + son mola (sürüyorsa çıkışa / şimdiye kadar)
+    const spans: Array<[number, number]> = []
+    for (const b of rec.previous_breaks ?? []) {
+      const from = ms(b.start_at)
+      const to = ms(b.end_at)
+      if (from !== null && to !== null) spans.push([from, to])
+    }
     const bStart = ms(rec.break_start_at)
     const bEnd = ms(rec.break_end_at) ?? (rec.status === 'on_break' ? outAt : null)
-    if (bStart !== null && bEnd !== null && bStart >= inAt) {
-      segs.push({ kind: 'worked', from: inAt, to: bStart })
-      segs.push({ kind: 'break', from: bStart, to: bEnd })
-      if (bEnd < outAt) segs.push({ kind: 'worked', from: bEnd, to: outAt })
-    } else {
-      segs.push({ kind: 'worked', from: inAt, to: outAt })
+    if (bStart !== null && bEnd !== null) spans.push([bStart, bEnd])
+
+    let cursor = inAt
+    for (const [from, to] of spans.sort((a, b) => a[0] - b[0])) {
+      if (from < cursor || to < from) continue
+      if (from > cursor) segs.push({ kind: 'worked', from: cursor, to: from })
+      segs.push({ kind: 'break', from, to })
+      cursor = to
     }
+    if (cursor < outAt) segs.push({ kind: 'worked', from: cursor, to: outAt })
   } else if (status === 'late' || status === 'absent') {
     segs.push({ kind: 'missed', from: win.start, to: Math.min(now, win.end) })
   }

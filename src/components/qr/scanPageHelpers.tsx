@@ -79,7 +79,6 @@ export const STATUS_TONES: Record<string, BadgeTone> = {
 export interface ActionButton {
   action: QrActionType
   label: string
-  description: string
   icon: LucideIcon
   tone: 'brand' | 'warning' | 'danger'
   /** Birincil (primary renkli) düğme; diğerleri secondary renkte gösterilir */
@@ -102,7 +101,6 @@ export function getButtons(status: AttendanceStatus | null): ActionButton[] {
         {
           action: 'clock_in',
           label: 'Giriş yap',
-          description: 'Vardiyama başlamak istiyorum',
           icon: LogIn,
           tone: 'brand',
           primary: true,
@@ -113,7 +111,6 @@ export function getButtons(status: AttendanceStatus | null): ActionButton[] {
         {
           action: 'break_start',
           label: 'Molaya çık',
-          description: 'Mola vermek istiyorum',
           icon: Coffee,
           tone: 'warning',
           primary: true,
@@ -121,7 +118,6 @@ export function getButtons(status: AttendanceStatus | null): ActionButton[] {
         {
           action: 'clock_out',
           label: 'Çıkış yap',
-          description: 'Vardiyamı tamamlamak istiyorum',
           icon: LogOut,
           tone: 'danger',
           primary: false,
@@ -132,7 +128,6 @@ export function getButtons(status: AttendanceStatus | null): ActionButton[] {
         {
           action: 'break_end',
           label: 'Moladan dön',
-          description: 'Molam bitti, işe dönüyorum',
           icon: Undo2,
           tone: 'brand',
           primary: true,
@@ -144,7 +139,6 @@ export function getButtons(status: AttendanceStatus | null): ActionButton[] {
         {
           action: 'clock_out',
           label: 'Çıkış yap',
-          description: 'Vardiyamı tamamlamak istiyorum',
           icon: LogOut,
           tone: 'danger',
           primary: true,
@@ -152,7 +146,6 @@ export function getButtons(status: AttendanceStatus | null): ActionButton[] {
         {
           action: 'break_start',
           label: 'Molaya çık',
-          description: 'Tekrar mola vermek istiyorum',
           icon: Coffee,
           tone: 'warning',
           primary: false,

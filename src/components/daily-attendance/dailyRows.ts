@@ -3,6 +3,7 @@
  */
 import type { DailyShiftEntry } from '@/types/attendance'
 import { roleNameOf } from '@/lib/roleJoin'
+import { listBreaks, type BreakItem } from '@/lib/attendanceDurations'
 import {
   clock, dayStatusOf, lateMinutes, timelineSegments, workedMinutes,
   type DayStatus, type Segment, type ShiftWindow, shiftWindow,
@@ -21,6 +22,8 @@ export interface DailyRow {
   late: number | null
   worked: number | null
   segments: Segment[]
+  /** Günün molaları sırayla (son öğe sürüyor olabilir) */
+  breaks: BreakItem[]
   /** Zaman çizelgesinin ekran okuyucu metni */
   summary: string
 }
@@ -30,10 +33,12 @@ export function buildDailyRows(entries: DailyShiftEntry[], now: number): DailyRo
     const { employee, shiftAssignment: sa, attendanceRecord: rec } = entry
     const win = shiftWindow(sa.work_date, sa.start_time, sa.end_time)
     const status = dayStatusOf(rec?.status, win, now, sa.is_on_leave)
+    const breaks = rec ? listBreaks(rec) : []
     const parts = [
       rec?.clock_in_at && `giriş ${clock(rec.clock_in_at)}`,
-      rec?.break_start_at && `mola ${clock(rec.break_start_at)}–${rec.break_end_at ? clock(rec.break_end_at) : 'sürüyor'}`,
-      !!rec?.completed_break_minutes && `önceki molalar ${rec.completed_break_minutes} dk`,
+      ...breaks.map((b, i) => b.start_at
+        ? `${breaks[0].start_at ? `${i + 1}. mola` : 'son mola'} ${clock(b.start_at)}–${b.end_at ? clock(b.end_at) : 'sürüyor'}`
+        : `önceki molalar ${b.minutes} dk`),
       rec?.clock_out_at && `çıkış ${clock(rec.clock_out_at)}`,
     ].filter(Boolean)
     return {
@@ -48,6 +53,7 @@ export function buildDailyRows(entries: DailyShiftEntry[], now: number): DailyRo
       late: lateMinutes(rec?.clock_in_at, win),
       worked: workedMinutes(rec, now, sa),
       segments: timelineSegments(win, rec, status, now),
+      breaks,
       summary: `Vardiya ${sa.start_time.slice(0, 5)}–${sa.end_time.slice(0, 5)}${parts.length ? `, ${parts.join(', ')}` : ', okutma yok'}`,
     }
   })
