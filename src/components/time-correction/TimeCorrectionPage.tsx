@@ -15,7 +15,7 @@ import { useAuth } from '@/context/AuthContext'
 import { hasRole, MANAGER_ROLES } from '@/lib/auth/roles'
 import { apiFetch } from '@/lib/api/http'
 import type { TimeCorrectionRequest } from '@/types/timeCorrection'
-import { DateField, Page, PageHeader, PageSkeleton } from '@/components/common'
+import { DateField, Page, PageHeader, PageSkeleton, PageTabsList, TabLabel } from '@/components/common'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -25,7 +25,7 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/c
 import { Input } from '@/components/ui/input'
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from '@/components/ui/item'
 import { Spinner } from '@/components/ui/spinner'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsContent, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import {
   DirectCorrectionCard, EmployeeRequestsReview, ListSkeletonRows, PENDING_CORRECTIONS_KEY,
@@ -249,21 +249,19 @@ export function TimeCorrectionPage() {
       {isManager ? (
         <Tabs value={managerTab} onValueChange={(v) => setManagerTab(v as ManagerTab)} className="gap-4">
           {/* Mobilde üç sekme tam genişlikte, kısa etiketlerle — taşma / yatay kaydırma olmasın */}
-          <TabsList className="w-full sm:w-fit">
+          <PageTabsList>
             <TabsTrigger value="review" className="max-sm:min-w-0">
-              <span className="sm:hidden">Çalışanlar</span>
-              <span className="max-sm:hidden">Çalışan talepleri</span>
+              <TabLabel short="Çalışanlar" long="Çalışan talepleri" />
               {!!pendingCount && <Badge variant="secondary" className="tabular-nums">{pendingCount}</Badge>}
             </TabsTrigger>
             <TabsTrigger value="direct" className="max-sm:min-w-0">
-              <span className="sm:hidden">Doğrudan</span>
-              <span className="max-sm:hidden">Doğrudan düzeltme</span>
+              <TabLabel short="Doğrudan" long="Doğrudan düzeltme" />
             </TabsTrigger>
             <TabsTrigger value="mine" className="max-sm:min-w-0">
               Taleplerim
               {requests.length > 0 && <Badge variant="secondary" className="tabular-nums">{requests.length}</Badge>}
             </TabsTrigger>
-          </TabsList>
+          </PageTabsList>
           <TabsContent value="review"><EmployeeRequestsReview /></TabsContent>
           <TabsContent value="direct"><DirectCorrectionCard /></TabsContent>
           <TabsContent value="mine">{ownView}</TabsContent>

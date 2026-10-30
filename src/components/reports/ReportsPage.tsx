@@ -3,8 +3,8 @@
 /**
  * ReportsPage — Raporlar: devam raporu, aylık puantaj (Excel) ve yıllık fazla çalışma.
  */
-import { Page, PageHeader } from '@/components/common'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Page, PageHeader, PageTabsList, TabLabel } from '@/components/common'
+import { Tabs, TabsContent, TabsTrigger } from '@/components/ui/tabs'
 import { AttendanceReportsPage } from './AttendanceReportsPage'
 import { TimesheetPanel } from './TimesheetPanel'
 import { OvertimePanel } from './OvertimePanel'
@@ -24,14 +24,13 @@ export function ReportsPage() {
       {/* İçerik sekme değişince söküldüğü için (Radix varsayılanı) her panel kendi verisini yalnızca açıkken çeker */}
       <Tabs defaultValue="attendance" className="gap-4 md:gap-6">
         {/* Mobilde kısa etiketlerle tam genişlik: kaydırma olmadan sığar */}
-        <TabsList className="w-full sm:w-fit">
+        <PageTabsList>
           {TABS.map((t) => (
             <TabsTrigger key={t.value} value={t.value} aria-label={t.label}>
-              <span className="sm:hidden" aria-hidden>{t.short}</span>
-              <span className="max-sm:hidden">{t.label}</span>
+              <TabLabel short={t.short} long={t.label} />
             </TabsTrigger>
           ))}
-        </TabsList>
+        </PageTabsList>
         <TabsContent value="attendance"><AttendanceReportsPage embedded /></TabsContent>
         <TabsContent value="timesheet"><TimesheetPanel /></TabsContent>
         <TabsContent value="overtime"><OvertimePanel /></TabsContent>

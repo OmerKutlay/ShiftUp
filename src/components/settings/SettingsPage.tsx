@@ -7,8 +7,8 @@
 import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Bell, Bug, CalendarDays, Gauge, History, KeyRound, MapPin, ShieldCheck, Store } from 'lucide-react'
-import { Page, PageHeader } from '@/components/common'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Page, PageHeader, PageTabsList, TabLabel } from '@/components/common'
+import { Tabs, TabsContent, TabsTrigger } from '@/components/ui/tabs'
 import { PushPermissionCard } from '@/components/pwa/PushPermissionCard'
 import { PushDiagnosticsPanel } from '@/components/pwa/PushDiagnosticsPanel'
 import { StoresPanel } from '@/components/stores/StoresPanel'
@@ -24,7 +24,7 @@ import { AdminLoginPanel } from './AdminLoginPanel'
 
 type SettingsTab = 'location' | 'stores' | 'norms' | 'holidays' | 'audit' | 'errors' | 'admin' | 'notifications' | 'kvkk'
 
-/** Sekme etiketi: masaüstünde ikon + tam ad, dar ekranda kısa ad (dört sekme 390px'e sığsın) */
+/** Sekme etiketi: masaüstünde ikon + tam ad, dar ekranda kısa ad */
 const TABS: { value: SettingsTab; icon: React.ReactNode; label: string; short: string; adminOnly?: boolean }[] = [
   { value: 'location', icon: <MapPin />, label: 'Mağaza konumu', short: 'Konum' },
   { value: 'stores', icon: <Store />, label: 'Mağazalar', short: 'Mağazalar', adminOnly: true },
@@ -64,15 +64,15 @@ export function SettingsPage() {
           : 'Mağaza konumu, resmi tatiller, denetim kaydı, bildirimler ve KVKK'}
       />
       <Tabs value={tab} onValueChange={(v) => setTab(v as SettingsTab)} className="gap-4 md:gap-6">
-        <TabsList className="w-full justify-start overflow-x-auto overflow-y-hidden scrollbar-none sm:w-fit">
+        {/* Admin'in dokuz sekmesi mobilde 3 × 3 ızgara; diğer roller tek satıra sığar */}
+        <PageTabsList columns={tabs.length > 5 ? 3 : undefined}>
           {tabs.map((t) => (
             <TabsTrigger key={t.value} value={t.value} className="sm:px-3">
               <span className="hidden sm:contents">{t.icon}</span>
-              <span className="sm:hidden">{t.short}</span>
-              <span className="hidden sm:inline">{t.label}</span>
+              <TabLabel short={t.short} long={t.label} />
             </TabsTrigger>
           ))}
-        </TabsList>
+        </PageTabsList>
         {/* Yalnızca açık sekme bağlanır: paneller kendi verisini bağlandığında yükler */}
         <TabsContent value="location"><StoreLocationPage embedded /></TabsContent>
         {isAdmin && <TabsContent value="stores"><StoresPanel /></TabsContent>}

@@ -27,22 +27,13 @@ import { fetchActiveEmployees } from '@/lib/api/employees'
 import { fetchWeeklyAssignments } from '@/lib/api/schedule'
 import { useAuth } from '@/context/AuthContext'
 import { hasRole, MANAGER_ROLES } from '@/lib/auth/roles'
-import { Page, PageHeader, TableSkeleton } from '@/components/common'
+import { Page, PageHeader, PageTabsList, TabLabel, TableSkeleton } from '@/components/common'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsContent, TabsTrigger } from '@/components/ui/tabs'
 
 type WorkforceTab = 'availability' | 'open-shifts' | 'swap' | 'plan'
 
-/** Telefonda kısa, geniş ekranda uzun sekme adı; erişilebilir ad her zaman uzun ad */
-function TabLabel({ short, long }: { short: string; long: string }) {
-  return (
-    <>
-      <span className="sm:hidden" aria-hidden>{short}</span>
-      <span className="max-sm:hidden">{long}</span>
-    </>
-  )
-}
 
 function Count({ n }: { n: number | undefined }) {
   if (!n) return null
@@ -118,23 +109,24 @@ export function WorkforcePage() {
       </Suspense>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as WorkforceTab)} className="gap-4 md:gap-6">
-        <TabsList className="max-w-full justify-start overflow-x-auto overflow-y-hidden scrollbar-none">
-          <TabsTrigger value="availability" className="flex-none">
-            <CalendarClock />Müsaitlik<Count n={availabilityCount} />
+        {/* Mobilde ikonsuz kısa etiketler: dört sekme sayılarıyla tek satıra sığar */}
+        <PageTabsList>
+          <TabsTrigger value="availability">
+            <CalendarClock className="max-sm:hidden" />Müsaitlik<Count n={availabilityCount} />
           </TabsTrigger>
-          <TabsTrigger value="open-shifts" className="flex-none" aria-label="Açık vardiyalar">
-            <BriefcaseBusiness /><TabLabel short="Açık" long="Açık vardiyalar" /><Count n={openCount} />
+          <TabsTrigger value="open-shifts" aria-label="Açık vardiyalar">
+            <BriefcaseBusiness className="max-sm:hidden" /><TabLabel short="Açık" long="Açık vardiyalar" /><Count n={openCount} />
           </TabsTrigger>
-          <TabsTrigger value="swap" className="flex-none" aria-label="Vardiya takası">
-            <ArrowLeftRight /><TabLabel short="Takas" long="Vardiya takası" /><Count n={swapActionCount} />
+          <TabsTrigger value="swap" aria-label="Vardiya takası">
+            <ArrowLeftRight className="max-sm:hidden" /><TabLabel short="Takas" long="Vardiya takası" /><Count n={swapActionCount} />
           </TabsTrigger>
           {/* Haftalık planlama yalnızca manager+ için görünür */}
           {isManager && (
-            <TabsTrigger value="plan" className="flex-none" aria-label="Haftalık plan">
-              <CalendarRange /><TabLabel short="Plan" long="Haftalık plan" />
+            <TabsTrigger value="plan" aria-label="Haftalık plan">
+              <CalendarRange className="max-sm:hidden" /><TabLabel short="Plan" long="Haftalık plan" />
             </TabsTrigger>
           )}
-        </TabsList>
+        </PageTabsList>
 
         {/* Çalışan/vardiya verisi gelene kadar yalnızca bunlara bağımlı sekmeler skeleton gösterir */}
         <TabsContent value="availability">

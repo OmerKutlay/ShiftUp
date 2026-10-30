@@ -16,7 +16,8 @@ import { fetchDailyShifts } from '@/lib/api/attendance'
 import { formatDateTurkish, formatDayNameTurkish } from '@/lib/dateUtils'
 import { useLastUpdated } from '@/hooks/useLastUpdated'
 import {
-  DataTable, Page, PageHeader, PersonAvatar, StatCard, StatCards, TableSkeleton, type ColumnDef,
+  DataTable, Page, PageHeader, PageTabsList, PersonAvatar, StatCard, StatCards, TabLabel, TableSkeleton,
+  type ColumnDef,
 } from '@/components/common'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -25,7 +26,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsTrigger } from '@/components/ui/tabs'
 import { ChecklistSummaryStrip } from '@/components/checklists'
 import { AttendanceStatusChip } from './AttendanceStatusChip'
 import { AttendanceTimeline, TimelineAxis, TimelineLegend } from './AttendanceTimeline'
@@ -39,12 +40,12 @@ import { useHydrated } from '@/hooks/useHydrated'
 
 type Filter = 'all' | 'inside' | 'missing' | 'upcoming' | 'done' | 'leave'
 
-const FILTERS: Array<{ value: Filter; label: string; match: (s: DayStatus) => boolean }> = [
+const FILTERS: Array<{ value: Filter; label: string; short?: string; match: (s: DayStatus) => boolean }> = [
   { value: 'all', label: 'Tümü', match: () => true },
   { value: 'inside', label: 'İçeride', match: (s) => s === 'working' || s === 'on_break' },
   { value: 'missing', label: 'Gelmedi', match: (s) => s === 'absent' || s === 'late' },
   { value: 'upcoming', label: 'Başlamadı', match: (s) => s === 'upcoming' },
-  { value: 'done', label: 'Çıkış yaptı', match: (s) => s === 'done' },
+  { value: 'done', label: 'Çıkış yaptı', short: 'Çıktı', match: (s) => s === 'done' },
   { value: 'leave', label: 'İzinli', match: (s) => s === 'leave' },
 ]
 
@@ -293,16 +294,15 @@ export function DailyAttendancePage() {
 
           <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)} className="gap-3">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="-mx-4 overflow-x-auto px-4 md:mx-0 md:px-0">
-                <TabsList>
-                  {FILTERS.map((f) => (
-                    <TabsTrigger key={f.value} value={f.value}>
-                      {f.label}
-                      <Badge variant="secondary" className="tabular-nums">{counts[f.value]}</Badge>
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-              </div>
+              {/* Mobilde 3 × 2 ızgara: altı filtre sayılarıyla kaydırmadan sığar */}
+              <PageTabsList columns={3}>
+                {FILTERS.map((f) => (
+                  <TabsTrigger key={f.value} value={f.value}>
+                    {f.short ? <TabLabel short={f.short} long={f.label} /> : f.label}
+                    <Badge variant="secondary" className="tabular-nums">{counts[f.value]}</Badge>
+                  </TabsTrigger>
+                ))}
+              </PageTabsList>
               <InputGroup className="lg:w-64">
                 <InputGroupInput placeholder="Çalışan veya görev ara…" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Çalışan ara" />
                 <InputGroupAddon><Search /></InputGroupAddon>
