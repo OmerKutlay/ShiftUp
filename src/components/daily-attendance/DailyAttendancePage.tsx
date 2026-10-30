@@ -29,6 +29,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { Tabs, TabsTrigger } from '@/components/ui/tabs'
 import { ChecklistSummaryStrip } from '@/components/checklists'
 import { AttendanceStatusChip } from './AttendanceStatusChip'
+import { BreakCell } from './BreakDetails'
 import { AttendanceTimeline, TimelineAxis, TimelineLegend } from './AttendanceTimeline'
 import { EmployeeAttendanceRow } from './EmployeeAttendanceRow'
 import { ShiftTime } from './ShiftTime'
@@ -152,28 +153,8 @@ export function DailyAttendancePage() {
       id: 'break',
       header: 'Mola',
       enableSorting: false,
-      cell: ({ row }) => {
-        const rec = row.original.entry.attendanceRecord
-        // break_start_at / break_end_at yalnızca son molayı tutar; öncekiler completed_break_minutes'ta
-        const prev = rec?.completed_break_minutes ?? 0
-        if (!rec?.break_start_at) {
-          return prev > 0
-            ? <span className="tabular-nums whitespace-nowrap">{formatDelay(prev)} toplam</span>
-            : <span className="text-muted-foreground">—</span>
-        }
-        const from = new Date(rec.break_start_at).getTime()
-        const to = rec.break_end_at ? new Date(rec.break_end_at).getTime() : now
-        const mins = Math.max(0, Math.round((to - from) / 60_000))
-        return (
-          <span className="flex flex-col tabular-nums whitespace-nowrap">
-            <span>{clock(rec.break_start_at)}–{rec.break_end_at ? clock(rec.break_end_at) : '…'}</span>
-            {rec.break_end_at
-              ? <span className="text-xs text-muted-foreground">{formatDelay(mins)}</span>
-              : <span className="text-xs text-warning">{formatDelay(mins)} · sürüyor</span>}
-            {prev > 0 && <span className="text-xs text-muted-foreground">Toplam {formatDelay(prev + mins)}</span>}
-          </span>
-        )
-      },
+      // Satırda yalnızca toplam + mola sayısı; saatler üzerine gelince açılan pencerede
+      cell: ({ row }) => <BreakCell breaks={row.original.breaks} now={now} />,
     },
     {
       id: 'out',

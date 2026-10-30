@@ -8,9 +8,10 @@
  *      Kullanıcı hangi amaçla QR okutacağını seçer.
  *   2. QR tarama: kiosk ekranındaki QR kodu okutulur. Seçilen amaç ile doğrulama yapılır.
  *
- * Görünüm (telefon öncelikli, ekranı dolduran tek sütun): üstte kişi + durum kartı, ortada büyük
- * saat ve bugünkü vardiya, altta (başparmak bölgesinde) büyük işlem düğmeleri. Tarama, konum,
- * kayıt, sonuç ve hata aşamaları aynı yerde tek bir kartta gösterilir.
+ * Görünüm (telefon öncelikli, ekranı dolduran tek sütun, sade): ortada durum rozeti, büyük saat,
+ * bugünkü vardiya ve mola özeti (ayrıntı dokununca açılır); altta (başparmak bölgesinde) tek
+ * satırlık işlem düğmeleri. Konum açıklaması (KVKK) tarama kartında, konum istenmeden önce
+ * gösterilir. Tarama, konum, kayıt, sonuç ve hata aşamaları aynı yerde tek bir kartta gösterilir.
  *
  * Kurallar:
  *   - Molada iken "Çıkış yap" seçeneği gösterilmez.
@@ -21,7 +22,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import {
-  CalendarOff, CircleAlert, CircleCheck, Clock, LocateFixed, MapPin, MapPinOff, RefreshCw, ScanLine, WifiOff, X,
+  CalendarOff, CircleAlert, CircleCheck, Clock, LocateFixed, MapPin, MapPinOff, RefreshCw, ScanLine, WifiOff,
 } from 'lucide-react'
 import type { QrActionType } from '@/types/qr'
 import { QR_ACTION_LABELS } from '@/types/qr'
@@ -29,11 +30,10 @@ import type { ProcessQrResponse } from '@/types/qr'
 import type { GpsCoordinates } from '@/types/location'
 import { useAuth } from '@/context/AuthContext'
 import { LOADING_LABEL } from '@/components/common/Skeletons'
-import { PersonAvatar } from '@/components/common/PersonAvatar'
 import { StatusBadge } from '@/components/common/Cards'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
@@ -81,6 +81,21 @@ function StateCard({ children, className }: { children: React.ReactNode; classNa
     <Card className={cn('py-0 shadow-xs', className)}>
       <Empty className="gap-5 p-6 md:p-8">{children}</Empty>
     </Card>
+  )
+}
+
+/** Oturum / durum yüklenirken: saat bloğu ve işlem düğmesi yer tutucuları */
+function ScanPageSkeleton() {
+  return (
+    <div role="status" aria-busy="true" aria-label={LOADING_LABEL} className="flex flex-1 flex-col gap-3">
+      <div className="flex flex-1 flex-col items-center justify-center gap-2">
+        <Skeleton className="mb-2 h-5 w-20 rounded-full" />
+        <Skeleton className="h-12 w-32" />
+        <Skeleton className="h-4 w-40" />
+      </div>
+      <Skeleton className="h-16 w-full rounded-xl" />
+      <Skeleton className="h-12 w-full rounded-xl" />
+    </div>
   )
 }
 
@@ -255,15 +270,7 @@ export function AttendanceScanPage() {
   if (authStatus === 'loading') {
     return (
       <div className={SHELL}>
-        <div role="status" aria-busy="true" aria-label={LOADING_LABEL} className="flex flex-1 flex-col gap-4">
-          <Skeleton className="h-20 w-full rounded-xl" />
-          <div className="flex flex-1 flex-col items-center justify-center gap-2">
-            <Skeleton className="h-12 w-32" />
-            <Skeleton className="h-4 w-40" />
-          </div>
-          <Skeleton className="h-20 w-full rounded-xl" />
-          <Skeleton className="h-20 w-full rounded-xl" />
-        </div>
+        <ScanPageSkeleton />
       </div>
     )
   }
@@ -316,48 +323,32 @@ export function AttendanceScanPage() {
         <p className="text-sm text-muted-foreground">Kiosk ekranındaki kodu okutarak giriş, mola ve çıkış yapın</p>
       </header>
 
-      {/* Kişi + mevcut durum */}
-      <Card className="gap-0 py-0 shadow-xs">
-        <div className="flex items-center gap-3 p-4">
-          <PersonAvatar name={employee.full_name} size={40} />
-          <div className="min-w-0 flex-1">
-            <p className="truncate font-medium">{employee.full_name}</p>
-            <p className="truncate text-sm text-muted-foreground">{employee.roles?.name ?? 'Çalışan'}</p>
-          </div>
-          {currentStatus && pageState !== 'loading_status' && <StatusBadge tone={statusTone} label={statusLabel} />}
-        </div>
-      </Card>
-
       {/* ── DURUM YÜKLENİYOR ── */}
-      {pageState === 'loading_status' && (
-        <div role="status" aria-busy="true" aria-label={LOADING_LABEL} className="flex flex-1 flex-col gap-4">
-          <div className="flex flex-1 flex-col items-center justify-center gap-2">
-            <Skeleton className="h-12 w-32" />
-            <Skeleton className="h-4 w-40" />
-          </div>
-          <Skeleton className="h-20 w-full rounded-xl" />
-          <Skeleton className="h-20 w-full rounded-xl" />
-        </div>
-      )}
+      {pageState === 'loading_status' && <ScanPageSkeleton />}
 
       {/* ── AMAÇ SEÇİMİ ── */}
       {pageState === 'select_action' && (
         <>
-          {/* Saat ve bugünkü vardiya */}
+          {/* Durum, saat, bugünkü vardiya ve molalar — tek blok; mola ayrıntısı dokununca açılır */}
           <section aria-label="Şu an" className="flex flex-1 flex-col items-center justify-center gap-1 py-6 text-center">
+            {/* Vardiya bitince aşağıdaki "Vardiya tamamlandı" kartı yeterli */}
+            {currentStatus && currentStatus !== 'clocked_out' && (
+              <StatusBadge tone={statusTone} label={statusLabel} className="mb-2" />
+            )}
             <p className="text-5xl font-semibold tracking-tight tabular-nums" suppressHydrationWarning>
               {clock?.time ?? '—'}
             </p>
             <p className="text-sm text-muted-foreground first-letter:uppercase">{clock?.date ?? ''}</p>
             {shiftText && (
-              <p className="mt-3 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm tabular-nums">
-                <Clock className="size-3.5 text-muted-foreground" aria-hidden />
-                Vardiya {shiftText}
-              </p>
+              <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+                <p className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm tabular-nums">
+                  <Clock className="size-3.5 text-muted-foreground" aria-hidden />
+                  Vardiya {shiftText}
+                </p>
+                <BreakSummary breaks={statusData?.breaks ?? []} />
+              </div>
             )}
           </section>
-
-          {hasShift && <BreakSummary breaks={statusData?.breaks ?? []} />}
 
           {!hasShift && (
             <StateCard>
@@ -381,16 +372,11 @@ export function AttendanceScanPage() {
 
           {hasShift && buttons.length > 0 && (
             <section aria-labelledby="scan-actions-title" className="flex flex-col gap-3">
-              <h2 id="scan-actions-title" className="text-sm font-medium text-muted-foreground">Ne yapmak istiyorsunuz?</h2>
+              <h2 id="scan-actions-title" className="sr-only">Ne yapmak istiyorsunuz?</h2>
 
               {!online && <OfflineActionAlert />}
-              {currentStatus === 'on_break' && (
-                <Alert>
-                  <Clock />
-                  <AlertDescription>Molada iken çıkış yapılamaz. Önce moladan dönün.</AlertDescription>
-                </Alert>
-              )}
 
+              {/* Molada yalnızca "Moladan dön" çıkar (çıkış kuralı ayrıca yazılmaz); konum açıklaması tarama ekranında */}
               {buttons.map((btn) => {
                 const Icon = btn.icon
                 const primary = btn.primary
@@ -402,32 +388,18 @@ export function AttendanceScanPage() {
                     disabled={!online}
                     onClick={() => handleSelectAction(btn.action)}
                     className={cn(
-                      'h-auto w-full justify-start gap-4 rounded-xl px-4 py-4 text-left whitespace-normal has-[>svg]:px-4',
+                      'w-full justify-start gap-3 rounded-xl px-5 has-[>svg]:px-5 [&_svg:not([class*=size-])]:size-5',
+                      primary ? 'h-16 text-lg font-semibold' : 'h-12 text-base',
                       // İkincil: marka renginin açık tonu (temadaki secondary neredeyse beyaz, outline'dan ayırt edilmiyor)
                       !primary && 'border border-primary/25 bg-primary/10 text-primary hover:bg-primary/15'
                     )}
                   >
-                    <span
-                      aria-hidden
-                      className={cn(
-                        'flex size-10 shrink-0 items-center justify-center rounded-lg [&_svg]:size-5',
-                        primary ? 'bg-primary-foreground/15' : 'bg-primary/15'
-                      )}
-                    >
-                      <Icon />
-                    </span>
-                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                      <span className="text-base font-semibold">{btn.label}</span>
-                      <span className={cn('text-sm font-normal', primary ? 'text-primary-foreground/80' : 'text-primary/80')}>
-                        {btn.description}
-                      </span>
-                    </span>
-                    <ScanLine aria-hidden className="size-5 opacity-80" />
+                    <Icon aria-hidden />
+                    <span className="flex-1 text-left">{btn.label}</span>
+                    <ScanLine aria-hidden className="opacity-70" />
                   </Button>
                 )
               })}
-
-              <LocationNotice />
             </section>
           )}
         </>
@@ -439,11 +411,6 @@ export function AttendanceScanPage() {
           <CardHeader className="px-4">
             <CardTitle>{selectedAction ? QR_ACTION_LABELS[selectedAction] : 'QR tara'}</CardTitle>
             <CardDescription>Kiosk ekranındaki QR kodu çerçeveye hizalayın</CardDescription>
-            <CardAction>
-              <Button variant="ghost" size="icon-sm" onClick={handleBackToSelect} aria-label="Geri" className="text-muted-foreground">
-                <X />
-              </Button>
-            </CardAction>
           </CardHeader>
           <CardContent className="flex flex-col items-center gap-4 px-4">
             {/* Çevrimdışıyken kamera hiç açılmaz; bağlantı gelince tarayıcı kendiliğinden başlar */}
@@ -462,7 +429,7 @@ export function AttendanceScanPage() {
 
             <LocationNotice />
             <Button variant="outline" onClick={handleBackToSelect} className="w-full">
-              Amacı değiştir
+              Vazgeç
             </Button>
           </CardContent>
         </Card>

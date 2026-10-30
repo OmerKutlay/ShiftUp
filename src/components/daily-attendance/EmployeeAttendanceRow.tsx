@@ -8,6 +8,7 @@ import { PersonAvatar } from '@/components/common'
 import { Item, ItemActions, ItemContent, ItemDescription, ItemFooter, ItemMedia, ItemTitle } from '@/components/ui/item'
 import { AttendanceStatusChip } from './AttendanceStatusChip'
 import { AttendanceTimeline } from './AttendanceTimeline'
+import { BreakCell } from './BreakDetails'
 import { ShiftTime } from './ShiftTime'
 import { clock, formatDuration, type ShiftWindow } from './attendanceTime'
 import type { DailyRow } from './dailyRows'
@@ -31,6 +32,7 @@ export function EmployeeAttendanceRow({ row, range, now }: { row: DailyRow; rang
             </span>
           )}
           {row.late !== null && <span className="text-warning">+{row.late} dk</span>}
+          <BreakCell breaks={row.breaks} now={now} variant="inline" />
           {row.worked !== null && <span className="ml-auto font-medium tabular-nums">{formatDuration(row.worked)}</span>}
         </div>
         {range && <AttendanceTimeline segments={row.segments} range={range} now={now} label={row.summary} />}
