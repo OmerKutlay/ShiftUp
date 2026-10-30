@@ -25,7 +25,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { DEV_SESSION_COOKIE, IS_DEV_AUTH } from '@/lib/authConfig'
 import { verifyDevSessionEdge } from '@/lib/auth/devSessionEdge'
-import { isSessionExpired, sessionIdOf } from '@/lib/auth/sessionAge'
+import { verifySupabaseSession } from '@/lib/auth/verifiedSession'
 import {
   ADMIN_DEVICE_COOKIE, ADMIN_PENDING_COOKIE, ADMIN_VERIFIED_COOKIE, EMPLOYEE_LOGIN_PARAM, devSessionId,
   passesAdminLogin,
@@ -203,19 +203,19 @@ export async function middleware(request: NextRequest) {
   } else {
     const { createSupabaseMiddlewareClient } = await import('@/lib/supabase/middleware-client')
     const supabase = createSupabaseMiddlewareClient(request, response)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
+    // Token yerelde doğrulanır (Auth sunucusuna alt istek yok) — bkz. verifiedSession
+    const verified = await verifySupabaseSession(supabase.auth)
+    if (verified) {
       // Girişten 30 gün geçtiyse oturum kesin kapanır (refresh token sunucuda iptal edilir)
-      const { data: { session } } = await supabase.auth.getSession()
-      if (isSessionExpired(session?.access_token, user.last_sign_in_at)) {
+      if (verified.expired) {
         await supabase.auth.signOut().catch(() => {})
         trace.step('session', { ok: false, expired: true })
         return isLoginPage
           ? clearSessionCookies(request, response)
           : redirectToLogin(request, null, true)
       }
-      identity = { authUserId: user.id }
-      sessionId = sessionIdOf(session?.access_token)
+      identity = { authUserId: verified.userId }
+      sessionId = verified.sessionId
     }
   }
 

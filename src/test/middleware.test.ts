@@ -19,13 +19,17 @@ vi.mock('@/lib/authConfig', () => ({ IS_DEV_AUTH: false, DEV_SESSION_COOKIE: 'de
 vi.mock('@/lib/supabase/middleware-client', () => ({
   createSupabaseMiddlewareClient: (_req: NextRequest, res: NextResponse) => ({
     auth: {
-      getUser: async () => {
+      // getUser mock'u oturum doğrulamasını temsil eder; claims access token'dan çözülür
+      getClaims: async () => {
         const r = await getUser()
         // Token yenilendiyse @supabase/ssr yeni çerezi middleware yanıtına yazar
         if (r.refreshed) res.cookies.set('sb-proj-auth-token', 'NEW_TOKEN', { path: '/' })
-        return { data: { user: r.user } }
+        if (!r.user) return { data: null, error: null }
+        const payload = accessToken ? JSON.parse(atob(accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))) : {}
+        return { data: { claims: { ...payload, sub: r.user.id } }, error: null }
       },
-      getSession: async () => ({ data: { session: accessToken ? { access_token: accessToken } : null } }),
+      // Yalnızca token'da `amr` yoksa (giriş anı için) çağrılır
+      getUser: async () => ({ data: { user: (await getUser()).user } }),
       signOut,
     },
   }),

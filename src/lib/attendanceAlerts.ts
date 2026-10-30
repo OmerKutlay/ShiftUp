@@ -10,7 +10,9 @@
  *      (+ adminlere) bildirim; başka mağazanın yöneticisi bilgilendirilmez.
  *      Asıl tarama veritabanında pg_cron ile çalışır (public.scan_missed_attendance,
  *      20261023100000_attendance_missed_scan_cron.sql) — uygulama kapalıyken de push gider.
- *      Buradaki TS kopyası yedektir; mantık değişirse SQL fonksiyonu da güncellenmeli.
+ *      Buradaki TS kopyası yedektir (POST /api/attendance/alerts/scan); mantık değişirse SQL
+ *      fonksiyonu da güncellenmeli. Bildirim sorgusundan tetiklenmez: her yönetici yoklaması
+ *      Worker'da ek sorgu ve CPU demekti (Error 1102).
  *
  * Tüm bildirimler related_id = shift_assignment_id taşır; aynı vardiya için
  * aynı tipte ikinci bildirim gönderilmez.
@@ -20,7 +22,6 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getExistingNotificationKeys, getActiveManagerIds, notifyManagers } from '@/lib/notificationRepository'
-import { checkRateLimit } from '@/lib/rateLimiter'
 import type { NotificationType } from '@/types/notification'
 import { turkeyDateString } from '@/lib/dateUtils'
 
@@ -280,27 +281,4 @@ export async function scanMissedAttendance(
   }
 
   return { checked: shifts.length, notified }
-}
-
-// ─── Throttle: yönetici bildirim isteklerinden tetikleme ────────
-
-const SCAN_THROTTLE_MS = 60 * 1000
-let runningScan: Promise<unknown> | null = null
-
-/**
- * scanMissedAttendance'ı en fazla dakikada bir çalıştırır. Throttle paylaşılan
- * rate limiter üzerindendir — birden çok sunucu instance'ı aynı anda taramaz.
- * Cron altyapısı olmadan, yöneticinin bildirim sorgusu sırasında tarama yapılmasını sağlar.
- */
-export async function scanMissedAttendanceThrottled(admin: SupabaseClient): Promise<void> {
-  if (runningScan) {
-    await runningScan
-    return
-  }
-  const { allowed } = await checkRateLimit('attendance_missed_scan', 1, SCAN_THROTTLE_MS)
-  if (!allowed) return
-  runningScan = scanMissedAttendance(admin)
-    .catch((err) => console.error('[attendanceAlerts] tarama hatası:', err))
-    .finally(() => { runningScan = null })
-  await runningScan
 }

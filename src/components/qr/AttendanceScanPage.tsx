@@ -29,6 +29,7 @@ import { QR_ACTION_LABELS } from '@/types/qr'
 import type { ProcessQrResponse } from '@/types/qr'
 import type { GpsCoordinates } from '@/types/location'
 import { useAuth } from '@/context/AuthContext'
+import { ApiError, apiFetch, isPlatformLimitError, PLATFORM_LIMIT_MSG } from '@/lib/api/http'
 import { LOADING_LABEL } from '@/components/common/Skeletons'
 import { StatusBadge } from '@/components/common/Cards'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -127,21 +128,13 @@ export function AttendanceScanPage() {
     setLocationErrorKind(null)
     setSelectedAction(null)
     try {
-      const res = await fetch('/api/attendance/current-status', {
-        credentials: 'same-origin',
-      })
-      if (!res.ok) {
-        const data = (await res.json()) as { error?: string }
-        setErrorMsg(data.error ?? 'Durum bilgisi alınamadı.')
-        setPageState('error')
-        return
-      }
-      const data = (await res.json()) as CurrentStatusResponse
+      // apiFetch: Cloudflare 1102 (CPU sınırı) 503'ünde okuma isteği kendiliğinden yeniden denenir
+      const data = await apiFetch<CurrentStatusResponse>('/api/attendance/current-status')
       setStatusData(data)
       hasStatusRef.current = true
       setPageState('select_action')
-    } catch {
-      setErrorMsg(NETWORK_ERROR_MSG)
+    } catch (err) {
+      setErrorMsg(err instanceof ApiError ? err.message || 'Durum bilgisi alınamadı.' : NETWORK_ERROR_MSG)
       setPageState('error')
     }
   }, [])
@@ -220,6 +213,9 @@ export function AttendanceScanPage() {
           }),
         })
 
+        // Cloudflare 1102 HTML sayfası döner (JSON değil). QR tek kullanımlık olduğundan otomatik
+        // tekrar denenmez; "Tekrar dene" durumu yeniden okur, işlem yapıldıysa orada görünür.
+        if (isPlatformLimitError(res)) throw new Error(PLATFORM_LIMIT_MSG)
         const data = (await res.json()) as ProcessQrResponse & { error?: string }
         if (!res.ok || !data.success) throw new Error(data.error ?? 'İşlem gerçekleştirilemedi.')
 

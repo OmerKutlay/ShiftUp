@@ -20,7 +20,7 @@ import { createAdminClient } from '@/lib/supabaseAdmin'
 import { IS_DEV_AUTH, DEV_SESSION_COOKIE } from '@/lib/authConfig'
 import { ACTIVE_STORE_COOKIE, resolveActiveStoreId } from '@/lib/storeScope'
 import { verifyDevSession } from './devSession'
-import { isSessionExpired, sessionIdOf } from './sessionAge'
+import { verifySupabaseSession } from './verifiedSession'
 import { ADMIN_VERIFIED_COOKIE, devSessionId, passesAdminLogin } from './adminLogin'
 import { isEffectivelyActive } from '@/lib/employment'
 import { accessLevelOf, type AccessLevel } from './roles'
@@ -104,12 +104,12 @@ export async function getCurrentEmployee(
     // Production: Supabase Auth
     const { createSupabaseServerClient } = await import('@/lib/supabase/server')
     const supabase = await createSupabaseServerClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return null
+    // Token yerelde doğrulanır (Auth sunucusuna alt istek yok) — bkz. verifiedSession
+    const verified = await verifySupabaseSession(supabase.auth)
+    if (!verified) return null
 
     // Girişten 30 gün geçtiyse oturum kesin kapanır (bkz. sessionAge)
-    const { data: { session } } = await supabase.auth.getSession()
-    if (isSessionExpired(session?.access_token, user.last_sign_in_at)) {
+    if (verified.expired) {
       await supabase.auth.signOut().catch(() => {})
       return null
     }
@@ -117,14 +117,14 @@ export async function getCurrentEmployee(
     const { data } = await admin
       .from('employees')
       .select(EMPLOYEE_SELECT)
-      .eq('auth_user_id', user.id)
+      .eq('auth_user_id', verified.userId)
       .maybeSingle()
 
     if (!data || !isEffectivelyActive(data)) return null
 
     const employee = mapToSessionEmployee(data)
     const adminCookie = await readCookie(ADMIN_VERIFIED_COOKIE)
-    if (!(await passesAdminLogin(employee.access_level, adminCookie, employee.id, sessionIdOf(session?.access_token)))) {
+    if (!(await passesAdminLogin(employee.access_level, adminCookie, employee.id, verified.sessionId))) {
       return null
     }
     return withActiveStore(admin, employee, await readCookie(ACTIVE_STORE_COOKIE))

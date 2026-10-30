@@ -13,7 +13,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { IS_DEV_AUTH, DEV_SESSION_COOKIE } from '@/lib/authConfig'
 import { verifyDevSession } from '@/lib/auth/devSession'
-import { isSessionExpired, sessionIdOf } from '@/lib/auth/sessionAge'
+import { verifySupabaseSession } from '@/lib/auth/verifiedSession'
 import { ADMIN_VERIFIED_COOKIE, devSessionId, passesAdminLogin } from '@/lib/auth/adminLogin'
 import { accessLevelOf } from '@/lib/auth/roles'
 import { ACTIVE_STORE_COOKIE, canSwitchStore, resolveActiveStoreId } from '@/lib/storeScope'
@@ -74,15 +74,15 @@ export async function GET(req: NextRequest) {
     // Bu blok yalnızca AUTH_MODE=production'da çalışır
     const { createSupabaseServerClient } = await import('@/lib/supabase/server')
     const supabase = await createSupabaseServerClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    // Token yerelde doğrulanır (Auth sunucusuna alt istek yok) — bkz. verifiedSession
+    const verified = await verifySupabaseSession(supabase.auth)
 
-    if (authError || !user) {
+    if (!verified) {
       return NextResponse.json({ employee: null }, { status: 401 })
     }
 
     // Girişten 30 gün geçtiyse oturum kesin kapanır (bkz. sessionAge)
-    const { data: { session } } = await supabase.auth.getSession()
-    if (isSessionExpired(session?.access_token, user.last_sign_in_at)) {
+    if (verified.expired) {
       await supabase.auth.signOut().catch(() => {})
       return NextResponse.json({ employee: null }, { status: 401 })
     }
@@ -90,13 +90,13 @@ export async function GET(req: NextRequest) {
     const { data: employee } = await admin
       .from('employees')
       .select(EMPLOYEE_SELECT)
-      .eq('auth_user_id', user.id)
+      .eq('auth_user_id', verified.userId)
       .maybeSingle()
 
     if (!employee || !isEffectivelyActive(employee)) {
       return NextResponse.json({ employee: null }, { status: 403 })
     }
-    if (!(await passesAdminLoginFor(employee, req, sessionIdOf(session?.access_token)))) {
+    if (!(await passesAdminLoginFor(employee, req, verified.sessionId))) {
       return adminLoginRequired()
     }
 

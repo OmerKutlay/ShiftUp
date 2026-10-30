@@ -8,8 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
 import { getNotificationsByEmployee } from '@/lib/notificationRepository'
-import { requireAuth, MANAGER_ROLES, hasRole } from '@/lib/auth'
-import { scanMissedAttendanceThrottled } from '@/lib/attendanceAlerts'
+import { requireAuth } from '@/lib/auth'
 import { serverError } from '@/lib/apiErrors'
 
 export async function GET(req: NextRequest) {
@@ -21,10 +20,8 @@ export async function GET(req: NextRequest) {
     const limitParam = req.nextUrl.searchParams.get('limit')
     const limit = limitParam ? Math.min(parseInt(limitParam, 10) || 50, 100) : 50
     const admin = createAdminClient()
-
-    // Yönetici bildirimlerini çekerken okutulmamış giriş/çıkış taraması (dakikada en fazla bir kez)
-    if (hasRole(currentEmployee.access_level, MANAGER_ROLES)) await scanMissedAttendanceThrottled(admin)
-
+    // Okutulmamış giriş/çıkış taraması burada yapılmaz: pg_cron 2 dakikada bir çalıştırır
+    // (bkz. @/lib/attendanceAlerts). Bu uç dakikada bir yoklanır, ucuz kalmalı.
     const notifications = await getNotificationsByEmployee(admin, currentEmployee.id, limit)
     return NextResponse.json({ notifications })
   } catch (err) {

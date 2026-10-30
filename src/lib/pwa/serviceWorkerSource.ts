@@ -13,6 +13,8 @@
  *   STATIC_MAX_ENTRIES kayıt tutulur, eskiler silinir.
  * - HTML sayfaları: Network First; ağ yoksa önbellekteki sayfa, o da yoksa /offline.
  * - API route'ları: Network Only (gerçek zamanlı veri; giriş/çıkış asla önbellekten dönmez).
+ *   Cloudflare 1102 HTML sayfası JSON hataya çevrilir (bkz. asJsonLimitError).
+ * - Sayfa ve RSC istekleri: 1102 503'ünde kısa beklemelerle yeniden denenir.
  * - Diğer GET (ikon, font, görsel): Stale While Revalidate.
  *
  * Güncelleme: ilk kurulumda (aktif SW yokken) hemen etkinleşir. Sonraki sürümler "waiting"
@@ -109,6 +111,20 @@ async function fetchRetryingLimit(request) {
   return response
 }
 
+/**
+ * API yanıtı Cloudflare'in HTML limit sayfasıysa (1102 → 503) aynı durumla JSON hataya çevirir:
+ * res.json() okuyan her ekran teknik "Unexpected token" yerine anlaşılır mesajı gösterir.
+ * x-platform-limit başlığı istemcinin (apiFetch) yeniden deneme kararı içindir.
+ */
+function asJsonLimitError(response) {
+  if (response.status !== 503) return response
+  if ((response.headers.get('content-type') || '').includes('application/json')) return response
+  return new Response(JSON.stringify({ error: 'Sunucu şu an yoğun, lütfen tekrar deneyin.', code: 'PLATFORM_LIMIT' }), {
+    status: 503,
+    headers: { 'Content-Type': 'application/json', 'X-Platform-Limit': '1', 'Cache-Control': 'no-store' },
+  })
+}
+
 /** Next.js RSC / router isteği mi (sayfa geçişi, prefetch)? */
 function isRscRequest(request, url) {
   return url.searchParams.has('_rsc') ||
@@ -119,6 +135,13 @@ function isRscRequest(request, url) {
 self.addEventListener('fetch', (event) => {
   const { request } = event
   const url = new URL(request.url)
+
+  // 1. API route'ları (tüm metotlar) — Network Only; yalnızca 1102 sayfası JSON hataya çevrilir.
+  // Yeniden deneme istemcidedir (apiFetch yalnızca okumaları tekrarlar; yazmalar asla).
+  if (url.origin === self.location.origin && url.pathname.startsWith('/api/')) {
+    event.respondWith(fetch(request).then(asJsonLimitError))
+    return
+  }
 
   // 0. Yalnızca GET; diğer origin'ler ve /_next iç istekleri — SW devre dışı.
   if (request.method !== 'GET' ||
@@ -132,12 +155,6 @@ self.addEventListener('fetch', (event) => {
   // tam sayfa geçişi yapar ve kullanıcı Cloudflare hata ekranını görür.
   if (isRscRequest(request, url)) {
     event.respondWith(fetchRetryingLimit(request))
-    return
-  }
-
-  // 1. API route'ları — Network Only
-  if (url.pathname.startsWith('/api/')) {
-    event.respondWith(fetch(request))
     return
   }
 

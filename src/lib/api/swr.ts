@@ -14,6 +14,9 @@ export const apiFetcher = <T,>(url: string) => apiFetch<T>(url)
 export const swrConfig: SWRConfiguration = {
   fetcher: apiFetcher,
   revalidateOnFocus: true,
+  // Odak tazelemesi en fazla dakikada bir: mobilde uygulamalar arası her geçiş ekrandaki tüm
+  // anahtarları aynı anda yeniden çekiyordu (her biri ayrı Worker isteği → CPU sınırı, 1102)
+  focusThrottleInterval: 60_000,
   refreshWhenHidden: false,
   dedupingInterval: 2000,
   errorRetryCount: 2,

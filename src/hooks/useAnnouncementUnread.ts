@@ -2,7 +2,8 @@
 
 /**
  * useAnnouncementUnread — okunmamış duyuru sayısı (menü rozeti).
- * Hafif uç noktadan SWR ile okunur; sekme görünürken dakikada bir ve odaklanınca tazelenir.
+ * Hafif uç noktadan SWR ile okunur; sekme görünürken 2 dakikada bir ve odaklanınca tazelenir
+ * (her açık sekmenin yoklaması Worker CPU'su harcar — ücretsiz plan, 1102).
  * Giriş yapılmamışsa istek atılmaz.
  */
 import useSWR from 'swr'
@@ -13,7 +14,7 @@ export function useAnnouncementUnread(): number {
   const { status } = useAuth()
   const { data } = useSWR<{ unread_count: number }>(
     status === 'authenticated' ? ANNOUNCEMENTS_UNREAD_KEY : null,
-    { refreshInterval: 60_000 },
+    { refreshInterval: 120_000 },
   )
   return data?.unread_count ?? 0
 }

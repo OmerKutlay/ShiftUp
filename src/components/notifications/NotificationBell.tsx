@@ -13,8 +13,11 @@ import { useIsMobile } from '@/hooks/useIsMobile'
 import { NotificationPanel } from './NotificationPanel'
 import { useNotifications } from '@/hooks/useNotifications'
 
-/** Yeni bildirimler (ör. geç/eksik okutma uyarıları) için yenileme aralığı */
-const NOTIFICATION_POLL_MS = 60_000
+/**
+ * Yeni bildirimler (ör. geç/eksik okutma uyarıları) için yenileme aralığı. Acil olanlar push ile
+ * anında gelir; her açık sekmenin yoklaması Worker CPU'su harcar (ücretsiz plan, 1102).
+ */
+const NOTIFICATION_POLL_MS = 120_000
 
 interface Props {
   employeeId: string | null

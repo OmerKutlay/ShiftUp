@@ -36,16 +36,21 @@ export function sessionIdOf(accessToken?: string | null): string | null {
   return typeof sid === 'string' && sid ? sid : null
 }
 
+/** Doğrulanmış JWT claim'lerinden giriş anı (ms): `amr` zaman damgalarının en eskisi — yoksa null */
+export function signInTimeFromClaims(claims: Record<string, unknown> | null | undefined): number | null {
+  const amr = claims?.amr
+  if (!Array.isArray(amr)) return null
+  // Detaylı format: [{ method, timestamp (saniye) }] — en eski kimlik doğrulama giriş anıdır
+  const stamps = amr
+    .map((e) => (e && typeof e === 'object' ? (e as { timestamp?: unknown }).timestamp : undefined))
+    .filter((t): t is number => typeof t === 'number' && Number.isFinite(t))
+  return stamps.length ? Math.min(...stamps) * 1000 : null
+}
+
 /** Oturumun giriş anı (ms) — belirlenemezse null */
 export function sessionStartedAt(accessToken?: string | null, lastSignInAt?: string | null): number | null {
-  const amr = accessToken ? decodeJwtPayload(accessToken)?.amr : undefined
-  if (Array.isArray(amr)) {
-    // Detaylı format: [{ method, timestamp (saniye) }] — en eski kimlik doğrulama giriş anıdır
-    const stamps = amr
-      .map((e) => (e && typeof e === 'object' ? (e as { timestamp?: unknown }).timestamp : undefined))
-      .filter((t): t is number => typeof t === 'number' && Number.isFinite(t))
-    if (stamps.length) return Math.min(...stamps) * 1000
-  }
+  const fromToken = accessToken ? signInTimeFromClaims(decodeJwtPayload(accessToken)) : null
+  if (fromToken !== null) return fromToken
   const fallback = lastSignInAt ? Date.parse(lastSignInAt) : NaN
   return Number.isFinite(fallback) ? fallback : null
 }

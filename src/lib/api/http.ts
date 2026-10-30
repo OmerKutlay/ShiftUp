@@ -19,16 +19,20 @@ export class ApiError extends Error {
   }
 }
 
+/** Cloudflare limit hatası (1102 vb.) için kullanıcıya gösterilen metin */
+export const PLATFORM_LIMIT_MSG = 'Sunucu şu an yoğun, lütfen tekrar deneyin.'
+
 /** Cloudflare limit hatasında (1102 vb.) okuma isteklerinin ek deneme bekleme süreleri (ms) */
 const LIMIT_RETRY_DELAYS = [300, 900]
 
 /**
  * Worker'ın kendisinden değil Cloudflare'den gelen hata sayfası mı?
- * Ücretsiz planda soğuk başlangıç 10 ms CPU sınırını aşabilir (1102 → HTML 503);
- * API route'larımız her zaman JSON döner.
+ * Ücretsiz planda istek 10 ms CPU sınırını aşabilir (1102 → HTML 503); API route'larımız her
+ * zaman JSON döner. Service worker bu sayfayı X-Platform-Limit başlıklı JSON 503'e çevirir.
  */
-function isPlatformLimitError(res: Response): boolean {
-  return res.status === 503 && !res.headers.get('content-type')?.includes('application/json')
+export function isPlatformLimitError(res: Response): boolean {
+  if (res.status !== 503) return false
+  return res.headers.get('x-platform-limit') === '1' || !res.headers.get('content-type')?.includes('application/json')
 }
 
 /** Bir API isteği 401 döndüğünde window'a yayılan olay; AuthProvider oturumu yeniden doğrular */
@@ -73,7 +77,7 @@ export async function apiFetch<T>(
   }
 
   if (isPlatformLimitError(res)) {
-    throw new ApiError('Sunucu şu an yoğun, lütfen tekrar deneyin.', 'PLATFORM_LIMIT', res.status)
+    throw new ApiError(PLATFORM_LIMIT_MSG, 'PLATFORM_LIMIT', res.status)
   }
 
   // Oturum istek sırasında düşmüş olabilir (süresi doldu, başka sekmede çıkış yapıldı)
