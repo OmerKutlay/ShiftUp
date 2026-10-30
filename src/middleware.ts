@@ -15,7 +15,10 @@
  * 4. Admin: oturum yalnızca /login/admin akışıyla (admin şifresi + e-posta kodu) açılmışsa
  *    geçerlidir (bkz. @/lib/auth/adminLogin); değilse çerezler silinip admin girişine yönlendirilir.
  *
- * Public path'ler: /login, /login/admin, /gizlilik (KVKK aydınlatma metni), /api/auth/*, cron, static dosyalar
+ * 5. AI tarayıcıları (bkz. @/lib/aiBots) her yolda 403 alır.
+ *
+ * Public path'ler: /login, /login/admin, /gizlilik (KVKK aydınlatma metni), /api/auth/*, cron,
+ * robots.txt, static dosyalar
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { DEV_SESSION_COOKIE, IS_DEV_AUTH } from '@/lib/authConfig'
@@ -27,6 +30,7 @@ import {
 import { isKioskRole, roleAtLeast, accessLevelOf, ACCESS, type AccessLevel } from '@/lib/auth/roles'
 import { startTrace } from '@/lib/requestTrace'
 import { isEffectivelyActive } from '@/lib/employment'
+import { isAiBot } from '@/lib/aiBots'
 
 const LOGIN_PAGE = '/login'
 /** Admin hesaplarının tek giriş sayfası */
@@ -61,7 +65,7 @@ function isPublicPath(pathname: string): boolean {
   if (CRON_API_PATHS.includes(pathname)) return true
   if (pathname.startsWith('/_next/')) return true
   if (pathname.startsWith('/favicon')) return true
-  if (pathname === '/manifest.json') return true
+  if (pathname === '/manifest.json' || pathname === '/robots.txt') return true
   // PWA / favicon ikonları — tarayıcı oturumsuz da ister
   if (/^\/icon-[\w-]+\.(svg|png)$/.test(pathname)) return true
   if (pathname === '/apple-touch-icon.png') return true
@@ -153,6 +157,9 @@ function redirectToLogin(request: NextRequest, session: NextResponse | null, cle
 }
 
 export async function middleware(request: NextRequest) {
+  // AI tarayıcıları hiçbir sayfaya / API'ye erişemez (robots.txt'ye uymayanlar dahil)
+  if (isAiBot(request.headers.get('user-agent'))) return new NextResponse(null, { status: 403 })
+
   const { pathname } = request.nextUrl
   const isApi = pathname.startsWith('/api/')
 

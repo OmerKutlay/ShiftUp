@@ -83,6 +83,8 @@ const nextConfig: NextConfig = {
       {
         source: "/(.*)",
         headers: [
+          // Arama motorları hiçbir sayfayı / dosyayı dizine eklemesin (robots.txt de tüm botlara kapalı)
+          { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive, nosnippet, noimageindex" },
           // Clickjacking koruması
           { key: "X-Frame-Options", value: "SAMEORIGIN" },
           // MIME type sniffing koruması

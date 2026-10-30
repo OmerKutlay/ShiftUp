@@ -181,6 +181,36 @@ describe('middleware — PWA dosyaları oturumsuz erişilebilir', () => {
   })
 })
 
+describe('middleware — AI tarayıcıları engellenir, robots.txt açık', () => {
+  const ua = (path: string, userAgent: string) =>
+    new NextRequest(BASE + path, { headers: { 'user-agent': userAgent } })
+
+  it('AI botları sayfa, giriş ve API isteklerinde 403 alır; oturuma bakılmaz', async () => {
+    for (const agent of [
+      'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; GPTBot/1.2; +https://openai.com/gptbot)',
+      'Mozilla/5.0 (compatible; ClaudeBot/1.0; +claudebot@anthropic.com)',
+      'Mozilla/5.0 (compatible; PerplexityBot/1.0; +https://perplexity.ai/perplexitybot)',
+      'meta-externalagent/1.1 (+https://developers.facebook.com/docs/sharing/webmasters/crawler)',
+      'CCBot/2.0 (https://commoncrawl.org/faq/)',
+    ]) {
+      for (const path of ['/', '/login', '/api/auth/me']) {
+        expect((await middleware(ua(path, agent))).status).toBe(403)
+      }
+    }
+    expect(getUser).not.toHaveBeenCalled()
+  })
+
+  it('normal tarayıcı ve arama motoru botları engellenmez; robots.txt oturumsuz açılır', async () => {
+    getUser.mockResolvedValue({ user: null })
+    const chrome = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36'
+    expect((await middleware(ua('/login', chrome))).status).toBe(200)
+    const googlebot = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
+    const robots = await middleware(ua('/robots.txt', googlebot))
+    expect(robots.status).toBe(200)
+    expect(location(robots)).toBeNull()
+  })
+})
+
 describe('middleware — oturum girişten 30 gün sonra kesin kapanır', () => {
   const DAY = 24 * 60 * 60
   /** amr claim'inde giriş anı taşıyan (imzasız) test token'ı */
