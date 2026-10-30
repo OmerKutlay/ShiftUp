@@ -18,6 +18,7 @@ import { tr } from 'date-fns/locale'
 import type { EmployeeWeekSummary } from '@/lib/workingTimeService'
 import type { OpenShift } from '@/types/workforce'
 import type { PlannerResult, PlanWarning } from '@/lib/workforcePlanner'
+import type { PlanPayload } from '@/lib/workforcePlanPayload'
 import { PeriodStepper, StatCard, StatCards, useConfirm } from '@/components/common'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -157,16 +158,16 @@ export function WorkforcePlanningPanel() {
     setApplyResult(null)
     setGenLoading(true)
     try {
-      const res = await fetch('/api/workforce/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ week: format(weekRef, 'yyyy-MM-dd') }),
-      })
-      if (!res.ok) { const j = await res.json() as { error?: string }; setGenError(j.error ?? 'Hata.'); return }
-      setDraft(await res.json() as PlannerResult)
+      // Sunucu yalnızca veriyi toplar; plan tarayıcıda üretilir (planlayıcı Worker CPU sınırını aşıyordu)
+      const [payload, { buildPlan }] = await Promise.all([
+        apiFetch<PlanPayload>(`/api/workforce/plan-input?week=${format(weekRef, 'yyyy-MM-dd')}`),
+        import('@/lib/workforcePlanPayload'),
+      ])
+      setDraft(buildPlan(payload))
       setActiveTab('draft')
-    } catch { setGenError('Bağlantı hatası.') }
+    } catch (err) {
+      setGenError(err instanceof ApiError ? err.message : 'Bağlantı hatası.')
+    }
     finally { setGenLoading(false) }
   }
 

@@ -7,6 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 import { ACCESS } from '@/lib/auth/roles'
 import { createFakeDb, type FakeDb } from './helpers/fakeSupabase'
+import { buildPlan, type PlanPayload } from '@/lib/workforcePlanPayload'
 
 const STORE_A = '00000000-0000-0000-0003-000000000001'
 const STORE_B = '00000000-0000-0000-0003-000000000002'
@@ -324,18 +325,29 @@ describe('/api/workforce — mağaza izolasyonu', () => {
     expect(body.openShiftsThisWeek.map((o) => o.id)).toEqual([OPEN_A])
   })
 
-  it('generate yalnızca aktif mağazanın çalışanlarını planlar', async () => {
+  it('plan-input yalnızca aktif mağazanın çalışanlarını verir; tarayıcıdaki plan onlarla sınırlı', async () => {
     const db = createFakeDb(seed(), FAKE_OPTIONS)
     setup(session(), db)
-    const { POST } = await import('@/app/api/workforce/generate/route')
-    const res = await POST(jsonReq('http://localhost/api/workforce/generate', 'POST', { week: WEEK_START, seed: 1 }))
+    const { GET } = await import('@/app/api/workforce/plan-input/route')
+    const res = await GET(jsonReq(`http://localhost/api/workforce/plan-input?week=${WEEK_START}`, 'GET'))
     expect(res.status).toBe(200)
-    const body = (await res.json()) as { assignments: { employee_id: string }[] }
+    const payload = (await res.json()) as PlanPayload
+    expect(payload.employees.map((e) => e.id)).not.toContain(EMP_B1)
+    const body = buildPlan(payload, 1)
     const planned = new Set(body.assignments.map((a) => a.employee_id))
     expect(planned.size).toBeGreaterThan(0)
     expect(planned.has(EMP_B1)).toBe(false)
     expect(planned.has(MGR_B)).toBe(false)
     for (const id of planned) expect([EMP_A1, EMP_A2, MGR_A]).toContain(id)
+  })
+
+  it('eski generate ucu (planı sunucuda üreten istemci) 409 CLIENT_OUTDATED', async () => {
+    const db = createFakeDb(seed(), FAKE_OPTIONS)
+    setup(session(), db)
+    const { POST } = await import('@/app/api/workforce/generate/route')
+    const res = await POST(jsonReq('http://localhost/api/workforce/generate', 'POST', { week: WEEK_START, seed: 1 }))
+    expect(res.status).toBe(409)
+    expect(((await res.json()) as { code: string }).code).toBe('CLIENT_OUTDATED')
   })
 })
 
@@ -439,16 +451,16 @@ describe('/api/workforce — işten ayrılan çalışan', () => {
   })
 })
 
-describe('/api/workforce/generate — işten ayrılan çalışan', () => {
+describe('/api/workforce/plan-input + buildPlan — işten ayrılan çalışan', () => {
   it('son çalışma gününden sonraki günlere vardiya planlanmaz', async () => {
     const data = seed()
     data.employees = data.employees.map((e) => (e.id === EMP_A1 ? { ...e, termination_date: TUE } : e))
     const db = createFakeDb(data, FAKE_OPTIONS)
     setup(session(), db)
-    const { POST } = await import('@/app/api/workforce/generate/route')
-    const res = await POST(jsonReq('http://localhost/api/workforce/generate', 'POST', { week: WEEK_START, seed: 1 }))
+    const { GET } = await import('@/app/api/workforce/plan-input/route')
+    const res = await GET(jsonReq(`http://localhost/api/workforce/plan-input?week=${WEEK_START}`, 'GET'))
     expect(res.status).toBe(200)
-    const body = (await res.json()) as { assignments: { employee_id: string; work_date: string }[] }
+    const body = buildPlan((await res.json()) as PlanPayload, 1)
     const mine = body.assignments.filter((a) => a.employee_id === EMP_A1)
     expect(mine.every((a) => a.work_date <= TUE)).toBe(true)
   })

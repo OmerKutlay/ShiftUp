@@ -26,7 +26,7 @@ import type { AttendanceReportRow, AttendanceReportStatus } from '../../src/type
 import type { GenerateQrResponse, ProcessQrResponse, QrActionType } from '../../src/types/qr'
 import type { TimesheetCode, TimesheetRow } from '../../src/lib/timesheet'
 import type { OvertimeSummary, OvertimeWeek } from '../../src/lib/overtime'
-import type { DraftAssignment, EmployeeDraftStats, PlannerResult, PlanWarning, ShiftKind } from '../../src/lib/workforcePlanner'
+import type { PlanPayload, PlanPayloadEmployee } from '../../src/lib/workforcePlanPayload'
 import type { DaySummary, EmployeeWeekSummary, WorkingTimeViolation } from '../../src/lib/workingTimeService'
 import type { PushDiagnosticStep } from '../../src/lib/pushDiagnostics'
 import type { AnnualLeaveBalance } from '../../src/lib/annualLeave'
@@ -228,14 +228,6 @@ function plannedBreak(gross: number): number {
   return Math.max(policy, statutory)
 }
 const netOf = (start: string, end: string) => Math.max(0, grossOf(start, end) - plannedBreak(grossOf(start, end)))
-
-function kindFromTimes(start: string, end: string): ShiftKind {
-  const s = start.slice(0, 5), e = end.slice(0, 5)
-  if (s <= '10:00' && e >= '22:00') return 'full'
-  if (s < '12:00') return 'opening'
-  if (e >= '21:30') return 'closing'
-  return 'mid'
-}
 
 // ═════════════════════════════════════════════════════════════
 // Çalışanlar — Kadıköy Mağazası
@@ -1420,68 +1412,42 @@ function planning(ctx: Ctx, ref: string) {
   }
 }
 
-function draftReason(e: EmpDef, kind: ShiftKind): string {
-  const g = e.role.planning_group
-  if (e.employment_type === 'part_time') return kind === 'opening' ? 'Yarı zamanlı — öğle yoğunluğu' : 'Yarı zamanlı — akşam yoğunluğu'
-  if (g === 'visual' || g === 'stock') return 'Sabit 08:00 ekibi'
-  if (g === 'store_manager' || g === 'assistant_manager' || g === 'floor_lead') {
-    return kind === 'full' ? 'Açılış + kapanış yönetici kapsaması' : kind === 'opening' ? 'Açılış yöneticisi' : kind === 'closing' ? 'Kapanış yöneticisi' : 'Ara vardiya yöneticisi'
-  }
-  if (g === 'cashier') return kind === 'opening' ? 'Açılış kasiyeri' : kind === 'closing' ? 'Kapanış kasiyeri' : 'Öğle yoğunluğu kasa desteği'
-  return kind === 'opening' ? 'Hafta içi açılış satış danışmanı' : kind === 'closing' ? 'Kapanış satış danışmanı' : 'Öğle yoğunluğu satış desteği'
-}
-
-function generateDraft(ctx: Ctx, ref: string): PlannerResult {
+/**
+ * Otomatik plan veri paketi — plan tarayıcıda gerçek planlayıcıyla (buildPlan) üretilir.
+ * Geçmiş günlerin vardiyaları giriş/çıkış kaydı gibi korunur; onaylı izinler bloklanır.
+ */
+function planInput(ctx: Ctx, ref: string): PlanPayload {
   const weekDays = weekDaysOf(ref)
-  const assignments: DraftAssignment[] = []
-  const stats: Record<string, EmployeeDraftStats> = {}
-  for (const e of ACTIVE_STAFF.slice().sort(byName)) {
-    const st: EmployeeDraftStats = {
-      employeeId: e.id, employeeName: e.full_name, employment_type: e.employment_type,
-      totalMins: 0, workDays: 0, openingCount: 0, closingCount: 0, fullCount: 0, assignments: [],
-    }
+  const fixedAssignments: PlanPayload['fixedAssignments'] = []
+  const employees: PlanPayloadEmployee[] = ACTIVE_STAFF.slice().sort(byName).map((e) => {
+    const leaveDays: string[] = []
     for (const d of weekDays) {
-      let start: string, end: string, tplKey: TplKey | null, worked = false, reason: string
       if (d < ctx.today) {
         const s = shiftFor(ctx, e, d)
-        if (!s || s.is_on_leave) continue
-        start = s.start; end = s.end; tplKey = s.key; worked = true; reason = 'Giriş/çıkış kaydı var — değiştirilemez'
-      } else {
-        if (approvedLeaveOn(ctx, e, d) && approvedLeaveOn(ctx, e, d) !== 'weekly_rest') continue
-        const key = patternFor(e, d, 1)[dow(d)]
-        if (!key) continue
-        tplKey = key; start = TEMPLATE_DEFS[key].start; end = TEMPLATE_DEFS[key].end; reason = ''
+        if (s && !s.is_on_leave) {
+          fixedAssignments.push({
+            employee_id: e.id, work_date: d, start_time: s.start, end_time: s.end,
+            shift_template_id: tplId(TEMPLATE_DEFS[s.key].n),
+            reason: 'Giriş/çıkış kaydı var — mevcut vardiya korunuyor',
+          })
+        }
+        continue
       }
-      const kind = kindFromTimes(start, end)
-      const a: DraftAssignment = {
-        employee_id: e.id, employee_name: e.full_name, work_date: d, start_time: start, end_time: end,
-        shift_template_id: tplKey ? tplId(TEMPLATE_DEFS[tplKey].n) : null, shift_kind: kind,
-        reason: reason || draftReason(e, kind),
-        ...(worked ? { worked: true } : {}),
-        ...(kind === 'full' && e.role.planning_group === 'assistant_manager' ? { overtime: true } : {}),
-      }
-      assignments.push(a)
-      st.assignments.push(a)
-      st.totalMins += netOf(start, end)
-      st.workDays++
-      if (kind === 'opening') st.openingCount++
-      else if (kind === 'closing') st.closingCount++
-      else if (kind === 'full') st.fullCount++
+      const leave = approvedLeaveOn(ctx, e, d)
+      if (leave && leave !== 'weekly_rest') leaveDays.push(d)
     }
-    stats[e.id] = st
-  }
-  const z = stats[empId(2)]
-  const sat = trDate(weekDays[5], { day: 'numeric', month: 'long', weekday: 'long' })
-  const warnings: PlanWarning[] = [
-    { level: 'warning', message: `Zeynep Arslan: haftalık ${Math.round((z?.totalMins ?? 0) / 60)} saat — ${Math.max(0, Math.round((z?.totalMins ?? 0) / 60) - 45)} saat fazla mesai (yönetici açılış/kapanış kapsaması için). ` },
-    { level: 'warning', message: `${sat}: Etiket yenileme için 2 ek çalışan 08:00'e atanamadı (1 atandı).` },
-    { level: 'warning', message: `Deniz Koç: haftada 2 izin/tatil günü tanımlı; FT için en fazla 1 gün olmalı. ` },
-    { level: 'info', message: `Tuğba Özdemir: ${trDate(weekDays[3])} – ${trDate(weekDays[6])} arası 4 gün üst üste çalışma` },
-    { level: 'info', message: 'Selin Aydın: müsaitlik kısıtı nedeniyle hafta içi yalnızca akşam vardiyası atandı.' },
-  ]
+    return {
+      id: e.id, full_name: e.full_name, planning_group: e.role.planning_group ?? null,
+      employment_type: e.employment_type, availability: {}, birthDate: e.birth_date,
+      leaveDays, paidLeaveDays: leaveDays, pendingLeaveDays: [],
+    }
+  })
   return {
-    weekStart: weekDays[0], weekEnd: weekDays[6], weekDays, assignments, stats, warnings,
-    hasHardViolation: false, seed: hashStr(weekDays[0]) % 100000,
+    weekStart: weekDays[0], weekEnd: weekDays[6], weekDays, today: ctx.today,
+    employees,
+    templates: Object.values(TEMPLATE_DEFS).map((t) => ({ id: tplId(t.n), name: t.name, start_time: t.start, end_time: t.end })),
+    fixedAssignments,
+    holidays: [],
   }
 }
 
@@ -2011,10 +1977,10 @@ const ROUTES: Route[] = [
     if (!isValidDate(ref)) return bad('Geçersiz week parametresi.')
     return json(planning(ctx, ref))
   }, 'manager'),
-  post('/api/workforce/generate', ({ ctx, body }) => {
-    const ref = str(body, 'week') ?? ctx.today
+  get('/api/workforce/plan-input', ({ ctx, q }) => {
+    const ref = q.get('week') ?? ctx.today
     if (!isValidDate(ref)) return bad('Geçersiz week parametresi.')
-    return json(generateDraft(ctx, ref))
+    return json(planInput(ctx, ref))
   }, 'manager'),
   post('/api/workforce/apply', ({ body }) => {
     const n = Array.isArray(body?.assignments) ? (body!.assignments as unknown[]).length : 0
