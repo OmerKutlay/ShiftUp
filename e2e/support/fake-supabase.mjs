@@ -2,11 +2,11 @@
  * fake-supabase — e2e testleri için yerel, sahte Supabase uç noktası (gerçek ağ yok).
  *
  * Production build (`next start`) dev oturumunu kabul etmez (AUTH_MODE=development yalnızca
- * NODE_ENV !== 'production' iken etkin). Middleware oturumu `auth.getUser()` ile doğrular ve
+ * NODE_ENV !== 'production' iken etkin). Middleware oturumu `auth.getClaims()` ile doğrular (HS256 token → `getUser()`) ve
  * çalışanın aktifliğini/rolünü PostgREST'ten (`employees?auth_user_id=eq.…`) okur. Bu sunucu
  * yalnızca bu iki çağrıyı yanıtlar:
  *
- *   GET /auth/v1/user        Bearer e2e-<persona> → sabit kullanıcı
+ *   GET /auth/v1/user        Bearer <sahte JWT, sub = persona> → sabit kullanıcı
  *   GET /rest/v1/employees   auth_user_id=eq.<id> → { active, roles: { access_level } }
  *
  * Diğer her şey 404 döner. Sayfaların /api/* verisi tarayıcıda route() ile taklit edilir.
@@ -19,6 +19,16 @@ const port = Number(process.env.FAKE_SUPABASE_PORT ?? 54329)
 const PERSONAS = {
   employee: { userId: '00000000-0000-4000-8000-0000000000e1', accessLevel: 'employee' },
   manager: { userId: '00000000-0000-4000-8000-0000000000e2', accessLevel: 'store_manager' },
+}
+
+/** Sahte JWT (e2e/support/fixtures.ts fakeAccessToken) → sub → persona; imza doğrulanmaz */
+function personaOfToken(token) {
+  try {
+    const payload = JSON.parse(Buffer.from(token.split('.')[1] ?? '', 'base64url').toString('utf8'))
+    return Object.values(PERSONAS).find((p) => p.userId === payload.sub) ?? null
+  } catch {
+    return null
+  }
 }
 
 function send(res, status, body) {
@@ -37,13 +47,13 @@ const server = http.createServer((req, res) => {
 
   if (req.method === 'GET' && url.pathname === '/auth/v1/user') {
     const token = (req.headers.authorization ?? '').replace(/^Bearer /, '')
-    const persona = PERSONAS[token.replace(/^e2e-/, '')]
-    if (!token.startsWith('e2e-') || !persona) return send(res, 401, { code: 401, msg: 'invalid token' })
+    const persona = personaOfToken(token)
+    if (!persona) return send(res, 401, { code: 401, msg: 'invalid token' })
     return send(res, 200, {
       id: persona.userId,
       aud: 'authenticated',
       role: 'authenticated',
-      email: `${token}@example.com`,
+      email: 'e2e@example.com',
       app_metadata: { provider: 'email' },
       user_metadata: {},
       created_at: '2026-01-01T00:00:00.000Z',

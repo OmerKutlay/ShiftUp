@@ -171,22 +171,43 @@ export async function mockApi(context: BrowserContext, opts: MockApiOptions = {}
   return unmocked
 }
 
-/** fake-supabase.mjs PERSONAS ile aynı: access token → Supabase kullanıcısı → çalışan rolü */
-const PERSONA_BY_ROLE: Record<RoleName, { token: string; userId: string }> = {
-  'Çalışan': { token: 'e2e-employee', userId: '00000000-0000-4000-8000-0000000000e1' },
-  'Mağaza Müdürü': { token: 'e2e-manager', userId: '00000000-0000-4000-8000-0000000000e2' },
+/** fake-supabase.mjs PERSONAS ile aynı: Supabase kullanıcısı (JWT sub) → çalışan rolü */
+const PERSONA_BY_ROLE: Record<RoleName, { userId: string }> = {
+  'Çalışan': { userId: '00000000-0000-4000-8000-0000000000e1' },
+  'Mağaza Müdürü': { userId: '00000000-0000-4000-8000-0000000000e2' },
 }
 
-/** @supabase/ssr biçiminde sahte oturum çerezi (fake-supabase "Bearer e2e-<persona>" kabul eder) */
+const b64url = (v: unknown) => Buffer.from(JSON.stringify(v)).toString('base64url')
+
+/**
+ * Sahte access token — JWT biçiminde, çünkü middleware oturumu auth.getClaims() ile doğrular.
+ * HS256 (simetrik) token'da auth-js imzayı yerelde doğrulamaz, getUser()'a sorar: fake-supabase
+ * /auth/v1/user token'ın sub'ından kullanıcıyı döner. İmza anlamsızdır.
+ */
+function fakeAccessToken(userId: string, now: number) {
+  const exp = now + 7 * 24 * 3600
+  return [
+    b64url({ alg: 'HS256', typ: 'JWT' }),
+    b64url({
+      sub: userId, aud: 'authenticated', role: 'authenticated', email: 'e2e@example.com',
+      iat: now, exp, session_id: `e2e-session-${userId.slice(-2)}`,
+      amr: [{ method: 'password', timestamp: now }],
+    }),
+    'ZTJl',
+  ].join('.')
+}
+
+/** @supabase/ssr biçiminde sahte oturum çerezi (fake-supabase "Bearer <JWT>" kabul eder) */
 export async function addSessionCookie(context: BrowserContext, baseURL: string, role: RoleName = 'Çalışan') {
   const persona = PERSONA_BY_ROLE[role]
+  const now = Math.floor(Date.now() / 1000)
   const session = {
-    access_token: persona.token,
+    access_token: fakeAccessToken(persona.userId, now),
     refresh_token: 'e2e-refresh-token',
     token_type: 'bearer',
     expires_in: 3600,
     // Uzak gelecek: middleware token yenilemeye (refresh) çalışmasın
-    expires_at: Math.floor(Date.now() / 1000) + 7 * 24 * 3600,
+    expires_at: now + 7 * 24 * 3600,
     user: {
       id: persona.userId,
       aud: 'authenticated',

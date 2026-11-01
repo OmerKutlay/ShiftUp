@@ -51,17 +51,12 @@ const overrides: Record<string, unknown | ((route: Route) => Promise<void> | voi
       break_minutes: 30, verification_method: 'qr', exception_note: null, is_on_leave: false,
     }],
   },
+  // Excel/CSV tarayıcıda üretilir: export=… isteği de JSON alır (+ mağaza adı)
   '/api/reports/timesheet': (route: Route) => {
-    if (new URL(route.request().url()).searchParams.get('format') === 'xlsx') {
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        headers: { 'Content-Disposition': `attachment; filename="puantaj-kadikoy-sube-${month}.xlsx"` },
-        body: 'PK-e2e',
-      })
-    }
+    const exporting = new URL(route.request().url()).searchParams.has('export')
     return json(route, {
       month,
+      ...(exporting ? { storeName: STORE.active.name } : {}),
       holidays: [],
       rows: [{
         employee: { id: cashier.id, full_name: cashier.full_name, role_name: 'Kasiyer', employment_type: 'full_time' },
@@ -79,17 +74,10 @@ const overrides: Record<string, unknown | ((route: Route) => Promise<void> | voi
     }],
   },
   '/api/reports/payroll': (route: Route) => {
-    const format = new URL(route.request().url()).searchParams.get('format')
-    if (format === 'csv') {
-      return route.fulfill({
-        status: 200,
-        contentType: 'text/csv; charset=utf-8',
-        headers: { 'Content-Disposition': `attachment; filename="bordro-puantaj-${month}-kadikoy-sube.csv"` },
-        body: '﻿Sicil No;Ad Soyad\r\n;Şule Işık\r\n',
-      })
-    }
+    const exporting = new URL(route.request().url()).searchParams.has('export')
     return json(route, {
       month,
+      ...(exporting ? { storeName: STORE.active.name } : {}),
       rows: [{
         employeeId: cashier.id, fullName: cashier.full_name, sicilNo: '', tcKimlikNo: '', days: {}, workedDays: 1,
         normalHours: 7.5, overtimeHours: 0, holidayWorkedHours: 0, holidayWorkedDays: 0, nightHours: 0,
@@ -145,6 +133,7 @@ test('Raporlar: her sekmede PDF ve CSV iner', async ({ page }) => {
   expect(f.body.toString('utf8')).toContain('Şule Işık;Ç;D')
   f = await download(page, 'Dışa aktar', 'Excel indir (tüm ekip)')
   expect(f.name).toBe(`puantaj-kadikoy-sube-${month}.xlsx`)
+  expect(f.body.subarray(0, 2).toString('latin1')).toBe('PK') // tarayıcıda üretilen gerçek .xlsx (zip)
 
   // Fazla çalışma
   await page.getByRole('tab', { name: 'Fazla çalışma' }).click()
