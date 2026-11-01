@@ -377,6 +377,28 @@ describe('/api/open-shifts — mağaza izolasyonu', () => {
     expect(targets).not.toContain(EMP_B1)
   })
 
+  it('POST bildirimi üstlenme kuralıyla aynı: "Herkes" → yönetici seviyesi dahil (açan ve planlanmayan hariç); rol → yalnızca o rol', async () => {
+    const ASSISTANT = uid(12)
+    const PLAIN_ADMIN = uid(13)
+    const base = seed() as { employees: Record<string, unknown>[] } & ReturnType<typeof seed>
+    base.employees.push(
+      { id: ASSISTANT, full_name: 'Yardımcı', store_id: STORE_A, active: true, employment_type: 'full_time', birth_date: null, roles: { planning_group: 'assistant_manager', name: 'Müdür Yardımcısı', access_level: ACCESS.MANAGER } },
+      { id: PLAIN_ADMIN, full_name: 'Admin', store_id: STORE_A, active: true, employment_type: 'full_time', birth_date: null, roles: { planning_group: null, name: 'Admin', access_level: ACCESS.ADMIN } },
+    )
+    const db = createFakeDb(base, FAKE_OPTIONS)
+    setup(session(), db)
+    const { POST } = await import('@/app/api/open-shifts/route')
+
+    await POST(jsonReq('http://localhost/api/open-shifts', 'POST', { work_date: WED, start_time: '10:00', end_time: '19:00' }))
+    expect(db.tables.notifications.map((n) => n.employee_id).sort()).toEqual([EMP_A1, EMP_A2, ASSISTANT].sort())
+
+    db.tables.notifications.length = 0
+    await POST(jsonReq('http://localhost/api/open-shifts', 'POST', {
+      work_date: WED, start_time: '12:00', end_time: '20:00', role_needed: 'kasiyer',
+    }))
+    expect(db.tables.notifications.map((n) => n.employee_id)).toEqual([EMP_A1])
+  })
+
   it('PATCH başka mağazanın açık vardiyasını değiştirmez (404)', async () => {
     const db = createFakeDb(seed(), FAKE_OPTIONS)
     setup(session(), db)

@@ -9,6 +9,7 @@
  * oradan (standalone) açıldığında çalışır; Safari sekmesinde PushManager yoktur.
  */
 import { onBeforeSignOut } from './sessionEvents'
+import { reportClientError } from '@/lib/api/clientErrors'
 
 export type PushAvailability = 'supported' | 'unsupported' | 'ios-needs-install' | 'ios-too-old'
 export type PushPermission = NotificationPermission | 'unsupported'
@@ -20,7 +21,15 @@ export interface PushConfig {
 
 export type SubscribeResult =
   | { ok: true }
-  | { ok: false; reason: 'unsupported' | 'disabled' | 'denied' | 'dismissed' | 'no-service-worker' | 'error' }
+  | {
+      ok: false
+      reason: 'unsupported' | 'disabled' | 'denied' | 'dismissed' | 'no-service-worker' | 'error'
+      /** Teknik ayrıntı (hata adı/mesajı, sunucu yanıtı) — teşhis sayfası ve hata günlüğü için */
+      detail?: string
+    }
+
+/** Etkin service worker beklenirken üst sınır */
+const SW_READY_TIMEOUT_MS = 10_000
 
 const SUBSCRIPTION_API = '/api/push/subscription'
 
@@ -103,6 +112,31 @@ async function getRegistration(): Promise<ServiceWorkerRegistration | null> {
   }
 }
 
+/**
+ * Etkin (active) SW'si olan kayıt. pushManager.subscribe etkin SW ister; ilk açılışta SW henüz
+ * kaydedilmemiş / kuruluyor olabilir ("no active Service Worker") → hazır olmasını bekle.
+ */
+async function getActiveRegistration(): Promise<ServiceWorkerRegistration | null> {
+  const reg = await getRegistration()
+  if (reg?.active || !isPushSupported()) return reg
+  const ready = navigator.serviceWorker.ready
+  if (!ready) return reg
+  const timeout = new Promise<ServiceWorkerRegistration | null>((resolve) => {
+    setTimeout(() => resolve(reg), SW_READY_TIMEOUT_MS)
+  })
+  return Promise.race([ready.catch(() => reg), timeout])
+}
+
+/** Hata → "Ad: mesaj" (teşhis için) */
+export function describeError(err: unknown): string {
+  if (err && typeof err === 'object') {
+    const e = err as { name?: unknown; message?: unknown }
+    const name = typeof e.name === 'string' ? e.name : 'Error'
+    return typeof e.message === 'string' && e.message ? `${name}: ${e.message}` : name
+  }
+  return String(err)
+}
+
 /** Bu cihazdaki mevcut push aboneliği (yoksa null) */
 export async function getCurrentSubscription(): Promise<PushSubscription | null> {
   const reg = await getRegistration()
@@ -125,14 +159,37 @@ export async function fetchPushConfig(): Promise<PushConfig> {
   }
 }
 
-async function saveSubscription(sub: PushSubscription): Promise<boolean> {
+/** Aboneliği sunucuya kaydeder; başarısızsa sunucunun hata metnini döner */
+async function saveSubscription(sub: PushSubscription): Promise<{ ok: true } | { ok: false; detail: string }> {
   const res = await fetch(SUBSCRIPTION_API, {
     method: 'POST',
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(sub.toJSON()),
   })
-  return res.ok
+  if (res.ok) return { ok: true }
+  let message = ''
+  try {
+    message = ((await res.json()) as { error?: string }).error ?? ''
+  } catch {
+    /* gövde JSON değil */
+  }
+  let host = ''
+  try {
+    host = new URL(sub.endpoint).hostname
+  } catch {
+    /* geçersiz endpoint */
+  }
+  return {
+    ok: false,
+    detail: `Sunucu kaydı HTTP ${res.status}${message ? ` — ${message}` : ''}${host ? ` (push servisi: ${host})` : ''}`,
+  }
+}
+
+/** Abonelik hatası: sunucu günlüğüne (app_errors) yazılır, ayrıntıyla döner */
+function subscribeError(detail: string): SubscribeResult {
+  reportClientError('push-subscribe', new Error(detail))
+  return { ok: false, reason: 'error', detail }
 }
 
 // ─── Abone ol / çık ──────────────────────────────────────────
@@ -151,15 +208,18 @@ export async function subscribe(): Promise<SubscribeResult> {
   if (permission === 'default') {
     try {
       permission = await Notification.requestPermission()
-    } catch {
-      return { ok: false, reason: 'error' }
+    } catch (err) {
+      return subscribeError(`requestPermission: ${describeError(err)}`)
     }
   }
   if (permission === 'denied') return { ok: false, reason: 'denied' }
   if (permission !== 'granted') return { ok: false, reason: 'dismissed' }
 
-  const reg = await getRegistration()
-  if (!reg) return { ok: false, reason: 'no-service-worker' }
+  const reg = await getActiveRegistration()
+  if (!reg) {
+    reportClientError('push-subscribe', new Error('Service worker kaydı yok'))
+    return { ok: false, reason: 'no-service-worker', detail: 'Service worker kaydı yok' }
+  }
 
   try {
     let sub = await reg.pushManager.getSubscription()
@@ -172,9 +232,10 @@ export async function subscribe(): Promise<SubscribeResult> {
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(config.publicKey),
     })
-    return (await saveSubscription(sub)) ? { ok: true } : { ok: false, reason: 'error' }
-  } catch {
-    return { ok: false, reason: 'error' }
+    const saved = await saveSubscription(sub)
+    return saved.ok ? { ok: true } : subscribeError(saved.detail)
+  } catch (err) {
+    return subscribeError(`pushManager.subscribe: ${describeError(err)}`)
   }
 }
 
@@ -211,7 +272,7 @@ export async function syncSubscription(): Promise<boolean> {
   const sub = await getCurrentSubscription()
   if (!sub) return (await subscribe()).ok
   try {
-    return await saveSubscription(sub)
+    return (await saveSubscription(sub)).ok
   } catch {
     return false
   }

@@ -61,17 +61,20 @@ describe('notifyShiftChange', () => {
     expect(db.tables.notifications[0]).toMatchObject({ employee_id: 'e1', type: 'shift_changed', related_id: 's1' })
   })
 
-  it('okunmamış yakın tarihli bildirim varsa yenisi ona eklenir', async () => {
+  it('okunmamış yakın tarihli bildirim varsa birleşik metinle yeniden eklenir (push yeniden gider)', async () => {
     const db = createFakeDb({
       notifications: [{
         id: 'n1', employee_id: 'e1', type: 'shift_changed', is_read: false, title: 'Yeni vardiya',
         message: 'İlk satır', related_id: 's0', created_at: new Date().toISOString(),
       }],
     })
-    await notifyShiftChange(db as unknown as SupabaseClient, 'manager', { kind: 'deleted', shift }, today)
+    await notifyShiftChange(db as unknown as SupabaseClient, 'manager', { kind: 'created', shift }, today)
     expect(db.tables.notifications).toHaveLength(1)
+    // Yeni kayıt (INSERT → push tetikleyicisi); eski kayıt silindi, push etiketi (related_id) korunur
+    expect(db.tables.notifications[0].id).not.toBe('n1')
+    expect(db.tables.notifications[0]).toMatchObject({ related_id: 's0', is_read: false })
     expect(db.tables.notifications[0].title).toBe('Vardiya planınızda değişiklikler var')
-    expect(db.tables.notifications[0].message).toBe('İlk satır\n27 Eki Salı günü 09:00–18:00 vardiyanız plandan kaldırıldı.')
+    expect(db.tables.notifications[0].message).toBe('İlk satır\n27 Eki Salı günü 09:00–18:00 vardiyasına atandınız.')
   })
 })
 

@@ -11,9 +11,14 @@ const BASE64URL_RE = /^[A-Za-z0-9_-]+={0,2}$/
  * İzin verilen push servisi alan adları. Edge Function abonelik adresine istek attığı için
  * keyfi adres kabul edilmez (sunucudan rastgele HTTPS isteği yaptırma / SSRF önlemi).
  * Chrome/Edge(Chromium)/Samsung/Opera: FCM · Firefox: Mozilla · Safari: Apple · eski Edge: WNS
+ * FCM yalnızca fcm.googleapis.com değildir: Chrome bazı cihazlarda aboneliği Google'ın başka
+ * alan adlarıyla (ör. jmt17.google.com/fcm/send/…) verir — yalnızca tam ad kabul edilirse bu
+ * Android cihazların aboneliği 400 ile reddedilir.
  */
 const PUSH_SERVICE_HOSTS = ['fcm.googleapis.com', 'android.googleapis.com']
-const PUSH_SERVICE_SUFFIXES = ['.push.services.mozilla.com', '.push.apple.com', '.notify.windows.com']
+const PUSH_SERVICE_SUFFIXES = [
+  '.googleapis.com', '.google.com', '.push.services.mozilla.com', '.push.apple.com', '.notify.windows.com',
+]
 
 export interface PushSubscriptionInput {
   endpoint: string

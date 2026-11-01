@@ -91,7 +91,7 @@ export async function getActiveManagerIds(admin: SupabaseClient, storeId: string
 /**
  * Mağazanın aktif yöneticilerine (+ adminlere) aynı bildirimi gönder (tek toplu insert).
  * storeId: olayın ait olduğu mağaza (ör. talep sahibinin / vardiyanın mağazası).
- * excludeEmployeeId: işlemi yapan yönetici kendi talebi için bildirim almasın.
+ * excludeEmployeeId: işlemi yapan yönetici / talep sahibi bildirim almasın (tek id veya liste).
  * managerIds: döngü içinde çağrılıyorsa önceden alınmış liste (N+1 sorgu önlemi).
  * Gönderilen bildirim sayısını döner.
  */
@@ -99,10 +99,11 @@ export async function notifyManagers(
   admin: SupabaseClient,
   storeId: string,
   payload: Omit<CreateNotificationPayload, 'employee_id'>,
-  options: { excludeEmployeeId?: string; managerIds?: string[] } = {},
+  options: { excludeEmployeeId?: string | string[]; managerIds?: string[] } = {},
 ): Promise<number> {
   const ids = options.managerIds ?? (await getActiveManagerIds(admin, storeId))
-  const targets = ids.filter((id) => id !== options.excludeEmployeeId)
+  const excluded = new Set([options.excludeEmployeeId ?? []].flat())
+  const targets = ids.filter((id) => !excluded.has(id))
   return createNotifications(admin, targets.map((id) => ({ ...payload, employee_id: id })))
 }
 

@@ -80,10 +80,12 @@ export async function notifyShiftChange(
     if (!text) return
 
     // Editör her hücreyi ayrı istekle kaydeder: kısa süre içindeki değişiklikler çalışanın
-    // okunmamış tek bildiriminde toplanır (push yalnızca ilkinde gider — tetikleyici INSERT'te çalışır)
+    // okunmamış tek bildiriminde toplanır. Push tetikleyicisi yalnızca INSERT'te çalıştığından
+    // birleşik bildirim yeni kayıt olarak eklenir, eskisi silinir; aynı related_id → aynı push
+    // etiketi, telefondaki önceki bildirim ("kaldırıldı") birleşik metinle değişir.
     const { data: recent } = await admin
       .from('notifications')
-      .select('id, message')
+      .select('id, message, related_id')
       .eq('employee_id', shift.employee_id)
       .eq('type', 'shift_changed')
       .eq('is_read', false)
@@ -92,11 +94,17 @@ export async function notifyShiftChange(
       .limit(1)
       .maybeSingle()
     if (recent) {
-      const { error } = await admin
-        .from('notifications')
-        .update({ title: MERGED_TITLE, message: mergeMessages(recent.message as string, text.message) })
-        .eq('id', recent.id)
-      if (!error) return
+      const merged = await createNotification(admin, {
+        employee_id: shift.employee_id,
+        type: 'shift_changed',
+        title: MERGED_TITLE,
+        message: mergeMessages(recent.message as string, text.message),
+        related_id: (recent.related_id as string | null) ?? shift.id,
+      })
+      if (merged) {
+        await admin.from('notifications').delete().eq('id', recent.id)
+        return
+      }
     }
 
     await createNotification(admin, {

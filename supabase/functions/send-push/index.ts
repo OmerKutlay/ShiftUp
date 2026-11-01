@@ -170,6 +170,8 @@ Deno.serve(async (req) => {
   const succeeded = new Set<string>()
   const gone = new Set<string>()
   const failed = new Map<string, number>()
+  /** Push servisinin ret sebebi (teşhis: push_subscriptions.last_error) */
+  const errors = new Map<string, string>()
 
   await runPool(jobs, CONCURRENCY, async ({ n, s }) => {
     const payload = JSON.stringify({
@@ -195,7 +197,10 @@ Deno.serve(async (req) => {
         gone.add(s.id)
       } else {
         failed.set(s.id, s.failure_count + 1)
-        console.warn('[send-push] gönderilemedi', status ?? (err as Error).message)
+        const body = (err as { body?: unknown }).body
+        const reason = `${status ?? 'ağ'} ${typeof body === 'string' && body ? body : (err as Error).message ?? ''}`
+        errors.set(s.id, truncate(reason.trim(), 300))
+        console.warn('[send-push] gönderilemedi', new URL(s.endpoint).hostname, reason.slice(0, 200))
       }
     }
   })
@@ -207,12 +212,22 @@ Deno.serve(async (req) => {
   for (const [id, count] of failed) {
     if (succeeded.has(id) || gone.has(id)) continue
     if (count >= MAX_FAILURES) toDelete.push(id)
-    else ops.push(admin.from('push_subscriptions').update({ failure_count: count }).eq('id', id))
+    else {
+      ops.push(
+        admin
+          .from('push_subscriptions')
+          .update({ failure_count: count, last_error: errors.get(id) ?? null, last_error_at: now })
+          .eq('id', id),
+      )
+    }
   }
   const okIds = [...succeeded].filter((id) => !gone.has(id))
   if (okIds.length > 0) {
     ops.push(
-      admin.from('push_subscriptions').update({ last_success_at: now, failure_count: 0 }).in('id', okIds),
+      admin
+        .from('push_subscriptions')
+        .update({ last_success_at: now, failure_count: 0, last_error: null })
+        .in('id', okIds),
     )
   }
   if (toDelete.length > 0) ops.push(admin.from('push_subscriptions').delete().in('id', toDelete))

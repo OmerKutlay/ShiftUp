@@ -215,6 +215,7 @@ describe('DELETE /api/push/subscription', () => {
 describe('push aboneliği doğrulama', () => {
   it.each([
     'https://fcm.googleapis.com/fcm/send/abc',
+    'https://jmt17.google.com/fcm/send/abc',
     'https://updates.push.services.mozilla.com/wpush/v2/abc',
     'https://web.push.apple.com/QGx',
     'https://db5p.notify.windows.com/w/?token=abc',
@@ -224,6 +225,7 @@ describe('push aboneliği doğrulama', () => {
 
   it.each([
     'https://fcm.googleapis.com.evil.com/x',
+    'https://evilgoogle.com/fcm/send/x',
     'https://user:pass@fcm.googleapis.com/x',
     'https://fcm.googleapis.com:8443/x',
     'ftp://fcm.googleapis.com/x',

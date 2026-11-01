@@ -300,7 +300,8 @@ export async function POST(req: NextRequest) {
             message: `${emp.full_name} — ${LEAVE_TYPE_LABELS[body.leave_type]}: ${body.start_date} – ${body.end_date} tarihleri için onay bekliyor.`,
             related_id: data.id,
           },
-          { excludeEmployeeId: actorId },
+          // Talep sahibi yöneticiyse kendi talebi için yalnızca "talebiniz alındı" bildirimini alır
+          { excludeEmployeeId: [actorId, body.employee_id] },
         )
       }
     } catch (notifErr) {
