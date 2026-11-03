@@ -3,12 +3,13 @@
 /**
  * ScheduleEditorBar — haftalık plan editör modunun taş paleti.
  *
- * Taşlar: aktif vardiya şablonları + yöneticinin eklediği özel saatli taşlar, "Tatil" ve "Sil".
+ * Taşlar: aktif vardiya şablonları + yöneticinin eklediği özel saatli taşlar, "Tatil", "Her hafta tatil"
+ * (o gün sonraki haftalarda da tatil) ve "Sil".
  * Seçili taş, tabloda tıklanan her hücreye uygulanır. Sağda bekleyen değişiklik sayısı,
  * "Vazgeç" ve "Kaydet". Masaüstünde tablonun üstünde kart; mobilde alt gezinmeye yapışık sabit çubuk.
  */
 import { useState } from 'react'
-import { Armchair, Eraser, Plus, Trash2 } from 'lucide-react'
+import { Armchair, Eraser, Plus, Repeat, Trash2 } from 'lucide-react'
 import { BOTTOM_NAV_HEIGHT } from '@/components/layout/MobileBottomNav'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -161,6 +162,15 @@ export function ScheduleEditorBar({
       <ToggleGroupItem value="rest" aria-label="Tatil" className={stoneItem}>
         <Armchair />
         Tatil
+      </ToggleGroupItem>
+      <ToggleGroupItem
+        value="rest-weekly"
+        aria-label="Her hafta tatil"
+        title="Seçilen gün sonraki haftalarda da tatil olur"
+        className={stoneItem}
+      >
+        <Repeat />
+        {compact ? 'Her hafta' : 'Her hafta tatil'}
       </ToggleGroupItem>
       <ToggleGroupItem value="erase" aria-label="Sil" className={stoneItem}>
         <Eraser />

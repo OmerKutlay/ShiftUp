@@ -4,7 +4,12 @@
  *        Yöneticiler tümünü görür. Standart çalışan kendi taleplerini + başkalarının
  *        yalnızca ONAYLI izinlerini (gerekçe/not gizli) görür.
  * POST   /api/leave          — Yeni izin talebi oluştur
+ *        weekly_rest + recurring=true → o gün her hafta tatil (tekrarlayan; bkz. lib/recurringRest)
  * DELETE /api/leave?id=...   — İzin talebini sil (yönetici; çalışan yalnızca kendi bekleyen talebini)
+ *        &scope=following    — tekrarlayan tatilde bu ve sonraki haftaların tatilleri silinir
+ *
+ * Tekrarlayan tatil günü, çalışanın izin talebine engel olmaz: talep aralığındaki tekrarlar kaldırılır,
+ * talep reddedilir ya da silinirse geri yazılır.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
@@ -29,6 +34,9 @@ import { removePlannedShiftsInRange } from '@/lib/leaveService'
 import { getAnnualLeaveBalance, requestedLeaveDays } from '@/lib/annualLeaveService'
 import { logAudit } from '@/lib/auditLog'
 import { isEmployeeInStore, storeEmployeeIds } from '@/lib/storeScope'
+import {
+  endRecurringRest, everyWeekdayLabel, materializeRecurringRest, restoreRecurringRests, weekdayOf, WEEKDAY_NAMES_TR,
+} from '@/lib/recurringRest'
 
 const VALID_LEAVE_TYPES: LeaveType[] = ['annual', 'sick', 'personal', 'unpaid', 'other', 'weekly_rest']
 /** Çalışanın kendi adına açabileceği tipler (weekly_rest sadece manager atayabilir) */
@@ -70,7 +78,7 @@ export async function GET(req: NextRequest) {
     let query = admin
       .from('leave_requests')
       .select(`
-        id, employee_id, leave_type, start_date, end_date,
+        id, employee_id, leave_type, start_date, end_date, recurrence_id,
         reason, status, reviewer_note, reviewed_at, created_at, updated_at,
         employees!employee_id ( id, full_name, roles ( name ) )
       `)
@@ -112,7 +120,7 @@ export async function GET(req: NextRequest) {
 // ─── POST ───────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
-    const body = await readJson<Partial<CreateLeaveRequestPayload>>(req)
+    const body = await readJson<Partial<CreateLeaveRequestPayload> & { recurring?: unknown }>(req)
     if (!body) return badRequest('Geçersiz istek gövdesi.')
 
     if (!isUuid(body.employee_id)) return badRequest('employee_id zorunludur.')
@@ -156,6 +164,10 @@ export async function POST(req: NextRequest) {
     if (!isValidDate(body.start_date)) return badRequest('start_date YYYY-MM-DD formatında olmalıdır.')
     if (!isValidDate(body.end_date)) return badRequest('end_date YYYY-MM-DD formatında olmalıdır.')
     if (body.start_date > body.end_date) return badRequest('Başlangıç tarihi bitiş tarihinden sonra olamaz.')
+    const recurring = body.recurring === true
+    if (recurring && (!isWeeklyRest || body.start_date !== body.end_date)) {
+      return badRequest('Yalnızca tek günlük haftalık tatil her hafta tekrarlanabilir.')
+    }
     if (body.reason !== undefined && body.reason !== null && (typeof body.reason !== 'string' || body.reason.length > 500)) {
       return badRequest('Açıklama en fazla 500 karakter olabilir.')
     }
@@ -225,15 +237,62 @@ export async function POST(req: NextRequest) {
     // Aynı tarih aralığında çakışan pending/approved talep var mı? (DB'de ayrıca EXCLUDE kısıtı var)
     const { data: overlapping, error: ovErr } = await admin
       .from('leave_requests')
-      .select('id')
+      .select('id, leave_type, recurrence_id')
       .eq('employee_id', body.employee_id)
       .in('status', ['pending', 'approved'])
       .lte('start_date', body.end_date)
       .gte('end_date', body.start_date)
-      .limit(1)
     if (ovErr) return serverError('POST /api/leave', ovErr)
-    if (overlapping && overlapping.length > 0) {
+    // İzin talebi tekrarlayan tatil gününe denk gelebilir: o tekrarlar talebe yer açar (aşağıda)
+    const yieldingRestIds = isWeeklyRest
+      ? []
+      : (overlapping ?? []).filter((l) => l.leave_type === 'weekly_rest' && l.recurrence_id).map((l) => l.id as string)
+    if ((overlapping ?? []).length > yieldingRestIds.length) {
       return conflict('Bu tarih aralığında zaten onaylı veya bekleyen bir izin talebi mevcut.', 'LEAVE_CONFLICT')
+    }
+
+    const { employee_id: employeeId, start_date: startDate, end_date: endDate } = body
+
+    // Tekrarlayan tatil: aynı gün için açık bir kural varsa ikincisi açılmaz
+    let ruleId: string | null = null
+    if (recurring) {
+      const weekday = weekdayOf(startDate)
+      const exists = () =>
+        conflict(`Bu çalışanın ${WEEKDAY_NAMES_TR[weekday]} günleri zaten her hafta tatil.`, 'RECURRING_REST_EXISTS')
+      const { data: rules, error: ruleErr } = await admin
+        .from('recurring_weekly_rests')
+        .select('id, end_date')
+        .eq('employee_id', employeeId)
+        .eq('weekday', weekday)
+      if (ruleErr) return serverError('POST /api/leave', ruleErr)
+      if ((rules ?? []).some((r) => r.end_date === null || (r.end_date as string) >= startDate)) return exists()
+      const { data: rule, error: insRuleErr } = await admin
+        .from('recurring_weekly_rests')
+        .insert({
+          store_id: emp.store_id,
+          employee_id: employeeId,
+          weekday,
+          start_date: startDate,
+          materialized_until: startDate,   // ilk gün aşağıda bu istekle yazılır
+          created_by: actorId,
+        })
+        .select('id')
+        .single()
+      if (insRuleErr) return insRuleErr.code === '23505' ? exists() : serverError('POST /api/leave', insRuleErr)
+      ruleId = rule.id as string
+    }
+
+    if (yieldingRestIds.length > 0) {
+      const { error: yieldErr } = await admin.from('leave_requests').delete().in('id', yieldingRestIds)
+      if (yieldErr) {
+        if (ruleId) await admin.from('recurring_weekly_rests').delete().eq('id', ruleId)
+        return serverError('POST /api/leave', yieldErr)
+      }
+    }
+    /** Kayıt başarısızsa açılan kural geri alınır, yer açan tatiller geri yazılır */
+    const undo = async () => {
+      if (ruleId) await admin.from('recurring_weekly_rests').delete().eq('id', ruleId)
+      if (yieldingRestIds.length > 0) await restoreRecurringRests(admin, employeeId, startDate, endDate)
     }
 
     const { data, error } = await admin
@@ -248,11 +307,13 @@ export async function POST(req: NextRequest) {
         status: isWeeklyRest ? 'approved' : 'pending',
         reviewed_at: isWeeklyRest ? new Date().toISOString() : null,
         reviewed_by: isWeeklyRest ? actorId : null,
+        ...(ruleId ? { recurrence_id: ruleId } : {}),
       })
       .select()
       .single()
 
     if (error) {
+      await undo()
       // 23P01: exclusion constraint (eşzamanlı çakışan talep)
       if (error.code === '23P01') {
         return conflict('Bu tarih aralığında zaten onaylı veya bekleyen bir izin talebi mevcut.', 'LEAVE_CONFLICT')
@@ -262,15 +323,21 @@ export async function POST(req: NextRequest) {
 
     // weekly_rest: o günlerin planlanmış vardiyaları kaldırılır (çalışılmış olanlar korunur)
     let cleanup = { removed: 0, keptWorked: 0 }
+    let repeat: { created: number; skipped: number } | null = null
     if (isWeeklyRest) {
       cleanup = await removePlannedShiftsInRange(admin, body.employee_id, body.start_date, body.end_date)
+      // Sonraki haftalar: vardiyası ya da izni olan günler atlanır (yapılmış plan korunur)
+      if (ruleId) repeat = await materializeRecurringRest(admin, ruleId)
       await logAudit({
         actorId,
         storeId: emp.store_id,
-        action: 'leave.weekly_rest.assign',
+        action: ruleId ? 'leave.weekly_rest.recurring' : 'leave.weekly_rest.assign',
         entityType: 'leave_request',
         entityId: data.id,
-        after: { employee_id: body.employee_id, start_date: body.start_date, end_date: body.end_date, ...cleanup },
+        after: {
+          employee_id: body.employee_id, start_date: body.start_date, end_date: body.end_date, ...cleanup,
+          ...(ruleId && repeat ? { recurrence_id: ruleId, next_weeks: repeat.created, skipped_weeks: repeat.skipped } : {}),
+        },
       })
     }
 
@@ -280,7 +347,9 @@ export async function POST(req: NextRequest) {
           employee_id: body.employee_id,
           type: 'leave_approved',
           title: 'Haftalık tatil atandı',
-          message: `${body.start_date} – ${body.end_date} tarihli haftalık tatil planınıza eklendi.`,
+          message: ruleId
+            ? `${everyWeekdayLabel(body.start_date)} haftalık tatiliniz planınıza eklendi (${body.start_date} itibarıyla).`
+            : `${body.start_date} – ${body.end_date} tarihli haftalık tatil planınıza eklendi.`,
           related_id: data.id,
         })
       } else {
@@ -308,7 +377,10 @@ export async function POST(req: NextRequest) {
       console.error('[POST /api/leave] bildirim gönderilemedi:', notifErr)
     }
 
-    return NextResponse.json({ request: data, kept_worked_shifts: cleanup.keptWorked }, { status: 201 })
+    return NextResponse.json(
+      { request: data, kept_worked_shifts: cleanup.keptWorked, ...(repeat ? { recurring: repeat } : {}) },
+      { status: 201 }
+    )
   } catch (err) {
     return serverError('POST /api/leave', err)
   }
@@ -323,12 +395,14 @@ export async function DELETE(req: NextRequest) {
   try {
     const id = req.nextUrl.searchParams.get('id')
     if (!isUuid(id)) return badRequest('id parametresi zorunludur.')
+    const scope = req.nextUrl.searchParams.get('scope') ?? 'single'
+    if (scope !== 'single' && scope !== 'following') return badRequest('Geçersiz kapsam.')
 
     const admin = createAdminClient()
 
     const { data: existing, error: exErr } = await admin
       .from('leave_requests')
-      .select('id, employee_id, status, leave_type, start_date, end_date')
+      .select('id, employee_id, status, leave_type, start_date, end_date, recurrence_id')
       .eq('id', id)
       .maybeSingle()
     if (exErr) return serverError('DELETE /api/leave', exErr)
@@ -351,8 +425,29 @@ export async function DELETE(req: NextRequest) {
       if (outranked) return outranked
     }
 
+    // Tekrarlayan tatil — "bu ve sonraki haftalar": kural bu günden önce biter
+    if (scope === 'following' && existing.leave_type === 'weekly_rest' && existing.recurrence_id) {
+      if (!isManager) return forbidden('Yalnızca yönetici tekrarlayan tatili kaldırabilir.')
+      const removed = await endRecurringRest(admin, existing.recurrence_id, existing.start_date)
+      await logAudit({
+        actorId: auth.employee.id,
+        storeId: auth.employee.store_id,
+        action: 'leave.weekly_rest.recurring_end',
+        entityType: 'leave_request',
+        entityId: id,
+        before: existing,
+        after: { removed_days: removed },
+      })
+      return NextResponse.json({ success: true, removed })
+    }
+
     const { error } = await admin.from('leave_requests').delete().eq('id', id)
     if (error) return serverError('DELETE /api/leave', error)
+
+    // Talebe yer açmak için kaldırılan tekrarlayan tatiller geri gelir
+    if (existing.leave_type !== 'weekly_rest' && existing.status !== 'rejected') {
+      await restoreRecurringRests(admin, existing.employee_id, existing.start_date, existing.end_date)
+    }
 
     await logAudit({
       actorId: auth.employee.id,

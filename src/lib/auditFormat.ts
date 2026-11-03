@@ -40,6 +40,8 @@ const ACTION_LABELS: Record<string, string> = {
   'leave.rejected': 'İzin talebi reddedildi',
   'leave.delete': 'İzin kaydı silindi',
   'leave.weekly_rest.assign': 'Hafta tatili atandı',
+  'leave.weekly_rest.recurring': 'Her hafta tekrarlayan hafta tatili atandı',
+  'leave.weekly_rest.recurring_end': 'Tekrarlayan hafta tatili sonlandırıldı',
   'shift_swap.accepted': 'Vardiya takası kabul edildi',
   'shift_swap.declined': 'Vardiya takası geri çevrildi',
   'shift_swap.cancelled': 'Vardiya takası iptal edildi',

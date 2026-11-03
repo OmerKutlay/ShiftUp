@@ -55,7 +55,7 @@ import { MonthlyNormIndicator } from './MonthlyNormIndicator'
 import { WeekGrid, WeekGridSkeleton } from './WeekGrid'
 import { EDITOR_BAR_COMPACT_HEIGHT, ScheduleEditorBar } from './ScheduleEditorBar'
 import {
-  ERASE_STONE, REST_STONE, applyDrafts, cellKey, customStone, paintCell, sameAsOriginal, saveSteps, splitKey,
+  ERASE_STONE, REST_STONE, WEEKLY_REST_STONE, applyDrafts, cellKey, customStone, paintCell, sameAsOriginal, saveSteps, splitKey,
   templateStones, type CellDraft, type CellOriginal, type DraftMap, type EditorStone, type SaveStep, type ShiftStone,
 } from './scheduleEditor'
 
@@ -119,19 +119,33 @@ async function runSaveStep(step: SaveStep, acknowledge: boolean): Promise<void> 
       await apiFetch(`/api/leave?id=${encodeURIComponent(step.leaveId)}`, { method: 'DELETE' })
       return
     case 'createRest':
-      await apiFetch('/api/leave', {
-        method: 'POST',
-        body: {
-          employee_id: step.employeeId,
-          leave_type: 'weekly_rest',
-          start_date: step.date,
-          end_date: step.date,
-          reason: 'Haftalık tatil',
-        },
-      })
+      await createRestDay(step.employeeId, step.date, step.recurring === true)
       return
   }
 }
+
+interface CreateRestResponse {
+  /** Tekrarlayan tatilde sonraki haftalar: yazılan / vardiya ya da izin nedeniyle atlanan gün */
+  recurring?: { created: number; skipped: number }
+}
+
+/** Haftalık tatil atar; recurring → o gün sonraki haftalarda da tatil */
+function createRestDay(employeeId: string, date: string, recurring: boolean): Promise<CreateRestResponse> {
+  return apiFetch<CreateRestResponse>('/api/leave', {
+    method: 'POST',
+    body: {
+      employee_id: employeeId,
+      leave_type: 'weekly_rest',
+      start_date: date,
+      end_date: date,
+      reason: recurring ? 'Haftalık tatil (her hafta)' : 'Haftalık tatil',
+      ...(recurring ? { recurring: true } : {}),
+    },
+  })
+}
+
+/** "Her Pazar" — tarih yerel gün olarak okunur */
+const everyWeekday = (d: string) => `Her ${format(parseDay(d), 'EEEE', { locale: tr })}`
 
 /** Görevleri en fazla `limit` tanesi aynı anda çalışacak şekilde yürütür */
 async function runLimited(tasks: Array<() => Promise<void>>, limit: number): Promise<void> {
@@ -163,6 +177,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     approvedLeaveMap: savedLeaveMap,
     leaveDayToId,
     restDayMap: savedRestDayMap,
+    recurringRestMap: savedRecurringRestMap,
     multiDayLeaveIds,
     isFirstLoad,
     error,
@@ -194,7 +209,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
 
   const shiftStones = useMemo(() => [...templateStones(templates), ...customStones], [templates, customStones])
   const customIds = useMemo(() => new Set(customStones.map((s) => s.id)), [customStones])
-  const allStones: EditorStone[] = [...shiftStones, REST_STONE, ERASE_STONE]
+  const allStones: EditorStone[] = [...shiftStones, REST_STONE, WEEKLY_REST_STONE, ERASE_STONE]
   const selectedStone = allStones.find((s) => s.id === stonePick) ?? shiftStones[0] ?? ERASE_STONE
 
   const savedAssignmentMap = useMemo(
@@ -218,8 +233,8 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     else if ((savedLeaveMap.has(key) && !isRest) || assignment?.is_on_leave) locked = 'İzinli günler editörde değiştirilemez.'
     else if (isRest && leaveId && multiDayLeaveIds.has(leaveId)) locked = 'Birden fazla günü kapsayan tatil editörde değiştirilemez.'
     else if (assignment?.worked_minutes != null) locked = 'Çalışılmış vardiya değiştirilemez.'
-    return { assignment, restLeaveId: isRest ? leaveId : null, locked }
-  }, [savedAssignmentMap, leaveDayToId, savedRestDayMap, savedLeaveMap, multiDayLeaveIds, formerIds])
+    return { assignment, restLeaveId: isRest ? leaveId : null, restRecurring: savedRecurringRestMap.has(key), locked }
+  }, [savedAssignmentMap, leaveDayToId, savedRestDayMap, savedRecurringRestMap, savedLeaveMap, multiDayLeaveIds, formerIds])
 
   // Kaydedilecek taslaklar: veri yenilenip kayıtlı hale gelenler ya da kilitlenenler düşer
   const pendingDrafts: DraftMap = useMemo(() => {
@@ -232,13 +247,16 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
   const pendingKeys = useMemo(() => new Set(pendingDrafts.keys()), [pendingDrafts])
 
   // Tablo, özetler ve uyarılar taslaklar uygulanmış haliyle hesaplanır
-  const { assignments, restDayMap, approvedLeaveMap } = useMemo(
+  const { assignments, restDayMap, approvedLeaveMap, recurringRestMap = savedRecurringRestMap } = useMemo(
     () => applyDrafts(
-      { assignments: savedAssignments, restDayMap: savedRestDayMap, approvedLeaveMap: savedLeaveMap },
+      {
+        assignments: savedAssignments, restDayMap: savedRestDayMap, approvedLeaveMap: savedLeaveMap,
+        recurringRestMap: savedRecurringRestMap,
+      },
       pendingDrafts,
       templates
     ),
-    [savedAssignments, savedRestDayMap, savedLeaveMap, pendingDrafts, templates]
+    [savedAssignments, savedRestDayMap, savedLeaveMap, savedRecurringRestMap, pendingDrafts, templates]
   )
 
   // Kaydedilmemiş değişiklik varken sayfadan ayrılmadan önce tarayıcı uyarır
@@ -295,24 +313,20 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
 
   const dialogSubject = () => `${dialogEmployee?.full_name ?? ''} · ${dialogDate ? longDate(dialogDate) : ''}`
 
-  const handleAssignRestDay = async () => {
+  const handleAssignRestDay = async (recurring: boolean) => {
     if (!dialogEmployee || !dialogDate) return
     setSaving(true)
     try {
-      const res = await fetch('/api/leave', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          employee_id: dialogEmployee.id,
-          leave_type: 'weekly_rest',
-          start_date: dialogDate,
-          end_date: dialogDate,
-          reason: 'Haftalık tatil',
-        }),
-      })
-      const data = await res.json() as { error?: string }
-      if (!res.ok) throw new Error(data.error ?? 'Tatil atanamadı.')
-      toast.success('Haftalık tatil atandı', { description: dialogSubject() })
+      const res = await createRestDay(dialogEmployee.id, dialogDate, recurring)
+      if (recurring) {
+        const skipped = res.recurring?.skipped ?? 0
+        toast.success(`${everyWeekday(dialogDate)} tatil`, {
+          description: `${dialogEmployee.full_name} · sonraki haftalara da yazıldı`
+            + (skipped > 0 ? `; vardiyası ya da izni olan ${skipped} gün atlandı` : ''),
+        })
+      } else {
+        toast.success('Haftalık tatil atandı', { description: dialogSubject() })
+      }
       setDialogOpen(false)
       await load()
     } finally {
@@ -320,17 +334,21 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     }
   }
 
-  const handleLeaveDelete = async () => {
+  /** scope: following → tekrarlayan tatilde bu ve sonraki haftalar */
+  const handleLeaveDelete = async (scope: 'single' | 'following' = 'single') => {
     if (!leaveDeleteDialog) return
     const isRest = restDayMap.has(`${leaveDeleteDialog.employee.id}:${leaveDeleteDialog.date}`)
     setLeaveDeleting(true)
     try {
-      const res = await fetch(`/api/leave?id=${leaveDeleteDialog.leaveId}`, { method: 'DELETE' })
-      const data = await res.json() as { error?: string }
-      if (!res.ok) throw new Error(data.error ?? 'İzin silinemedi.')
-      toast.success(isRest ? 'Haftalık tatil kaldırıldı' : 'İzin silindi', {
-        description: `${leaveDeleteDialog.employee.full_name} · ${longDate(leaveDeleteDialog.date)}`,
-      })
+      const q = scope === 'following' ? '&scope=following' : ''
+      await apiFetch(`/api/leave?id=${encodeURIComponent(leaveDeleteDialog.leaveId)}${q}`, { method: 'DELETE' })
+      toast.success(
+        scope === 'following' ? 'Tekrarlayan tatil kaldırıldı' : isRest ? 'Haftalık tatil kaldırıldı' : 'İzin silindi',
+        {
+          description: `${leaveDeleteDialog.employee.full_name} · ${longDate(leaveDeleteDialog.date)}`
+            + (scope === 'following' ? ' ve sonraki haftalar' : ''),
+        }
+      )
       setLeaveDeleteDialog(null)
       await load()
     } catch (err) {
@@ -645,7 +663,9 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     restDayMap,
   })
 
-  const leaveIsRest = !!leaveDeleteDialog && restDayMap.has(`${leaveDeleteDialog.employee.id}:${leaveDeleteDialog.date}`)
+  const leaveKey = leaveDeleteDialog ? `${leaveDeleteDialog.employee.id}:${leaveDeleteDialog.date}` : ''
+  const leaveIsRest = !!leaveDeleteDialog && restDayMap.has(leaveKey)
+  const leaveIsRecurring = leaveIsRest && recurringRestMap.has(leaveKey)
 
   return (
     <Page>
@@ -788,7 +808,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
         <WeekGrid
           compact={isMobile}
           entries={visibleEntries} weekDays={weekDays} todayStr={todayStr} holidayMap={holidayMap}
-          statsMap={statsMap} approvedLeaveMap={approvedLeaveMap} restDayMap={restDayMap}
+          statsMap={statsMap} approvedLeaveMap={approvedLeaveMap} restDayMap={restDayMap} recurringRestMap={recurringRestMap}
           availabilityMap={availabilityMap} config={config} onCellClick={openAssignDialog} readOnly={readOnly}
           meId={readOnly ? authEmployee?.id : undefined}
           onCellPaint={editing ? paintCellWithStone : undefined}
@@ -861,9 +881,11 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
                   <>
                     <span className="font-medium text-foreground">{leaveDeleteDialog.employee.full_name}</span> ·{' '}
                     <span className="font-medium text-foreground">{longDate(leaveDeleteDialog.date)}</span>.{' '}
-                    {leaveIsRest
-                      ? 'Haftalık tatil kaldırılır; bu güne vardiya atanabilir.'
-                      : 'Bu günü kapsayan onaylı izin silinir.'}
+                    {leaveIsRecurring
+                      ? `Bu tatil ${everyWeekday(leaveDeleteDialog.date).toLocaleLowerCase('tr')} tekrarlanıyor. Yalnızca bu günü ya da bu ve sonraki haftaların tatilini kaldırabilirsiniz.`
+                      : leaveIsRest
+                        ? 'Haftalık tatil kaldırılır; bu güne vardiya atanabilir.'
+                        : 'Bu günü kapsayan onaylı izin silinir.'}
                   </>
                 )}
               </AlertDialogDescription>
@@ -878,10 +900,22 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
               <Button type="button" variant="outline" onClick={() => setLeaveDeleteDialog(null)} disabled={leaveDeleting}>
                 Vazgeç
               </Button>
-              <Button type="button" variant="destructive" onClick={handleLeaveDelete} disabled={leaveDeleting}>
-                {leaveDeleting ? <Spinner /> : <Trash2 />}
-                {leaveIsRest ? 'Tatili kaldır' : 'İzni sil'}
-              </Button>
+              {leaveIsRecurring ? (
+                <>
+                  <Button type="button" variant="outline" onClick={() => handleLeaveDelete('single')} disabled={leaveDeleting}>
+                    Yalnızca bu gün
+                  </Button>
+                  <Button type="button" variant="destructive" onClick={() => handleLeaveDelete('following')} disabled={leaveDeleting}>
+                    {leaveDeleting ? <Spinner /> : <Trash2 />}
+                    Bu ve sonraki haftalar
+                  </Button>
+                </>
+              ) : (
+                <Button type="button" variant="destructive" onClick={() => handleLeaveDelete()} disabled={leaveDeleting}>
+                  {leaveDeleting ? <Spinner /> : <Trash2 />}
+                  {leaveIsRest ? 'Tatili kaldır' : 'İzni sil'}
+                </Button>
+              )}
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>

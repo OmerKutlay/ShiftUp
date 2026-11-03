@@ -27,6 +27,7 @@ interface ApprovedLeave {
   start_date: string
   end_date: string
   leave_type: string
+  recurrence_id?: string | null
 }
 
 export function useWeeklySchedule(currentWeek: Date, { readOnly = false } = {}) {
@@ -49,10 +50,11 @@ export function useWeeklySchedule(currentWeek: Date, { readOnly = false } = {}) 
   )
 
   // "employee_id:YYYY-MM-DD" anahtarlı izin haritaları
-  const { approvedLeaveMap, leaveDayToId, restDayMap, multiDayLeaveIds } = useMemo(() => {
+  const { approvedLeaveMap, leaveDayToId, restDayMap, recurringRestMap, multiDayLeaveIds } = useMemo(() => {
     const leaveSet = new Set<string>()
     const idMap = new Map<string, string>()
     const restSet = new Set<string>()
+    const recurringSet = new Set<string>()
     const multiDay = new Set<string>()
     for (const lr of leavesQ.data?.requests ?? []) {
       const end = lr.end_date.slice(0, 10)
@@ -62,10 +64,15 @@ export function useWeeklySchedule(currentWeek: Date, { readOnly = false } = {}) 
         const key = `${lr.employee_id}:${d}`
         leaveSet.add(key)
         idMap.set(key, lr.id)
-        if (lr.leave_type === 'weekly_rest') restSet.add(key)
+        if (lr.leave_type === 'weekly_rest') {
+          restSet.add(key)
+          if (lr.recurrence_id) recurringSet.add(key)
+        }
       }
     }
-    return { approvedLeaveMap: leaveSet, leaveDayToId: idMap, restDayMap: restSet, multiDayLeaveIds: multiDay }
+    return {
+      approvedLeaveMap: leaveSet, leaveDayToId: idMap, restDayMap: restSet, recurringRestMap: recurringSet, multiDayLeaveIds: multiDay,
+    }
   }, [leavesQ.data, from, to])
 
   // employeeId → DayOfWeek → kayıtlar
@@ -105,6 +112,8 @@ export function useWeeklySchedule(currentWeek: Date, { readOnly = false } = {}) 
     approvedLeaveMap,
     leaveDayToId,
     restDayMap,
+    /** Her hafta tekrarlayan tatil günleri (restDayMap alt kümesi) */
+    recurringRestMap,
     /** Birden fazla günü kapsayan izin / tatil kayıtları (silinince tüm aralık gider) */
     multiDayLeaveIds,
     availabilityMap,

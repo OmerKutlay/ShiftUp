@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import type { ShiftTemplate } from '@/types/shiftTemplate'
 import type { ShiftAssignmentWithDetails } from '@/types/schedule'
 import {
-  ERASE_STONE, applyDrafts, customStone, paintCell, saveSteps, templateStones,
+  ERASE_STONE, REST_STONE, WEEKLY_REST_STONE, applyDrafts, customStone, paintCell, saveSteps, templateStones,
   type CellOriginal, type DraftMap,
 } from '@/components/schedule/scheduleEditor'
 
@@ -110,5 +110,38 @@ describe('saveSteps', () => {
   it('kilitli ya da değişmemiş hücre için adım yok', () => {
     expect(saveSteps(KEY, { type: 'rest' }, { ...empty, locked: 'İzinli' })).toEqual([])
     expect(saveSteps(KEY, { type: 'clear' }, empty)).toEqual([])
+  })
+})
+
+describe('her hafta tatil taşı', () => {
+  const singleRest: CellOriginal = { ...empty, restLeaveId: 'lv-1' }
+  const recurringRest: CellOriginal = { ...empty, restLeaveId: 'lv-1', restRecurring: true }
+
+  it('boş hücreyi tekrarlayan tatille boyar ve kayıtta recurring gönderir', () => {
+    const drafts = paintCell(none, KEY, WEEKLY_REST_STONE, empty)
+    expect(drafts.get(KEY)).toEqual({ type: 'rest', recurring: true })
+    expect(saveSteps(KEY, drafts.get(KEY)!, empty)).toEqual([{ op: 'createRest', employeeId: EMP, date: DAY, recurring: true }])
+  })
+
+  it('tek günlük tatili tekrarlayana çevirir: önce eski kayıt kalkar', () => {
+    const drafts = paintCell(none, KEY, WEEKLY_REST_STONE, singleRest)
+    expect(saveSteps(KEY, drafts.get(KEY)!, singleRest)).toEqual([
+      { op: 'deleteLeave', leaveId: 'lv-1' },
+      { op: 'createRest', employeeId: EMP, date: DAY, recurring: true },
+    ])
+  })
+
+  it('tekrarlayan tatile tatil ya da her hafta tatil boyamak değişiklik değildir', () => {
+    expect(paintCell(none, KEY, WEEKLY_REST_STONE, recurringRest)).toBe(none)
+    expect(paintCell(none, KEY, REST_STONE, recurringRest)).toBe(none)
+  })
+
+  it('tabloda tekrarlayan tatil olarak görünür; silgi işareti kaldırır', () => {
+    const view = { assignments: [], restDayMap: new Set([KEY]), approvedLeaveMap: new Set([KEY]), recurringRestMap: new Set([KEY]) }
+    const other = `${EMP}:2026-09-29`
+    const out = applyDrafts(view, new Map([[other, { type: 'rest', recurring: true }], [KEY, { type: 'clear' }]]), [])
+    expect(out.recurringRestMap?.has(other)).toBe(true)
+    expect(out.recurringRestMap?.has(KEY)).toBe(false)
+    expect(out.restDayMap.has(KEY)).toBe(false)
   })
 })

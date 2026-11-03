@@ -6,7 +6,9 @@
  * müsaitlik uyarısı Alert, süre önizlemesi, altta kaldır / haftalık tatil + iptal / kaydet.
  */
 import { useState } from 'react'
-import { CalendarOff, CircleAlert, CircleCheck, Clock, Moon, Sofa, Trash2, TriangleAlert } from 'lucide-react'
+import {
+  CalendarOff, ChevronDown, CircleAlert, CircleCheck, Clock, Moon, Repeat, Sofa, Trash2, TriangleAlert,
+} from 'lucide-react'
 import type { EmployeeWithRole } from '@/types/employee'
 import type { ShiftTemplate } from '@/types/shiftTemplate'
 import type { ShiftAssignmentWithDetails } from '@/types/schedule'
@@ -19,6 +21,7 @@ import { Button } from '@/components/ui/button'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
 import {
   Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldTitle,
@@ -44,8 +47,8 @@ interface Props {
   onClose: () => void
   onSave: (payload: ShiftSavePayload) => Promise<void>
   onDelete?: () => Promise<void>
-  /** Haftalık tatil atama callback — sadece boş günde gösterilir */
-  onAssignRestDay?: () => Promise<void>
+  /** Haftalık tatil atama callback — sadece boş günde gösterilir; recurring → her hafta */
+  onAssignRestDay?: (recurring: boolean) => Promise<void>
   employee: EmployeeWithRole | null
   workDate: string
   templates: ShiftTemplate[]
@@ -190,15 +193,19 @@ export function ShiftAssignDialog({
     try { await onDelete() } catch (err) { fail('form', err, 'Vardiya kaldırılamadı.') }
   }
 
-  const handleRestDay = async () => {
+  const handleRestDay = async (recurring: boolean) => {
     if (!onAssignRestDay) return
     setError(null)
-    try { await onAssignRestDay() } catch (err) { fail('form', err, 'Tatil atanamadı.') }
+    try { await onAssignRestDay(recurring) } catch (err) { fail('form', err, 'Tatil atanamadı.') }
   }
 
   const dateLabel = workDate
     ? new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long', weekday: 'long' })
         .format(new Date(workDate + 'T00:00:00'))
+    : ''
+  /** "pazar" — tekrarlayan tatil seçeneği için */
+  const weekdayLabel = workDate
+    ? new Intl.DateTimeFormat('tr-TR', { weekday: 'long' }).format(new Date(workDate + 'T00:00:00')).toLocaleLowerCase('tr')
     : ''
   const fieldErr = (target: FormError['target']) => (error?.target === target ? error.message : null)
 
@@ -336,11 +343,29 @@ export function ShiftAssignDialog({
               Vardiyayı kaldır
             </Button>
           ) : !isEdit && onAssignRestDay ? (
-            /* Haftalık tatil — yalnızca yeni atama (boş gün) */
-            <Button type="button" variant="ghost" onClick={handleRestDay} disabled={loading}>
-              <Sofa />
-              Haftalık tatil yap
-            </Button>
+            /* Haftalık tatil — yalnızca yeni atama (boş gün); bu gün ya da her hafta */
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" variant="ghost" disabled={loading}>
+                  <Sofa />
+                  Haftalık tatil yap
+                  <ChevronDown className="text-muted-foreground" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-64">
+                <DropdownMenuItem onSelect={() => handleRestDay(false)}>
+                  <Sofa />
+                  Yalnızca bu gün
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => handleRestDay(true)}>
+                  <Repeat />
+                  <span className="flex flex-col">
+                    <span>{weekdayLabel ? `Her ${weekdayLabel}` : 'Her hafta'}</span>
+                    <span className="text-xs text-muted-foreground">Sonraki haftalarda da tatil</span>
+                  </span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           ) : null}
           <div className="flex flex-col-reverse gap-2 sm:flex-row">
             <Button type="button" variant="outline" onClick={onClose} disabled={loading}>İptal</Button>

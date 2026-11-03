@@ -20,9 +20,12 @@ export type ShiftStone = {
   start: string  // 'HH:MM'
   end: string    // 'HH:MM'
 }
-export type EditorStone = ShiftStone | { id: 'rest'; type: 'rest' } | { id: 'erase'; type: 'erase' }
+/** Tatil taşı; recurring → o gün sonraki haftalarda da tatil (tekrarlayan) */
+export type RestStone = { id: 'rest' | 'rest-weekly'; type: 'rest'; recurring: boolean }
+export type EditorStone = ShiftStone | RestStone | { id: 'erase'; type: 'erase' }
 
-export const REST_STONE: EditorStone = { id: 'rest', type: 'rest' }
+export const REST_STONE: EditorStone = { id: 'rest', type: 'rest', recurring: false }
+export const WEEKLY_REST_STONE: EditorStone = { id: 'rest-weekly', type: 'rest', recurring: true }
 export const ERASE_STONE: EditorStone = { id: 'erase', type: 'erase' }
 
 /** Aktif vardiya şablonlarından taşlar (şablon sırasıyla) */
@@ -46,7 +49,7 @@ export function customStone(label: string, start: string, end: string): ShiftSto
 
 export type CellDraft =
   | { type: 'shift'; templateId: string | null; start: string; end: string }
-  | { type: 'rest' }
+  | { type: 'rest'; recurring?: true }
   | { type: 'clear' }
 
 /** Anahtar: `${employeeId}:${YYYY-MM-DD}` */
@@ -57,6 +60,8 @@ export interface CellOriginal {
   assignment: ShiftAssignmentWithDetails | null
   /** Bu günü kapsayan tek günlük haftalık tatil kaydı */
   restLeaveId: string | null
+  /** Tatil her hafta tekrarlayan bir kurala bağlı */
+  restRecurring?: boolean
   /** Doluysa hücre editörde değiştirilemez; neden */
   locked: string | null
 }
@@ -70,7 +75,8 @@ export function splitKey(key: string): { employeeId: string; date: string } {
 
 export function draftFromStone(stone: EditorStone): CellDraft {
   if (stone.type === 'shift') return { type: 'shift', templateId: stone.templateId, start: stone.start, end: stone.end }
-  return { type: stone.type === 'rest' ? 'rest' : 'clear' }
+  if (stone.type === 'rest') return stone.recurring ? { type: 'rest', recurring: true } : { type: 'rest' }
+  return { type: 'clear' }
 }
 
 /** Taslak hücrenin kayıtlı haliyle aynı mı (kaydedilecek bir şey yok) */
@@ -83,7 +89,8 @@ export function sameAsOriginal(draft: CellDraft, orig: CellOriginal): boolean {
         && a.end_time.slice(0, 5) === draft.end
         && (a.shift_template_id ?? null) === draft.templateId
     case 'rest':
-      return !!orig.restLeaveId && !a
+      // Tekrarlayan tatile tek günlük tatil boyamak değişiklik değildir; tersi tekrarı başlatır
+      return !!orig.restLeaveId && !a && (!draft.recurring || !!orig.restRecurring)
     case 'clear':
       return !a && !orig.restLeaveId
   }
@@ -113,6 +120,8 @@ export interface ScheduleView {
   assignments: ShiftAssignmentWithDetails[]
   restDayMap: Set<string>
   approvedLeaveMap: Set<string>
+  /** Her hafta tekrarlayan tatil günleri (restDayMap alt kümesi) */
+  recurringRestMap?: Set<string>
 }
 
 /**
@@ -123,6 +132,7 @@ export function applyDrafts(view: ScheduleView, drafts: DraftMap, templates: Shi
   if (drafts.size === 0) return view
   const restDayMap = new Set(view.restDayMap)
   const approvedLeaveMap = new Set(view.approvedLeaveMap)
+  const recurringRestMap = new Set(view.recurringRestMap)
   const byKey = new Map(view.assignments.map((a) => [cellKey(a.employee_id, a.work_date), a]))
 
   for (const [key, draft] of drafts) {
@@ -146,18 +156,21 @@ export function applyDrafts(view: ScheduleView, drafts: DraftMap, templates: Shi
       })
       restDayMap.delete(key)
       approvedLeaveMap.delete(key)
+      recurringRestMap.delete(key)
     } else {
       byKey.delete(key)
       if (draft.type === 'rest') {
         restDayMap.add(key)
         approvedLeaveMap.add(key)
+        if (draft.recurring) recurringRestMap.add(key)
       } else {
         restDayMap.delete(key)
         approvedLeaveMap.delete(key)
+        recurringRestMap.delete(key)
       }
     }
   }
-  return { assignments: [...byKey.values()], restDayMap, approvedLeaveMap }
+  return { assignments: [...byKey.values()], restDayMap, approvedLeaveMap, recurringRestMap }
 }
 
 // ─── Kayıt adımları ───────────────────────────────────────────
@@ -167,7 +180,7 @@ export type SaveStep =
   | { op: 'deleteShift'; id: string }
   | { op: 'createShift'; payload: CreateShiftAssignmentPayload }
   | { op: 'updateShift'; id: string; employeeId: string; date: string; payload: UpdateShiftAssignmentPayload }
-  | { op: 'createRest'; employeeId: string; date: string }
+  | { op: 'createRest'; employeeId: string; date: string; recurring?: true }
 
 /** Bir hücrenin taslağını kayıtlı durumdan hedefe götüren API adımları (sırası önemli) */
 export function saveSteps(key: string, draft: CellDraft, orig: CellOriginal): SaveStep[] {
@@ -187,8 +200,10 @@ export function saveSteps(key: string, draft: CellDraft, orig: CellOriginal): Sa
       break
     }
     case 'rest':
+      // Tek günlük tatil her hafta tekrarlayana çevrilir: önce eski kayıt kalkar
+      if (orig.restLeaveId) steps.push({ op: 'deleteLeave', leaveId: orig.restLeaveId })
       // Sunucu, tatil atanan günün planlanmış vardiyasını kendisi kaldırır
-      steps.push({ op: 'createRest', employeeId, date })
+      steps.push(draft.recurring ? { op: 'createRest', employeeId, date, recurring: true } : { op: 'createRest', employeeId, date })
       break
     case 'clear':
       if (a) steps.push({ op: 'deleteShift', id: a.id })

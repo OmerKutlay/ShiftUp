@@ -42,6 +42,8 @@ export interface LeaveRequest {
   status: LeaveStatus
   reviewer_note: string | null
   reviewed_at: string | null
+  /** Tekrarlayan haftalık tatilin kuralı (recurring_weekly_rests); tek seferlik kayıtta null */
+  recurrence_id?: string | null
   created_at: string
   updated_at: string
 }

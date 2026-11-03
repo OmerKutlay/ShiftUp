@@ -15,6 +15,7 @@ import { requireMinRole, ACCESS, forbidden, forbidIfOutranked } from '@/lib/auth
 import { badRequest, conflict, notFound, readJson, serverError } from '@/lib/apiErrors'
 import { isUuid } from '@/lib/validation'
 import { removePlannedShiftsInRange } from '@/lib/leaveService'
+import { restoreRecurringRests } from '@/lib/recurringRest'
 import { logAudit } from '@/lib/auditLog'
 import { isEmployeeInStore } from '@/lib/storeScope'
 
@@ -80,6 +81,9 @@ export async function POST(req: NextRequest) {
       } catch (cleanupErr) {
         console.error('[POST /api/leave/review] vardiya temizliği başarısız:', cleanupErr)
       }
+    } else {
+      // Talebe yer açmak için kaldırılan tekrarlayan tatiller geri gelir
+      await restoreRecurringRests(admin, data.employee_id, data.start_date, data.end_date)
     }
 
     await logAudit({

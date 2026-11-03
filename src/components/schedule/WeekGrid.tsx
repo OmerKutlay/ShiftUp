@@ -46,6 +46,8 @@ export interface WeekGridProps {
   statsMap: Map<string, EmployeeWeekStats>
   approvedLeaveMap: Set<string>
   restDayMap: Set<string>
+  /** Her hafta tekrarlayan tatil günleri */
+  recurringRestMap?: Set<string>
   availabilityMap: AvailabilityMap
   config: ReturnType<typeof getWorkingTimeConfig>
   onCellClick: (emp: EmployeeWithRole, date: string) => void
@@ -70,7 +72,7 @@ export function workingCount(entries: WeeklyScheduleEntry[], day: string, leave:
 
 export function WeekGrid(props: WeekGridProps) {
   const {
-    entries, weekDays, todayStr, holidayMap, statsMap, approvedLeaveMap, restDayMap,
+    entries, weekDays, todayStr, holidayMap, statsMap, approvedLeaveMap, restDayMap, recurringRestMap,
     availabilityMap, config, onCellClick, readOnly, compact, meId, onCellPaint, pendingKeys,
   } = props
   const editing = !!onCellPaint
@@ -140,6 +142,7 @@ export function WeekGrid(props: WeekGridProps) {
             assignment: asgn,
             isOnLeave: asgn?.is_on_leave === true || approvedLeaveMap.has(key),
             isRestDay: restDayMap.has(key),
+            isRecurringRest: recurringRestMap?.has(key) ?? false,
             availStatus: getAvailStatus(emp.id, d, availabilityMap, asgn?.start_time, asgn?.end_time),
             dailyOver: stats ? (stats.dailyMins[d] ?? 0) > config.maxDailyWorkHours * 60 : false,
             onClick: () => (onCellPaint ? onCellPaint(emp, d) : onCellClick(emp, d)),

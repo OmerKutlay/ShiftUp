@@ -10,7 +10,7 @@
  *
  * Satır içi `style` yalnızca vardiya türü rengi (SHIFT_KIND_TONES) ve çubuk genişliği içindir.
  */
-import { Armchair, Ban, Plane, Plus, TriangleAlert, type LucideIcon } from 'lucide-react'
+import { Armchair, Ban, Plane, Plus, Repeat, TriangleAlert, type LucideIcon } from 'lucide-react'
 import type { ShiftAssignmentWithDetails } from '@/types/schedule'
 import { shiftDurationMins, netWorkMins } from '@/lib/workingTimeService'
 import { PART_TIME_RULES } from '@/types/employee'
@@ -161,6 +161,8 @@ export interface ShiftCellProps {
   assignment: ShiftAssignmentWithDetails | null
   isOnLeave: boolean
   isRestDay: boolean
+  /** Tatil her hafta tekrarlıyor */
+  isRecurringRest?: boolean
   availStatus: AvailStatus
   dailyOver: boolean
   onClick: () => void
@@ -170,7 +172,9 @@ export interface ShiftCellProps {
 const cellBase =
   'relative flex h-12 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50'
 
-function OffCell({ kind, readOnly, onClick, tip }: { kind: OffKind; readOnly?: boolean; onClick: () => void; tip: React.ReactNode }) {
+function OffCell({ kind, readOnly, onClick, tip, recurring }: {
+  kind: OffKind; readOnly?: boolean; onClick: () => void; tip: React.ReactNode; recurring?: boolean
+}) {
   const { icon: Icon, label } = OFF_META[kind]
   return (
     <Tip text={tip}>
@@ -186,6 +190,7 @@ function OffCell({ kind, readOnly, onClick, tip }: { kind: OffKind; readOnly?: b
       >
         {kind !== 'unavailable' && <Icon aria-hidden className="size-3.5 shrink-0" />}
         <span className="truncate text-xs">{label}</span>
+        {recurring && <Repeat aria-label="Her hafta" className="size-3 shrink-0" />}
       </CellButton>
     </Tip>
   )
@@ -193,12 +198,14 @@ function OffCell({ kind, readOnly, onClick, tip }: { kind: OffKind; readOnly?: b
 
 // ─── Vardiya hücresi (masaüstü tablo) ─────────────────────────
 
-export function ShiftCell({ assignment, isOnLeave, isRestDay, availStatus, dailyOver, onClick, readOnly }: ShiftCellProps) {
+export function ShiftCell({
+  assignment, isOnLeave, isRestDay, isRecurringRest, availStatus, dailyOver, onClick, readOnly,
+}: ShiftCellProps) {
   if (isRestDay) {
     return (
       <OffCell
-        kind="rest" readOnly={readOnly} onClick={onClick}
-        tip={readOnly ? 'Haftalık tatil' : 'Haftalık tatil — kaldırmak için tıklayın'}
+        kind="rest" readOnly={readOnly} onClick={onClick} recurring={isRecurringRest}
+        tip={`${isRecurringRest ? 'Haftalık tatil · her hafta' : 'Haftalık tatil'}${readOnly ? '' : ' — kaldırmak için tıklayın'}`}
       />
     )
   }
@@ -287,11 +294,16 @@ export function ShiftCell({ assignment, isOnLeave, isRestDay, availStatus, daily
 const miniBase =
   'relative flex h-10 w-full flex-col items-center justify-center gap-1 rounded-md text-xs font-medium tabular-nums outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 [&_svg]:size-3.5'
 
-export function MiniShiftCell({ assignment, isOnLeave, isRestDay, availStatus, dailyOver, onClick, readOnly }: ShiftCellProps) {
+export function MiniShiftCell({
+  assignment, isOnLeave, isRestDay, isRecurringRest, availStatus, dailyOver, onClick, readOnly,
+}: ShiftCellProps) {
   if (isRestDay || isOnLeave) {
     const { icon: Icon, label } = OFF_META[isRestDay ? 'rest' : 'leave']
     return (
-      <CellButton readOnly={readOnly} onClick={onClick} aria-label={label} className={cn(miniBase, STRIPES, 'text-muted-foreground')}>
+      <CellButton
+        readOnly={readOnly} onClick={onClick} aria-label={isRestDay && isRecurringRest ? `${label} (her hafta)` : label}
+        className={cn(miniBase, STRIPES, 'text-muted-foreground')}
+      >
         <Icon />
       </CellButton>
     )
