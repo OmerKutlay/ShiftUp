@@ -55,7 +55,7 @@ import { MonthlyNormIndicator } from './MonthlyNormIndicator'
 import { WeekGrid, WeekGridSkeleton } from './WeekGrid'
 import { EDITOR_BAR_COMPACT_HEIGHT, ScheduleEditorBar } from './ScheduleEditorBar'
 import {
-  ERASE_STONE, REST_STONE, WEEKLY_REST_STONE, applyDrafts, cellKey, customStone, paintCell, sameAsOriginal, saveSteps, splitKey,
+  ERASE_STONE, REST_STONE, WEEKLY_REST_STONE, applyDrafts, cellKey, leaveStones, customStone, paintCell, sameAsOriginal, saveSteps, splitKey,
   templateStones, type CellDraft, type CellOriginal, type DraftMap, type EditorStone, type SaveStep, type ShiftStone,
 } from './scheduleEditor'
 
@@ -121,8 +121,30 @@ async function runSaveStep(step: SaveStep, acknowledge: boolean): Promise<void> 
     case 'createRest':
       await createRestDay(step.employeeId, step.date, step.recurring === true)
       return
+    case 'createLeave':
+      // Onay (acknowledge) yıllık izin bakiyesini aşan avans izni de kapsar
+      await createLeaveDay(step.employeeId, step.date, step.defId, acknowledge)
+      return
   }
 }
+
+/** Planda doğrudan onaylı tek günlük izin; allowExceed → bakiyeyi aşan yıllık izin (avans) */
+function createLeaveDay(employeeId: string, date: string, defId: string, allowExceed: boolean): Promise<unknown> {
+  return apiFetch('/api/leave', {
+    method: 'POST',
+    body: {
+      employee_id: employeeId,
+      leave_type_def_id: defId,
+      start_date: date,
+      end_date: date,
+      approve: true,
+      ...(allowExceed ? { allow_exceed: true } : {}),
+    },
+  })
+}
+
+/** Kullanıcı onayıyla aşılabilen sunucu uyarıları (İş Kanunu ihlali, yıllık izin bakiyesi) */
+const ACK_CODES = new Set(['WORKING_TIME_VIOLATION', 'ANNUAL_LEAVE_EXCEEDED'])
 
 interface CreateRestResponse {
   /** Tekrarlayan tatilde sonraki haftalar: yazılan / vardiya ya da izin nedeniyle atlanan gün */
@@ -178,6 +200,9 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     leaveDayToId,
     restDayMap: savedRestDayMap,
     recurringRestMap: savedRecurringRestMap,
+    leaveLabelMap: savedLeaveLabelMap,
+    leaveDefMap,
+    leaveTypes,
     multiDayLeaveIds,
     isFirstLoad,
     error,
@@ -209,7 +234,8 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
 
   const shiftStones = useMemo(() => [...templateStones(templates), ...customStones], [templates, customStones])
   const customIds = useMemo(() => new Set(customStones.map((s) => s.id)), [customStones])
-  const allStones: EditorStone[] = [...shiftStones, REST_STONE, WEEKLY_REST_STONE, ERASE_STONE]
+  const leaveStoneList = useMemo(() => leaveStones(leaveTypes), [leaveTypes])
+  const allStones: EditorStone[] = [...shiftStones, REST_STONE, WEEKLY_REST_STONE, ...leaveStoneList, ERASE_STONE]
   const selectedStone = allStones.find((s) => s.id === stonePick) ?? shiftStones[0] ?? ERASE_STONE
 
   const savedAssignmentMap = useMemo(
@@ -223,18 +249,29 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     return new Set(savedAssignments.map((a) => a.employee_id).filter((id) => !current.has(id)))
   }, [employees, savedAssignments])
 
-  /** Hücrenin kayıtlı durumu; izinli, çok günlü tatil, çalışılmış ve eski çalışan hücreleri kilitli */
+  /** Hücrenin kayıtlı durumu; çok günlü izin / tatil, çalışılmış ve eski çalışan hücreleri kilitli */
   const originalOf = useCallback((key: string): CellOriginal => {
     const assignment = savedAssignmentMap.get(key) ?? null
     const leaveId = leaveDayToId.get(key) ?? null
     const isRest = savedRestDayMap.has(key)
+    const isLeave = savedLeaveMap.has(key) && !isRest
     let locked: string | null = null
     if (formerIds.has(splitKey(key).employeeId)) locked = FORMER_LOCKED
-    else if ((savedLeaveMap.has(key) && !isRest) || assignment?.is_on_leave) locked = 'İzinli günler editörde değiştirilemez.'
-    else if (isRest && leaveId && multiDayLeaveIds.has(leaveId)) locked = 'Birden fazla günü kapsayan tatil editörde değiştirilemez.'
-    else if (assignment?.worked_minutes != null) locked = 'Çalışılmış vardiya değiştirilemez.'
-    return { assignment, restLeaveId: isRest ? leaveId : null, restRecurring: savedRecurringRestMap.has(key), locked }
-  }, [savedAssignmentMap, leaveDayToId, savedRestDayMap, savedRecurringRestMap, savedLeaveMap, multiDayLeaveIds, formerIds])
+    else if (assignment?.is_on_leave) locked = 'İzinli işaretli vardiya editörde değiştirilemez.'
+    else if (leaveId && multiDayLeaveIds.has(leaveId)) {
+      locked = isRest
+        ? 'Birden fazla günü kapsayan tatil editörde değiştirilemez.'
+        : 'Birden fazla günü kapsayan izin editörde değiştirilemez; İzinler sayfasından yönetin.'
+    } else if (assignment?.worked_minutes != null) locked = 'Çalışılmış vardiya değiştirilemez.'
+    return {
+      assignment,
+      restLeaveId: isRest ? leaveId : null,
+      restRecurring: savedRecurringRestMap.has(key),
+      leaveId: isLeave ? leaveId : null,
+      leaveDefId: isLeave ? leaveDefMap.get(key) ?? null : null,
+      locked,
+    }
+  }, [savedAssignmentMap, leaveDayToId, savedRestDayMap, savedRecurringRestMap, savedLeaveMap, leaveDefMap, multiDayLeaveIds, formerIds])
 
   // Kaydedilecek taslaklar: veri yenilenip kayıtlı hale gelenler ya da kilitlenenler düşer
   const pendingDrafts: DraftMap = useMemo(() => {
@@ -247,16 +284,19 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
   const pendingKeys = useMemo(() => new Set(pendingDrafts.keys()), [pendingDrafts])
 
   // Tablo, özetler ve uyarılar taslaklar uygulanmış haliyle hesaplanır
-  const { assignments, restDayMap, approvedLeaveMap, recurringRestMap = savedRecurringRestMap } = useMemo(
+  const {
+    assignments, restDayMap, approvedLeaveMap,
+    recurringRestMap = savedRecurringRestMap, leaveLabelMap = savedLeaveLabelMap,
+  } = useMemo(
     () => applyDrafts(
       {
         assignments: savedAssignments, restDayMap: savedRestDayMap, approvedLeaveMap: savedLeaveMap,
-        recurringRestMap: savedRecurringRestMap,
+        recurringRestMap: savedRecurringRestMap, leaveLabelMap: savedLeaveLabelMap,
       },
       pendingDrafts,
       templates
     ),
-    [savedAssignments, savedRestDayMap, savedLeaveMap, savedRecurringRestMap, pendingDrafts, templates]
+    [savedAssignments, savedRestDayMap, savedLeaveMap, savedRecurringRestMap, savedLeaveLabelMap, pendingDrafts, templates]
   )
 
   // Kaydedilmemiş değişiklik varken sayfadan ayrılmadan önce tarayıcı uyarır
@@ -329,6 +369,32 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
       }
       setDialogOpen(false)
       await load()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  /** Planda doğrudan onaylı izin; yıllık izin bakiyesi aşılıyorsa onay sorulur (avans izin) */
+  const handleAssignLeave = async (defId: string, allowExceed = false): Promise<void> => {
+    if (!dialogEmployee || !dialogDate) return
+    const name = leaveTypes.find((t) => t.id === defId)?.name ?? 'İzin'
+    setSaving(true)
+    try {
+      await createLeaveDay(dialogEmployee.id, dialogDate, defId, allowExceed)
+      toast.success(`${name} verildi`, { description: dialogSubject() })
+      setDialogOpen(false)
+      await load()
+    } catch (err) {
+      if (!allowExceed && err instanceof ApiError && err.code === 'ANNUAL_LEAVE_EXCEEDED' && await confirm({
+        title: 'Yıllık izin bakiyesi aşılıyor',
+        message: err.message,
+        footer: 'Avans izin olarak yine de verilsin mi?',
+        confirmText: 'Avans izin ver',
+      })) {
+        setSaving(false)
+        return handleAssignLeave(defId, true)
+      }
+      throw err
     } finally {
       setSaving(false)
     }
@@ -500,7 +566,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
         try {
           await runSaveStep(steps[i], acknowledge)
         } catch (err) {
-          if (!acknowledge && err instanceof ApiError && err.code === 'WORKING_TIME_VIOLATION') {
+          if (!acknowledge && err instanceof ApiError && ACK_CODES.has(err.code ?? '')) {
             const violations = (err.details.violations as string[] | undefined) ?? [err.message]
             needsAck.push({ key, steps: steps.slice(i), violations })
           } else {
@@ -533,8 +599,8 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
 
       if (needsAck.length > 0) {
         const ok = await confirm({
-          title: 'İş Kanunu ihlali',
-          message: 'Bazı değişiklikler şu kuralları ihlal ediyor:',
+          title: 'Onay gereken değişiklikler',
+          message: 'Bazı değişiklikler İş Kanunu kurallarını ihlal ediyor ya da yıllık izin bakiyesini aşıyor:',
           items: needsAck.flatMap((n) => n.violations.map((v) => `${cellLabel(n.key)}: ${v}`)),
           footer: 'Yine de kaydedilsin mi? Vazgeçerseniz bu hücreler kaydedilmemiş olarak kalır.',
           confirmText: 'Yine de kaydet',
@@ -666,6 +732,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
   const leaveKey = leaveDeleteDialog ? `${leaveDeleteDialog.employee.id}:${leaveDeleteDialog.date}` : ''
   const leaveIsRest = !!leaveDeleteDialog && restDayMap.has(leaveKey)
   const leaveIsRecurring = leaveIsRest && recurringRestMap.has(leaveKey)
+  const leaveName = leaveDeleteDialog && !leaveIsRest ? leaveLabelMap.get(leaveKey) : undefined
 
   return (
     <Page>
@@ -747,6 +814,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
         <ScheduleEditorBar
           compact={isMobile}
           stones={shiftStones}
+          leaveStones={leaveStoneList}
           customIds={customIds}
           selectedId={selectedStone.id}
           onSelect={setStonePick}
@@ -796,6 +864,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
             holidayMap={holidayMap}
             approvedLeaveMap={approvedLeaveMap}
             restDayMap={restDayMap}
+            leaveLabelMap={leaveLabelMap}
             availabilityMap={availabilityMap}
             maxDailyMins={config.maxDailyWorkHours * 60}
             onCellClick={openAssignDialog}
@@ -809,6 +878,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
           compact={isMobile}
           entries={visibleEntries} weekDays={weekDays} todayStr={todayStr} holidayMap={holidayMap}
           statsMap={statsMap} approvedLeaveMap={approvedLeaveMap} restDayMap={restDayMap} recurringRestMap={recurringRestMap}
+          leaveLabelMap={leaveLabelMap}
           availabilityMap={availabilityMap} config={config} onCellClick={openAssignDialog} readOnly={readOnly}
           meId={readOnly ? authEmployee?.id : undefined}
           onCellPaint={editing ? paintCellWithStone : undefined}
@@ -858,6 +928,8 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
           onSave={handleSave}
           onDelete={dialogExisting ? handleDelete : undefined}
           onAssignRestDay={!dialogExisting ? handleAssignRestDay : undefined}
+          onAssignLeave={!dialogExisting ? handleAssignLeave : undefined}
+          leaveTypes={leaveTypes}
           employee={dialogEmployee}
           workDate={dialogDate}
           templates={templates}
@@ -875,7 +947,9 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
         >
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>{leaveIsRest ? 'Haftalık tatil kaldırılsın mı?' : 'İzin iptal edilsin mi?'}</AlertDialogTitle>
+              <AlertDialogTitle>
+                {leaveIsRest ? 'Haftalık tatil kaldırılsın mı?' : `${leaveName ?? 'İzin'} iptal edilsin mi?`}
+              </AlertDialogTitle>
               <AlertDialogDescription>
                 {leaveDeleteDialog && (
                   <>

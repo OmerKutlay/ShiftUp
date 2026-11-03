@@ -3,7 +3,9 @@
  *        ?status=&employee_id=&from=YYYY-MM-DD&to=YYYY-MM-DD
  *        Yöneticiler tümünü görür. Standart çalışan kendi taleplerini + başkalarının
  *        yalnızca ONAYLI izinlerini (gerekçe/not gizli) görür.
- * POST   /api/leave          — Yeni izin talebi oluştur
+ * POST   /api/leave          — Yeni izin talebi oluştur. Tür: leave_type_def_id (adlandırılmış tür) ya da
+ *        leave_type ('weekly_rest' / eski istemcide temel tür). approve=true → yönetici planda doğrudan
+ *        onaylı izin verir (kendine değil; onay akışıyla aynı yetki kuralları)
  *        weekly_rest + recurring=true → o gün her hafta tatil (tekrarlayan; bkz. lib/recurringRest)
  * DELETE /api/leave?id=...   — İzin talebini sil (yönetici; çalışan yalnızca kendi bekleyen talebini)
  *        &scope=following    — tekrarlayan tatilde bu ve sonraki haftaların tatilleri silinir
@@ -13,8 +15,9 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabaseAdmin'
-import type { CreateLeaveRequestPayload, LeaveType } from '@/types/leave'
+import type { CreateLeaveRequestPayload, LeaveType, LeaveTypeDefinition } from '@/types/leave'
 import { LEAVE_TYPE_LABELS } from '@/types/leave'
+import { getLeaveType, systemLeaveType } from '@/lib/leaveTypeRepository'
 import { createNotification, notifyManagers } from '@/lib/notificationRepository'
 import {
   requireAuth,
@@ -38,9 +41,7 @@ import {
   endRecurringRest, everyWeekdayLabel, materializeRecurringRest, restoreRecurringRests, weekdayOf, WEEKDAY_NAMES_TR,
 } from '@/lib/recurringRest'
 
-const VALID_LEAVE_TYPES: LeaveType[] = ['annual', 'sick', 'personal', 'unpaid', 'other', 'weekly_rest']
-/** Çalışanın kendi adına açabileceği tipler (weekly_rest sadece manager atayabilir) */
-const EMPLOYEE_LEAVE_TYPES: LeaveType[] = ['annual', 'sick', 'personal', 'unpaid', 'other']
+const VALID_LEAVE_TYPES: LeaveType[] = ['annual', 'sick', 'personal', 'unpaid', 'other', 'public_holiday', 'weekly_rest']
 const VALID_STATUSES = ['pending', 'approved', 'rejected']
 /** Geriye dönük hastalık izni en fazla bu kadar gün öncesine açılabilir */
 const MAX_SICK_BACKDATE_DAYS = 30
@@ -78,7 +79,7 @@ export async function GET(req: NextRequest) {
     let query = admin
       .from('leave_requests')
       .select(`
-        id, employee_id, leave_type, start_date, end_date, recurrence_id,
+        id, employee_id, leave_type, leave_type_def_id, start_date, end_date, recurrence_id,
         reason, status, reviewer_note, reviewed_at, created_at, updated_at,
         employees!employee_id ( id, full_name, roles ( name ) )
       `)
@@ -102,11 +103,14 @@ export async function GET(req: NextRequest) {
       const selfId = auth.employee.id
       requests = requests
         .filter((r) => r.employee_id === selfId || r.status === 'approved')
-        // Başkasının hastalık izni sağlık verisidir (KVKK özel nitelikli) — tür "diğer" olarak gösterilir
+        // Başkasının hastalık izni sağlık verisidir (KVKK özel nitelikli) — tür "diğer" olarak gösterilir,
+        // türün adı da (tanım) gizlenir
         .map((r) =>
           r.employee_id === selfId
             ? r
-            : { ...r, reason: null, reviewer_note: null, leave_type: r.leave_type === 'sick' ? 'other' : r.leave_type }
+            : r.leave_type === 'sick'
+              ? { ...r, reason: null, reviewer_note: null, leave_type: 'other', leave_type_def_id: null }
+              : { ...r, reason: null, reviewer_note: null }
         )
       if (excludeType) requests = requests.filter((r) => r.leave_type !== excludeType)
     }
@@ -120,23 +124,29 @@ export async function GET(req: NextRequest) {
 // ─── POST ───────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
-    const body = await readJson<Partial<CreateLeaveRequestPayload> & { recurring?: unknown }>(req)
+    const body = await readJson<Partial<CreateLeaveRequestPayload> & { recurring?: unknown; approve?: unknown }>(req)
     if (!body) return badRequest('Geçersiz istek gövdesi.')
 
     if (!isUuid(body.employee_id)) return badRequest('employee_id zorunludur.')
 
-    // Authorization: weekly_rest yalnızca manager+ atayabilir; diğerleri kendi adına veya manager+
+    // Authorization: weekly_rest ve planda doğrudan onaylı izin (approve=true) yalnızca manager+;
+    // diğer talepler kendi adına veya manager+
     const isWeeklyRest = body.leave_type === 'weekly_rest'
+    const direct = !isWeeklyRest && body.approve === true
     let actorId: string
     let activeStoreId: string
     let actorIsAdmin = false
-    if (isWeeklyRest) {
+    if (isWeeklyRest || direct) {
       const managerAuth = await requireMinRole(req, ACCESS.MANAGER)
       if ('response' in managerAuth) return managerAuth.response
       actorId = managerAuth.employee.id
       activeStoreId = managerAuth.employee.store_id
       actorIsAdmin = managerAuth.employee.access_level === ACCESS.ADMIN
-      // Haftalık tatil doğrudan onaylıdır ve o günün vardiyasını siler: izin onayıyla aynı kural,
+      // Doğrudan onaylı izin, onay akışıyla aynı kural: yönetici kendi iznini onaylayamaz
+      if (direct && body.employee_id === actorId) {
+        return forbidden('Kendi izninizi onaylayamazsınız; İzinler sayfasından talep oluşturun.')
+      }
+      // Haftalık tatil / doğrudan izin onaylıdır ve o günün vardiyasını siler: izin onayıyla aynı kural,
       // kendinden yüksek yetkili birine atanamaz
       if (body.employee_id !== actorId) {
         const denied = await forbidIfOutranked(managerAuth.employee, body.employee_id)
@@ -149,15 +159,35 @@ export async function POST(req: NextRequest) {
       activeStoreId = accessCheck.employee.store_id
     }
 
-    if (!body.leave_type || !VALID_LEAVE_TYPES.includes(body.leave_type)) {
-      return badRequest('Geçersiz izin tipi.')
+    const admin = createAdminClient()
+
+    // Tür: haftalık tatil ya da adlandırılmış tür (leave_type_def_id); eski istemcinin temel türü sistem
+    // tanımına bağlanır. Kaydın leave_type'ı her zaman tanımın temel türüdür (puantaj kodu).
+    let leaveType: LeaveType
+    let def: LeaveTypeDefinition | null = null
+    if (isWeeklyRest) {
+      leaveType = 'weekly_rest'
+    } else if (body.leave_type_def_id !== undefined) {
+      if (!isUuid(body.leave_type_def_id)) return badRequest('Geçersiz izin türü.')
+      def = await getLeaveType(admin, body.leave_type_def_id)
+      if (!def || !def.active) return badRequest('Geçersiz izin türü.')
+      leaveType = def.base_type
+    } else {
+      if (!body.leave_type || !VALID_LEAVE_TYPES.includes(body.leave_type)) return badRequest('Geçersiz izin tipi.')
+      def = await systemLeaveType(admin, body.leave_type)
+      if (def && !def.active) return badRequest('Bu izin türü artık kullanılmıyor.')
+      leaveType = body.leave_type
     }
-    if (!isWeeklyRest && !EMPLOYEE_LEAVE_TYPES.includes(body.leave_type)) {
-      return forbidden('Bu izin tipini kendiniz oluşturamazsınız.')
+    // Çalışanın kendi talebi: tür çalışan talebine açık olmalı (resmi tatili yalnızca yönetici atar)
+    if (!isWeeklyRest && body.employee_id === actorId) {
+      const requestable = def ? def.employee_requestable : leaveType !== 'public_holiday'
+      if (!requestable) return forbidden('Bu izin türünü kendiniz talep edemezsiniz.')
     }
+    const typeName = def?.name ?? LEAVE_TYPE_LABELS[leaveType]
+
     // Her talep yöneticilere (push) bildirim gönderir: aç-sil döngüsüyle bildirim yağdırılmasın.
-    // Haftalık tatil hariç — yönetici haftalık planda tüm çalışanlara toplu atar.
-    if (!isWeeklyRest) {
+    // Haftalık tatil ve doğrudan izin hariç — yönetici haftalık planda toplu atar.
+    if (!isWeeklyRest && !direct) {
       const rate = await checkRateLimit(`leave_create:${actorId}`, CREATE_RATE_LIMIT, CREATE_RATE_WINDOW_MS)
       if (!rate.allowed) return tooManyRequests()
     }
@@ -172,30 +202,31 @@ export async function POST(req: NextRequest) {
       return badRequest('Açıklama en fazla 500 karakter olabilir.')
     }
 
-    // Geçmişe dönük talep — hastalık izni (sınırlı) ve haftalık tatil hariç (Türkiye tarihi)
+    // Geçmişe dönük talep — hastalık izni (sınırlı), haftalık tatil ve planda verilen izin hariç (Türkiye tarihi)
     const today = turkeyToday()
     if (body.start_date < today) {
-      if (body.leave_type === 'sick') {
-        if (body.start_date < addDaysToDateString(today, -MAX_SICK_BACKDATE_DAYS)) {
+      const sickInWindow = leaveType === 'sick' && body.start_date >= addDaysToDateString(today, -MAX_SICK_BACKDATE_DAYS)
+      if (isWeeklyRest || direct) {
+        if (!actorIsAdmin && !sickInWindow) {
+          // Geçmiş güne tatil / izin, gelinmemiş bir vardiyayı onaysız izne çevirir.
+          // Planlayıcı bu haftanın günlerini düzeltebilir; kendine ve geçmiş haftalara atanamaz.
+          if (body.employee_id === actorId) {
+            return forbidden('Kendinize geçmiş tarihli haftalık tatil atayamazsınız.')
+          }
+          if (body.start_date < mondayOfDateString(today)) {
+            return badRequest(isWeeklyRest ? 'Haftalık tatil geçmiş haftalara atanamaz.' : 'İzin geçmiş haftalara atanamaz.')
+          }
+        }
+      } else if (leaveType === 'sick') {
+        if (!sickInWindow) {
           return badRequest(`Hastalık izni en fazla ${MAX_SICK_BACKDATE_DAYS} gün geriye dönük açılabilir.`)
         }
-      } else if (body.leave_type !== 'weekly_rest') {
+      } else {
         return badRequest('Geçmiş tarih için izin talebi oluşturulamaz (hastalık izni hariç).')
-      } else if (!actorIsAdmin) {
-        // Geçmiş güne haftalık tatil, gelinmemiş bir vardiyayı onaysız "tatil"e çevirir.
-        // Planlayıcı bu haftanın günlerini düzeltebilir; kendine ve geçmiş haftalara atanamaz.
-        if (body.employee_id === actorId) {
-          return forbidden('Kendinize geçmiş tarihli haftalık tatil atayamazsınız.')
-        }
-        if (body.start_date < mondayOfDateString(today)) {
-          return badRequest('Haftalık tatil geçmiş haftalara atanamaz.')
-        }
       }
     }
     const diffDays = (Date.parse(body.end_date) - Date.parse(body.start_date)) / 86400000
     if (diffDays > 30) return badRequest('Tek talep en fazla 30 gün olabilir.')
-
-    const admin = createAdminClient()
 
     const { data: emp, error: empErr } = await admin
       .from('employees')
@@ -212,7 +243,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Yıllık izin bakiyesi (Md. 53) — çalışan aşamaz; yönetici avans izin için açıkça onaylayabilir
-    if (body.leave_type === 'annual') {
+    if (leaveType === 'annual') {
       const balance = await getAnnualLeaveBalance(admin, body.employee_id)
       if (balance.known) {
         const requested = await requestedLeaveDays(emp.store_id, body.start_date, body.end_date)
@@ -299,14 +330,15 @@ export async function POST(req: NextRequest) {
       .from('leave_requests')
       .insert({
         employee_id: body.employee_id,
-        leave_type: body.leave_type,
+        leave_type: leaveType,
+        leave_type_def_id: def?.id ?? null,
         start_date: body.start_date,
         end_date: body.end_date,
         reason: body.reason?.trim() || null,
-        // weekly_rest manager tarafından atanır → doğrudan onaylı, onay akışına girmez
-        status: isWeeklyRest ? 'approved' : 'pending',
-        reviewed_at: isWeeklyRest ? new Date().toISOString() : null,
-        reviewed_by: isWeeklyRest ? actorId : null,
+        // weekly_rest ve planda verilen izin manager tarafından atanır → doğrudan onaylı, onay akışına girmez
+        status: isWeeklyRest || direct ? 'approved' : 'pending',
+        reviewed_at: isWeeklyRest || direct ? new Date().toISOString() : null,
+        reviewed_by: isWeeklyRest || direct ? actorId : null,
         ...(ruleId ? { recurrence_id: ruleId } : {}),
       })
       .select()
@@ -339,10 +371,32 @@ export async function POST(req: NextRequest) {
           ...(ruleId && repeat ? { recurrence_id: ruleId, next_weeks: repeat.created, skipped_weeks: repeat.skipped } : {}),
         },
       })
+    } else if (direct) {
+      // Planda verilen izin onaylı izin gibi: aralığın planlanmış vardiyaları kalkar
+      cleanup = await removePlannedShiftsInRange(admin, body.employee_id, body.start_date, body.end_date)
+      await logAudit({
+        actorId,
+        storeId: emp.store_id,
+        action: 'leave.assign',
+        entityType: 'leave_request',
+        entityId: data.id,
+        after: {
+          employee_id: body.employee_id, leave_type: leaveType, leave_type_name: typeName,
+          start_date: body.start_date, end_date: body.end_date, ...cleanup,
+        },
+      })
     }
 
     try {
-      if (isWeeklyRest) {
+      if (direct) {
+        await createNotification(admin, {
+          employee_id: body.employee_id,
+          type: 'leave_approved',
+          title: 'İzin atandı',
+          message: `${typeName}: ${body.start_date} – ${body.end_date} tarihleri planınıza eklendi.`,
+          related_id: data.id,
+        })
+      } else if (isWeeklyRest) {
         await createNotification(admin, {
           employee_id: body.employee_id,
           type: 'leave_approved',
@@ -366,7 +420,7 @@ export async function POST(req: NextRequest) {
           {
             type: 'leave_submitted',
             title: 'Yeni izin talebi',
-            message: `${emp.full_name} — ${LEAVE_TYPE_LABELS[body.leave_type]}: ${body.start_date} – ${body.end_date} tarihleri için onay bekliyor.`,
+            message: `${emp.full_name} — ${typeName}: ${body.start_date} – ${body.end_date} tarihleri için onay bekliyor.`,
             related_id: data.id,
           },
           // Talep sahibi yöneticiyse kendi talebi için yalnızca "talebiniz alındı" bildirimini alır

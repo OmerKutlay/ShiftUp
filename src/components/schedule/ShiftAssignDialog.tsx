@@ -7,7 +7,7 @@
  */
 import { useState } from 'react'
 import {
-  CalendarOff, ChevronDown, CircleAlert, CircleCheck, Clock, Moon, Repeat, Sofa, Trash2, TriangleAlert,
+  CalendarOff, ChevronDown, CircleAlert, CircleCheck, Clock, Moon, Plane, Repeat, Sofa, Trash2, TriangleAlert,
 } from 'lucide-react'
 import type { EmployeeWithRole } from '@/types/employee'
 import type { ShiftTemplate } from '@/types/shiftTemplate'
@@ -21,7 +21,9 @@ import { Button } from '@/components/ui/button'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
 import {
   Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldTitle,
@@ -49,6 +51,10 @@ interface Props {
   onDelete?: () => Promise<void>
   /** Haftalık tatil atama callback — sadece boş günde gösterilir; recurring → her hafta */
   onAssignRestDay?: (recurring: boolean) => Promise<void>
+  /** Planda doğrudan onaylı izin (türün id'si) — sadece boş günde, tatil menüsünde */
+  onAssignLeave?: (defId: string) => Promise<void>
+  /** Atanabilen (aktif) izin türleri */
+  leaveTypes?: Array<{ id: string; name: string }>
   employee: EmployeeWithRole | null
   workDate: string
   templates: ShiftTemplate[]
@@ -120,7 +126,7 @@ function isValidTime(t: string): boolean {
 
 // ─── Ana bileşen ──────────────────────────────────────────────
 export function ShiftAssignDialog({
-  open, onClose, onSave, onDelete, onAssignRestDay,
+  open, onClose, onSave, onDelete, onAssignRestDay, onAssignLeave, leaveTypes = [],
   employee, workDate, templates, existingAssignment, loading,
   dayAvailability = [],
 }: Props) {
@@ -197,6 +203,12 @@ export function ShiftAssignDialog({
     if (!onAssignRestDay) return
     setError(null)
     try { await onAssignRestDay(recurring) } catch (err) { fail('form', err, 'Tatil atanamadı.') }
+  }
+
+  const handleLeave = async (defId: string) => {
+    if (!onAssignLeave) return
+    setError(null)
+    try { await onAssignLeave(defId) } catch (err) { fail('form', err, 'İzin verilemedi.') }
   }
 
   const dateLabel = workDate
@@ -348,7 +360,7 @@ export function ShiftAssignDialog({
               <DropdownMenuTrigger asChild>
                 <Button type="button" variant="ghost" disabled={loading}>
                   <Sofa />
-                  Haftalık tatil yap
+                  {onAssignLeave && leaveTypes.length > 0 ? 'Tatil / izin' : 'Haftalık tatil yap'}
                   <ChevronDown className="text-muted-foreground" />
                 </Button>
               </DropdownMenuTrigger>
@@ -364,6 +376,18 @@ export function ShiftAssignDialog({
                     <span className="text-xs text-muted-foreground">Sonraki haftalarda da tatil</span>
                   </span>
                 </DropdownMenuItem>
+                {onAssignLeave && leaveTypes.length > 0 && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel>İzin ver</DropdownMenuLabel>
+                    {leaveTypes.map((t) => (
+                      <DropdownMenuItem key={t.id} onSelect={() => handleLeave(t.id)}>
+                        <Plane />
+                        {t.name}
+                      </DropdownMenuItem>
+                    ))}
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           ) : null}

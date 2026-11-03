@@ -22,7 +22,14 @@ export type ShiftStone = {
 }
 /** Tatil taşı; recurring → o gün sonraki haftalarda da tatil (tekrarlayan) */
 export type RestStone = { id: 'rest' | 'rest-weekly'; type: 'rest'; recurring: boolean }
-export type EditorStone = ShiftStone | RestStone | { id: 'erase'; type: 'erase' }
+/** İzin taşı: Ayarlar › İzin türleri'ndeki bir tür; yöneticinin planda verdiği izin doğrudan onaylıdır */
+export type LeaveStone = { id: string; type: 'leave'; defId: string; label: string }
+export type EditorStone = ShiftStone | RestStone | LeaveStone | { id: 'erase'; type: 'erase' }
+
+/** Aktif izin türlerinden taşlar */
+export function leaveStones(types: Array<{ id: string; name: string }>): LeaveStone[] {
+  return types.map((t) => ({ id: `leave:${t.id}`, type: 'leave', defId: t.id, label: t.name }))
+}
 
 export const REST_STONE: EditorStone = { id: 'rest', type: 'rest', recurring: false }
 export const WEEKLY_REST_STONE: EditorStone = { id: 'rest-weekly', type: 'rest', recurring: true }
@@ -50,6 +57,7 @@ export function customStone(label: string, start: string, end: string): ShiftSto
 export type CellDraft =
   | { type: 'shift'; templateId: string | null; start: string; end: string }
   | { type: 'rest'; recurring?: true }
+  | { type: 'leave'; defId: string; label: string }
   | { type: 'clear' }
 
 /** Anahtar: `${employeeId}:${YYYY-MM-DD}` */
@@ -62,6 +70,9 @@ export interface CellOriginal {
   restLeaveId: string | null
   /** Tatil her hafta tekrarlayan bir kurala bağlı */
   restRecurring?: boolean
+  /** Bu günü kapsayan tek günlük onaylı izin (haftalık tatil dışı) ve türü */
+  leaveId?: string | null
+  leaveDefId?: string | null
   /** Doluysa hücre editörde değiştirilemez; neden */
   locked: string | null
 }
@@ -76,23 +87,27 @@ export function splitKey(key: string): { employeeId: string; date: string } {
 export function draftFromStone(stone: EditorStone): CellDraft {
   if (stone.type === 'shift') return { type: 'shift', templateId: stone.templateId, start: stone.start, end: stone.end }
   if (stone.type === 'rest') return stone.recurring ? { type: 'rest', recurring: true } : { type: 'rest' }
+  if (stone.type === 'leave') return { type: 'leave', defId: stone.defId, label: stone.label }
   return { type: 'clear' }
 }
 
 /** Taslak hücrenin kayıtlı haliyle aynı mı (kaydedilecek bir şey yok) */
 export function sameAsOriginal(draft: CellDraft, orig: CellOriginal): boolean {
   const a = orig.assignment
+  const noLeave = !orig.leaveId
   switch (draft.type) {
     case 'shift':
-      return !!a && !orig.restLeaveId
+      return !!a && !orig.restLeaveId && noLeave
         && a.start_time.slice(0, 5) === draft.start
         && a.end_time.slice(0, 5) === draft.end
         && (a.shift_template_id ?? null) === draft.templateId
     case 'rest':
       // Tekrarlayan tatile tek günlük tatil boyamak değişiklik değildir; tersi tekrarı başlatır
-      return !!orig.restLeaveId && !a && (!draft.recurring || !!orig.restRecurring)
+      return !!orig.restLeaveId && !a && noLeave && (!draft.recurring || !!orig.restRecurring)
+    case 'leave':
+      return !!orig.leaveId && !a && (orig.leaveDefId ?? null) === draft.defId
     case 'clear':
-      return !a && !orig.restLeaveId
+      return !a && !orig.restLeaveId && noLeave
   }
 }
 
@@ -122,6 +137,8 @@ export interface ScheduleView {
   approvedLeaveMap: Set<string>
   /** Her hafta tekrarlayan tatil günleri (restDayMap alt kümesi) */
   recurringRestMap?: Set<string>
+  /** İzinli günlerin tür adı (haftalık tatil dışı) */
+  leaveLabelMap?: Map<string, string>
 }
 
 /**
@@ -133,6 +150,7 @@ export function applyDrafts(view: ScheduleView, drafts: DraftMap, templates: Shi
   const restDayMap = new Set(view.restDayMap)
   const approvedLeaveMap = new Set(view.approvedLeaveMap)
   const recurringRestMap = new Set(view.recurringRestMap)
+  const leaveLabelMap = new Map(view.leaveLabelMap)
   const byKey = new Map(view.assignments.map((a) => [cellKey(a.employee_id, a.work_date), a]))
 
   for (const [key, draft] of drafts) {
@@ -157,20 +175,28 @@ export function applyDrafts(view: ScheduleView, drafts: DraftMap, templates: Shi
       restDayMap.delete(key)
       approvedLeaveMap.delete(key)
       recurringRestMap.delete(key)
+      leaveLabelMap.delete(key)
     } else {
       byKey.delete(key)
       if (draft.type === 'rest') {
         restDayMap.add(key)
         approvedLeaveMap.add(key)
+        leaveLabelMap.delete(key)
         if (draft.recurring) recurringRestMap.add(key)
+      } else if (draft.type === 'leave') {
+        approvedLeaveMap.add(key)
+        leaveLabelMap.set(key, draft.label)
+        restDayMap.delete(key)
+        recurringRestMap.delete(key)
       } else {
         restDayMap.delete(key)
         approvedLeaveMap.delete(key)
         recurringRestMap.delete(key)
+        leaveLabelMap.delete(key)
       }
     }
   }
-  return { assignments: [...byKey.values()], restDayMap, approvedLeaveMap, recurringRestMap }
+  return { assignments: [...byKey.values()], restDayMap, approvedLeaveMap, recurringRestMap, leaveLabelMap }
 }
 
 // ─── Kayıt adımları ───────────────────────────────────────────
@@ -181,6 +207,7 @@ export type SaveStep =
   | { op: 'createShift'; payload: CreateShiftAssignmentPayload }
   | { op: 'updateShift'; id: string; employeeId: string; date: string; payload: UpdateShiftAssignmentPayload }
   | { op: 'createRest'; employeeId: string; date: string; recurring?: true }
+  | { op: 'createLeave'; employeeId: string; date: string; defId: string }
 
 /** Bir hücrenin taslağını kayıtlı durumdan hedefe götüren API adımları (sırası önemli) */
 export function saveSteps(key: string, draft: CellDraft, orig: CellOriginal): SaveStep[] {
@@ -188,6 +215,8 @@ export function saveSteps(key: string, draft: CellDraft, orig: CellOriginal): Sa
   const { employeeId, date } = splitKey(key)
   const a = orig.assignment
   const steps: SaveStep[] = []
+  // İzinli güne başka bir şey yazılmadan önce izin kalkar (izin günü vardiya / tatil atanamaz)
+  if (orig.leaveId) steps.push({ op: 'deleteLeave', leaveId: orig.leaveId })
 
   switch (draft.type) {
     case 'shift': {
@@ -204,6 +233,11 @@ export function saveSteps(key: string, draft: CellDraft, orig: CellOriginal): Sa
       if (orig.restLeaveId) steps.push({ op: 'deleteLeave', leaveId: orig.restLeaveId })
       // Sunucu, tatil atanan günün planlanmış vardiyasını kendisi kaldırır
       steps.push(draft.recurring ? { op: 'createRest', employeeId, date, recurring: true } : { op: 'createRest', employeeId, date })
+      break
+    case 'leave':
+      // Tatil günü izne çevrilir; sunucu onaylı iznin planlanmış vardiyasını kendisi kaldırır
+      if (orig.restLeaveId) steps.push({ op: 'deleteLeave', leaveId: orig.restLeaveId })
+      steps.push({ op: 'createLeave', employeeId, date, defId: draft.defId })
       break
     case 'clear':
       if (a) steps.push({ op: 'deleteShift', id: a.id })

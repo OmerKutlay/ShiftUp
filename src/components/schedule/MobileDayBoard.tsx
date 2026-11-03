@@ -33,6 +33,8 @@ export interface MobileDayBoardProps {
   holidayMap: Map<string, PublicHoliday>
   approvedLeaveMap: Set<string>
   restDayMap: Set<string>
+  /** İzinli günlerin tür adı */
+  leaveLabelMap?: Map<string, string>
   availabilityMap: AvailabilityMap
   maxDailyMins: number
   onCellClick: (emp: EmployeeWithRole, date: string) => void
@@ -83,7 +85,7 @@ interface WorkingRow {
 }
 
 export function MobileDayBoard({
-  entries, weekDays, selectedDay, onSelectDay, holidayMap, approvedLeaveMap, restDayMap,
+  entries, weekDays, selectedDay, onSelectDay, holidayMap, approvedLeaveMap, restDayMap, leaveLabelMap,
   availabilityMap, maxDailyMins, onCellClick, readOnly = false,
 }: MobileDayBoardProps) {
   const todayStr = format(new Date(), 'yyyy-MM-dd')
@@ -103,14 +105,17 @@ export function MobileDayBoard({
 
   const { working, off } = useMemo(() => {
     const working: WorkingRow[] = []
-    const off: { emp: EmployeeWithRole; kind: DayOffKind }[] = []
+    const off: { emp: EmployeeWithRole; kind: DayOffKind; label?: string }[] = []
     for (const e of entries) {
       const key = `${e.employee.id}:${selectedDay}`
       const asgn = e.dayAssignments[selectedDay]
       // Taşınan / pasif çalışan yalnızca bu mağazadaki vardiyasıyla listelenir
       if (e.formerLabel && !asgn) continue
       if (restDayMap.has(key)) { off.push({ emp: e.employee, kind: 'rest' }); continue }
-      if (asgn?.is_on_leave || approvedLeaveMap.has(key)) { off.push({ emp: e.employee, kind: 'leave' }); continue }
+      if (asgn?.is_on_leave || approvedLeaveMap.has(key)) {
+        off.push({ emp: e.employee, kind: 'leave', label: leaveLabelMap?.get(key) })
+        continue
+      }
       const avail = getAvailStatus(e.employee.id, selectedDay, availabilityMap, asgn?.start_time, asgn?.end_time)
       if (!asgn) { off.push({ emp: e.employee, kind: avail === 'off' ? 'unavailable' : 'unassigned' }); continue }
       const net = shiftNetMins(asgn)
@@ -124,7 +129,7 @@ export function MobileDayBoard({
     const order: DayOffKind[] = ['leave', 'rest', 'unavailable', 'unassigned']
     off.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind) || a.emp.full_name.localeCompare(b.emp.full_name, 'tr'))
     return { working, off }
-  }, [entries, selectedDay, approvedLeaveMap, restDayMap, availabilityMap, maxDailyMins])
+  }, [entries, selectedDay, approvedLeaveMap, restDayMap, leaveLabelMap, availabilityMap, maxDailyMins])
 
   // Saat ekseni: günün en erken başlangıcından en geç bitişine (tam saate yuvarlanmış), en az 09–22
   const [axisStart, axisEnd] = useMemo(() => {
@@ -342,7 +347,7 @@ export function MobileDayBoard({
               <CardDescription>İzinli, tatilde ya da vardiyasız</CardDescription>
             </CardHeader>
             <ItemGroup>
-              {off.map(({ emp, kind }, idx) => {
+              {off.map(({ emp, kind, label }, idx) => {
                 const meta = kind === 'unassigned' ? null : OFF_META[kind]
                 const Icon = meta?.icon
                 const body = (
@@ -365,7 +370,7 @@ export function MobileDayBoard({
                       ) : (
                         <Badge variant="outline" className="text-muted-foreground">
                           {Icon && <Icon />}
-                          {meta?.label}
+                          {label ?? meta?.label}
                         </Badge>
                       )}
                     </ItemActions>

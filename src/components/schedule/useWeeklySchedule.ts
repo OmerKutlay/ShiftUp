@@ -18,6 +18,8 @@ import { apiFetch } from '@/lib/api/http'
 import { addDaysToDateString } from '@/lib/dateUtils'
 import type { DayOfWeek, EmployeeAvailability } from '@/types/workforce'
 import type { PublicHoliday } from '@/types/holiday'
+import { useLeaveTypes } from '@/lib/api/leaveTypes'
+import { leaveTypeName } from '@/types/leave'
 
 export type AvailabilityMap = Map<string, Map<DayOfWeek, EmployeeAvailability[]>>
 
@@ -27,6 +29,7 @@ interface ApprovedLeave {
   start_date: string
   end_date: string
   leave_type: string
+  leave_type_def_id?: string | null
   recurrence_id?: string | null
 }
 
@@ -49,13 +52,20 @@ export function useWeeklySchedule(currentWeek: Date, { readOnly = false } = {}) 
     apiFetch<{ availability: EmployeeAvailability[] }>(url)
   )
 
+  // Ayarlar › İzin türleri: izinli hücrelerde türün adı
+  const { byId: leaveTypesById, active: activeLeaveTypes } = useLeaveTypes()
+
   // "employee_id:YYYY-MM-DD" anahtarlı izin haritaları
-  const { approvedLeaveMap, leaveDayToId, restDayMap, recurringRestMap, multiDayLeaveIds } = useMemo(() => {
+  const {
+    approvedLeaveMap, leaveDayToId, restDayMap, recurringRestMap, multiDayLeaveIds, leaveLabelMap, leaveDefMap,
+  } = useMemo(() => {
     const leaveSet = new Set<string>()
     const idMap = new Map<string, string>()
     const restSet = new Set<string>()
     const recurringSet = new Set<string>()
     const multiDay = new Set<string>()
+    const labels = new Map<string, string>()
+    const defs = new Map<string, string | null>()
     for (const lr of leavesQ.data?.requests ?? []) {
       const end = lr.end_date.slice(0, 10)
       if (lr.start_date.slice(0, 10) !== end) multiDay.add(lr.id)
@@ -67,13 +77,17 @@ export function useWeeklySchedule(currentWeek: Date, { readOnly = false } = {}) 
         if (lr.leave_type === 'weekly_rest') {
           restSet.add(key)
           if (lr.recurrence_id) recurringSet.add(key)
+        } else {
+          labels.set(key, leaveTypeName(lr, leaveTypesById))
+          defs.set(key, lr.leave_type_def_id ?? null)
         }
       }
     }
     return {
-      approvedLeaveMap: leaveSet, leaveDayToId: idMap, restDayMap: restSet, recurringRestMap: recurringSet, multiDayLeaveIds: multiDay,
+      approvedLeaveMap: leaveSet, leaveDayToId: idMap, restDayMap: restSet, recurringRestMap: recurringSet,
+      multiDayLeaveIds: multiDay, leaveLabelMap: labels, leaveDefMap: defs,
     }
-  }, [leavesQ.data, from, to])
+  }, [leavesQ.data, from, to, leaveTypesById])
 
   // employeeId → DayOfWeek → kayıtlar
   const availabilityMap: AvailabilityMap = useMemo(() => {
@@ -114,6 +128,11 @@ export function useWeeklySchedule(currentWeek: Date, { readOnly = false } = {}) 
     restDayMap,
     /** Her hafta tekrarlayan tatil günleri (restDayMap alt kümesi) */
     recurringRestMap,
+    /** İzinli günlerin (haftalık tatil dışı) tür adı ve tür tanımı */
+    leaveLabelMap,
+    leaveDefMap,
+    /** Planda atanabilen (aktif) izin türleri */
+    leaveTypes: activeLeaveTypes,
     /** Birden fazla günü kapsayan izin / tatil kayıtları (silinince tüm aralık gider) */
     multiDayLeaveIds,
     availabilityMap,

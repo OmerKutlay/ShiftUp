@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import type { ShiftTemplate } from '@/types/shiftTemplate'
 import type { ShiftAssignmentWithDetails } from '@/types/schedule'
 import {
-  ERASE_STONE, REST_STONE, WEEKLY_REST_STONE, applyDrafts, customStone, paintCell, saveSteps, templateStones,
+  ERASE_STONE, REST_STONE, WEEKLY_REST_STONE, applyDrafts, customStone, leaveStones, paintCell, saveSteps, templateStones,
   type CellOriginal, type DraftMap,
 } from '@/components/schedule/scheduleEditor'
 
@@ -143,5 +143,40 @@ describe('her hafta tatil taşı', () => {
     expect(out.recurringRestMap?.has(other)).toBe(true)
     expect(out.recurringRestMap?.has(KEY)).toBe(false)
     expect(out.restDayMap.has(KEY)).toBe(false)
+  })
+})
+
+describe('izin taşı', () => {
+  const [ANNUAL, PAID] = leaveStones([{ id: 'def-annual', name: 'Yıllık izin' }, { id: 'def-paid', name: 'Ücretli izin' }])
+  const onLeave: CellOriginal = { ...empty, leaveId: 'lv-9', leaveDefId: 'def-annual' }
+
+  it('vardiyalı günü izne çevirir; sunucu onaylı iznin vardiyasını kendisi kaldırır', () => {
+    const drafts = paintCell(none, KEY, ANNUAL, { ...empty, assignment: asgn() })
+    expect(drafts.get(KEY)).toEqual({ type: 'leave', defId: 'def-annual', label: 'Yıllık izin' })
+    expect(saveSteps(KEY, drafts.get(KEY)!, { ...empty, assignment: asgn() }))
+      .toEqual([{ op: 'createLeave', employeeId: EMP, date: DAY, defId: 'def-annual' }])
+  })
+
+  it('tatil günü izne çevrilirken önce tatil kalkar', () => {
+    expect(saveSteps(KEY, { type: 'leave', defId: 'def-paid', label: 'Ücretli izin' }, { ...empty, restLeaveId: 'lv-1' }))
+      .toEqual([{ op: 'deleteLeave', leaveId: 'lv-1' }, { op: 'createLeave', employeeId: EMP, date: DAY, defId: 'def-paid' }])
+  })
+
+  it('aynı türle boyamak değişiklik değildir; başka tür, vardiya ve silgi önce izni kaldırır', () => {
+    expect(paintCell(none, KEY, ANNUAL, onLeave)).toBe(none)
+    expect(saveSteps(KEY, { type: 'leave', defId: 'def-paid', label: 'Ücretli izin' }, onLeave).map((s) => s.op))
+      .toEqual(['deleteLeave', 'createLeave'])
+    expect(saveSteps(KEY, { type: 'shift', templateId: OPEN.id, start: '09:00', end: '18:00' }, onLeave).map((s) => s.op))
+      .toEqual(['deleteLeave', 'createShift'])
+    expect(saveSteps(KEY, { type: 'clear' }, onLeave)).toEqual([{ op: 'deleteLeave', leaveId: 'lv-9' }])
+    expect(saveSteps(KEY, { type: 'rest' }, onLeave).map((s) => s.op)).toEqual(['deleteLeave', 'createRest'])
+  })
+
+  it('tabloda izinli ve tür adıyla görünür', () => {
+    const view = { assignments: [asgn()], restDayMap: new Set<string>(), approvedLeaveMap: new Set<string>() }
+    const out = applyDrafts(view, paintCell(none, KEY, PAID, { ...empty, assignment: asgn() }), [OPEN])
+    expect(out.assignments).toHaveLength(0)
+    expect(out.approvedLeaveMap.has(KEY)).toBe(true)
+    expect(out.leaveLabelMap?.get(KEY)).toBe('Ücretli izin')
   })
 })
