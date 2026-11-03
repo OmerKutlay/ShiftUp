@@ -3,7 +3,9 @@
  * Her rapor ekrandaki satırları (arama/filtre uygulanmış) dışa aktarır; CSV'de sayılar ondalık virgüllü
  * sayı olarak, PDF'te ekranla aynı biçimde yazılır.
  */
-import { monthDays, TIMESHEET_CODE_LABELS, type TimesheetRow } from '@/lib/timesheet'
+import {
+  monthDays, TIMESHEET_CODE_COLORS, TIMESHEET_CODE_LABELS, timesheetDayValue, type TimesheetRow,
+} from '@/lib/timesheet'
 import type { OvertimeSummary } from '@/lib/overtime'
 import type { PayrollRow } from '@/lib/payrollTimesheet'
 import { ANNUAL_OVERTIME_CAP_HOURS } from '@/lib/laborLaw'
@@ -34,7 +36,10 @@ const TIMESHEET_TOTALS = ['Net s', 'Fazla s', 'Gece s', 'RT gün', 'SGK gün']
 function timesheetBody(rows: TimesheetRow[], days: string[], fmt: NumFmt): Cell[][] {
   return rows.map((r) => [
     r.employee.full_name,
-    ...days.map((d) => r.days[d] ?? ''),
+    ...days.map((d) => {
+      const v = timesheetDayValue(r, d)
+      return typeof v === 'number' ? fmt(v) : v
+    }),
     fmt(h1(r.workedMins)),
     fmt(h1(r.overtimeMins)),
     fmt(h1(r.nightMins)),
@@ -43,7 +48,12 @@ function timesheetBody(rows: TimesheetRow[], days: string[], fmt: NumFmt): Cell[
   ])
 }
 
-const TIMESHEET_LEGEND = `Kodlar: ${LEGEND_ORDER.map((c) => `${c} ${TIMESHEET_CODE_LABELS[c]}`).join(' · ')}`
+const TIMESHEET_LEGEND = `Çalışılan günlerde hücrede net saat yazar (yeşil; resmi tatilde turuncu). Diğer kodlar: ${
+  LEGEND_ORDER.filter((c) => c !== 'Ç').map((c) => `${c} ${TIMESHEET_CODE_LABELS[c]}`).join(' · ')}`
+
+/** "C6EFCE" → [198, 239, 206] */
+const rgb = (hex: string): [number, number, number] =>
+  [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16)) as [number, number, number]
 
 export function exportTimesheetCsv(month: string, rows: TimesheetRow[], storeName: string) {
   const days = monthDays(month)
@@ -72,12 +82,16 @@ export function exportTimesheetPdf(month: string, rows: TimesheetRow[], holidays
       ...Object.fromEntries(days.map((_, i) => [first + i, { halign: 'center', cellPadding: 0.6 }])),
       ...Object.fromEntries(TIMESHEET_TOTALS.map((_, i) => [lastDay + i, { halign: 'right', cellWidth: 11 }])),
     },
-    // Resmi tatil ve hafta sonu sütunları açık zeminli (siyah-beyaz yazıcıda da ayırt edilir)
+    // Kodlu günler durum rengine boyanır; boş günlerde resmi tatil ve hafta sonu sütunları açık zeminli
     cellStyle: (row, col) => {
       if (col < first || col >= lastDay) return undefined
       const d = days[col - first]
       const code = rows[row]?.days[d]
       const style = code === 'D' ? { fontStyle: 'bold' as const } : {}
+      if (code) {
+        const c = TIMESHEET_CODE_COLORS[code]
+        return { ...style, fillColor: rgb(c.fill), textColor: rgb(c.text) }
+      }
       if (holidayMap.has(d)) return { ...style, fillColor: [250, 240, 214] }
       const w = dayOfWeekFromDateString(d)
       return w === 0 || w === 6 ? { ...style, fillColor: [240, 240, 242] } : style

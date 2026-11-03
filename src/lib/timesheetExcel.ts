@@ -1,24 +1,33 @@
 /**
  * timesheetExcel — aylık puantajı .xlsx olarak üretir (yalnızca tarayıcıda, indirme anında yüklenir).
  *
- * Sayfa 1 "Puantaj": (mağaza adı verilmişse üstte başlık satırı) çalışan × gün kod tablosu + toplam sütunları
- * Sayfa 2 "Açıklama": kod listesi ve hesaplama notları
+ * Sayfa 1 "Puantaj": (mağaza adı verilmişse üstte başlık satırı) çalışan × gün tablosu + toplam sütunları.
+ *   Çalışılan günlerde hücrede net saat (sayı), diğer günlerde kod yazar; her durum kendi rengine boyanır,
+ *   tablonun altında renk lejantı bulunur.
+ * Sayfa 2 "Açıklama": renkli kod listesi ve hesaplama notları
  */
-import { monthDays, TIMESHEET_CODE_LABELS, type TimesheetRow, type TimesheetCode } from '@/lib/timesheet'
+import {
+  monthDays, TIMESHEET_CODE_COLORS, TIMESHEET_CODE_LABELS, timesheetDayValue, type TimesheetCode, type TimesheetRow,
+} from '@/lib/timesheet'
 import { ANNUAL_OVERTIME_CAP_HOURS } from '@/lib/laborLaw'
 import type { PublicHoliday } from '@/types/holiday'
+import type { Cell } from 'exceljs'
 
-const CODE_FILL: Partial<Record<TimesheetCode, string>> = {
-  'Ç': 'FFD1FAE5',
-  'RTÇ': 'FFFDE68A',
-  'HT': 'FFE2E8F0',
-  'RT': 'FFFEF3C7',
-  'Yİ': 'FFDBEAFE',
-  'Rİ': 'FFFCE7F3',
-  'Üİ': 'FFF3F4F6',
-  'Mİ': 'FFEDE9FE',
-  'D': 'FFFECACA',
+type DayCode = Exclude<TimesheetCode, ''>
+
+/** Lejant sırası: renk tablosunun sırası (Ç, RTÇ, HT, RT, Yİ, Rİ, Üİ, Mİ, D, P) */
+const LEGEND = Object.keys(TIMESHEET_CODE_COLORS) as DayCode[]
+
+/** Hücreyi durum rengine boyar (zemin + yazı rengi) */
+function paint(cell: Cell, code: DayCode, bold = false) {
+  const c = TIMESHEET_CODE_COLORS[code]
+  cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${c.fill}` } }
+  cell.font = { color: { argb: `FF${c.text}` }, bold: bold || code === 'D' }
 }
+
+/** Lejant metni: Ç ve RTÇ hücrelerinde kod yerine saat yazdığı belirtilir */
+const legendLabel = (code: DayCode) =>
+  code === 'Ç' || code === 'RTÇ' ? `${TIMESHEET_CODE_LABELS[code]} — hücrede net çalışma saati yazar` : TIMESHEET_CODE_LABELS[code]
 
 const DOW_TR = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt']
 
@@ -77,7 +86,7 @@ export async function buildTimesheetWorkbook(
     const line = ws.addRow([
       safeText(r.employee.full_name),
       safeText(r.employee.role_name),
-      ...days.map((d) => r.days[d] ?? ''),
+      ...days.map((d) => timesheetDayValue(r, d)),
       r.workedDays,
       hours(r.workedMins),
       hours(r.overtimeMins),
@@ -95,8 +104,8 @@ export async function buildTimesheetWorkbook(
     days.forEach((d, i) => {
       const cell = line.getCell(3 + i)
       cell.alignment = { horizontal: 'center' }
-      const fill = CODE_FILL[r.days[d] ?? '']
-      if (fill) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fill } }
+      const code = r.days[d]
+      if (code) paint(cell, code)
     })
     if (r.overtimeWithoutConsent) line.getCell(3 + days.length + totals.length - 1).font = { color: { argb: 'FFB91C1C' } }
   }
@@ -111,7 +120,7 @@ export async function buildTimesheetWorkbook(
 
   ws.getColumn(1).width = 24
   ws.getColumn(2).width = 18
-  days.forEach((_, i) => { ws.getColumn(3 + i).width = 5 })
+  days.forEach((_, i) => { ws.getColumn(3 + i).width = 5.5 })
   totals.forEach((_, i) => { ws.getColumn(3 + days.length + i).width = i === totals.length - 1 ? 26 : 11 })
   ws.eachRow((row) => row.eachCell((cell) => {
     cell.border = {
@@ -122,11 +131,25 @@ export async function buildTimesheetWorkbook(
     }
   }))
 
+  // Renk lejantı tablonun altında (çerçeve döngüsünden sonra eklenir, çerçevesiz kalır)
+  ws.addRow([])
+  ws.addRow(['Renkler']).font = { bold: true }
+  for (const code of LEGEND) {
+    const line = ws.addRow([code, legendLabel(code)])
+    const cell = line.getCell(1)
+    cell.alignment = { horizontal: 'center' }
+    paint(cell, code, true)
+  }
+
   // Açıklama sayfası
   const legend = wb.addWorksheet('Açıklama')
   if (storeName) legend.addRow(['Mağaza', safeText(storeName)]).font = { bold: true }
   legend.addRow(['Kod', 'Anlamı']).font = { bold: true }
-  for (const [code, label] of Object.entries(TIMESHEET_CODE_LABELS)) legend.addRow([code, label])
+  for (const code of LEGEND) {
+    const cell = legend.addRow([code, legendLabel(code)]).getCell(1)
+    cell.alignment = { horizontal: 'center' }
+    paint(cell, code, true)
+  }
   legend.addRow([])
   legend.addRow(['Notlar']).font = { bold: true }
   legend.addRow(['Net saat', 'Fiili giriş–çıkış süresinden molalar düşülerek hesaplanır.'])

@@ -162,7 +162,9 @@ describe('timesheetExcel', () => {
     const ws = wb.getWorksheet('Puantaj')!
     expect(ws.getRow(1).getCell(1).value).toBe('Çalışan')
     expect(ws.getRow(3).getCell(1).value).toBe("'=KÖTÜ()") // formül enjeksiyonu kaçışlandı
-    expect(ws.getRow(3).getCell(2 + 5).value).toBe('Ç')    // 5 Ekim
+    expect(ws.getRow(3).getCell(2 + 5).value).toBe(8)      // 5 Ekim: Ç yerine net saat (9 s − 1 s mola)
+    expect((ws.getRow(3).getCell(2 + 5).fill as { fgColor?: { argb?: string } }).fgColor?.argb).toBe('FFC6EFCE') // çalıştı yeşili
+    expect((ws.getRow(3).getCell(2 + 4).fill as { fgColor?: { argb?: string } } | undefined)?.fgColor).toBeUndefined() // boş gün boyanmaz
     expect(wb.getWorksheet('Açıklama')).toBeTruthy()
   })
 })
@@ -185,7 +187,7 @@ describe('timesheetExcel — mağaza adı', () => {
     const ws = wb.getWorksheet('Puantaj')!
     expect(String(ws.getRow(1).getCell(1).value)).toContain('Kadıköy Şube')
     expect(ws.getRow(2).getCell(1).value).toBe('Çalışan')
-    expect(ws.getRow(4).getCell(2 + 5).value).toBe('Ç')
+    expect(ws.getRow(4).getCell(2 + 5).value).toBe(8)
   })
 })
 

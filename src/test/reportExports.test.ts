@@ -92,13 +92,13 @@ describe('devam raporu CSV', () => {
 const tsRow = (id: string, name: string): TimesheetRow => ({
   employee: { id, full_name: name, role_name: 'Kasiyer', employment_type: 'full_time' },
   days: { '2026-10-01': 'Ç', '2026-10-02': 'D', '2026-10-05': 'HT', '2026-10-29': 'RT' },
-  dayMins: {}, dayPlan: {},
+  dayMins: { '2026-10-01': 450 }, dayPlan: {},
   workedMins: 9030, nightMins: 0, overtimeMins: 90, holidayWorkedDays: 1, workedDays: 20, absentDays: 1,
   leaveDays: { 'Yİ': 0, 'Rİ': 0, 'Üİ': 0, 'Mİ': 0, 'HT': 4 }, sgkDays: 29, overtimeWithoutConsent: true,
 })
 
 describe('aylık puantaj', () => {
-  it('CSV: ayın her günü bir sütun + toplamlar; saatler ondalık virgüllü', async () => {
+  it('CSV: ayın her günü bir sütun (çalışılan günde net saat) + toplamlar; saatler ondalık virgüllü', async () => {
     exportTimesheetCsv('2026-10', [tsRow('e1', 'Şule Işık')], 'Kadıköy Şube')
     const { filename, lines } = await lastCsv()
     expect(filename).toBe('puantaj-kadikoy-sube-2026-10.csv')
@@ -107,7 +107,7 @@ describe('aylık puantaj', () => {
     expect(head[1]).toBe('1 Pe')
     const row = lines[1].split(';')
     expect(row[0]).toBe('Şule Işık')
-    expect(row[1]).toBe('Ç')
+    expect(row[1]).toBe('7,5')   // çalışılan gün: Ç yerine net saat
     expect(row[2]).toBe('D')
     expect(row.slice(-5)).toEqual(['150,5', '1,5', '0', '1', '29'])
   })

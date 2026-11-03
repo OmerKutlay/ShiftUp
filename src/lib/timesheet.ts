@@ -33,6 +33,35 @@ export const TIMESHEET_CODE_LABELS: Record<Exclude<TimesheetCode, ''>, string> =
   'P': 'Planlı',
 }
 
+/**
+ * Çıktılarda (Excel / PDF) gün hücresi renkleri — açık zemin + koyu yazı (yazıcıda da okunur).
+ * Tonlar ekrandaki takvimle aynı aileden: çalıştı yeşil, resmi tatilde çalıştı turuncu, izin mavi…
+ * Değerler `RRGGBB` onaltılıktır.
+ */
+export const TIMESHEET_CODE_COLORS: Record<Exclude<TimesheetCode, ''>, { fill: string; text: string }> = {
+  'Ç': { fill: 'C6EFCE', text: '006100' },
+  'RTÇ': { fill: 'FCD5B4', text: '9C4A00' },
+  'HT': { fill: 'D9D9D9', text: '404040' },
+  'RT': { fill: 'FFEB9C', text: '7F6000' },
+  'Yİ': { fill: 'BDD7EE', text: '1F4E79' },
+  'Rİ': { fill: 'F8CBDA', text: '8B1A4A' },
+  'Üİ': { fill: 'EDEDED', text: '595959' },
+  'Mİ': { fill: 'E4DFEC', text: '5B2C83' },
+  'D': { fill: 'FFC7CE', text: '9C0006' },
+  'P': { fill: 'F2F9F4', text: '5E8C6A' },
+}
+
+/**
+ * Gün hücresinin çıktı değeri: çalışılan günlerde net saat (bir ondalık, sayı), diğer günlerde kod.
+ * Saati hesaplanamayan çalışma günü (ör. çıkış okutulmamış) kodla yazılır.
+ */
+export function timesheetDayValue(row: TimesheetRow, date: string): number | TimesheetCode {
+  const code = row.days[date] ?? ''
+  const mins = row.dayMins[date] ?? 0
+  if ((code === 'Ç' || code === 'RTÇ') && mins > 0) return Math.round((mins / 60) * 10) / 10
+  return code
+}
+
 export interface TimesheetEmployee {
   id: string
   full_name: string
