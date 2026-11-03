@@ -94,6 +94,7 @@ const LEAVE_CODE: Record<string, TimesheetCode> = {
   unpaid: 'Üİ',
   personal: 'Mİ',
   other: 'Mİ',
+  public_holiday: 'RT',
 }
 
 /** Ayın günleri (YYYY-MM-DD) */

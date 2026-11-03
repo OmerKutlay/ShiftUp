@@ -4,15 +4,18 @@
  * ScheduleEditorBar — haftalık plan editör modunun taş paleti.
  *
  * Taşlar: aktif vardiya şablonları + yöneticinin eklediği özel saatli taşlar, "Tatil", "Her hafta tatil"
- * (o gün sonraki haftalarda da tatil) ve "Sil".
+ * (o gün sonraki haftalarda da tatil), izin türü (Ayarlar › İzin türleri; yanındaki okla tür seçilir) ve "Sil".
  * Seçili taş, tabloda tıklanan her hücreye uygulanır. Sağda bekleyen değişiklik sayısı,
  * "Vazgeç" ve "Kaydet". Masaüstünde tablonun üstünde kart; mobilde alt gezinmeye yapışık sabit çubuk.
  */
 import { useState } from 'react'
-import { Armchair, Eraser, Plus, Repeat, Trash2 } from 'lucide-react'
+import { Armchair, ChevronDown, Eraser, Plane, Plus, Repeat, Trash2 } from 'lucide-react'
 import { BOTTOM_NAV_HEIGHT } from '@/components/layout/MobileBottomNav'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverHeader, PopoverTitle, PopoverDescription, PopoverTrigger } from '@/components/ui/popover'
@@ -20,13 +23,15 @@ import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { cn } from '@/lib/utils'
-import type { ShiftStone } from './scheduleEditor'
+import type { LeaveStone, ShiftStone } from './scheduleEditor'
 import { fmtRange, shiftKindOf } from './scheduleHelpers'
 import { ShiftKindBar } from './ScheduleCells'
 
 interface Props {
   /** Şablon + özel vardiya taşları */
   stones: ShiftStone[]
+  /** Aktif izin türlerinin taşları */
+  leaveStones?: LeaveStone[]
   /** Silinebilir (yöneticinin eklediği) taşların id'leri */
   customIds: ReadonlySet<string>
   selectedId: string
@@ -136,10 +141,16 @@ function AddStonePopover({ stones, customIds, onAdd, onRemove, side }: {
 }
 
 export function ScheduleEditorBar({
-  stones, customIds, selectedId, onSelect, onAddCustom, onRemoveCustom,
+  stones, leaveStones = [], customIds, selectedId, onSelect, onAddCustom, onRemoveCustom,
   pendingCount, saving, progress, onCancel, onSave, compact,
 }: Props) {
-  const palette = (
+  // Paletteki izin taşı: seçili olan, yoksa en son seçilen, yoksa ilk tür
+  const [leaveId, setLeaveId] = useState<string | null>(null)
+  const currentLeave = leaveStones.find((s) => s.id === selectedId)
+    ?? leaveStones.find((s) => s.id === leaveId)
+    ?? leaveStones[0]
+
+  const stonesGroup = (
     <ToggleGroup
       type="single"
       variant="outline"
@@ -172,11 +183,61 @@ export function ScheduleEditorBar({
         <Repeat />
         {compact ? 'Her hafta' : 'Her hafta tatil'}
       </ToggleGroupItem>
+      {currentLeave && (
+        <ToggleGroupItem
+          value={currentLeave.id}
+          aria-label={`İzin: ${currentLeave.label}`}
+          title="Planda verilen izin doğrudan onaylıdır"
+          className={stoneItem}
+        >
+          <Plane />
+          {currentLeave.label}
+        </ToggleGroupItem>
+      )}
+    </ToggleGroup>
+  )
+
+  // İzin türü seçimi: seçilen tür taş olarak paletde kalır ve hemen seçilir
+  const leaveMenu = leaveStones.length > 0 && (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="icon" className="size-9 shrink-0" aria-label="İzin türü seç">
+          <ChevronDown />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" side={compact ? 'top' : 'bottom'} className="w-56">
+        <DropdownMenuLabel>İzin türü</DropdownMenuLabel>
+        {leaveStones.map((s) => (
+          <DropdownMenuItem key={s.id} onSelect={() => { setLeaveId(s.id); onSelect(s.id) }}>
+            <Plane />
+            {s.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+
+  const eraser = (
+    <ToggleGroup
+      type="single"
+      variant="outline"
+      value={selectedId}
+      onValueChange={(v) => { if (v) onSelect(v) }}
+      aria-label="Silgi"
+    >
       <ToggleGroupItem value="erase" aria-label="Sil" className={stoneItem}>
         <Eraser />
         Sil
       </ToggleGroupItem>
     </ToggleGroup>
+  )
+
+  const palette = (
+    <>
+      {stonesGroup}
+      {leaveMenu}
+      {eraser}
+    </>
   )
 
   const addStone = (

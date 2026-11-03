@@ -160,6 +160,8 @@ export function SummaryCell({ stats, config }: {
 export interface ShiftCellProps {
   assignment: ShiftAssignmentWithDetails | null
   isOnLeave: boolean
+  /** İzin türünün adı (Ayarlar › İzin türleri); yoksa "İzinli" */
+  leaveLabel?: string
   isRestDay: boolean
   /** Tatil her hafta tekrarlıyor */
   isRecurringRest?: boolean
@@ -172,10 +174,11 @@ export interface ShiftCellProps {
 const cellBase =
   'relative flex h-12 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50'
 
-function OffCell({ kind, readOnly, onClick, tip, recurring }: {
-  kind: OffKind; readOnly?: boolean; onClick: () => void; tip: React.ReactNode; recurring?: boolean
+function OffCell({ kind, readOnly, onClick, tip, recurring, label: labelOverride }: {
+  kind: OffKind; readOnly?: boolean; onClick: () => void; tip: React.ReactNode; recurring?: boolean; label?: string
 }) {
-  const { icon: Icon, label } = OFF_META[kind]
+  const { icon: Icon, label: metaLabel } = OFF_META[kind]
+  const label = labelOverride ?? metaLabel
   return (
     <Tip text={tip}>
       <CellButton
@@ -199,7 +202,7 @@ function OffCell({ kind, readOnly, onClick, tip, recurring }: {
 // ─── Vardiya hücresi (masaüstü tablo) ─────────────────────────
 
 export function ShiftCell({
-  assignment, isOnLeave, isRestDay, isRecurringRest, availStatus, dailyOver, onClick, readOnly,
+  assignment, isOnLeave, leaveLabel, isRestDay, isRecurringRest, availStatus, dailyOver, onClick, readOnly,
 }: ShiftCellProps) {
   if (isRestDay) {
     return (
@@ -211,7 +214,12 @@ export function ShiftCell({
   }
   if (isOnLeave) {
     const t = assignment ? ` (${fmtRange(assignment.start_time, assignment.end_time)})` : ''
-    return <OffCell kind="leave" readOnly={readOnly} onClick={onClick} tip={`Onaylı izin${t}`} />
+    return (
+      <OffCell
+        kind="leave" label={leaveLabel} readOnly={readOnly} onClick={onClick}
+        tip={`${leaveLabel ?? 'Onaylı izin'}${t}${readOnly ? '' : ' — kaldırmak için tıklayın'}`}
+      />
+    )
   }
   if (!assignment) {
     if (availStatus === 'off') {
@@ -295,13 +303,14 @@ const miniBase =
   'relative flex h-10 w-full flex-col items-center justify-center gap-1 rounded-md text-xs font-medium tabular-nums outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 [&_svg]:size-3.5'
 
 export function MiniShiftCell({
-  assignment, isOnLeave, isRestDay, isRecurringRest, availStatus, dailyOver, onClick, readOnly,
+  assignment, isOnLeave, leaveLabel, isRestDay, isRecurringRest, availStatus, dailyOver, onClick, readOnly,
 }: ShiftCellProps) {
   if (isRestDay || isOnLeave) {
     const { icon: Icon, label } = OFF_META[isRestDay ? 'rest' : 'leave']
     return (
       <CellButton
-        readOnly={readOnly} onClick={onClick} aria-label={isRestDay && isRecurringRest ? `${label} (her hafta)` : label}
+        readOnly={readOnly} onClick={onClick}
+        aria-label={isRestDay ? (isRecurringRest ? `${label} (her hafta)` : label) : leaveLabel ?? label}
         className={cn(miniBase, STRIPES, 'text-muted-foreground')}
       >
         <Icon />

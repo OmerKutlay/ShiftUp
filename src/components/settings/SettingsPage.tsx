@@ -6,7 +6,7 @@
  */
 import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Bell, Bug, CalendarDays, Gauge, History, KeyRound, MapPin, ShieldCheck, Store } from 'lucide-react'
+import { Bell, Bug, CalendarDays, Gauge, History, KeyRound, MapPin, Plane, ShieldCheck, Store } from 'lucide-react'
 import { Page, PageHeader, PageTabsList, TabLabel } from '@/components/common'
 import { Tabs, TabsContent, TabsTrigger } from '@/components/ui/tabs'
 import { PushPermissionCard } from '@/components/pwa/PushPermissionCard'
@@ -20,9 +20,10 @@ import { AuditLogPanel } from './AuditLogPanel'
 import { AppErrorsPanel } from './AppErrorsPanel'
 import { KvkkPanel } from './KvkkPanel'
 import { NormHoursPanel } from './NormHoursPanel'
+import { LeaveTypesPanel } from './LeaveTypesPanel'
 import { AdminLoginPanel } from './AdminLoginPanel'
 
-type SettingsTab = 'location' | 'stores' | 'norms' | 'holidays' | 'audit' | 'errors' | 'admin' | 'notifications' | 'kvkk'
+type SettingsTab = 'location' | 'stores' | 'norms' | 'holidays' | 'leave-types' | 'audit' | 'errors' | 'admin' | 'notifications' | 'kvkk'
 
 /** Sekme etiketi: masaüstünde ikon + tam ad, dar ekranda kısa ad */
 const TABS: { value: SettingsTab; icon: React.ReactNode; label: string; short: string; adminOnly?: boolean }[] = [
@@ -30,6 +31,7 @@ const TABS: { value: SettingsTab; icon: React.ReactNode; label: string; short: s
   { value: 'stores', icon: <Store />, label: 'Mağazalar', short: 'Mağazalar', adminOnly: true },
   { value: 'norms', icon: <Gauge />, label: 'Norm saatleri', short: 'Norm', adminOnly: true },
   { value: 'holidays', icon: <CalendarDays />, label: 'Resmi tatiller', short: 'Tatiller' },
+  { value: 'leave-types', icon: <Plane />, label: 'İzin türleri', short: 'İzinler', adminOnly: true },
   { value: 'audit', icon: <History />, label: 'Denetim kaydı', short: 'Denetim' },
   { value: 'errors', icon: <Bug />, label: 'Hatalar', short: 'Hatalar', adminOnly: true },
   { value: 'admin', icon: <KeyRound />, label: 'Admin girişi', short: 'Admin', adminOnly: true },
@@ -60,11 +62,11 @@ export function SettingsPage() {
       <PageHeader
         title="Ayarlar"
         description={isAdmin
-          ? 'Mağazalar, mağaza konumu, resmi tatiller, denetim kaydı, admin girişi, bildirimler ve KVKK'
+          ? 'Mağazalar, mağaza konumu, resmi tatiller, izin türleri, denetim kaydı, admin girişi, bildirimler ve KVKK'
           : 'Mağaza konumu, resmi tatiller, denetim kaydı, bildirimler ve KVKK'}
       />
       <Tabs value={tab} onValueChange={(v) => setTab(v as SettingsTab)} className="gap-4 md:gap-6">
-        {/* Admin'in dokuz sekmesi mobilde 3 × 3 ızgara; diğer roller tek satıra sığar */}
+        {/* Admin'in on sekmesi mobilde 3 sütunlu ızgara; diğer roller tek satıra sığar */}
         <PageTabsList columns={tabs.length > 5 ? 3 : undefined}>
           {tabs.map((t) => (
             <TabsTrigger key={t.value} value={t.value} className="sm:px-3">
@@ -78,6 +80,7 @@ export function SettingsPage() {
         {isAdmin && <TabsContent value="stores"><StoresPanel /></TabsContent>}
         {isAdmin && <TabsContent value="norms"><NormHoursPanel /></TabsContent>}
         <TabsContent value="holidays"><HolidaysPanel /></TabsContent>
+        {isAdmin && <TabsContent value="leave-types"><LeaveTypesPanel /></TabsContent>}
         <TabsContent value="audit"><AuditLogPanel /></TabsContent>
         {isAdmin && <TabsContent value="errors"><AppErrorsPanel /></TabsContent>}
         {isAdmin && <TabsContent value="admin"><AdminLoginPanel /></TabsContent>}

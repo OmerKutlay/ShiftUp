@@ -8,7 +8,7 @@
  * Çalışan: yalnızca kendi talepleri (Item listesi).
  * Herkes: yıllık izin bakiyesi kartı ve "İzin talebi" diyaloğu.
  */
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import useSWR from 'swr'
 import { differenceInCalendarDays, format } from 'date-fns'
 import { tr } from 'date-fns/locale'
@@ -19,10 +19,9 @@ import {
 import { toast } from 'sonner'
 
 import type { EmployeeWithRole } from '@/types/employee'
-import type {
-  CreateLeaveRequestPayload, LeaveRequestWithEmployee, LeaveStatus, LeaveType,
-} from '@/types/leave'
-import { LEAVE_STATUS_LABELS, LEAVE_TYPE_LABELS } from '@/types/leave'
+import type { CreateLeaveRequestPayload, LeaveRequestWithEmployee, LeaveStatus } from '@/types/leave'
+import { LEAVE_STATUS_LABELS, leaveTypeName } from '@/types/leave'
+import { useLeaveTypes } from '@/lib/api/leaveTypes'
 import { fetchActiveEmployees } from '@/lib/api/employees'
 import { useAuth } from '@/context/AuthContext'
 import { hasRole, MANAGER_ROLES } from '@/lib/auth/roles'
@@ -64,7 +63,6 @@ import { Textarea } from '@/components/ui/textarea'
 
 /** "Yıllık İzin" → "Yıllık izin" (cümle düzeni) */
 const sentence = (s: string) => s.charAt(0) + s.slice(1).toLocaleLowerCase('tr-TR')
-const typeLabel = (t: LeaveType) => sentence(LEAVE_TYPE_LABELS[t] ?? t)
 const statusLabel = (s: LeaveStatus) => sentence(LEAVE_STATUS_LABELS[s] ?? s)
 
 function dayCount(start: string, end: string): number {
@@ -94,9 +92,16 @@ function LeaveStatusBadge({ status }: { status: LeaveStatus }) {
   return <StatusBadge tone={LEAVE_STATUS_TONES[status] ?? 'neutral'} label={statusLabel(status)} />
 }
 
-const REQUESTABLE_TYPES: LeaveType[] = ['annual', 'sick', 'personal', 'unpaid', 'other']
+/** İzin kaydının tür adı: Ayarlar › İzin türleri'ndeki ad (eski kayıtta temel tür etiketi) */
+function useTypeName() {
+  const { byId } = useLeaveTypes()
+  return useCallback(
+    (r: { leave_type: string; leave_type_def_id?: string | null }) => leaveTypeName(r, byId),
+    [byId]
+  )
+}
+
 /** Haftalık tatiller bu sayfada listelenmez (Haftalık plan'da yönetilir) */
-const FILTER_TYPES: LeaveType[] = REQUESTABLE_TYPES
 const LEAVE_LIST_URL = '/api/leave?exclude_type=weekly_rest'
 const todayIso = () => format(new Date(), 'yyyy-MM-dd')
 const normalize = (s: string) => s.toLocaleLowerCase('tr-TR')
@@ -173,22 +178,33 @@ function NewRequestDialog({ open, onClose, onSave, employees, isManager, meId, m
 }) {
   // Diyalog her açılışta yeni `key` ile mount edilir → state ilk değerlerden başlar
   const [employeeId, setEmployeeId] = useState(employees.length === 1 ? employees[0].id : '')
-  const [leaveType, setLeaveType] = useState<LeaveType>('annual')
+  const [typePick, setTypePick] = useState<string | null>(null)
   const [startDate, setStartDate] = useState(todayIso)
   const [endDate, setEndDate] = useState(todayIso)
   const [reason, setReason] = useState('')
   const [error, setError] = useState<string | null>(null)
 
+  // Kendi talebinde yalnızca çalışan talebine açık türler; yönetici başkası için tüm aktif türleri seçer
+  const { active: activeTypes } = useLeaveTypes()
+  const forSelf = !employeeId || employeeId === meId
+  const typeOptions = activeTypes.filter((t) => !forSelf || t.employee_requestable)
+  const selectedType = typeOptions.find((t) => t.id === typePick) ?? typeOptions[0] ?? null
+  const isAnnual = selectedType?.base_type === 'annual'
+
   const rangeOk = !!startDate && !!endDate && startDate <= endDate
   const days = rangeOk ? dayCount(startDate, endDate) : 0
-  const showBalance = leaveType === 'annual' && myBalance?.known && employeeId === meId
+  const showBalance = isAnnual && myBalance?.known && employeeId === meId
 
   const handleSave = async () => {
     setError(null)
     if (!employeeId) { setError('Çalışan seçin.'); return }
+    if (!selectedType) { setError('İzin türü seçin.'); return }
     if (!rangeOk) { setError('Başlangıç tarihi bitiş tarihinden sonra olamaz.'); return }
     try {
-      await onSave({ employee_id: employeeId, leave_type: leaveType, start_date: startDate, end_date: endDate, reason: reason || null })
+      await onSave({
+        employee_id: employeeId, leave_type_def_id: selectedType.id,
+        start_date: startDate, end_date: endDate, reason: reason || null,
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Talep oluşturulamadı.')
     }
@@ -216,10 +232,10 @@ function NewRequestDialog({ open, onClose, onSave, employees, isManager, meId, m
 
           <Field>
             <FieldLabel htmlFor="leave-type">İzin türü</FieldLabel>
-            <Select value={leaveType} onValueChange={(v) => setLeaveType(v as LeaveType)}>
-              <SelectTrigger id="leave-type" className="w-full"><SelectValue /></SelectTrigger>
+            <Select value={selectedType?.id ?? ''} onValueChange={setTypePick}>
+              <SelectTrigger id="leave-type" className="w-full"><SelectValue placeholder="İzin türü seçin" /></SelectTrigger>
               <SelectContent>
-                {REQUESTABLE_TYPES.map((t) => <SelectItem key={t} value={t}>{typeLabel(t)}</SelectItem>)}
+                {typeOptions.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
               </SelectContent>
             </Select>
             {showBalance && (
@@ -249,7 +265,7 @@ function NewRequestDialog({ open, onClose, onSave, employees, isManager, meId, m
           ) : days > 0 && (
             <p className="text-sm text-muted-foreground">
               Toplam <span className="font-medium text-foreground tabular-nums">{days} gün</span>
-              {leaveType === 'annual' && ' · Pazar ve resmi tatiller yıllık izinden düşülmez'}
+              {isAnnual && ' · Pazar ve resmi tatiller yıllık izinden düşülmez'}
             </p>
           )}
         </FieldGroup>
@@ -273,6 +289,7 @@ function ReviewDialog({ request, onClose, onReview }: {
   onClose: () => void
   onReview: (requestId: string, status: 'approved' | 'rejected', note: string) => Promise<void>
 }) {
+  const typeName = useTypeName()
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState<'approved' | 'rejected' | null>(null)
@@ -312,7 +329,7 @@ function ReviewDialog({ request, onClose, onReview }: {
             <dl className="grid grid-cols-2 gap-x-4 gap-y-3 border-t bg-muted/40 px-4 py-3 text-sm">
               <div>
                 <dt className="text-muted-foreground">İzin türü</dt>
-                <dd className="font-medium">{typeLabel(request.leave_type)}</dd>
+                <dd className="font-medium">{typeName(request)}</dd>
               </div>
               <div>
                 <dt className="text-muted-foreground">Süre</dt>
@@ -409,6 +426,8 @@ type TabValue = 'pending' | 'all'
 export function LeavePage() {
   const { employee: me } = useAuth()
   const isManager = hasRole(me?.roles?.access_level ?? null, MANAGER_ROLES)
+  const typeName = useTypeName()
+  const { types: filterTypes } = useLeaveTypes()
   const confirm = useConfirm()
 
   const requestsQ = useSWR(LEAVE_LIST_URL, (url: string) => apiFetch<{ requests: LeaveRequestWithEmployee[] }>(url))
@@ -427,7 +446,7 @@ export function LeavePage() {
 
   const [tab, setTab] = useState<TabValue>('pending')
   const [query, setQuery] = useState('')
-  const [typeFilter, setTypeFilter] = useState<'all' | LeaveType>('all')
+  const [typeFilter, setTypeFilter] = useState<string>('all')
 
   const [newOpen, setNewOpen] = useState(false)
   const [newSaving, setNewSaving] = useState(false)
@@ -519,7 +538,7 @@ export function LeavePage() {
   const filtered = useMemo(() => {
     const q = normalize(query.trim())
     return requests.filter((r) =>
-      (typeFilter === 'all' || r.leave_type === typeFilter) &&
+      (typeFilter === 'all' || (r.leave_type_def_id ?? r.leave_type) === typeFilter) &&
       (!q || normalize(r.employees?.full_name ?? '').includes(q)))
   }, [requests, query, typeFilter])
   const filteredPending = filtered.filter((r) => r.status === 'pending')
@@ -548,7 +567,7 @@ export function LeavePage() {
       id: 'type',
       accessorKey: 'leave_type',
       header: 'İzin türü',
-      cell: ({ row }) => typeLabel(row.original.leave_type),
+      cell: ({ row }) => typeName(row.original),
     },
     {
       id: 'date',
@@ -609,11 +628,11 @@ export function LeavePage() {
         </ItemMedia>
         <ItemContent className="min-w-0">
           <div className="flex items-start justify-between gap-2">
-            <ItemTitle>{opts.showPerson ? emp?.full_name ?? '—' : typeLabel(r.leave_type)}</ItemTitle>
+            <ItemTitle>{opts.showPerson ? emp?.full_name ?? '—' : typeName(r)}</ItemTitle>
             <span className={cn('-my-0.5', !opts.outline && 'sm:hidden')}><LeaveStatusBadge status={r.status} /></span>
           </div>
           {/* Sabit yapı: 1. satır izin türü, 2. satır tarih aralığı · süre (bölünmez) */}
-          {opts.showPerson && <ItemDescription>{typeLabel(r.leave_type)}</ItemDescription>}
+          {opts.showPerson && <ItemDescription>{typeName(r)}</ItemDescription>}
           <ItemDescription className="whitespace-nowrap tabular-nums">
             {fmtRange(r.start_date, r.end_date)} · {days} gün
           </ItemDescription>
@@ -669,11 +688,11 @@ export function LeavePage() {
         <InputGroupInput placeholder="Çalışan ara…" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Çalışan ara" />
         <InputGroupAddon><Search /></InputGroupAddon>
       </InputGroup>
-      <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as 'all' | LeaveType)}>
+      <Select value={typeFilter} onValueChange={setTypeFilter}>
         <SelectTrigger className="w-40 sm:w-44" aria-label="İzin türü"><SelectValue /></SelectTrigger>
         <SelectContent>
           <SelectItem value="all">Tüm izin türleri</SelectItem>
-          {FILTER_TYPES.map((t) => <SelectItem key={t} value={t}>{typeLabel(t)}</SelectItem>)}
+          {filterTypes.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
         </SelectContent>
       </Select>
     </div>
@@ -844,7 +863,7 @@ export function LeavePage() {
                 <>
                   <span className="font-medium text-foreground">{deleteTarget.employees?.full_name}</span> adlı çalışanın{' '}
                   <span className="font-medium text-foreground tabular-nums">{fmtRange(deleteTarget.start_date, deleteTarget.end_date)}</span>{' '}
-                  tarihli {typeLabel(deleteTarget.leave_type).toLocaleLowerCase('tr-TR')} talebi silinecek.
+                  tarihli {typeName(deleteTarget).toLocaleLowerCase('tr-TR')} talebi silinecek.
                 </>
               )}
             </AlertDialogDescription>
