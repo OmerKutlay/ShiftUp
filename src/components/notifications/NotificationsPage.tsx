@@ -4,8 +4,7 @@
  * NotificationsPage — /notifications: güne göre gruplanmış bildirim listesi (Item),
  * okunmamış noktası, "Tümünü okundu say", boş durum (Empty).
  */
-import { Bell, CheckCheck, Info, RotateCw, Stethoscope, TriangleAlert } from 'lucide-react'
-import Link from 'next/link'
+import { Bell, CheckCheck, Info, RotateCw, TriangleAlert } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useNotifications } from '@/hooks/useNotifications'
 import { useAuth } from '@/context/AuthContext'
@@ -68,14 +67,6 @@ export function NotificationsPage() {
       />
 
       {authEmployee && <PushPermissionCard hideWhenSubscribed />}
-
-      {/* GEÇİCİ: bildirim teşhis sayfası (PWA'da adres çubuğu yok) — sorun çözülünce kaldırılacak */}
-      {authEmployee && (
-        <Link href="/push-debug" prefetch={false} className="mb-3 flex items-center gap-1.5 px-1 text-sm text-muted-foreground underline-offset-4 hover:underline">
-          <Stethoscope className="size-4" aria-hidden />
-          Telefonuma bildirim gelmiyor — teşhis et
-        </Link>
-      )}
 
       {authStatus === 'unauthenticated' && (
         <Alert tone="info">
