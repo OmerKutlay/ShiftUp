@@ -61,7 +61,8 @@ const overrides: Record<string, unknown | ((route: Route) => Promise<void> | voi
       rows: [{
         employee: { id: cashier.id, full_name: cashier.full_name, role_name: 'Kasiyer', employment_type: 'full_time' },
         days: { [`${month}-01`]: 'Ç', [`${month}-02`]: 'D' }, dayMins: {}, dayPlan: {},
-        workedMins: 450, nightMins: 0, overtimeMins: 0, holidayWorkedDays: 0, workedDays: 1, absentDays: 1,
+        workedMins: 450, nightMins: 0, overtimeMins: 0, overtimeByWeek: {}, restWorkByWeek: {}, restWorkMins: 0, restWorkedDays: 0,
+        holidayWorkedDays: 0, workedDays: 1, absentDays: 1,
         leaveDays: { 'Yİ': 0, 'Rİ': 0, 'Üİ': 0, 'Mİ': 0, 'HT': 0 }, sgkDays: 29, overtimeWithoutConsent: false,
       }],
     })
@@ -80,7 +81,7 @@ const overrides: Record<string, unknown | ((route: Route) => Promise<void> | voi
       ...(exporting ? { storeName: STORE.active.name } : {}),
       rows: [{
         employeeId: cashier.id, fullName: cashier.full_name, sicilNo: '', tcKimlikNo: '', days: {}, workedDays: 1,
-        normalHours: 7.5, overtimeHours: 0, holidayWorkedHours: 0, holidayWorkedDays: 0, nightHours: 0,
+        normalHours: 7.5, overtimeHours: 0, restWorkedDays: 0, restWorkedHours: 0, holidayWorkedHours: 0, holidayWorkedDays: 0, nightHours: 0,
         weeklyRestDays: 0, holidayRestDays: 0, annualLeaveDays: 0, sickDays: 0, unpaidDays: 0, excuseDays: 0,
         absentDays: 1, employedDays: 30, missingDays: 1, missingReasonCode: '15', sgkDays: 29, noRecords: false, notes: [],
       }],
@@ -130,7 +131,9 @@ test('Raporlar: her sekmede PDF ve CSV iner', async ({ page }) => {
   expect(isPdf(f.body)).toBe(true)
   f = await download(page, 'Dışa aktar', 'CSV indir')
   expect(f.name).toBe(`puantaj-kadikoy-sube-${month}.csv`)
-  expect(f.body.toString('utf8')).toContain('Şule Işık;Ç;D')
+  // Klasik puantaj çizelgesi: S.NO · Adı Soyadı · Birim/Şube · Görevi · günler (saatsiz çalışılan gün Ç, devamsız D)
+  expect(f.body.toString('utf8')).toContain('S.NO;Adı Soyadı;Birim/Şube;Görevi;1;2')
+  expect(f.body.toString('utf8')).toContain('1;Şule Işık;Kadıköy Şube;Kasiyer;Ç;D')
   f = await download(page, 'Dışa aktar', 'Excel indir (tüm ekip)')
   expect(f.name).toBe(`puantaj-kadikoy-sube-${month}.xlsx`)
   expect(f.body.subarray(0, 2).toString('latin1')).toBe('PK') // tarayıcıda üretilen gerçek .xlsx (zip)
