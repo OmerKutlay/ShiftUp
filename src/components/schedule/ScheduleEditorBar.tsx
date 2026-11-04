@@ -4,7 +4,7 @@
  * ScheduleEditorBar — haftalık plan editör modunun taş paleti.
  *
  * Taşlar: aktif vardiya şablonları + yöneticinin eklediği özel saatli taşlar, "Tatil", "Her hafta tatil"
- * (o gün sonraki haftalarda da tatil), izin türü (Ayarlar › İzin türleri; yanındaki okla tür seçilir) ve "Sil".
+ * (o gün sonraki haftalarda da tatil; yanındaki okla süresi seçilir: süresiz, 1–12 ay ya da N hafta), izin türü (Ayarlar › İzin türleri; yanındaki okla tür seçilir) ve "Sil".
  * Seçili taş, tabloda tıklanan her hücreye uygulanır. Sağda bekleyen değişiklik sayısı,
  * "Vazgeç" ve "Kaydet". Masaüstünde tablonun üstünde kart; mobilde alt gezinmeye yapışık sabit çubuk.
  */
@@ -23,6 +23,8 @@ import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { cn } from '@/lib/utils'
+import { repeatLabel, type RestRepeat } from '@/lib/restRepeat'
+import { RestRepeatPicker } from './RestRepeatPicker'
 import type { LeaveStone, ShiftStone } from './scheduleEditor'
 import { fmtRange, shiftKindOf } from './scheduleHelpers'
 import { ShiftKindBar } from './ScheduleCells'
@@ -36,6 +38,10 @@ interface Props {
   customIds: ReadonlySet<string>
   selectedId: string
   onSelect: (id: string) => void
+  /** "Her hafta tatil" taşının süresi (null → süresiz) */
+  restRepeat?: RestRepeat
+  /** Süre seçilince "Her hafta tatil" taşı da seçilir */
+  onRestRepeatChange?: (repeat: RestRepeat) => void
   onAddCustom: (label: string, start: string, end: string) => void
   onRemoveCustom: (id: string) => void
   pendingCount: number
@@ -53,6 +59,38 @@ const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
 const stoneItem = cn(
   'h-9 gap-1.5 px-2.5 data-[state=on]:border-primary data-[state=on]:bg-primary/10 data-[state=on]:text-foreground',
 )
+
+/** "Her hafta tatil" taşının süre seçimi */
+function RestRepeatPopover({ value, onChange, side }: {
+  value: RestRepeat
+  onChange: (repeat: RestRepeat) => void
+  side: 'top' | 'bottom'
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="icon" className="size-9 shrink-0" aria-label="Tekrar süresini seç">
+          <ChevronDown />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent side={side} align="start" className="w-80">
+        <PopoverHeader>
+          <PopoverTitle>Her hafta tatil — süre</PopoverTitle>
+          <PopoverDescription>Boyadığınız gün, seçilen süre boyunca her hafta tatil olur.</PopoverDescription>
+        </PopoverHeader>
+        <div className="mt-3 flex flex-col gap-3">
+          <RestRepeatPicker
+            value={value}
+            idPrefix="stone-repeat"
+            onChange={(r, valid) => { if (valid) onChange(r) }}
+          />
+          <Button size="sm" onClick={() => setOpen(false)}>Tamam</Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
+}
 
 /** Özel saatli taş ekleme formu + eklenen taşların listesi */
 function AddStonePopover({ stones, customIds, onAdd, onRemove, side }: {
@@ -141,8 +179,8 @@ function AddStonePopover({ stones, customIds, onAdd, onRemove, side }: {
 }
 
 export function ScheduleEditorBar({
-  stones, leaveStones = [], customIds, selectedId, onSelect, onAddCustom, onRemoveCustom,
-  pendingCount, saving, progress, onCancel, onSave, compact,
+  stones, leaveStones = [], customIds, selectedId, onSelect, restRepeat = null, onRestRepeatChange,
+  onAddCustom, onRemoveCustom, pendingCount, saving, progress, onCancel, onSave, compact,
 }: Props) {
   // Paletteki izin taşı: seçili olan, yoksa en son seçilen, yoksa ilk tür
   const [leaveId, setLeaveId] = useState<string | null>(null)
@@ -176,24 +214,37 @@ export function ScheduleEditorBar({
       </ToggleGroupItem>
       <ToggleGroupItem
         value="rest-weekly"
-        aria-label="Her hafta tatil"
+        aria-label={`Her hafta tatil · ${repeatLabel(restRepeat)}`}
         title="Seçilen gün sonraki haftalarda da tatil olur"
         className={stoneItem}
       >
         <Repeat />
         {compact ? 'Her hafta' : 'Her hafta tatil'}
+        {restRepeat && (
+          <span className="text-xs font-normal text-muted-foreground">{repeatLabel(restRepeat)}</span>
+        )}
       </ToggleGroupItem>
-      {currentLeave && (
-        <ToggleGroupItem
-          value={currentLeave.id}
-          aria-label={`İzin: ${currentLeave.label}`}
-          title="Planda verilen izin doğrudan onaylıdır"
-          className={stoneItem}
-        >
-          <Plane />
-          {currentLeave.label}
-        </ToggleGroupItem>
-      )}
+    </ToggleGroup>
+  )
+
+  // İzin taşı ayrı grupta: süre ve tür okları kendi taşının hemen yanında dursun
+  const leaveGroup = currentLeave && (
+    <ToggleGroup
+      type="single"
+      variant="outline"
+      value={selectedId}
+      onValueChange={(v) => { if (v) onSelect(v) }}
+      aria-label="İzin"
+    >
+      <ToggleGroupItem
+        value={currentLeave.id}
+        aria-label={`İzin: ${currentLeave.label}`}
+        title="Planda verilen izin doğrudan onaylıdır"
+        className={stoneItem}
+      >
+        <Plane />
+        {currentLeave.label}
+      </ToggleGroupItem>
     </ToggleGroup>
   )
 
@@ -232,9 +283,15 @@ export function ScheduleEditorBar({
     </ToggleGroup>
   )
 
+  const repeatMenu = onRestRepeatChange && (
+    <RestRepeatPopover value={restRepeat} onChange={onRestRepeatChange} side={compact ? 'top' : 'bottom'} />
+  )
+
   const palette = (
     <>
       {stonesGroup}
+      {repeatMenu}
+      {leaveGroup}
       {leaveMenu}
       {eraser}
     </>

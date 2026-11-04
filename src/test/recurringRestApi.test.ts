@@ -2,7 +2,8 @@
  * recurringRestApi.test.ts — tekrarlayan haftalık tatil.
  *
  *  - POST /api/leave (weekly_rest, recurring): kural açılır, ilk gün yazılır, sonraki haftalar üretilir.
- *  - Aynı gün için ikinci süresiz kural açılmaz (409).
+ *  - Aynı gün için ikinci süresiz kural açılmaz (409); süreli kural (recurring_until) dönemi çakışmayan
+ *    bir kuralın yanında açılabilir.
  *  - Çalışanın izin talebi tekrarlayan tatil gününe denk gelirse tatil talebe yer açar; tek seferlik tatil açmaz.
  *  - DELETE /api/leave?scope=following: bu ve sonraki haftalar kalkar; scope yoksa yalnızca o gün.
  *  - Ret ve silmede yer açan tekrarlar geri yazılır.
@@ -144,6 +145,45 @@ describe('POST /api/leave — her hafta tatil', () => {
     expect((await res.json()).code).toBe('RECURRING_REST_EXISTS')
     expect(db().tables.recurring_weekly_rests).toHaveLength(1)
     expect(db().tables.leave_requests).toHaveLength(0)
+  })
+
+  it('süreli kural: recurring_until kuralın bitiş günü olur', async () => {
+    asManager()
+    const res = await recurringRest(SUNDAY, { recurring_until: '2099-03-28' })
+    expect(res.status).toBe(201)
+    const [rule] = db().tables.recurring_weekly_rests
+    expect(rule).toMatchObject({ start_date: SUNDAY, end_date: '2099-03-28' })
+    const audit = db().tables.audit_logs.find((a) => a.action === 'leave.weekly_rest.recurring')!
+    expect((audit.after as Record<string, unknown>).until).toBe('2099-03-28')
+  })
+
+  it('süre belirtilmezse kural süresizdir', async () => {
+    asManager()
+    expect((await recurringRest()).status).toBe(201)
+    expect(db().tables.recurring_weekly_rests[0].end_date ?? null).toBeNull()
+  })
+
+  it('geçersiz bitiş reddedilir: biçim, başlangıçtan önce, 2 yıldan uzun, tekrarsız tatilde (400)', async () => {
+    asManager()
+    expect((await recurringRest(SUNDAY, { recurring_until: '28.03.2099' })).status).toBe(400)
+    expect((await recurringRest(SUNDAY, { recurring_until: '2099-01-03' })).status).toBe(400)
+    expect((await recurringRest(SUNDAY, { recurring_until: '2101-01-10' })).status).toBe(400)
+    expect((await recurringRest(SUNDAY, { recurring: false, recurring_until: '2099-03-28' })).status).toBe(400)
+    expect(db().tables.recurring_weekly_rests).toHaveLength(0)
+    expect(db().tables.leave_requests).toHaveLength(0)
+  })
+
+  it('süreli kural, dönemi çakışmayan kuralın yanında açılır; çakışan dönemde açılmaz', async () => {
+    asManager()
+    // Mart'ta başlayacak süresiz kural
+    db().tables.recurring_weekly_rests.push({
+      id: uuid(71), store_id: STORE, employee_id: EMP, weekday: 0, start_date: '2099-03-01', end_date: null,
+      materialized_until: '2099-03-01',
+    })
+    const clash = await recurringRest(SUNDAY, { recurring_until: '2099-03-01' })
+    expect(clash.status).toBe(409)
+    expect((await recurringRest(SUNDAY, { recurring_until: '2099-02-22' })).status).toBe(201)
+    expect(db().tables.recurring_weekly_rests).toHaveLength(2)
   })
 
   it('yalnızca tek günlük haftalık tatil tekrarlanabilir (400)', async () => {

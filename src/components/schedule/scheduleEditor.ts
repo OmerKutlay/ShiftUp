@@ -8,6 +8,7 @@
  */
 import type { ShiftTemplate } from '@/types/shiftTemplate'
 import type { CreateShiftAssignmentPayload, ShiftAssignmentWithDetails, UpdateShiftAssignmentPayload } from '@/types/schedule'
+import { repeatUntil, type RestRepeat } from '@/lib/restRepeat'
 
 // ─── Taşlar ───────────────────────────────────────────────────
 
@@ -20,8 +21,8 @@ export type ShiftStone = {
   start: string  // 'HH:MM'
   end: string    // 'HH:MM'
 }
-/** Tatil taşı; recurring → o gün sonraki haftalarda da tatil (tekrarlayan) */
-export type RestStone = { id: 'rest' | 'rest-weekly'; type: 'rest'; recurring: boolean }
+/** Tatil taşı; recurring → o gün sonraki haftalarda da tatil (tekrarlayan); repeat → süresi (yok = süresiz) */
+export type RestStone = { id: 'rest' | 'rest-weekly'; type: 'rest'; recurring: boolean; repeat?: RestRepeat }
 /** İzin taşı: Ayarlar › İzin türleri'ndeki bir tür; yöneticinin planda verdiği izin doğrudan onaylıdır */
 export type LeaveStone = { id: string; type: 'leave'; defId: string; label: string }
 export type EditorStone = ShiftStone | RestStone | LeaveStone | { id: 'erase'; type: 'erase' }
@@ -33,6 +34,9 @@ export function leaveStones(types: Array<{ id: string; name: string }>): LeaveSt
 
 export const REST_STONE: EditorStone = { id: 'rest', type: 'rest', recurring: false }
 export const WEEKLY_REST_STONE: EditorStone = { id: 'rest-weekly', type: 'rest', recurring: true }
+/** Süreli "her hafta tatil" taşı (repeat null → süresiz) */
+export const weeklyRestStone = (repeat: RestRepeat): RestStone =>
+  repeat ? { id: 'rest-weekly', type: 'rest', recurring: true, repeat } : { id: 'rest-weekly', type: 'rest', recurring: true }
 export const ERASE_STONE: EditorStone = { id: 'erase', type: 'erase' }
 
 /** Aktif vardiya şablonlarından taşlar (şablon sırasıyla) */
@@ -56,7 +60,7 @@ export function customStone(label: string, start: string, end: string): ShiftSto
 
 export type CellDraft =
   | { type: 'shift'; templateId: string | null; start: string; end: string }
-  | { type: 'rest'; recurring?: true }
+  | { type: 'rest'; recurring?: true; repeat?: RestRepeat }
   | { type: 'leave'; defId: string; label: string }
   | { type: 'clear' }
 
@@ -86,7 +90,10 @@ export function splitKey(key: string): { employeeId: string; date: string } {
 
 export function draftFromStone(stone: EditorStone): CellDraft {
   if (stone.type === 'shift') return { type: 'shift', templateId: stone.templateId, start: stone.start, end: stone.end }
-  if (stone.type === 'rest') return stone.recurring ? { type: 'rest', recurring: true } : { type: 'rest' }
+  if (stone.type === 'rest') {
+    if (!stone.recurring) return { type: 'rest' }
+    return stone.repeat ? { type: 'rest', recurring: true, repeat: stone.repeat } : { type: 'rest', recurring: true }
+  }
   if (stone.type === 'leave') return { type: 'leave', defId: stone.defId, label: stone.label }
   return { type: 'clear' }
 }
@@ -206,7 +213,8 @@ export type SaveStep =
   | { op: 'deleteShift'; id: string }
   | { op: 'createShift'; payload: CreateShiftAssignmentPayload }
   | { op: 'updateShift'; id: string; employeeId: string; date: string; payload: UpdateShiftAssignmentPayload }
-  | { op: 'createRest'; employeeId: string; date: string; recurring?: true }
+  /** until: tekrarın son günü (dahil); yoksa süresiz */
+  | { op: 'createRest'; employeeId: string; date: string; recurring?: true; until?: string }
   | { op: 'createLeave'; employeeId: string; date: string; defId: string }
 
 /** Bir hücrenin taslağını kayıtlı durumdan hedefe götüren API adımları (sırası önemli) */
@@ -232,7 +240,14 @@ export function saveSteps(key: string, draft: CellDraft, orig: CellOriginal): Sa
       // Tek günlük tatil her hafta tekrarlayana çevrilir: önce eski kayıt kalkar
       if (orig.restLeaveId) steps.push({ op: 'deleteLeave', leaveId: orig.restLeaveId })
       // Sunucu, tatil atanan günün planlanmış vardiyasını kendisi kaldırır
-      steps.push(draft.recurring ? { op: 'createRest', employeeId, date, recurring: true } : { op: 'createRest', employeeId, date })
+      if (draft.recurring) {
+        const until = repeatUntil(date, draft.repeat ?? null)
+        steps.push(until
+          ? { op: 'createRest', employeeId, date, recurring: true, until }
+          : { op: 'createRest', employeeId, date, recurring: true })
+      } else {
+        steps.push({ op: 'createRest', employeeId, date })
+      }
       break
     case 'leave':
       // Tatil günü izne çevrilir; sunucu onaylı iznin planlanmış vardiyasını kendisi kaldırır

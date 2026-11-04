@@ -55,9 +55,10 @@ import { MonthlyNormIndicator } from './MonthlyNormIndicator'
 import { WeekGrid, WeekGridSkeleton } from './WeekGrid'
 import { EDITOR_BAR_COMPACT_HEIGHT, ScheduleEditorBar } from './ScheduleEditorBar'
 import {
-  ERASE_STONE, REST_STONE, WEEKLY_REST_STONE, applyDrafts, cellKey, leaveStones, customStone, paintCell, sameAsOriginal, saveSteps, splitKey,
+  ERASE_STONE, REST_STONE, weeklyRestStone, applyDrafts, cellKey, leaveStones, customStone, paintCell, sameAsOriginal, saveSteps, splitKey,
   templateStones, type CellDraft, type CellOriginal, type DraftMap, type EditorStone, type SaveStep, type ShiftStone,
 } from './scheduleEditor'
+import { repeatLabel, repeatOccurrences, repeatUntil, type RestRepeat } from '@/lib/restRepeat'
 
 const FORMER_LOCKED = 'Bu çalışan artık bu mağazada değil; geçmiş vardiyaları yalnızca görüntülenir.'
 
@@ -119,7 +120,7 @@ async function runSaveStep(step: SaveStep, acknowledge: boolean): Promise<void> 
       await apiFetch(`/api/leave?id=${encodeURIComponent(step.leaveId)}`, { method: 'DELETE' })
       return
     case 'createRest':
-      await createRestDay(step.employeeId, step.date, step.recurring === true)
+      await createRestDay(step.employeeId, step.date, step.recurring === true, step.until)
       return
     case 'createLeave':
       // Onay (acknowledge) yıllık izin bakiyesini aşan avans izni de kapsar
@@ -151,8 +152,8 @@ interface CreateRestResponse {
   recurring?: { created: number; skipped: number }
 }
 
-/** Haftalık tatil atar; recurring → o gün sonraki haftalarda da tatil */
-function createRestDay(employeeId: string, date: string, recurring: boolean): Promise<CreateRestResponse> {
+/** Haftalık tatil atar; recurring → o gün sonraki haftalarda da tatil (until: son tekrar günü, yoksa süresiz) */
+function createRestDay(employeeId: string, date: string, recurring: boolean, until?: string | null): Promise<CreateRestResponse> {
   return apiFetch<CreateRestResponse>('/api/leave', {
     method: 'POST',
     body: {
@@ -162,6 +163,7 @@ function createRestDay(employeeId: string, date: string, recurring: boolean): Pr
       end_date: date,
       reason: recurring ? 'Haftalık tatil (her hafta)' : 'Haftalık tatil',
       ...(recurring ? { recurring: true } : {}),
+      ...(recurring && until ? { recurring_until: until } : {}),
     },
   })
 }
@@ -229,13 +231,15 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
   const [drafts, setDrafts] = useState<DraftMap>(() => new Map())
   const [customStones, setCustomStones] = useState<ShiftStone[]>(loadCustomStones)
   const [stonePick, setStonePick] = useState<string | null>(null)
+  /** "Her hafta tatil" taşının süresi (null → süresiz) */
+  const [restRepeat, setRestRepeat] = useState<RestRepeat>(null)
   const [editorSaving, setEditorSaving] = useState(false)
   const [saveProgress, setSaveProgress] = useState<{ done: number; total: number } | null>(null)
 
   const shiftStones = useMemo(() => [...templateStones(templates), ...customStones], [templates, customStones])
   const customIds = useMemo(() => new Set(customStones.map((s) => s.id)), [customStones])
   const leaveStoneList = useMemo(() => leaveStones(leaveTypes), [leaveTypes])
-  const allStones: EditorStone[] = [...shiftStones, REST_STONE, WEEKLY_REST_STONE, ...leaveStoneList, ERASE_STONE]
+  const allStones: EditorStone[] = [...shiftStones, REST_STONE, weeklyRestStone(restRepeat), ...leaveStoneList, ERASE_STONE]
   const selectedStone = allStones.find((s) => s.id === stonePick) ?? shiftStones[0] ?? ERASE_STONE
 
   const savedAssignmentMap = useMemo(
@@ -353,15 +357,19 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
 
   const dialogSubject = () => `${dialogEmployee?.full_name ?? ''} · ${dialogDate ? longDate(dialogDate) : ''}`
 
-  const handleAssignRestDay = async (recurring: boolean) => {
+  const handleAssignRestDay = async (recurring: boolean, repeat: RestRepeat = null) => {
     if (!dialogEmployee || !dialogDate) return
     setSaving(true)
     try {
-      const res = await createRestDay(dialogEmployee.id, dialogDate, recurring)
+      const until = recurring ? repeatUntil(dialogDate, repeat) : null
+      const res = await createRestDay(dialogEmployee.id, dialogDate, recurring, until)
       if (recurring) {
         const skipped = res.recurring?.skipped ?? 0
-        toast.success(`${everyWeekday(dialogDate)} tatil`, {
-          description: `${dialogEmployee.full_name} · sonraki haftalara da yazıldı`
+        toast.success(`${everyWeekday(dialogDate)} tatil${until ? ` · ${repeatLabel(repeat)}` : ''}`, {
+          description: `${dialogEmployee.full_name} · `
+            + (until
+              ? `${repeatOccurrences(dialogDate, until)} hafta, son tatil ${longDate(until)}`
+              : 'sonraki haftalara da yazıldı')
             + (skipped > 0 ? `; vardiyası ya da izni olan ${skipped} gün atlandı` : ''),
         })
       } else {
@@ -818,6 +826,8 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
           customIds={customIds}
           selectedId={selectedStone.id}
           onSelect={setStonePick}
+          restRepeat={restRepeat}
+          onRestRepeatChange={(r) => { setRestRepeat(r); setStonePick('rest-weekly') }}
           onAddCustom={addCustomStone}
           onRemoveCustom={removeCustomStone}
           pendingCount={pendingDrafts.size}

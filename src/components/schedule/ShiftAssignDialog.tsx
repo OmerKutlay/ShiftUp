@@ -7,7 +7,7 @@
  */
 import { useState } from 'react'
 import {
-  CalendarOff, ChevronDown, CircleAlert, CircleCheck, Clock, Moon, Plane, Repeat, Sofa, Trash2, TriangleAlert,
+  ArrowLeft, CalendarOff, ChevronDown, CircleAlert, CircleCheck, Clock, Moon, Plane, Repeat, Sofa, Trash2, TriangleAlert,
 } from 'lucide-react'
 import type { EmployeeWithRole } from '@/types/employee'
 import type { ShiftTemplate } from '@/types/shiftTemplate'
@@ -34,6 +34,8 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Spinner } from '@/components/ui/spinner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
+import type { RestRepeat } from '@/lib/restRepeat'
+import { RestRepeatPicker } from './RestRepeatPicker'
 import { fmtDuration, fmtRange, shiftKindOf } from './scheduleHelpers'
 import { ShiftKindBar } from './ScheduleCells'
 
@@ -49,8 +51,8 @@ interface Props {
   onClose: () => void
   onSave: (payload: ShiftSavePayload) => Promise<void>
   onDelete?: () => Promise<void>
-  /** Haftalık tatil atama callback — sadece boş günde gösterilir; recurring → her hafta */
-  onAssignRestDay?: (recurring: boolean) => Promise<void>
+  /** Haftalık tatil atama callback — sadece boş günde gösterilir; recurring → her hafta (repeat: süresi, null = süresiz) */
+  onAssignRestDay?: (recurring: boolean, repeat?: RestRepeat) => Promise<void>
   /** Planda doğrudan onaylı izin (türün id'si) — sadece boş günde, tatil menüsünde */
   onAssignLeave?: (defId: string) => Promise<void>
   /** Atanabilen (aktif) izin türleri */
@@ -140,6 +142,10 @@ export function ShiftAssignDialog({
   const [customStart, setCustomStart] = useState(existingAssignment?.start_time.slice(0, 5) ?? '09:00')
   const [customEnd, setCustomEnd] = useState(existingAssignment?.end_time.slice(0, 5) ?? '17:00')
   const [error, setError] = useState<FormError | null>(null)
+  // Tekrarlayan tatil: süre seçimi adımı
+  const [repeatStep, setRepeatStep] = useState(false)
+  const [repeat, setRepeat] = useState<RestRepeat>(null)
+  const [repeatValid, setRepeatValid] = useState(true)
 
   // Şablon seçilince özel saat alanlarını da şablondan doldur (kolaylık)
   const handleTemplateChange = (id: string) => {
@@ -202,7 +208,9 @@ export function ShiftAssignDialog({
   const handleRestDay = async (recurring: boolean) => {
     if (!onAssignRestDay) return
     setError(null)
-    try { await onAssignRestDay(recurring) } catch (err) { fail('form', err, 'Tatil atanamadı.') }
+    try {
+      await (recurring ? onAssignRestDay(true, repeat) : onAssignRestDay(false))
+    } catch (err) { fail('form', err, 'Tatil atanamadı.') }
   }
 
   const handleLeave = async (defId: string) => {
@@ -241,6 +249,25 @@ export function ShiftAssignDialog({
             </Alert>
           )}
 
+          {repeatStep ? (
+            <section aria-labelledby="repeat-title" className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1">
+                <h3 id="repeat-title" className="flex items-center gap-2 text-sm font-medium">
+                  <Repeat className="size-4 text-muted-foreground" />
+                  {weekdayLabel ? `Her ${weekdayLabel} tatil` : 'Her hafta tatil'}
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Ne kadar sürsün? Vardiyası ya da izni olan haftalar atlanır.
+                </p>
+              </div>
+              <RestRepeatPicker
+                value={repeat}
+                startDate={workDate}
+                idPrefix="assign-repeat"
+                onChange={(r, valid) => { setRepeat(r); setRepeatValid(valid) }}
+              />
+            </section>
+          ) : <>
           {dayAvailability.length > 0 && (
             <AvailabilityNotice records={dayAvailability} shiftStart={activeStart} shiftEnd={activeEnd} />
           )}
@@ -340,8 +367,21 @@ export function ShiftAssignDialog({
               )}
             </Item>
           )}
+          </>}
         </div>
 
+        {repeatStep ? (
+          <DialogFooter className="sm:justify-between">
+            <Button type="button" variant="ghost" onClick={() => { setRepeatStep(false); setError(null) }} disabled={loading}>
+              <ArrowLeft />
+              Geri
+            </Button>
+            <Button type="button" onClick={() => handleRestDay(true)} disabled={loading || !repeatValid}>
+              {loading && <Spinner />}
+              Tatil yap
+            </Button>
+          </DialogFooter>
+        ) : (
         <DialogFooter className={cn((isEdit && onDelete) || (!isEdit && onAssignRestDay) ? 'sm:justify-between' : undefined)}>
           {isEdit && onDelete ? (
             <Button
@@ -369,11 +409,11 @@ export function ShiftAssignDialog({
                   <Sofa />
                   Yalnızca bu gün
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => handleRestDay(true)}>
+                <DropdownMenuItem onSelect={() => { setError(null); setRepeatStep(true) }}>
                   <Repeat />
                   <span className="flex flex-col">
-                    <span>{weekdayLabel ? `Her ${weekdayLabel}` : 'Her hafta'}</span>
-                    <span className="text-xs text-muted-foreground">Sonraki haftalarda da tatil</span>
+                    <span>{weekdayLabel ? `Her ${weekdayLabel}…` : 'Her hafta…'}</span>
+                    <span className="text-xs text-muted-foreground">Sonraki haftalarda da tatil; süresini seçin</span>
                   </span>
                 </DropdownMenuItem>
                 {onAssignLeave && leaveTypes.length > 0 && (
@@ -399,6 +439,7 @@ export function ShiftAssignDialog({
             </Button>
           </div>
         </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   )

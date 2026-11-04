@@ -3,6 +3,7 @@ import type { ShiftTemplate } from '@/types/shiftTemplate'
 import type { ShiftAssignmentWithDetails } from '@/types/schedule'
 import {
   ERASE_STONE, REST_STONE, WEEKLY_REST_STONE, applyDrafts, customStone, leaveStones, paintCell, saveSteps, templateStones,
+  weeklyRestStone,
   type CellOriginal, type DraftMap,
 } from '@/components/schedule/scheduleEditor'
 
@@ -121,6 +122,16 @@ describe('her hafta tatil taşı', () => {
     const drafts = paintCell(none, KEY, WEEKLY_REST_STONE, empty)
     expect(drafts.get(KEY)).toEqual({ type: 'rest', recurring: true })
     expect(saveSteps(KEY, drafts.get(KEY)!, empty)).toEqual([{ op: 'createRest', employeeId: EMP, date: DAY, recurring: true }])
+  })
+
+  it('süreli taş: kayıtta tekrarın son günü (until) gönderilir', () => {
+    const stone = weeklyRestStone({ unit: 'week', count: 4 })
+    const drafts = paintCell(none, KEY, stone, empty)
+    expect(drafts.get(KEY)).toEqual({ type: 'rest', recurring: true, repeat: { unit: 'week', count: 4 } })
+    expect(saveSteps(KEY, drafts.get(KEY)!, empty)).toEqual([
+      { op: 'createRest', employeeId: EMP, date: DAY, recurring: true, until: '2026-10-19' },
+    ])
+    expect(weeklyRestStone(null)).toEqual(WEEKLY_REST_STONE)
   })
 
   it('tek günlük tatili tekrarlayana çevirir: önce eski kayıt kalkar', () => {
