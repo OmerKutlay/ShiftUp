@@ -19,6 +19,51 @@ export class ApiError extends Error {
   }
 }
 
+/** Ağ hatası: istek sunucuya ulaşmadı ya da yanıt dönmedi (fetch "Failed to fetch" fırlattı) */
+export const NETWORK_ERROR_MSG = 'Sunucuya ulaşılamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.'
+/** Yazma isteğinde ağ hatası — sunucu isteği almış olabilir, kullanıcı sonucu kontrol etmeli */
+export const NETWORK_WRITE_ERROR_MSG =
+  'Sunucuya ulaşılamadı; işlem kaydedilmemiş olabilir. Bağlantınızı kontrol edip tekrar deneyin.'
+
+/**
+ * fetch'in ağ hatası (TypeError "Failed to fetch") anlaşılır Türkçe mesajla.
+ * TypeError'dan türer ve ApiError değildir: "sunucu yanıt vermedi" ayrımı yapan kod
+ * (çevrimdışı görünüm, `instanceof TypeError` kontrolleri) aynen çalışır.
+ */
+export class NetworkError extends TypeError {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options)
+    this.name = 'NetworkError'
+  }
+}
+
+/** Ağ hatasında okuma isteğinin tek ek denemesinden önceki bekleme (ms) */
+const NETWORK_RETRY_DELAY = 400
+
+const isAbortError = (err: unknown) => err instanceof Error && err.name === 'AbortError'
+
+/**
+ * fetch + ağ hatası yönetimi. Okuma (GET/HEAD) bir kez daha denenir — boşta kapanmış bağlantı
+ * gibi geçici kopmalar kullanıcıya yansımasın. Yazma tekrarlanmaz: sunucu ilk isteği uygulamış olabilir.
+ * İptal (AbortError) olduğu gibi iletilir.
+ */
+async function fetchWithNetworkRetry(doFetch: () => Promise<Response>, retryable: boolean, signal?: AbortSignal | null) {
+  try {
+    return await doFetch()
+  } catch (err) {
+    if (isAbortError(err) || !(err instanceof TypeError)) throw err
+    if (!retryable) throw new NetworkError(NETWORK_WRITE_ERROR_MSG, { cause: err })
+    if (signal?.aborted) throw err
+    await new Promise((resolve) => setTimeout(resolve, NETWORK_RETRY_DELAY))
+    try {
+      return await doFetch()
+    } catch (err2) {
+      if (isAbortError(err2) || !(err2 instanceof TypeError)) throw err2
+      throw new NetworkError(NETWORK_ERROR_MSG, { cause: err2 })
+    }
+  }
+}
+
 /** Cloudflare limit hatası (1102 vb.) için kullanıcıya gösterilen metin */
 export const PLATFORM_LIMIT_MSG = 'Sunucu şu an yoğun, lütfen tekrar deneyin.'
 
@@ -59,7 +104,7 @@ export async function apiFetch<T>(
   // Yazma isteği sekmenin mağazasını taşır; sunucu farklı mağazadaysa uygulamaz (409)
   if (!retryable && requestStoreId) extra[STORE_HEADER] = requestStoreId
 
-  const doFetch = () =>
+  const send = () =>
     fetch(url, {
       credentials: 'same-origin',
       ...rest,
@@ -68,6 +113,8 @@ export async function apiFetch<T>(
         : headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
     })
+
+  const doFetch = () => fetchWithNetworkRetry(send, retryable, rest.signal)
 
   let res = await doFetch()
   for (const delay of LIMIT_RETRY_DELAYS) {
@@ -105,7 +152,7 @@ export async function apiFetch<T>(
  * Hata durumunda (429, 5xx…) JSON gövdesini ApiError'a çevirir — tarayıcı ham JSON'a gitmez.
  */
 export async function apiDownload(url: string): Promise<{ blob: Blob; filename: string | null }> {
-  const res = await fetch(url, { credentials: 'same-origin' })
+  const res = await fetchWithNetworkRetry(() => fetch(url, { credentials: 'same-origin' }), true)
   if (res.status === 401 && typeof window !== 'undefined') window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
   if (!res.ok) {
     const json = (await res.json().catch(() => ({}))) as Record<string, unknown>
