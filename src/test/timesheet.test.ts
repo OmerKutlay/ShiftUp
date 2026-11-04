@@ -95,13 +95,54 @@ describe('timesheet — gün kodları', () => {
     expect(row.days['2026-10-28']).toBe('')
   })
 
-  it('SGK günü: 30 − ücretsiz izin − devamsız', () => {
+  it('SGK günü: 30 − ücretsiz izin − rapor − devamsız', () => {
     const [row] = buildTimesheet({
       ...base,
       shifts: [planned('2026-10-14')],
-      leaves: [{ employee_id: 'e1', leave_type: 'unpaid', start_date: '2026-10-01', end_date: '2026-10-02' }],
+      leaves: [
+        { employee_id: 'e1', leave_type: 'unpaid', start_date: '2026-10-01', end_date: '2026-10-02' },
+        { employee_id: 'e1', leave_type: 'sick', start_date: '2026-10-20', end_date: '2026-10-22' },
+      ],
     })
-    expect(row.sgkDays).toBe(30 - 2 - 1)
+    expect(row.sgkDays).toBe(30 - 2 - 3 - 1)
+  })
+})
+
+describe('timesheet — işe giriş / çıkış ve arife', () => {
+  it('girişten önce ve çıkıştan sonra gün kodlanmaz; SGK günü bordro puantajıyla aynı', async () => {
+    const { toPayrollRows } = await import('@/lib/payrollTimesheet')
+    const holidays = [{ date: '2026-10-29', name: 'Cumhuriyet Bayramı', half_day: false }]
+    const leaves = [
+      { employee_id: 'e1', leave_type: 'weekly_rest', start_date: '2026-10-04', end_date: '2026-10-04' },
+      { employee_id: 'e1', leave_type: 'sick', start_date: '2026-10-06', end_date: '2026-10-06' },
+    ]
+    const shifts = ['01', '02', '05', '07'].map((d) => worked(`2026-10-${d}`))
+    const leaver = buildTimesheet({
+      month: '2026-10', employees: [{ ...EMP, hire_date: '2020-01-01', termination_date: '2026-10-20' }],
+      holidays, today: '2026-10-31', shifts, leaves,
+    })[0]
+    expect(leaver.days['2026-10-29']).toBe('')           // çıkıştan sonraki resmi tatil yazılmaz
+    expect(leaver.days['2026-10-04']).toBe('HT')
+    expect(leaver.sgkDays).toBe(20 - 1 - 1)               // 20 gün − 1 rapor − çıkış günü kayıtsız (SGK 16)
+    expect(leaver.sgkDays).toBe(toPayrollRows('2026-10', [leaver])[0].sgkDays)
+
+    const newcomer = buildTimesheet({
+      month: '2026-10', employees: [{ ...EMP, hire_date: '2026-10-12' }], holidays, today: '2026-10-31', shifts: [], leaves,
+    })[0]
+    expect(newcomer.days['2026-10-04']).toBe('')          // girişten önce
+    expect(newcomer.days['2026-10-29']).toBe('RT')
+    expect(newcomer.sgkDays).toBe(20)
+    expect(newcomer.sgkDays).toBe(toPayrollRows('2026-10', [newcomer])[0].sgkDays)
+  })
+
+  it('arifede (yarım gün tatil) çalışma normal gündür: Ç, resmi tatil çalışması sayılmaz', () => {
+    const [row] = buildTimesheet({
+      month: '2026-10', employees: [EMP], today: '2026-10-31', leaves: [],
+      holidays: [{ date: '2026-10-28', name: 'Arife', half_day: true }],
+      shifts: [worked('2026-10-28')],
+    })
+    expect(row.days['2026-10-28']).toBe('Ç')
+    expect(row.holidayWorkedDays).toBe(0)
   })
 })
 
@@ -111,6 +152,7 @@ describe('timesheet — fazla çalışma (Md. 41)', () => {
     const shifts = ['05', '06', '07', '08', '09', '10'].map((d) => worked(`2026-10-${d}`, '08:00', '18:00', 90))
     const [row] = buildTimesheet({ month: '2026-10', employees: [EMP], holidays: [], today: '2026-10-31', shifts, leaves: [] })
     expect(row.overtimeMins).toBe(6 * 60)
+    expect(row.overtimeByWeek).toEqual({ '2026-10-04': 0, '2026-10-11': 6 * 60, '2026-10-18': 0, '2026-10-25': 0 })
     expect(row.overtimeWithoutConsent).toBe(true)
   })
 
@@ -159,13 +201,21 @@ describe('timesheetExcel', () => {
     expect(buf).toBeInstanceOf(Uint8Array)
     const wb = new ExcelJS.Workbook()
     await wb.xlsx.load(buf as unknown as ArrayBuffer)
-    const ws = wb.getWorksheet('Puantaj')!
-    expect(ws.getRow(1).getCell(1).value).toBe('Çalışan')
-    expect(ws.getRow(3).getCell(1).value).toBe("'=KÖTÜ()") // formül enjeksiyonu kaçışlandı
-    expect(ws.getRow(3).getCell(2 + 5).value).toBe(8)      // 5 Ekim: Ç yerine net saat (9 s − 1 s mola)
-    expect((ws.getRow(3).getCell(2 + 5).fill as { fgColor?: { argb?: string } }).fgColor?.argb).toBe('FFC6EFCE') // çalıştı yeşili
-    expect((ws.getRow(3).getCell(2 + 4).fill as { fgColor?: { argb?: string } } | undefined)?.fgColor).toBeUndefined() // boş gün boyanmaz
-    expect(wb.getWorksheet('Açıklama')).toBeTruthy()
+    const ws = wb.getWorksheet('Ekim 2026')!
+    // Klasik çizelge: 1. satır hafta günü, 3. satır gruplar, 4. satır başlıklar, veriler 5. satırdan
+    expect(ws.getRow(1).getCell(1).value).toBe('S.NO')
+    expect(ws.getRow(1).getCell(4 + 1).value).toBe('Per')   // 1 Ekim 2026 Perşembe
+    expect(ws.getRow(3).getCell(4 + 1).value).toBe('EKİM 2026 - PUANTAJ')
+    expect(ws.getRow(4).getCell(2).value).toBe('Adı Soyadı')
+    expect(ws.getRow(5).getCell(1).value).toBe(1)
+    expect(ws.getRow(5).getCell(2).value).toBe("'=KÖTÜ()") // formül enjeksiyonu kaçışlandı
+    expect(ws.getRow(5).getCell(4 + 5).value).toBe(8)      // 5 Ekim: Ç yerine net saat (9 s − 1 s mola)
+    expect((ws.getRow(5).getCell(4 + 5).fill as { fgColor?: { argb?: string } }).fgColor?.argb).toBe('FFC6EFCE') // çalıştı yeşili
+    expect((ws.getRow(5).getCell(4 + 4).fill as { fgColor?: { argb?: string } } | undefined)?.fgColor).toBeUndefined() // boş gün boyanmaz
+    expect(ws.getRow(4).getCell(4 + 31 + 1).value).toBe('Çalışılan Gün')
+    expect(ws.getRow(5).getCell(4 + 31 + 1).value).toBe(1)
+    expect(ws.getRow(6).getCell(2).value).toBe('TOPLAM')
+    expect(wb.getWorksheet('Açıklamalar')).toBeTruthy()
   })
 })
 
@@ -177,17 +227,17 @@ describe('timesheetExcel — mağaza adı', () => {
     expect(storeFileSlug('???')).toBe('magaza')
   })
 
-  it('mağaza adı verilince üstte başlık satırı olur, tablo bir satır aşağı kayar', { timeout: 30_000 }, async () => {
+  it('mağaza adı Birim/Şube sütununa yazılır', { timeout: 30_000 }, async () => {
     const { buildTimesheetWorkbook } = await import('@/lib/timesheetExcel')
     const ExcelJS = (await import('exceljs')).default
     const [row] = buildTimesheet({ month: '2026-10', employees: [EMP], holidays: [], today: '2026-10-31', shifts: [worked('2026-10-05')], leaves: [] })
     const buf = await buildTimesheetWorkbook('2026-10', [row], [], 'Kadıköy Şube')
     const wb = new ExcelJS.Workbook()
     await wb.xlsx.load(buf as unknown as ArrayBuffer)
-    const ws = wb.getWorksheet('Puantaj')!
-    expect(String(ws.getRow(1).getCell(1).value)).toContain('Kadıköy Şube')
-    expect(ws.getRow(2).getCell(1).value).toBe('Çalışan')
-    expect(ws.getRow(4).getCell(2 + 5).value).toBe(8)
+    const ws = wb.getWorksheet('Ekim 2026')!
+    expect(ws.getRow(4).getCell(3).value).toBe('Birim/Şube')
+    expect(ws.getRow(5).getCell(3).value).toBe('Kadıköy Şube')
+    expect(ws.getRow(5).getCell(4 + 5).value).toBe(8)
   })
 })
 

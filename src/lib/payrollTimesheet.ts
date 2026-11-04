@@ -22,7 +22,7 @@
  *     Ücretli izin, hafta tatili, resmi tatil prim gününe dahildir.
  *   - Birden fazla farklı nedenle eksik gün varsa neden kodu 12 (Birden fazla).
  */
-import { buildTimesheet, monthDays, type TimesheetCode, type TimesheetRow } from '@/lib/timesheet'
+import { buildTimesheet, employedSgkDays, employmentWindow, monthDays, type TimesheetCode, type TimesheetRow } from '@/lib/timesheet'
 
 export const SGK_MISSING_DAY_CODES: ReadonlyArray<{ code: string; label: string }> = [
   { code: '01', label: 'İstirahat' },
@@ -61,10 +61,11 @@ const SGK_TERMINATION = '16'
 const SGK_MULTIPLE = '12'
 
 /** Bordro gün kodları (puantaj kodlarından türetilir) */
-export type PayrollDayCode = 'Ç' | 'HT' | 'GT' | 'GTÇ' | 'Yİ' | 'R' | 'Üİ' | 'M' | 'D' | 'P' | ''
+export type PayrollDayCode = 'Ç' | 'HTÇ' | 'HT' | 'GT' | 'GTÇ' | 'Yİ' | 'R' | 'Üİ' | 'M' | 'D' | 'P' | ''
 
 export const PAYROLL_CODE_LEGEND: ReadonlyArray<{ code: Exclude<PayrollDayCode, ''>; label: string; note: string }> = [
   { code: 'Ç', label: 'Çalıştı', note: 'Giriş-çıkış kaydı olan normal gün' },
+  { code: 'HTÇ', label: 'Hafta tatilinde çalıştı', note: 'Haftalık tatil gününde çalışma; saatleri ayrı sütunda, %50 zamlı' },
   { code: 'HT', label: 'Hafta tatili', note: 'Ücretli; prim gününe dahil' },
   { code: 'GT', label: 'Genel tatil (çalışılmadı)', note: 'Ulusal/mağaza resmi tatili; ücretli, prim gününe dahil' },
   { code: 'GTÇ', label: 'Genel tatilde çalıştı', note: 'İş K. Md. 47 — ek günlük ücret' },
@@ -77,7 +78,7 @@ export const PAYROLL_CODE_LEGEND: ReadonlyArray<{ code: Exclude<PayrollDayCode, 
 ]
 
 const DAY_CODE: Record<Exclude<TimesheetCode, ''>, PayrollDayCode> = {
-  'Ç': 'Ç', 'RTÇ': 'GTÇ', 'HT': 'HT', 'RT': 'GT', 'Yİ': 'Yİ', 'Rİ': 'R', 'Üİ': 'Üİ', 'Mİ': 'M', 'D': 'D', 'P': 'P',
+  'Ç': 'Ç', 'RTÇ': 'GTÇ', 'HTÇ': 'HTÇ', 'HT': 'HT', 'RT': 'GT', 'Yİ': 'Yİ', 'Rİ': 'R', 'Üİ': 'Üİ', 'Mİ': 'M', 'D': 'D', 'P': 'P',
 }
 
 export interface PayrollRow {
@@ -89,10 +90,13 @@ export interface PayrollRow {
   /** Ay içindeki gün → bordro kodu; işe girişten önceki günler '' */
   days: Record<string, PayrollDayCode>
   workedDays: number
-  /** Net normal saat = toplam net çalışma − fazla çalışma */
+  /** Net normal saat = toplam net çalışma − fazla çalışma − hafta tatilinde çalışma */
   normalHours: number
-  /** Haftalık 45 saat üstü (%50 zamlı) */
+  /** Haftalık 45 saat üstü (%50 zamlı); hafta tatilinde çalışılan saat dahil değil */
   overtimeHours: number
+  /** Hafta tatilinde çalışılan gün (HTÇ) ve net saat (%50 zamlı; Pazar'ı bu ayda olan haftalar) */
+  restWorkedDays: number
+  restWorkedHours: number
   /** Genel tatil günlerinde çalışılan net saat (normal saatin içinde, bilgi amaçlı) */
   holidayWorkedHours: number
   holidayWorkedDays: number
@@ -124,52 +128,8 @@ export interface PayrollTimesheet {
 const hours = (mins: number) => Math.round((mins / 60) * 100) / 100
 
 
-/** İşte olunan aralık: ay içindeki ilk ve son gün (1-tabanlı); işe giriş/çıkış bu aralığı daraltır */
-export interface EmploymentWindow {
-  /** Ayın kaçıncı günü işe başlandı (1 = ay başından beri) */
-  fromDay: number
-  /** Ayın kaçıncı günü son çalışma günü (ay sonu = ayın gün sayısı) */
-  toDay: number
-}
-
-/**
- * Ay içinde işte olunan aralık. endDate = employees.termination_date (son çalışma günü, dahil); SGK 16
- * "Fesih tarihinde çalışmamıştır" için toPayrollRows. null = ayın tamamı.
- * Ay dışında (işe giriş ay sonundan sonra / çıkış ay başından önce) → null.
- */
-export function employmentWindow(
-  month: string,
-  hireDate: string | null | undefined,
-  endDate?: string | null
-): EmploymentWindow | null {
-  const len = monthDays(month).length
-  const first = `${month}-01`
-  const last = `${month}-${String(len).padStart(2, '0')}`
-  if (hireDate && hireDate > last) return null
-  if (endDate && endDate < first) return null
-  const fromDay = hireDate && hireDate > first ? Number(hireDate.slice(8, 10)) : 1
-  const toDay = endDate && endDate < last ? Number(endDate.slice(8, 10)) : len
-  return { fromDay, toDay: Math.max(fromDay, toDay) }
-}
-
-/**
- * SGK'ya göre işte olunan gün (prim günü tavanı): ay 30 gün kabul edilir.
- *   - tam ay → 30 (Şubat dahil: ay sonuna kadar çalışılan Şubat 30 sayılır)
- *   - aksi halde takvim günü sayısı (toDay − fromDay + 1), en çok 30
- * Pencere yoksa (ay dışı) → 0.
- *
- * İşten çıkış: termination_date son çalışma günüdür (dahil); sonraki günler işte olunan gün sayılmaz, yani
- * prim günü çıkış gününde biter. SGK 16 "Fesih tarihinde çalışmamıştır" yalnızca çıkış gününde hiç çalışma
- * kaydı olmadığında o 1 gün için kullanılır (toPayrollRows). Kaynak (üçüncü taraf, SGK metni değil):
- * https://www.alomaliye.com/2012/04/17/sgk-eksik-gun-nedenleri/ , https://www.kazimceylan.av.tr/md/sgk-eksik-gun-kodlari
- */
-export function employedSgkDays(month: string, hireDate: string | null | undefined, endDate?: string | null): number {
-  const w = employmentWindow(month, hireDate, endDate)
-  if (!w) return 0
-  const len = monthDays(month).length
-  const to = len < 30 && w.toDay === len ? 30 : w.toDay
-  return Math.min(30, to - w.fromDay + 1)
-}
+// İşte olunan aralık ve gün: timesheet.ts (aylık puantaj da aynı kuralı kullanır)
+export { employmentWindow, employedSgkDays, type EmploymentWindow } from '@/lib/timesheet'
 
 /** Eksik gün sayısından SGK prim günü ve neden kodu (saf; testlerde doğrudan denenir) */
 export function sgkSummary(employedDays: number, reasons: { rest: number; unpaid: number; absent: number; termination?: number }) {
@@ -221,7 +181,7 @@ export function toPayrollRows(month: string, rows: TimesheetRow[]): PayrollRow[]
       // Fesih tarihinde (son çalışma günü) hiç çalışma/izin kaydı yoksa SGK 16 "Fesih tarihinde çalışmamıştır"
       if (end && d === end && c === '' && countsMissing) missing.termination++
       switch (c) {
-        case 'Ç': t.worked++; break
+        case 'Ç': case 'HTÇ': t.worked++; break
         case 'RTÇ': t.worked++; t.holidayWorked++; holidayWorkedMins += r.dayMins[d] ?? 0; break
         case 'HT': t.rest++; break
         case 'RT': t.holiday++; break
@@ -245,8 +205,10 @@ export function toPayrollRows(month: string, rows: TimesheetRow[]): PayrollRow[]
       tcKimlikNo: '',
       days: codes,
       workedDays: t.worked,
-      normalHours: hours(Math.max(0, r.workedMins - r.overtimeMins)),
+      normalHours: hours(Math.max(0, r.workedMins - r.overtimeMins - (r.restWorkMins ?? 0))),
       overtimeHours: hours(r.overtimeMins),
+      restWorkedDays: r.restWorkedDays ?? 0,
+      restWorkedHours: hours(r.restWorkMins ?? 0),
       holidayWorkedHours: hours(holidayWorkedMins),
       holidayWorkedDays: t.holidayWorked,
       nightHours: hours(r.nightMins),
@@ -275,7 +237,7 @@ export function buildPayrollTimesheet(params: Parameters<typeof buildTimesheet>[
 
 export const PAYROLL_CSV_HEADERS = [
   'Sicil No', 'TC Kimlik No', 'Ad Soyad', 'Çalışılan Gün', 'Normal Saat', 'Fazla Mesai Saat (%50)',
-  'Genel Tatil Çalışılan Gün', 'Genel Tatil Çalışılan Saat', 'Gece Çalışması Saat', 'Hafta Tatili Gün',
+  'Hafta Tatili Çalışılan Gün', 'Hafta Tatili Çalışılan Saat (%50)', 'Genel Tatil Çalışılan Gün', 'Genel Tatil Çalışılan Saat', 'Gece Çalışması Saat', 'Hafta Tatili Gün',
   'Genel Tatil Gün (Çalışılmadı)', 'Yıllık İzin Gün', 'Raporlu Gün', 'Ücretsiz İzin Gün', 'Mazeret İzni Gün',
   'Devamsız Gün', 'Eksik Gün', 'Eksik Gün Nedeni Kodu', 'SGK Prim Günü', 'Not',
 ] as const
@@ -307,7 +269,7 @@ export function payrollToCsv(rows: PayrollRow[]): string {
   for (const r of rows) {
     const cells = [
       r.sicilNo, r.tcKimlikNo, r.fullName, r.workedDays, num(r.normalHours), num(r.overtimeHours),
-      r.holidayWorkedDays, num(r.holidayWorkedHours), num(r.nightHours), r.weeklyRestDays,
+      r.restWorkedDays, num(r.restWorkedHours), r.holidayWorkedDays, num(r.holidayWorkedHours), num(r.nightHours), r.weeklyRestDays,
       r.holidayRestDays, r.annualLeaveDays, r.sickDays, r.unpaidDays, r.excuseDays,
       r.absentDays, r.missingDays, null, r.sgkDays, r.notes.join(' | '),
     ].map((c) => (c === null ? csvTextCode(r.missingReasonCode) : csvCell(String(c))))

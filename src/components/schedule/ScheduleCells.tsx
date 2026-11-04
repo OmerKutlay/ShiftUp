@@ -165,6 +165,8 @@ export interface ShiftCellProps {
   isRestDay: boolean
   /** Tatil her hafta tekrarlıyor */
   isRecurringRest?: boolean
+  /** Haftalık tatil gününe verilmiş vardiya (hafta tatilinde çalışma) */
+  isRestWork?: boolean
   availStatus: AvailStatus
   dailyOver: boolean
   onClick: () => void
@@ -201,8 +203,17 @@ function OffCell({ kind, readOnly, onClick, tip, recurring, label: labelOverride
 
 // ─── Vardiya hücresi (masaüstü tablo) ─────────────────────────
 
+/** Hafta tatilinde çalışma işareti */
+function RestWorkMark() {
+  return (
+    <span aria-label="Hafta tatilinde çalışma" className="shrink-0 rounded-sm bg-warning/15 px-1 text-[10px] font-semibold leading-4 text-warning">
+      HT
+    </span>
+  )
+}
+
 export function ShiftCell({
-  assignment, isOnLeave, leaveLabel, isRestDay, isRecurringRest, availStatus, dailyOver, onClick, readOnly,
+  assignment, isOnLeave, leaveLabel, isRestDay, isRecurringRest, isRestWork, availStatus, dailyOver, onClick, readOnly,
 }: ShiftCellProps) {
   if (isRestDay) {
     return (
@@ -257,6 +268,7 @@ export function ShiftCell({
       <span className="font-medium">{name} · {fmtRange(start, end)}</span>
       <span>Brüt {fmtDuration(grossMins)} · mola {fmtDuration(grossMins - netMins)} · net {fmtDuration(netMins)}</span>
       {workedMins !== null && <span>Gerçekleşen net {fmtDuration(workedMins)} (mola otomatik düşülmüş)</span>}
+      {isRestWork && <span>Hafta tatilinde çalışma — haftalık tatil günü, ek ücretli</span>}
       {dailyOver && <span>Günlük azami çalışma süresi aşıldı</span>}
       {availStatus === 'off' && <span>Çalışan bu gün müsait değil</span>}
       {availStatus === 'partial' && <span>Müsaitlik penceresinin dışında</span>}
@@ -280,6 +292,7 @@ export function ShiftCell({
             {fmtRange(start, end)}
           </span>
           <span className="flex min-w-0 gap-1.5 text-xs text-muted-foreground">
+            {isRestWork && <RestWorkMark />}
             <span className="truncate">{name}</span>
             <span className={cn('ml-auto flex shrink-0 items-center gap-0.5 tabular-nums', dailyOver && 'text-destructive')}>
               {(availWarn || dailyOver) && (
@@ -303,7 +316,7 @@ const miniBase =
   'relative flex h-10 w-full flex-col items-center justify-center gap-1 rounded-md text-xs font-medium tabular-nums outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 [&_svg]:size-3.5'
 
 export function MiniShiftCell({
-  assignment, isOnLeave, leaveLabel, isRestDay, isRecurringRest, availStatus, dailyOver, onClick, readOnly,
+  assignment, isOnLeave, leaveLabel, isRestDay, isRecurringRest, isRestWork, availStatus, dailyOver, onClick, readOnly,
 }: ShiftCellProps) {
   if (isRestDay || isOnLeave) {
     const { icon: Icon, label } = OFF_META[isRestDay ? 'rest' : 'leave']
@@ -339,13 +352,14 @@ export function MiniShiftCell({
     <CellButton
       readOnly={readOnly}
       onClick={onClick}
-      aria-label={`${shiftDisplayName(assignment.shift_templates?.name, start, end)} ${fmtRange(start, end)}`}
+      aria-label={`${shiftDisplayName(assignment.shift_templates?.name, start, end)} ${fmtRange(start, end)}${isRestWork ? ', hafta tatilinde çalışma' : ''}`}
       className={cn(
         miniBase,
         'border bg-card shadow-xs',
         warn && (dailyOver || availStatus === 'off' ? 'border-destructive/50 text-destructive' : 'border-warning/50')
       )}
     >
+      {isRestWork && <span aria-hidden className="absolute top-0.5 right-0.5 text-[8px] leading-none font-semibold text-warning">HT</span>}
       {start.slice(0, 2)}
       <span aria-hidden className="h-0.5 w-3 rounded-full" style={{ backgroundColor: SHIFT_KIND_TONES[kind].fill }} />
     </CellButton>

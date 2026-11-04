@@ -10,7 +10,7 @@ function row(over: Partial<TimesheetRow> & { name: string }): TimesheetRow {
   return {
     employee: { id: name, full_name: name, role_name: 'Kasiyer', employment_type: 'full_time' },
     days: {}, dayMins: {}, dayPlan: {},
-    workedMins: 0, nightMins: 0, overtimeMins: 0, holidayWorkedDays: 0, workedDays: 0, absentDays: 0,
+    workedMins: 0, nightMins: 0, overtimeMins: 0, overtimeByWeek: {}, restWorkByWeek: {}, restWorkMins: 0, restWorkedDays: 0, holidayWorkedDays: 0, workedDays: 0, absentDays: 0,
     leaveDays: { 'Yİ': 0, 'Rİ': 0, 'Üİ': 0, 'Mİ': 0, 'HT': 0 },
     sgkDays: 30, overtimeWithoutConsent: false,
     ...rest,

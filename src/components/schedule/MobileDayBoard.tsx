@@ -33,6 +33,8 @@ export interface MobileDayBoardProps {
   holidayMap: Map<string, PublicHoliday>
   approvedLeaveMap: Set<string>
   restDayMap: Set<string>
+  /** Hafta tatilinde çalışma (tatil gününe verilmiş vardiya) */
+  restWorkMap?: Set<string>
   /** İzinli günlerin tür adı */
   leaveLabelMap?: Map<string, string>
   availabilityMap: AvailabilityMap
@@ -85,7 +87,7 @@ interface WorkingRow {
 }
 
 export function MobileDayBoard({
-  entries, weekDays, selectedDay, onSelectDay, holidayMap, approvedLeaveMap, restDayMap, leaveLabelMap,
+  entries, weekDays, selectedDay, onSelectDay, holidayMap, approvedLeaveMap, restDayMap, restWorkMap, leaveLabelMap,
   availabilityMap, maxDailyMins, onCellClick, readOnly = false,
 }: MobileDayBoardProps) {
   const todayStr = format(new Date(), 'yyyy-MM-dd')
@@ -291,6 +293,9 @@ export function MobileDayBoard({
                               <span className={cn('shrink-0 whitespace-nowrap tabular-nums', danger && 'text-destructive')}>{fmtRange(start, end)}</span>
                               {r.emp.employment_type === 'part_time' && (
                                 <Badge variant="secondary" className="shrink-0 px-1.5 py-0">PT</Badge>
+                              )}
+                              {restWorkMap?.has(`${r.emp.id}:${selectedDay}`) && (
+                                <Badge tone="warning" className="shrink-0 px-1.5 py-0" title="Hafta tatilinde çalışma">HT</Badge>
                               )}
                               {r.warn && (
                                 <TriangleAlert

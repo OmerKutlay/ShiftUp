@@ -74,14 +74,18 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       const rules = await checkAssignmentRules(
         createAdminClient(), shift.employee_id,
         { work_date: shift.work_date, start_time: payload.start_time, end_time: payload.end_time },
-        [id]
+        [id],
+        { allowWeeklyRest: true }
       )
       const blockers = rules.blockers.filter((b) => !b.includes('çakışıyor'))
       if (blockers.length > 0) return conflict(blockers.join(' '), 'ASSIGNMENT_BLOCKED')
       violations = rules.violations.map((v) => v.message)
       if (violations.length > 0 && body.acknowledge_violations !== true) {
         return NextResponse.json(
-          { error: 'Bu vardiya çalışma süresi kurallarını ihlal ediyor.', code: 'WORKING_TIME_VIOLATION', violations },
+          {
+            error: 'Bu vardiya çalışma süresi kurallarını ihlal ediyor.', code: 'WORKING_TIME_VIOLATION', violations,
+            violation_types: rules.violations.map((v) => v.type),
+          },
           { status: 422 }
         )
       }

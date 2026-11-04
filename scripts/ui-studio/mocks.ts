@@ -1297,7 +1297,7 @@ function timesheet(ctx: Ctx, month: string): { month: string; rows: TimesheetRow
   const rows = staff.map((e): TimesheetRow => {
     const row: TimesheetRow = {
       employee: { id: e.id, full_name: e.full_name, role_name: e.role.name, employment_type: e.employment_type, overtime_consent_at: e.overtime_consent_at },
-      days: {}, dayMins: {}, dayPlan: {}, workedMins: 0, nightMins: 0, overtimeMins: 0, holidayWorkedDays: 0,
+      days: {}, dayMins: {}, dayPlan: {}, workedMins: 0, nightMins: 0, overtimeMins: 0, overtimeByWeek: {}, restWorkByWeek: {}, restWorkMins: 0, restWorkedDays: 0, holidayWorkedDays: 0,
       workedDays: 0, absentDays: 0, leaveDays: { 'Yİ': 0, 'Rİ': 0, 'Üİ': 0, 'Mİ': 0, 'HT': 0 }, sgkDays: 0, overtimeWithoutConsent: false,
     }
     for (const date of days) {
@@ -1331,10 +1331,11 @@ function timesheet(ctx: Ctx, month: string): { month: string; rows: TimesheetRow
         const s = shiftFor(ctx, e, d)
         return sum + (s && !s.is_on_leave ? workedMinsOf(attendanceFor(ctx, s)) ?? 0 : 0)
       }, 0)
-      row.overtimeMins += Math.max(0, weekMins - MAX_WEEKLY_WORK_MINS)
+      row.overtimeByWeek[sunday] = Math.max(0, weekMins - MAX_WEEKLY_WORK_MINS)
+      row.overtimeMins += row.overtimeByWeek[sunday]
     }
     row.overtimeWithoutConsent = row.overtimeMins > 0 && !e.overtime_consent_at
-    row.sgkDays = Math.max(0, Math.min(30, days.length) - row.leaveDays['Üİ'] - row.absentDays)
+    row.sgkDays = Math.max(0, Math.min(30, days.length) - row.leaveDays['Üİ'] - row.leaveDays['Rİ'] - row.absentDays)
     return row
   })
   return { month, rows, holidays }
@@ -2139,7 +2140,7 @@ function payrollRows(): PayrollRow[] {
     return {
       employeeId: e.id, fullName: e.full_name, sicilNo: '', tcKimlikNo: '', days: {},
       workedDays: 26 - annual - missing - (i % 3), normalHours: 195 - (i % 4) * 7.5, overtimeHours: i % 4 === 0 ? 6.5 : 0,
-      holidayWorkedHours: 0, holidayWorkedDays: i % 6 === 0 ? 1 : 0, nightHours: 0, weeklyRestDays: 4, holidayRestDays: 0,
+      restWorkedDays: 0, restWorkedHours: 0, holidayWorkedHours: 0, holidayWorkedDays: i % 6 === 0 ? 1 : 0, nightHours: 0, weeklyRestDays: 4, holidayRestDays: 0,
       annualLeaveDays: annual, sickDays: sick, unpaidDays: unpaid, excuseDays: 0, absentDays: 0, employedDays: 30,
       missingDays: missing, missingReasonCode: sick && unpaid ? '12' : sick ? '01' : unpaid ? '05' : '',
       sgkDays: 30 - missing, noRecords: false, notes: [],

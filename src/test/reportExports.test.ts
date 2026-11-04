@@ -83,7 +83,8 @@ describe('devam raporu CSV', () => {
     } as AttendanceReportRow
     const [head, first] = exportReportToCsv([row]).slice(1).split('\r\n')
     expect(head.split(';')).toHaveLength(12)
-    expect(first).toBe('Ayşe;01.10.2026;Sabah;09:00;17:00;Çıkış yaptı;09:02;17:05;7s 30d;0s 30d;QR + konum;')
+    // Süreler sayı: Excel'de toplanabilir (7,5 saat, 30 dk)
+    expect(first).toBe('Ayşe;01.10.2026;Sabah;09:00;17:00;Çıkış yaptı;09:02;17:05;7,5;30;QR + konum;')
   })
 })
 
@@ -93,23 +94,38 @@ const tsRow = (id: string, name: string): TimesheetRow => ({
   employee: { id, full_name: name, role_name: 'Kasiyer', employment_type: 'full_time' },
   days: { '2026-10-01': 'Ç', '2026-10-02': 'D', '2026-10-05': 'HT', '2026-10-29': 'RT' },
   dayMins: { '2026-10-01': 450 }, dayPlan: {},
-  workedMins: 9030, nightMins: 0, overtimeMins: 90, holidayWorkedDays: 1, workedDays: 20, absentDays: 1,
+  workedMins: 9030, nightMins: 0, overtimeMins: 90, overtimeByWeek: { '2026-10-11': 90 },
+  restWorkByWeek: { '2026-10-18': 420 }, restWorkMins: 420, restWorkedDays: 1, holidayWorkedDays: 1, workedDays: 20, absentDays: 1,
   leaveDays: { 'Yİ': 0, 'Rİ': 0, 'Üİ': 0, 'Mİ': 0, 'HT': 4 }, sgkDays: 29, overtimeWithoutConsent: true,
 })
 
 describe('aylık puantaj', () => {
-  it('CSV: ayın her günü bir sütun (çalışılan günde net saat) + toplamlar; saatler ondalık virgüllü', async () => {
+  it('CSV: klasik puantaj çizelgesi — başlık, gruplar, hafta günleri, sütunlar; kodlar tek harf', async () => {
     exportTimesheetCsv('2026-10', [tsRow('e1', 'Şule Işık')], 'Kadıköy Şube')
     const { filename, lines } = await lastCsv()
     expect(filename).toBe('puantaj-kadikoy-sube-2026-10.csv')
-    const head = lines[0].split(';')
-    expect(head).toHaveLength(1 + 31 + 5)
-    expect(head[1]).toBe('1 Pe')
-    const row = lines[1].split(';')
-    expect(row[0]).toBe('Şule Işık')
-    expect(row[1]).toBe('7,5')   // çalışılan gün: Ç yerine net saat
-    expect(row[2]).toBe('D')
-    expect(row.slice(-5)).toEqual(['150,5', '1,5', '0', '1', '29'])
+    expect(lines[0]).toBe('EKİM 2026 - PUANTAJ · Kadıköy Şube')
+    const groups = lines[1].split(';')
+    expect(groups[4]).toBe('EKİM 2026 - PUANTAJ')
+    expect(groups[4 + 31]).toBe('PUANTAJ BİLGİLERİ')
+    const weekdays = lines[2].split(';')
+    expect(weekdays.slice(3, 6)).toEqual(['Hafta Günü', 'Per', 'Cum'])
+    const head = lines[3].split(';')
+    // 4 kimlik + 31 gün + (çalışılan + 8 kod + SGK) + (4 hafta × [%50, HT] + %50 + %100) + (net, gece, not)
+    expect(head).toHaveLength(4 + 31 + 10 + 10 + 3)
+    expect(head.slice(0, 5)).toEqual(['S.NO', 'Adı Soyadı', 'Birim/Şube', 'Görevi', '1'])
+    expect(head.slice(35, 45)).toEqual(['Çalışılan Gün', 'Ü', 'R', 'O', 'D', 'G', 'B', 'Y', 'Z', 'Toplam Gün (SGK)'])
+    expect(head.slice(45, 47)).toEqual(['I. HAFTA %50 (28.09–04.10)', 'I. HAFTA HT'])
+    expect(head.slice(53, 55)).toEqual(['TOPLAM %50', 'TOPLAM %100'])
+    const row = lines[4].split(';')
+    expect(row.slice(0, 6)).toEqual(['1', 'Şule Işık', 'Kadıköy Şube', 'Kasiyer', '7,5', 'D'])  // çalışılan gün: net saat
+    expect(row[4 + 4]).toBe('O')    // hafta tatili
+    expect(row[4 + 28]).toBe('G')   // resmi tatil (çalışılmadı)
+    expect(row.slice(35, 45)).toEqual(['20', '0', '0', '4', '1', '1', '1', '0', '0', '29'])
+    // II. hafta 1,5 s fazla; III. hafta 7 s hafta tatilinde çalışma; TOPLAM %50 = 8,5
+    expect(row.slice(45)).toEqual(['0', '0', '1,5', '0', '0', '7', '0', '0', '8,5', '0', '150,5', '0', 'Fazla çalışma için yazılı onay yok'])
+    // Kod açıklamaları tablonun altında
+    expect(lines).toContain(';O;Haftalık izin kullanılan gün (hafta tatili)')
   })
   it('PDF üretir', async () => {
     await exportTimesheetPdf('2026-10', [tsRow('e1', 'Şule Işık'), tsRow('e2', 'Ğökhan Çağlar')],
@@ -144,7 +160,7 @@ describe('bordro puantajı PDF', () => {
   it('PDF üretir', async () => {
     const row = {
       employeeId: 'e1', fullName: 'İlker Öztürk', sicilNo: '', tcKimlikNo: '', days: {}, workedDays: 22, normalHours: 165,
-      overtimeHours: 7.5, holidayWorkedHours: 0, holidayWorkedDays: 0, nightHours: 0, weeklyRestDays: 4, holidayRestDays: 1,
+      overtimeHours: 7.5, restWorkedDays: 1, restWorkedHours: 7, holidayWorkedHours: 0, holidayWorkedDays: 0, nightHours: 0, weeklyRestDays: 4, holidayRestDays: 1,
       annualLeaveDays: 0, sickDays: 2, unpaidDays: 0, excuseDays: 0, absentDays: 1, employedDays: 30, missingDays: 3,
       missingReasonCode: '12', sgkDays: 27, noRecords: false, notes: [],
     } satisfies PayrollRow
@@ -202,6 +218,18 @@ describe('haftalık plan', () => {
     expect(ayse[9]).toBe('Haftalık tatil')
     const total = lines.find((l) => l.startsWith('Toplam'))!.split(';')
     expect(total.slice(3, 10)).toEqual(['2', '1', '0', '0', '0', '0', '0'])
+  })
+  it('CSV: izinli günde izin türünün adı, tatil gününe verilen vardiyada "Hafta tatilinde çalışma"', async () => {
+    const input = weekInput()
+    exportWeekCsv({
+      ...input,
+      restWorkMap: new Set([`e1:${days[1]}`]),
+      leaveLabelMap: new Map([[`e2:${days[2]}`, 'Yıllık izin']]),
+    })
+    const { lines } = await lastCsv()
+    const ali = lines.find((l) => l.includes('Ali Yılmaz'))!.split(';')
+    expect(ali[4]).toBe('09:00–18:00 (Hafta tatilinde çalışma)')
+    expect(lines.find((l) => l.includes('Ayşe Demir'))!.split(';')[5]).toBe('Yıllık izin')
   })
   it('PDF üretir', async () => {
     await exportWeekPdf(weekInput())

@@ -3,6 +3,7 @@
  *
  * Gün kodları (bordro uygulamalarıyla uyumlu kısaltmalar):
  *   Ç   çalıştı            RTÇ resmi tatilde çalıştı (Md. 47 — ek günlük ücret)
+ *   HTÇ hafta tatilinde çalıştı (haftalık tatil kaydı olan günde giriş yapıldı — ek ücretli)
  *   HT  hafta tatili       RT  resmi tatil (çalışmadı)
  *   Yİ  yıllık izin        Rİ  raporlu (hastalık)
  *   Üİ  ücretsiz izin      Mİ  mazeret / diğer izin
@@ -11,18 +12,21 @@
  *
  * Fazla çalışma (Md. 41): Pazartesi–Pazar haftasında 45 saati aşan NET fiili çalışma.
  * Hafta, Pazar günü hangi aydaysa o ayın puantajına yazılır.
- * SGK prim günü: ay 30 gün kabul edilir; ücretsiz izin ve devamsız günler düşülür.
+ * Hafta tatilinde çalışma (HTÇ günleri) ayrı tutulur: o günün saatleri 45 saat hesabına girmez, tamamı
+ * haftanın "HT" saati olarak yazılır (bordroda %50 zamlı ödenir; ikisi toplanınca çift sayılmaz).
+ * SGK prim günü: ay 30 gün kabul edilir; ücretsiz izin, rapor ve devamsız günler düşülür (eksik gün).
  */
 import { workedMinutes, type AttendanceTimes } from '@/lib/attendanceDurations'
 import { MAX_WEEKLY_WORK_MINS, NIGHT_END_MINS, NIGHT_START_MINS } from '@/lib/laborLaw'
 import { addDaysToDateString, dayOfWeekFromDateString } from '@/lib/dateUtils'
 import type { PublicHoliday } from '@/types/holiday'
 
-export type TimesheetCode = 'Ç' | 'RTÇ' | 'HT' | 'RT' | 'Yİ' | 'Rİ' | 'Üİ' | 'Mİ' | 'D' | 'P' | ''
+export type TimesheetCode = 'Ç' | 'RTÇ' | 'HTÇ' | 'HT' | 'RT' | 'Yİ' | 'Rİ' | 'Üİ' | 'Mİ' | 'D' | 'P' | ''
 
 export const TIMESHEET_CODE_LABELS: Record<Exclude<TimesheetCode, ''>, string> = {
   'Ç': 'Çalıştı',
   'RTÇ': 'Resmi tatilde çalıştı',
+  'HTÇ': 'Hafta tatilinde çalıştı',
   'HT': 'Hafta tatili',
   'RT': 'Resmi tatil',
   'Yİ': 'Yıllık izin',
@@ -41,6 +45,7 @@ export const TIMESHEET_CODE_LABELS: Record<Exclude<TimesheetCode, ''>, string> =
 export const TIMESHEET_CODE_COLORS: Record<Exclude<TimesheetCode, ''>, { fill: string; text: string }> = {
   'Ç': { fill: 'C6EFCE', text: '006100' },
   'RTÇ': { fill: 'FCD5B4', text: '9C4A00' },
+  'HTÇ': { fill: 'B7E1DD', text: '0E5A52' },
   'HT': { fill: 'D9D9D9', text: '404040' },
   'RT': { fill: 'FFEB9C', text: '7F6000' },
   'Yİ': { fill: 'BDD7EE', text: '1F4E79' },
@@ -58,7 +63,7 @@ export const TIMESHEET_CODE_COLORS: Record<Exclude<TimesheetCode, ''>, { fill: s
 export function timesheetDayValue(row: TimesheetRow, date: string): number | TimesheetCode {
   const code = row.days[date] ?? ''
   const mins = row.dayMins[date] ?? 0
-  if ((code === 'Ç' || code === 'RTÇ') && mins > 0) return Math.round((mins / 60) * 10) / 10
+  if ((code === 'Ç' || code === 'RTÇ' || code === 'HTÇ') && mins > 0) return Math.round((mins / 60) * 10) / 10
   return code
 }
 
@@ -69,9 +74,9 @@ export interface TimesheetEmployee {
   role_name: string
   employment_type: 'full_time' | 'part_time'
   overtime_consent_at?: string | null
-  /** İşe giriş tarihi — yalnızca bordro puantajı için (queryTimesheet includeHireDate) */
+  /** İşe giriş tarihi — işte olunan günler ve SGK günü bundan hesaplanır */
   hire_date?: string | null
-  /** Son çalışma günü (dahil) — yalnızca bordro puantajı için okunur */
+  /** Son çalışma günü (dahil) */
   termination_date?: string | null
 }
 
@@ -100,13 +105,21 @@ export interface TimesheetLeave {
 export interface TimesheetRow {
   employee: TimesheetEmployee
   days: Record<string, TimesheetCode>
-  /** Çalışılan günlerin net dakikası (yalnızca Ç / RTÇ günleri) */
+  /** Çalışılan günlerin net dakikası (yalnızca Ç / RTÇ / HTÇ günleri) */
   dayMins: Record<string, number>
   /** Planlı / devamsız günlerin ilk vardiya saati (HH:MM) */
   dayPlan: Record<string, { start: string; end: string }>
   workedMins: number
   nightMins: number
   overtimeMins: number
+  /** Haftalık fazla çalışma dakikası; anahtar haftanın Pazar günü (yalnızca Pazar'ı bu ayda olan haftalar) */
+  overtimeByWeek: Record<string, number>
+  /** Hafta tatilinde çalışılan net dakika (HTÇ), haftalara göre (Pazar anahtarlı, fazla çalışmayla aynı kural) */
+  restWorkByWeek: Record<string, number>
+  /** restWorkByWeek toplamı */
+  restWorkMins: number
+  /** Ay içindeki HTÇ günleri */
+  restWorkedDays: number
   holidayWorkedDays: number
   workedDays: number
   absentDays: number
@@ -161,6 +174,53 @@ export function nightMinutesBetween(fromIso: string, toIso: string): number {
   return Math.round(total / 60_000)
 }
 
+/** İşte olunan aralık: ay içindeki ilk ve son gün (1-tabanlı); işe giriş/çıkış bu aralığı daraltır */
+export interface EmploymentWindow {
+  /** Ayın kaçıncı günü işe başlandı (1 = ay başından beri) */
+  fromDay: number
+  /** Ayın kaçıncı günü son çalışma günü (ay sonu = ayın gün sayısı) */
+  toDay: number
+}
+
+/**
+ * Ay içinde işte olunan aralık. endDate = employees.termination_date (son çalışma günü, dahil); SGK 16
+ * "Fesih tarihinde çalışmamıştır" için toPayrollRows. null = ayın tamamı.
+ * Ay dışında (işe giriş ay sonundan sonra / çıkış ay başından önce) → null.
+ */
+export function employmentWindow(
+  month: string,
+  hireDate: string | null | undefined,
+  endDate?: string | null
+): EmploymentWindow | null {
+  const len = monthDays(month).length
+  const first = `${month}-01`
+  const last = `${month}-${String(len).padStart(2, '0')}`
+  if (hireDate && hireDate > last) return null
+  if (endDate && endDate < first) return null
+  const fromDay = hireDate && hireDate > first ? Number(hireDate.slice(8, 10)) : 1
+  const toDay = endDate && endDate < last ? Number(endDate.slice(8, 10)) : len
+  return { fromDay, toDay: Math.max(fromDay, toDay) }
+}
+
+/**
+ * SGK'ya göre işte olunan gün (prim günü tavanı): ay 30 gün kabul edilir.
+ *   - tam ay → 30 (Şubat dahil: ay sonuna kadar çalışılan Şubat 30 sayılır)
+ *   - aksi halde takvim günü sayısı (toDay − fromDay + 1), en çok 30
+ * Pencere yoksa (ay dışı) → 0.
+ *
+ * İşten çıkış: termination_date son çalışma günüdür (dahil); sonraki günler işte olunan gün sayılmaz, yani
+ * prim günü çıkış gününde biter. SGK 16 "Fesih tarihinde çalışmamıştır" yalnızca çıkış gününde hiç çalışma
+ * kaydı olmadığında o 1 gün için kullanılır (toPayrollRows). Kaynak (üçüncü taraf, SGK metni değil):
+ * https://www.alomaliye.com/2012/04/17/sgk-eksik-gun-nedenleri/ , https://www.kazimceylan.av.tr/md/sgk-eksik-gun-kodlari
+ */
+export function employedSgkDays(month: string, hireDate: string | null | undefined, endDate?: string | null): number {
+  const w = employmentWindow(month, hireDate, endDate)
+  if (!w) return 0
+  const len = monthDays(month).length
+  const to = len < 30 && w.toDay === len ? 30 : w.toDay
+  return Math.min(30, to - w.fromDay + 1)
+}
+
 export function buildTimesheet(params: {
   month: string
   employees: TimesheetEmployee[]
@@ -175,6 +235,9 @@ export function buildTimesheet(params: {
   const holidayByDate = new Map(holidays.map((h) => [h.date, h]))
 
   return employees.map((emp) => {
+    // İşe girişten önceki ve son çalışma gününden sonraki günler kodlanmaz (izin / tatil / devamsızlık yazılmaz)
+    const window = employmentWindow(month, emp.hire_date ?? null, emp.termination_date ?? null)
+    const employed = (date: string) => !!window && Number(date.slice(8, 10)) >= window.fromDay && Number(date.slice(8, 10)) <= window.toDay
     const empShifts = shifts.filter((s) => s.employee_id === emp.id && !s.is_on_leave)
     const empLeaves = leaves.filter((l) => l.employee_id === emp.id)
     const leaveCodeOn = (date: string): TimesheetCode | null => {
@@ -190,6 +253,10 @@ export function buildTimesheet(params: {
       workedMins: 0,
       nightMins: 0,
       overtimeMins: 0,
+      overtimeByWeek: {},
+      restWorkByWeek: {},
+      restWorkMins: 0,
+      restWorkedDays: 0,
       holidayWorkedDays: 0,
       workedDays: 0,
       absentDays: 0,
@@ -205,11 +272,16 @@ export function buildTimesheet(params: {
       const holiday = holidayByDate.get(date)
       const leaveCode = leaveCodeOn(date)
 
+      // Yarım gün tatil (arife) normal gün sayılır
+      const fullHoliday = holiday && !holiday.half_day ? holiday : undefined
+
       let code: TimesheetCode = ''
       if (worked.length > 0) {
-        code = holiday ? 'RTÇ' : 'Ç'
+        // Tam gün resmi tatil önceliklidir (Md. 47); haftalık tatil kaydı olan gün hafta tatilinde çalışmadır
+        code = fullHoliday ? 'RTÇ' : leaveCode === 'HT' ? 'HTÇ' : 'Ç'
+        if (code === 'HTÇ') row.restWorkedDays++
         row.workedDays++
-        if (holiday && !holiday.half_day) row.holidayWorkedDays++
+        if (fullHoliday) row.holidayWorkedDays++
         let dayTotal = 0
         for (const s of worked) {
           dayTotal += shiftWorkedMins(s)
@@ -219,10 +291,12 @@ export function buildTimesheet(params: {
         }
         row.workedMins += dayTotal
         row.dayMins[date] = dayTotal
+      } else if (!employed(date)) {
+        code = ''
       } else if (leaveCode) {
         code = leaveCode
         if (leaveCode in row.leaveDays) row.leaveDays[leaveCode as keyof TimesheetRow['leaveDays']]++
-      } else if (holiday && !holiday.half_day) {
+      } else if (fullHoliday) {
         code = 'RT'
       } else if (dayShifts.length > 0) {
         const first = [...dayShifts].sort((a, b) => a.start_time.localeCompare(b.start_time))[0]
@@ -237,20 +311,43 @@ export function buildTimesheet(params: {
       row.days[date] = code
     }
 
-    // ── Haftalık fazla çalışma (Pazar'ı bu ayda olan haftalar) ──
+    // ── Haftalık fazla çalışma ve hafta tatilinde çalışma (Pazar'ı bu ayda olan haftalar) ──
+    // Hafta tatilinde çalışma: haftalık tatil kaydı olan, resmi tatil olmayan günün çalışması (gün koduyla aynı)
+    const isRestWork = (date: string) =>
+      !(holidayByDate.get(date) && !holidayByDate.get(date)!.half_day)
+      && empLeaves.some((l) => l.leave_type === 'weekly_rest' && l.start_date <= date && l.end_date >= date)
     const sundays = days.filter((d) => dayOfWeekFromDateString(d) === 0)
     for (const sunday of sundays) {
       const monday = addDaysToDateString(sunday, -6)
-      const weekMins = empShifts
-        .filter((s) => s.work_date >= monday && s.work_date <= sunday && s.attendance?.clock_in_at)
-        .reduce((sum, s) => sum + shiftWorkedMins(s), 0)
-      row.overtimeMins += Math.max(0, weekMins - MAX_WEEKLY_WORK_MINS)
+      let weekMins = 0
+      let restMins = 0
+      for (const s of empShifts) {
+        if (s.work_date < monday || s.work_date > sunday || !s.attendance?.clock_in_at) continue
+        if (isRestWork(s.work_date)) restMins += shiftWorkedMins(s)
+        else weekMins += shiftWorkedMins(s)
+      }
+      const weekOvertime = Math.max(0, weekMins - MAX_WEEKLY_WORK_MINS)
+      row.overtimeByWeek[sunday] = weekOvertime
+      row.overtimeMins += weekOvertime
+      row.restWorkByWeek[sunday] = restMins
+      row.restWorkMins += restMins
     }
     row.overtimeWithoutConsent = row.overtimeMins > 0 && !emp.overtime_consent_at
 
-    // ── SGK prim günü (ay 30 gün kabul) ──
-    const base = Math.min(30, days.length)
-    row.sgkDays = Math.max(0, base - row.leaveDays['Üİ'] - row.absentDays)
+    // ── SGK prim günü: işte olunan gün (30 esaslı, giriş/çıkış dahil) − eksik gün (rapor, ücretsiz izin,
+    //    devamsızlık, çıkış gününde kayıt yoksa o gün). Bordro puantajıyla aynı kural (payrollTimesheet).
+    //    31 günlük ayda 31. gün yalnızca işte olunan gün 30 iken eksik gün sayılmaz.
+    const employedDays = employedSgkDays(month, emp.hire_date ?? null, emp.termination_date ?? null)
+    const skip31 = days.length === 31 && employedDays === 30
+    const end = emp.termination_date ?? null
+    let missing = 0
+    for (const d of days) {
+      if (skip31 && d.endsWith('-31')) continue
+      const c = row.days[d]
+      if (c === 'Rİ' || c === 'Üİ' || c === 'D') missing++
+      else if (end && d === end && c === '') missing++
+    }
+    row.sgkDays = Math.max(0, employedDays - missing)
 
     // Ay dışı günler kodlanmaz
     for (const k of Object.keys(row.days)) if (!daySet.has(k)) delete row.days[k]

@@ -150,7 +150,10 @@ async function checkConflict(
   }
 }
 
-/** Çalışanın o gün onaylı izni varsa (haftalık tatil dahil) hata fırlatır */
+/**
+ * Çalışanın o gün onaylı izni varsa hata fırlatır. Haftalık tatil engel değildir: yönetici o güne vardiya
+ * verebilir (hafta tatilinde çalışma); onayı API katmanı checkAssignmentRules ile ister.
+ */
 async function checkNotOnLeave(employeeId: string, workDate: string): Promise<void> {
   const { data, error } = await db
     .from('leave_requests')
@@ -159,10 +162,9 @@ async function checkNotOnLeave(employeeId: string, workDate: string): Promise<vo
     .eq('status', 'approved')
     .lte('start_date', workDate)
     .gte('end_date', workDate)
-    .limit(1)
 
   if (error) throw new Error(`İzin durumu kontrol edilemedi: ${error.message}`)
-  if (data && data.length > 0) {
+  if ((data ?? []).some((l: { leave_type: string }) => l.leave_type !== 'weekly_rest')) {
     throw new ShiftConflictError(`Bu çalışan ${workDate} tarihinde onaylı izinde.`)
   }
 }

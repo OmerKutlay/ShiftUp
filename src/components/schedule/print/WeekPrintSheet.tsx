@@ -1,8 +1,8 @@
 /**
  * WeekPrintSheet — haftalık planın A4 yatay çıktı tablosu (saf sunum; veri dışarıdan gelir).
  * Siyah-beyaz yazıcıya uygun: renge dayanmaz, kenarlıklar görünür, dolgular açık gri.
- * Satırlar planla aynı sırada ve rol gruplarına ayrılmıştır; izin etiketi plan hücreleriyle aynıdır
- * (OFF_META). Satırlar tek satırlıktır (ad · rol, saat + vardiya adı) ki tipik bir mağaza tek sayfaya sığsın;
+ * Satırlar planla aynı sırada ve rol gruplarına ayrılmıştır; izinli günde izin türünün adı (yoksa OFF_META
+ * etiketi), hafta tatilinde çalışılan vardiyada "(HT)" yazar. Satırlar tek satırlıktır (ad · rol, saat + vardiya adı) ki tipik bir mağaza tek sayfaya sığsın;
  * 30 kişiden fazlasında yazı küçülür, yine taşarsa başlık satırı her sayfada tekrarlanır.
  */
 import type { WeeklyScheduleEntry } from '@/types/schedule'
@@ -20,6 +20,10 @@ export interface WeekPrintSheetProps {
   statsMap: Map<string, EmployeeWeekStats>
   approvedLeaveMap: Set<string>
   restDayMap: Set<string>
+  /** Haftalık tatil gününe verilmiş vardiyalar (hafta tatilinde çalışma) */
+  restWorkMap?: Set<string>
+  /** İzinli günlerin tür adı; yoksa genel "İzinli" */
+  leaveLabelMap?: Map<string, string>
   /** "Basım" damgası (önceden biçimlenmiş) */
   printedAt: string
 }
@@ -36,7 +40,7 @@ export function dayHeadcount(entries: WeeklyScheduleEntry[], day: string, leave:
 const CELL = 'border border-black px-1 py-px align-middle leading-tight'
 
 export function WeekPrintSheet({
-  storeName, weekDays, entries, holidayMap, statsMap, approvedLeaveMap, restDayMap, printedAt,
+  storeName, weekDays, entries, holidayMap, statsMap, approvedLeaveMap, restDayMap, restWorkMap, leaveLabelMap, printedAt,
 }: WeekPrintSheetProps) {
   const groups = ROLE_GROUPS
     .map((g) => ({ ...g, entries: entries.filter((e) => roleGroupOf(e.employee.roles) === g.key) }))
@@ -48,12 +52,13 @@ export function WeekPrintSheet({
     const a = e.dayAssignments[d]
     const key = `${e.employee.id}:${d}`
     if (restDayMap.has(key)) return <span className="italic">Haftalık tatil</span>
-    if (a?.is_on_leave || approvedLeaveMap.has(key)) return <span className="italic">{OFF_META.leave.label}</span>
+    if (a?.is_on_leave || approvedLeaveMap.has(key)) return <span className="italic">{leaveLabelMap?.get(key) ?? OFF_META.leave.label}</span>
     if (!a) return null
     return (
       <>
         <span className="font-semibold tabular-nums">{fmtRange(a.start_time, a.end_time)}</span>
         {a.shift_templates?.name && <span className="ml-1 text-[0.85em]">{a.shift_templates.name}</span>}
+        {restWorkMap?.has(key) && <span className="ml-1 text-[0.85em] font-semibold" title="Hafta tatilinde çalışma">(HT)</span>}
       </>
     )
   }

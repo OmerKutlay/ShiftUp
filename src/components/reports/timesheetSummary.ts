@@ -72,7 +72,7 @@ export function codeCounts(row: TimesheetRow): Array<{ code: Exclude<TimesheetCo
   return LEGEND_ORDER.filter((c) => counts.has(c)).map((code) => ({ code, count: counts.get(code)! }))
 }
 
-export const LEGEND_ORDER: Array<Exclude<TimesheetCode, ''>> = ['Ç', 'HT', 'Yİ', 'Rİ', 'Üİ', 'Mİ', 'D', 'RT', 'RTÇ', 'P']
+export const LEGEND_ORDER: Array<Exclude<TimesheetCode, ''>> = ['Ç', 'HT', 'HTÇ', 'Yİ', 'Rİ', 'Üİ', 'Mİ', 'D', 'RT', 'RTÇ', 'P']
 
 // ─── Gün kodu renkleri ───────────────────────────────────────
 // Tek kaynak: şerit, takvim, tablo ve lejant bu eşlemeleri kullanır. Değerler yalnızca tema
@@ -87,6 +87,8 @@ const ink = (token: string) => `color-mix(in oklch, var(--${token}) 78%, var(--f
 export const STRIP_TONE: Record<TimesheetCode, { bg: string; border?: string; dashed?: boolean }> = {
   'Ç': { bg: mix('success', 55) },
   'RTÇ': { bg: 'var(--primary)' },
+  // Hafta tatilinde çalıştı: çalıştı yeşili, uyarı renginde çerçeve
+  'HTÇ': { bg: mix('success', 55), border: 'var(--warning)' },
   'HT': { bg: mix('foreground', 14) },
   'RT': { bg: mix('warning', 70) },
   'Yİ': { bg: mix('info', 65) },
@@ -103,6 +105,7 @@ export const STRIP_TONE: Record<TimesheetCode, { bg: string; border?: string; da
 export const CALENDAR_TONE: Record<TimesheetCode, { bg: string; fg: string; label: string; border?: string; dashed?: boolean }> = {
   'Ç': { bg: mix('success', 10), fg: ink('success'), label: '' },
   'RTÇ': { bg: mix('primary', 12), fg: ink('primary'), label: '' },
+  'HTÇ': { bg: mix('success', 10), fg: ink('success'), label: '', border: mix('warning', 70) },
   'HT': { bg: 'var(--muted)', fg: 'var(--muted-foreground)', label: 'Tatil' },
   'RT': { bg: mix('warning', 12), fg: ink('warning'), label: 'R. tatil' },
   'Yİ': { bg: mix('info', 10), fg: ink('info'), label: 'İzin' },

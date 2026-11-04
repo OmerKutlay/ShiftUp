@@ -111,6 +111,7 @@ export function PayrollPanel() {
                 <TableHead className={`${num} border-b`}>Çalışılan gün</TableHead>
                 <TableHead className={`${num} border-b`}>Normal s</TableHead>
                 <TableHead className={`${num} border-b`}>Fazla s</TableHead>
+                <TableHead className={`${num} border-b`}>Hafta tatili çalışma s</TableHead>
                 <TableHead className={`${num} border-b`}>Genel tatil gün</TableHead>
                 <TableHead className={`${num} border-b`}>Hafta tatili</TableHead>
                 <TableHead className={`${num} border-b`}>Yıllık izin</TableHead>
@@ -132,6 +133,7 @@ export function PayrollPanel() {
                   <TableCell className={`${num} border-b`}>{fmt(r.workedDays)}</TableCell>
                   <TableCell className={`${num} border-b`}>{fmt(r.normalHours)}</TableCell>
                   <TableCell className={`${num} border-b`}>{fmt(r.overtimeHours)}</TableCell>
+                  <TableCell className={`${num} border-b`}>{fmt(r.restWorkedHours)}</TableCell>
                   <TableCell className={`${num} border-b`}>{fmt(r.holidayWorkedDays)}</TableCell>
                   <TableCell className={`${num} border-b`}>{fmt(r.weeklyRestDays)}</TableCell>
                   <TableCell className={`${num} border-b`}>{fmt(r.annualLeaveDays)}</TableCell>
@@ -167,6 +169,7 @@ function PayrollItem({ r }: { r: PayrollRow }) {
         <ItemDescription className="tabular-nums">
           {r.workedDays} gün · {fmt(r.normalHours)} s normal
           {r.overtimeHours > 0 && <> · <span className="text-foreground">{fmt(r.overtimeHours)} s fazla</span></>}
+          {r.restWorkedHours > 0 && <> · <span className="text-foreground">{fmt(r.restWorkedHours)} s hafta tatilinde</span></>}
         </ItemDescription>
         {r.noRecords && <ItemDescription className="text-warning">Kontrol edin: ay içinde kayıt yok</ItemDescription>}
       </ItemContent>

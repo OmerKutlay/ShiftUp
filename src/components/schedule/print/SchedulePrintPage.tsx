@@ -70,6 +70,8 @@ export function SchedulePrintPage({ week, auto }: { week?: string; auto?: boolea
     statsMap,
     approvedLeaveMap: data.approvedLeaveMap,
     restDayMap: data.restDayMap,
+    restWorkMap: data.restWorkMap,
+    leaveLabelMap: data.leaveLabelMap,
   }
 
   const go = (d: Date) => router.replace(`/schedule/print?week=${format(d, 'yyyy-MM-dd')}`)
@@ -130,6 +132,8 @@ export function SchedulePrintPage({ week, auto }: { week?: string; auto?: boolea
               statsMap={statsMap}
               approvedLeaveMap={data.approvedLeaveMap}
               restDayMap={data.restDayMap}
+              restWorkMap={data.restWorkMap}
+              leaveLabelMap={data.leaveLabelMap}
               printedAt={printedAt}
             />
           </div>

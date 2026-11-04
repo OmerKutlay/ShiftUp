@@ -88,6 +88,9 @@ function RowFlags({ row, className }: { row: TimesheetRow; className?: string })
     )
     if (row.overtimeWithoutConsent) parts.push(<span key="c" className="font-medium whitespace-nowrap text-warning">onay yok</span>)
   }
+  if (row.restWorkMins > 0) {
+    parts.push(<span key="ht" className="whitespace-nowrap">{hoursLabel(row.restWorkMins)} s hafta tatilinde</span>)
+  }
   if (row.absentDays > 0) parts.push(<span key="d" className="font-medium whitespace-nowrap text-destructive">{row.absentDays} devamsız</span>)
   if (leave > 0) parts.push(<span key="l" className="whitespace-nowrap">{leave} gün izin</span>)
   if (parts.length === 0) parts.push(<span key="w" className="whitespace-nowrap">{row.workedDays} gün çalıştı</span>)
@@ -168,7 +171,7 @@ export function PersonItem({ row, days, today, onOpen }: {
 
 // ─── Lejant ───────────────────────────────────────────────────
 
-const LEGEND: Array<Exclude<TimesheetCode, ''>> = ['Ç', 'HT', 'Yİ', 'Rİ', 'D', 'RT', 'RTÇ', 'P']
+const LEGEND: Array<Exclude<TimesheetCode, ''>> = ['Ç', 'HT', 'HTÇ', 'Yİ', 'Rİ', 'D', 'RT', 'RTÇ', 'P']
 
 export function LegendSwatch({ code, className }: { code: TimesheetCode; className?: string }) {
   const tone = STRIP_TONE[code]
