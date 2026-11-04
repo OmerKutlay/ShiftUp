@@ -87,13 +87,15 @@ export async function POST(req: NextRequest) {
     }, [], { allowWeeklyRest: true })
     const blockers = rules.blockers.filter((b) => !b.includes('çakışıyor'))  // çakışma aşağıda ayrıca kontrol edilir
     if (blockers.length > 0) return conflict(blockers.join(' '), 'ASSIGNMENT_BLOCKED')
-    if (rules.violations.length > 0 && body.acknowledge_violations !== true) {
+    // weekly_rest_work: yönetici "Bu gün çalışsın" ile hafta tatilinde çalışmayı zaten seçti — yalnızca diğer ihlaller sorulur
+    const pending = rules.violations.filter((v) => !(body.weekly_rest_work === true && v.type === 'weekly_rest_work'))
+    if (pending.length > 0 && body.acknowledge_violations !== true) {
       return NextResponse.json(
         {
           error: 'Bu vardiya çalışma süresi kurallarını ihlal ediyor.',
           code: 'WORKING_TIME_VIOLATION',
-          violations: rules.violations.map((v) => v.message),
-          violation_types: rules.violations.map((v) => v.type),
+          violations: pending.map((v) => v.message),
+          violation_types: pending.map((v) => v.type),
         },
         { status: 422 }
       )

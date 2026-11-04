@@ -63,6 +63,7 @@ describe('/api/shifts — haftalık tatil gününe vardiya', () => {
     expect(body.code).toBe('WORKING_TIME_VIOLATION')
     expect(body.violation_types).toEqual(['weekly_rest_work'])
     expect(body.violations[0]).toContain('haftalık tatil günü')
+    expect(body.violations[0]).toContain('10 Mart Pazar')   // ISO tarih değil, okunur tarih
     expect(db.tables.shift_assignments).toHaveLength(0)
 
     const ok = await POST(post({ ...shift, acknowledge_violations: true }))
@@ -70,6 +71,32 @@ describe('/api/shifts — haftalık tatil gününe vardiya', () => {
     expect(db.tables.shift_assignments).toHaveLength(1)
     expect(db.tables.leave_requests).toHaveLength(1)
     expect(db.tables.audit_logs[0].note).toContain('haftalık tatil günü')
+  })
+
+  it('"Bu gün çalışsın" (weekly_rest_work: true) ayrıca onay istemeden kaydeder', async () => {
+    const db = createFakeDb(seed('weekly_rest'))
+    setup(db)
+    const { POST } = await import('@/app/api/shifts/route')
+    const res = await POST(post({ ...shift, weekly_rest_work: true }))
+    expect(res.status).toBe(201)
+    expect(db.tables.shift_assignments).toHaveLength(1)
+    expect(db.tables.leave_requests).toHaveLength(1)
+    expect(db.tables.audit_logs[0].note).toContain('haftalık tatil günü')
+  })
+
+  it('weekly_rest_work bayrağı diğer günlerde ihlal onayının yerine geçmez', async () => {
+    const db = createFakeDb(seed('weekly_rest'))
+    db.tables.shift_assignments.push(
+      { id: 'sa-prev', employee_id: EMP, work_date: SUN, start_time: '00:00', end_time: '08:00', store_id: STORE },
+    )
+    setup(db)
+    const { POST } = await import('@/app/api/shifts/route')
+    // 10:00–18:00 + aynı gün 00:00–08:00: günlük 11 saat sınırı / dinlenme ihlali → yine 422
+    const res = await POST(post({ ...shift, weekly_rest_work: true }))
+    expect(res.status).toBe(422)
+    const body = (await res.json()) as { violation_types: string[] }
+    expect(body.violation_types).not.toContain('weekly_rest_work')
+    expect(body.violation_types.length).toBeGreaterThan(0)
   })
 
   it('yıllık izin günü hâlâ engeldir (409)', async () => {

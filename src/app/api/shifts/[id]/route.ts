@@ -80,11 +80,14 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       const blockers = rules.blockers.filter((b) => !b.includes('çakışıyor'))
       if (blockers.length > 0) return conflict(blockers.join(' '), 'ASSIGNMENT_BLOCKED')
       violations = rules.violations.map((v) => v.message)
-      if (violations.length > 0 && body.acknowledge_violations !== true) {
+      // weekly_rest_work: hafta tatilinde çalışma zaten seçildi (bkz. POST /api/shifts)
+      const pending = rules.violations.filter((v) => !(body.weekly_rest_work === true && v.type === 'weekly_rest_work'))
+      if (pending.length > 0 && body.acknowledge_violations !== true) {
         return NextResponse.json(
           {
-            error: 'Bu vardiya çalışma süresi kurallarını ihlal ediyor.', code: 'WORKING_TIME_VIOLATION', violations,
-            violation_types: rules.violations.map((v) => v.type),
+            error: 'Bu vardiya çalışma süresi kurallarını ihlal ediyor.', code: 'WORKING_TIME_VIOLATION',
+            violations: pending.map((v) => v.message),
+            violation_types: pending.map((v) => v.type),
           },
           { status: 422 }
         )

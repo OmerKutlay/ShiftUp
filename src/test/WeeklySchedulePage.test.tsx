@@ -266,7 +266,7 @@ describe('WeeklySchedulePage — vardiya atama', () => {
           employee_id: 'emp-001', shift_template_id: 'tpl-001', work_date: '2026-09-28', start_time: '09:00', end_time: '18:00',
         }),
         true,
-        undefined
+        { acknowledgeViolations: false, weeklyRestWork: false }
       )
     })
   })

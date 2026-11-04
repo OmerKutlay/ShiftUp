@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { addWeeks, format, subWeeks } from 'date-fns'
 import { tr } from 'date-fns/locale'
-import { BriefcaseBusiness, CircleAlert, Info, Plus, Printer, Trash2, Users } from 'lucide-react'
+import { CircleAlert, Plus, Printer, Users } from 'lucide-react'
 import { toast } from 'sonner'
 
 import type { EmployeeWithRole } from '@/types/employee'
@@ -30,21 +30,18 @@ import { useIsMobile } from '@/hooks/useIsMobile'
 import { BOTTOM_NAV_OVERLAY_OFFSET } from '@/components/layout/MobileBottomNav'
 import { ExportMenu, Page, PageHeader, PeriodStepper, SegmentedControl, useConfirm } from '@/components/common'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import {
-  AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Spinner } from '@/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 import { useWeeklySchedule } from './useWeeklySchedule'
 import { exportWeekCsv, exportWeekPdf, type WeekExportInput } from './print/weekExport'
 import { ShiftAssignDialog, type ShiftSavePayload } from './ShiftAssignDialog'
+import { LeaveDayDialog, type LeaveDayTarget, type LeaveDeleteScope } from './LeaveDayDialog'
 import {
   buildScheduleEntries, JS_DAY_TO_KEY, calcEmployeeStats, fmtHoursTr, fmtRange, getAvailStatus, shiftKindOf,
   ROLE_GROUPS, roleGroupOf, type EmployeeWeekStats, type RoleGroupKey,
@@ -227,7 +224,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     date: string
     leaveId: string
   } | null>(null)
-  const [leaveDeleting, setLeaveDeleting] = useState(false)
+  const [leaveDeleting, setLeaveDeleting] = useState<LeaveDeleteScope | null>(null)
 
   // ── Editör modu ──
   const [editing, setEditing] = useState(false)
@@ -425,10 +422,10 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
   }
 
   /** scope: following → tekrarlayan tatilde bu ve sonraki haftalar */
-  const handleLeaveDelete = async (scope: 'single' | 'following' = 'single') => {
+  const handleLeaveDelete = async (scope: LeaveDeleteScope = 'single') => {
     if (!leaveDeleteDialog) return
     const isRest = restDayMap.has(`${leaveDeleteDialog.employee.id}:${leaveDeleteDialog.date}`)
-    setLeaveDeleting(true)
+    setLeaveDeleting(scope)
     try {
       const q = scope === 'following' ? '&scope=following' : ''
       await apiFetch(`/api/leave?id=${encodeURIComponent(leaveDeleteDialog.leaveId)}${q}`, { method: 'DELETE' })
@@ -445,14 +442,15 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
       toast.error(err instanceof Error ? err.message : 'İzin silme hatası.')
       setLeaveDeleteDialog(null)
     } finally {
-      setLeaveDeleting(false)
+      setLeaveDeleting(null)
     }
   }
 
   const handleSave = async (payload: ShiftSavePayload, acknowledge = false) => {
     if (!dialogEmployee) return
     setSaving(true)
-    const options = acknowledge ? { acknowledgeViolations: true } : undefined
+    // dialogOnRest: yönetici hafta tatilinde çalışmayı zaten seçti; sunucu bunun için ayrıca onay istemez
+    const options = { acknowledgeViolations: acknowledge, weeklyRestWork: dialogOnRest }
     try {
       if (dialogExisting) {
         await updateShiftAssignment(dialogExisting.id, dialogEmployee.id, dialogDate, {
@@ -474,7 +472,8 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
         )
       }
       toast.success(dialogExisting ? 'Vardiya güncellendi' : 'Vardiya atandı', {
-        description: `${dialogSubject()} · ${fmtRange(payload.startTime, payload.endTime)}`,
+        description: `${dialogSubject()} · ${fmtRange(payload.startTime, payload.endTime)}`
+          + (dialogOnRest ? ' · hafta tatilinde çalışma' : ''),
       })
       setDialogOpen(false)
       await load()
@@ -502,6 +501,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
           setSaving(false)
           return handleSave(payload, true)
         }
+        return   // yönetici vazgeçti: diyalog açık kalır, hata gösterilmez
       }
       throw err
     } finally {
@@ -765,10 +765,18 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     leaveLabelMap,
   })
 
-  const leaveKey = leaveDeleteDialog ? `${leaveDeleteDialog.employee.id}:${leaveDeleteDialog.date}` : ''
-  const leaveIsRest = !!leaveDeleteDialog && restDayMap.has(leaveKey)
-  const leaveIsRecurring = leaveIsRest && recurringRestMap.has(leaveKey)
-  const leaveName = leaveDeleteDialog && !leaveIsRest ? leaveLabelMap.get(leaveKey) : undefined
+  const leaveTarget = useMemo<LeaveDayTarget | null>(() => {
+    if (!leaveDeleteDialog) return null
+    const key = `${leaveDeleteDialog.employee.id}:${leaveDeleteDialog.date}`
+    const isRest = restDayMap.has(key)
+    return {
+      employeeName: leaveDeleteDialog.employee.full_name,
+      dateLabel: longDate(leaveDeleteDialog.date),
+      everyLabel: everyWeekday(leaveDeleteDialog.date).toLocaleLowerCase('tr'),
+      kind: isRest ? (recurringRestMap.has(key) ? 'recurringRest' : 'rest') : 'leave',
+      leaveName: isRest ? undefined : leaveLabelMap.get(key),
+    }
+  }, [leaveDeleteDialog, restDayMap, recurringRestMap, leaveLabelMap])
 
   return (
     <Page>
@@ -975,69 +983,19 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
           existingAssignment={dialogExisting}
           loading={saving}
           dayAvailability={dialogAvailability}
+          restDayWork={dialogOnRest}
         />
       )}
 
-      {/* İzin / tatil silme onayı */}
+      {/* İzinli / tatil günü: tatilde çalıştır ya da izni/tatili kaldır */}
       {!readOnly && (
-        <AlertDialog
-          open={!!leaveDeleteDialog}
-          onOpenChange={(next) => { if (!next && !leaveDeleting) setLeaveDeleteDialog(null) }}
-        >
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>
-                {leaveIsRest ? 'Haftalık tatil kaldırılsın mı?' : `${leaveName ?? 'İzin'} iptal edilsin mi?`}
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                {leaveDeleteDialog && (
-                  <>
-                    <span className="font-medium text-foreground">{leaveDeleteDialog.employee.full_name}</span> ·{' '}
-                    <span className="font-medium text-foreground">{longDate(leaveDeleteDialog.date)}</span>.{' '}
-                    {leaveIsRecurring
-                      ? `Bu tatil ${everyWeekday(leaveDeleteDialog.date).toLocaleLowerCase('tr')} tekrarlanıyor. Yalnızca bu günü ya da bu ve sonraki haftaların tatilini kaldırabilirsiniz.`
-                      : leaveIsRest
-                        ? 'Tatili kaldırabilir ya da tatil yerinde kalırken bu gün çalıştırabilirsiniz (hafta tatilinde çalışma, ek ücretli).'
-                        : 'Bu günü kapsayan onaylı izin silinir.'}
-                  </>
-                )}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            {leaveDeleteDialog && !leaveIsRest && (
-              <Alert tone="info">
-                <Info />
-                <AlertDescription>İzin tüm kapsamıyla (başlangıç–bitiş aralığı) silinir, yalnızca bu gün değil.</AlertDescription>
-              </Alert>
-            )}
-            <AlertDialogFooter>
-              <Button type="button" variant="outline" onClick={() => setLeaveDeleteDialog(null)} disabled={leaveDeleting}>
-                Vazgeç
-              </Button>
-              {leaveIsRest && (
-                <Button type="button" variant="outline" onClick={openRestWorkDialog} disabled={leaveDeleting}>
-                  <BriefcaseBusiness />
-                  Bu gün çalışsın
-                </Button>
-              )}
-              {leaveIsRecurring ? (
-                <>
-                  <Button type="button" variant="outline" onClick={() => handleLeaveDelete('single')} disabled={leaveDeleting}>
-                    Yalnızca bu gün
-                  </Button>
-                  <Button type="button" variant="destructive" onClick={() => handleLeaveDelete('following')} disabled={leaveDeleting}>
-                    {leaveDeleting ? <Spinner /> : <Trash2 />}
-                    Bu ve sonraki haftalar
-                  </Button>
-                </>
-              ) : (
-                <Button type="button" variant="destructive" onClick={() => handleLeaveDelete()} disabled={leaveDeleting}>
-                  {leaveDeleting ? <Spinner /> : <Trash2 />}
-                  {leaveIsRest ? 'Tatili kaldır' : 'İzni sil'}
-                </Button>
-              )}
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        <LeaveDayDialog
+          target={leaveTarget}
+          deleting={leaveDeleting}
+          onClose={() => setLeaveDeleteDialog(null)}
+          onWork={openRestWorkDialog}
+          onDelete={handleLeaveDelete}
+        />
       )}
     </Page>
   )

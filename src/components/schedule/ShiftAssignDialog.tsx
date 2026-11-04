@@ -7,7 +7,7 @@
  */
 import { useState } from 'react'
 import {
-  ArrowLeft, CalendarOff, ChevronDown, CircleAlert, CircleCheck, Clock, Moon, Plane, Repeat, Sofa, Trash2, TriangleAlert,
+  ArrowLeft, BriefcaseBusiness, CalendarOff, ChevronDown, CircleAlert, CircleCheck, Clock, Moon, Plane, Repeat, Sofa, Trash2, TriangleAlert,
 } from 'lucide-react'
 import type { EmployeeWithRole } from '@/types/employee'
 import type { ShiftTemplate } from '@/types/shiftTemplate'
@@ -63,6 +63,8 @@ interface Props {
   existingAssignment?: ShiftAssignmentWithDetails | null
   loading: boolean
   dayAvailability?: EmployeeAvailability[]
+  /** Gün çalışanın haftalık tatili: vardiya "hafta tatilinde çalışma" olarak kaydedilir (tatil kalır) */
+  restDayWork?: boolean
 }
 
 type Mode = 'template' | 'custom'
@@ -130,7 +132,7 @@ function isValidTime(t: string): boolean {
 export function ShiftAssignDialog({
   open, onClose, onSave, onDelete, onAssignRestDay, onAssignLeave, leaveTypes = [],
   employee, workDate, templates, existingAssignment, loading,
-  dayAvailability = [],
+  dayAvailability = [], restDayWork = false,
 }: Props) {
   const isEdit = !!existingAssignment
 
@@ -233,7 +235,7 @@ export function ShiftAssignDialog({
     <Dialog open={open} onOpenChange={(next) => { if (!next && !loading) onClose() }}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{isEdit ? 'Vardiyayı düzenle' : 'Vardiya ata'}</DialogTitle>
+          <DialogTitle>{isEdit ? 'Vardiyayı düzenle' : restDayWork ? 'Hafta tatilinde çalışma' : 'Vardiya ata'}</DialogTitle>
           <DialogDescription className="flex items-center justify-center gap-2 sm:justify-start">
             {employee && <PersonAvatar name={employee.full_name} size={20} />}
             <span><span className="font-medium text-foreground">{employee?.full_name}</span>{dateLabel && <> · {dateLabel}</>}</span>
@@ -268,6 +270,17 @@ export function ShiftAssignDialog({
               />
             </section>
           ) : <>
+          {restDayWork && (
+            <Alert tone="info">
+              <BriefcaseBusiness />
+              <AlertTitle>Haftalık tatil günü</AlertTitle>
+              <AlertDescription>
+                {isEdit
+                  ? 'Vardiya hafta tatilinde çalışma olarak ek ücretle puantaja yazılır. Vardiyayı kaldırırsanız gün yeniden tatil olur.'
+                  : 'Tatil kaydı kalır; bu vardiya hafta tatilinde çalışma olarak ek ücretle puantaja yazılır.'}
+              </AlertDescription>
+            </Alert>
+          )}
           {dayAvailability.length > 0 && (
             <AvailabilityNotice records={dayAvailability} shiftStart={activeStart} shiftEnd={activeEnd} />
           )}

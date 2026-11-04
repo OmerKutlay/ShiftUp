@@ -8,6 +8,8 @@
  *   - Çalışma süresi kuralları (dinlenme, günlük/haftalık net, gece, part-time)
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { format } from 'date-fns'
+import { tr } from 'date-fns/locale'
 import { validateShiftAssignment, netWorkMins, type WorkingTimeViolation } from '@/lib/workingTimeService'
 import { completedYears, minorWorkViolations } from '@/lib/laborLaw'
 import { getWorkingTimeConfig } from '@/lib/workingTimeConfig'
@@ -110,7 +112,7 @@ export async function checkAssignmentRules(
   const restWork: WorkingTimeViolation[] = weeklyRestWork
     ? [{
       type: 'weekly_rest_work',
-      message: `${name}: ${shift.work_date} haftalık tatil günü. Bu vardiya hafta tatilinde çalışma olarak puantaja yazılır ve ek ücretlidir (İş K. Md. 46). Tatil kaydı kalır; tatili başka güne almak isterseniz önce tatili kaldırın.`,
+      message: `${name}: ${format(new Date(`${shift.work_date}T12:00:00`), 'd MMMM EEEE', { locale: tr })} haftalık tatil günü. Vardiya hafta tatilinde çalışma olarak ek ücretle puantaja yazılır (İş K. Md. 46); tatil kaydı kalır.`,
       severity: 'error',
     }]
     : []
