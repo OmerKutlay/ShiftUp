@@ -2,7 +2,8 @@
  * shiftAssignmentRules — bir çalışana bir vardiya verilmeden önce sunucu tarafı kontrol.
  *
  * Takas onayı, açık vardiya alma ve plan aktarımı aynı kuralları kullanır:
- *   - Pasif çalışan / onaylı izin günü
+ *   - Pasif çalışan / onaylı izin günü. Haftalık tatil günü yalnızca allowWeeklyRest ile (yöneticinin vardiya
+ *     ataması) aşılabilir: o zaman engel değil, onay isteyen ihlaldir (hafta tatilinde çalışma, İş K. Md. 46)
  *   - Komşu günlerle saat çakışması (gece vardiyaları dahil)
  *   - Çalışma süresi kuralları (dinlenme, günlük/haftalık net, gece, part-time)
  */
@@ -37,7 +38,8 @@ export async function checkAssignmentRules(
   admin: SupabaseClient,
   employeeId: string,
   shift: CandidateShift,
-  ignoreShiftIds: string[] = []
+  ignoreShiftIds: string[] = [],
+  { allowWeeklyRest = false }: { allowWeeklyRest?: boolean } = {}
 ): Promise<RuleCheckResult> {
   const blockers: string[] = []
   const weekDays = getWeekDays(new Date(`${shift.work_date}T12:00:00`))
@@ -54,12 +56,11 @@ export async function checkAssignmentRules(
       .lte('work_date', to),
     admin
       .from('leave_requests')
-      .select('id')
+      .select('id, leave_type')
       .eq('employee_id', employeeId)
       .eq('status', 'approved')
       .lte('start_date', shift.work_date)
-      .gte('end_date', shift.work_date)
-      .limit(1),
+      .gte('end_date', shift.work_date),
   ])
   if (empRes.error) throw empRes.error
   if (shiftsRes.error) throw shiftsRes.error
@@ -72,7 +73,10 @@ export async function checkAssignmentRules(
   if (emp.termination_date && shift.work_date > emp.termination_date) {
     blockers.push(`${name} ${emp.termination_date} tarihinde işten ayrıldı; sonraki günlere vardiya atanamaz.`)
   }
-  if (leaveRes.data && leaveRes.data.length > 0) blockers.push(`${name}, ${shift.work_date} tarihinde onaylı izinde.`)
+  const leaves = (leaveRes.data ?? []) as Array<{ leave_type: string }>
+  const onlyWeeklyRest = leaves.length > 0 && leaves.every((l) => l.leave_type === 'weekly_rest')
+  const weeklyRestWork = onlyWeeklyRest && allowWeeklyRest
+  if (leaves.length > 0 && !weeklyRestWork) blockers.push(`${name}, ${shift.work_date} tarihinde onaylı izinde.`)
 
   const existing = ((shiftsRes.data ?? []) as Array<{ id: string; work_date: string; start_time: string; end_time: string }>)
     .filter((s) => !ignoreShiftIds.includes(s.id))
@@ -103,12 +107,22 @@ export async function checkAssignmentRules(
     employment_type: (emp.employment_type ?? 'full_time') as EmploymentType,
   })
 
+  const restWork: WorkingTimeViolation[] = weeklyRestWork
+    ? [{
+      type: 'weekly_rest_work',
+      message: `${name}: ${shift.work_date} haftalık tatil günü. Bu vardiya hafta tatilinde çalışma olarak puantaja yazılır ve ek ücretlidir (İş K. Md. 46). Tatil kaydı kalır; tatili başka güne almak isterseniz önce tatili kaldırın.`,
+      severity: 'error',
+    }]
+    : []
   return {
     blockers,
     // Çakışma zaten blocker olarak raporlandı; tekrarlama
-    violations: result.errors
-      .filter((v) => v.type !== 'overlap')
-      .map((v) => ({ ...v, message: `${name}: ${v.message}` })),
+    violations: [
+      ...restWork,
+      ...result.errors
+        .filter((v) => v.type !== 'overlap')
+        .map((v) => ({ ...v, message: `${name}: ${v.message}` })),
+    ],
     warnings: result.warnings.map((v) => ({ ...v, message: `${name}: ${v.message}` })),
   }
 }

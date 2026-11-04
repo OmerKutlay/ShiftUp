@@ -22,7 +22,14 @@ export interface WeekExportInput {
   statsMap: Map<string, EmployeeWeekStats>
   approvedLeaveMap: Set<string>
   restDayMap: Set<string>
+  /** Haftalık tatil gününe verilmiş vardiyalar (hafta tatilinde çalışma) */
+  restWorkMap?: Set<string>
+  /** İzinli günlerin tür adı (Yıllık izin, Rapor…); yoksa genel "İzinli" */
+  leaveLabelMap?: Map<string, string>
 }
+
+/** Hafta tatilinde çalışma etiketi (plan hücresindeki "HT" işaretinin açık hali) */
+export const REST_WORK_LABEL = 'Hafta tatilinde çalışma'
 
 /** Dakika → bir ondalıklı saat */
 const h1 = (mins: number) => Math.round(mins / 6) / 10
@@ -30,14 +37,16 @@ const h1 = (mins: number) => Math.round(mins / 6) / 10
 /** Yazdırma tablosuyla aynı: "Pzt 26.10" */
 const dayHead = (d: string, i: number) => `${DAY_LABELS[i]} ${Number(d.slice(8, 10))}.${d.slice(5, 7)}`
 
-/** Hücre: [saat aralığı, şablon adı] ya da izin / tatil etiketi; boşsa [] */
+/** Hücre: [saat aralığı, şablon adı, (hafta tatilinde çalışma)] ya da izin / tatil etiketi; boşsa [] */
 function cellParts(input: WeekExportInput, e: WeeklyScheduleEntry, d: string): string[] {
   const key = `${e.employee.id}:${d}`
   if (input.restDayMap.has(key)) return ['Haftalık tatil']
   const a = e.dayAssignments[d]
-  if (a?.is_on_leave || input.approvedLeaveMap.has(key)) return [OFF_META.leave.label]
+  if (a?.is_on_leave || input.approvedLeaveMap.has(key)) return [input.leaveLabelMap?.get(key) ?? OFF_META.leave.label]
   if (!a) return []
-  return [fmtRange(a.start_time, a.end_time), a.shift_templates?.name ?? ''].filter(Boolean)
+  return [
+    fmtRange(a.start_time, a.end_time), a.shift_templates?.name ?? '', input.restWorkMap?.has(key) ? REST_WORK_LABEL : '',
+  ].filter(Boolean)
 }
 
 function grouped(entries: WeeklyScheduleEntry[]) {
@@ -63,8 +72,8 @@ export function exportWeekCsv(input: WeekExportInput) {
         e.employee.full_name,
         e.employee.roles?.name ?? '',
         ...weekDays.map((d) => {
-          const [range, name] = cellParts(input, e, d)
-          return name ? `${range} (${name})` : range ?? ''
+          const [range, ...rest] = cellParts(input, e, d)
+          return rest.length > 0 ? `${range} (${rest.join(', ')})` : range ?? ''
         }),
         h1(statsMap.get(e.employee.id)?.totalMins ?? 0),
       ])

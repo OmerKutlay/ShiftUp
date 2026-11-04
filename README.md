@@ -192,6 +192,24 @@ CI (`.github/workflows/ci.yml`) her PR'da typecheck, lint, test ve build çalı�
   (haftalık 45 / yıllık 270 saat) ise çalışanın tüm mağazalardaki vardiyalarını toplar — sınır
   işveren düzeyindedir. Vardiya atamadaki yasal kontroller de çalışanın tüm vardiyalarına bakar.
 
+## Raporlar › Aylık puantaj çıktıları
+
+CSV ve Excel aynı tabloyu yazar (`src/lib/timesheetExport.ts`), düzen şirketlerde elle tutulan klasik aylık
+puantaj çizelgesidir: `S.NO · Adı Soyadı · Birim/Şube · Görevi`, ayın her günü bir sütun (çalışılan günde net
+saat, diğer günlerde tek harf kod), **PUANTAJ BİLGİLERİ** (Çalışılan Gün, `Ü R O D G B Y Z` sayaçları,
+Toplam Gün (SGK)), **FAZLA MESAİ BİLGİLERİ** (her hafta için %50 = 45 saat üstü ve HT = hafta tatilinde
+çalışılan saat; TOPLAM %50 ikisinin toplamı; TOPLAM %100 = resmi tatilde çalışılan saat) ve ek olarak net saat, gece çalışması, not. Kodlar: `O` hafta tatili, `Y` yıllık izin,
+`Z` ücretli izin, `R` rapor, `Ü` ücretsiz izin, `D` devamsız, `G` resmi tatil (çalışılmadı), `B` resmi
+tatilde çalıştı (saat yoksa), `Ç` çalıştı ama saat hesaplanamadı. Planlı (henüz gerçekleşmemiş) gün boştur.
+CSV'de üstte başlık / grup / hafta günü satırları, altta kod açıklamaları; Excel'de ikinci sayfa "Açıklamalar".
+PDF aynı gün kodlarını ve hesapları kullanır; A4'e sığması için sayaç / haftalık sütunlar yerine özet sütunlar
+vardır (Çalışılan gün, Net, %50, HT, %100, Gece, SGK gün). Girişten önceki ve çıkıştan sonraki günler boştur;
+yarım gün tatil (arife) normal gün sayılır.
+
+Diğer çıktılar: **Devam raporu** CSV'sinde süreler sayıdır (çalışma ondalık saat, mola dakika — Excel'de
+toplanabilir), PDF'te "7s 30d" metnidir. **Haftalık plan** CSV / PDF / yazdırma çıktısında izinli günde izin
+türünün adı (Yıllık izin, Rapor…) ve hafta tatilinde çalışılan vardiyada "Hafta tatilinde çalışma" yazar.
+
 ## Raporlar › Bordro puantajı
 
 Muhasebeye (Logo, Mikro, Netsis, Luca, Zirve…) verilecek aylık özet. Belirli bir yazılıma özel değil,
@@ -228,8 +246,8 @@ Kurallar ve sınırlar (02 ve 14 numaralı kodlar güncel listede yoktur; liste 
 - Ay 30 gün kabul edilir; tam çalışılan ayda 28/29/31 günlük de olsa prim günü 30'dur. 31 günlük ayda
   31. gün eksik gün sayılmaz (yalnızca işte olunan gün 30 iken; 3. gün ve sonrası girişte sayılır). İşte olunan
   gün = takvim günü sayısı, en çok 30 (işe giriş ve işten çıkış tarihi çalışan kaydından okunur).
-- Rapor günleri bu raporda eksik gün sayılır (eski "Aylık puantaj" SGK sütunu yalnızca ücretsiz izin ve
-  devamsızlığı düşer).
+- Rapor günleri eksik gün sayılır. "Aylık puantaj"ın SGK sütunu da aynı kuralla (işe giriş/çıkış, 31. gün,
+  çıkış gününde kayıt yoksa SGK 16) hesaplanır; iki rapor aynı prim gününü verir.
 - İşten çıkış (son çalışma günü dahil): sonraki günler işte olunan gün sayılmaz, prim günü çıkış gününde biter; Not sütununda "Ayrıldı <tarih>" yazar. Çıkış gününde hiç çalışma/izin kaydı yoksa o gün SGK 16 eksik günüdür. Ay başından önce ayrılanlar listelenmez (kaynak: kod yorumu).
 - Fazla mesai bu mağazadaki vardiyalardan hesaplanır (puantaj mağaza bazlıdır); birden fazla mağazada
   çalışanın işveren düzeyindeki haftalık toplamı için Raporlar › Fazla çalışma'ya bakın.
@@ -265,6 +283,16 @@ gönderir; aynı fonksiyon bugünün uygulamalarını da oluşturur (uygulama ka
 ara dinlenme (Md. 68), gece çalışması 7,5 saat (Md. 69), hafta tatili (Md. 46), yıllık izin
 hakkı (Md. 53). Saatler her zaman Europe/Istanbul'a göre hesaplanır; gece yarısını geçen
 vardiyalar desteklenir.
+
+**Hafta tatilinde çalışma:** yönetici haftalık tatil gününe de vardiya verebilir (plan hücresi › tatil ›
+"Bu gün çalışsın", ya da `POST /api/shifts`). Sunucu bunu `weekly_rest_work` ihlali olarak onaya sunar
+(422 `WORKING_TIME_VIOLATION`, `acknowledge_violations` ile geçer, denetim kaydına not düşer); tatil kaydı
+silinmez. Diğer onaylı izinler ve çalışanın kendi işlemleri (açık vardiya alma, takas) tatil gününe vardiya
+alamaz. Planda hücre "HT" işaretiyle vardiya olarak görünür. Puantajda gün `HTÇ`dir: o günün saatleri
+haftalık 45 saat hesabına girmez, tamamı haftanın HT saati olur (Pazar günü hangi aydaysa o aya); bordro
+puantajında "Hafta Tatili Çalışılan Gün / Saat (%50)" sütunlarındadır ve normal saatten düşülür. Resmi tatile
+denk gelen gün resmi tatil çalışması (RTÇ) sayılır. Raporlar › Fazla çalışma (yıllık 270 saat) bu ayrımı
+yapmaz, haftanın tüm çalışmasını sayar.
 
 ## Mimari
 

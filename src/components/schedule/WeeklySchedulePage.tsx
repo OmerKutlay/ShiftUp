@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { addWeeks, format, subWeeks } from 'date-fns'
 import { tr } from 'date-fns/locale'
-import { CircleAlert, Info, Plus, Printer, Trash2, Users } from 'lucide-react'
+import { BriefcaseBusiness, CircleAlert, Info, Plus, Printer, Trash2, Users } from 'lucide-react'
 import { toast } from 'sonner'
 
 import type { EmployeeWithRole } from '@/types/employee'
@@ -202,6 +202,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     leaveDayToId,
     restDayMap: savedRestDayMap,
     recurringRestMap: savedRecurringRestMap,
+    restWorkMap,
     leaveLabelMap: savedLeaveLabelMap,
     leaveDefMap,
     leaveTypes,
@@ -216,6 +217,8 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
   const [dialogEmployee, setDialogEmployee] = useState<EmployeeWithRole | null>(null)
   const [dialogDate, setDialogDate] = useState('')
   const [dialogExisting, setDialogExisting] = useState<ShiftAssignmentWithDetails | null>(null)
+  /** Diyalog haftalık tatil gününe vardiya için açıldı (tatil / izin atama seçenekleri gizlenir) */
+  const [dialogOnRest, setDialogOnRest] = useState(false)
   const [saving, setSaving] = useState(false)
 
   // İzin / tatil silme diyaloğu
@@ -261,6 +264,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     const isLeave = savedLeaveMap.has(key) && !isRest
     let locked: string | null = null
     if (formerIds.has(splitKey(key).employeeId)) locked = FORMER_LOCKED
+    else if (restWorkMap.has(key)) locked = 'Hafta tatilinde çalışma editörde değiştirilemez; düzenlemeden çıkıp hücreye tıklayın.'
     else if (assignment?.is_on_leave) locked = 'İzinli işaretli vardiya editörde değiştirilemez.'
     else if (leaveId && multiDayLeaveIds.has(leaveId)) {
       locked = isRest
@@ -275,7 +279,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
       leaveDefId: isLeave ? leaveDefMap.get(key) ?? null : null,
       locked,
     }
-  }, [savedAssignmentMap, leaveDayToId, savedRestDayMap, savedRecurringRestMap, savedLeaveMap, leaveDefMap, multiDayLeaveIds, formerIds])
+  }, [savedAssignmentMap, leaveDayToId, savedRestDayMap, savedRecurringRestMap, savedLeaveMap, leaveDefMap, multiDayLeaveIds, formerIds, restWorkMap])
 
   // Kaydedilecek taslaklar: veri yenilenip kayıtlı hale gelenler ya da kilitlenenler düşer
   const pendingDrafts: DraftMap = useMemo(() => {
@@ -352,6 +356,18 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     setDialogEmployee(emp)
     setDialogDate(date)
     setDialogExisting(existing)
+    setDialogOnRest(restWorkMap.has(leaveKey))
+    setDialogOpen(true)
+  }
+
+  /** Haftalık tatil gününe vardiya: tatil kalır, vardiya "hafta tatilinde çalışma" olur (sunucu onay ister) */
+  const openRestWorkDialog = () => {
+    if (!leaveDeleteDialog) return
+    setDialogEmployee(leaveDeleteDialog.employee)
+    setDialogDate(leaveDeleteDialog.date)
+    setDialogExisting(null)
+    setDialogOnRest(true)
+    setLeaveDeleteDialog(null)
     setDialogOpen(true)
   }
 
@@ -466,13 +482,23 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
       // Sunucu İş Kanunu ihlali buldu — yönetici açıkça onaylarsa tekrar gönder
       if (!acknowledge && err instanceof ApiError && err.code === 'WORKING_TIME_VIOLATION') {
         const violations = (err.details.violations as string[] | undefined) ?? []
-        if (await confirm({
-          title: 'İş Kanunu ihlali',
-          message: 'Bu vardiya şu kuralları ihlal ediyor:',
-          items: violations,
-          footer: 'Yine de kaydedilsin mi?',
-          confirmText: 'Yine de kaydet',
-        })) {
+        const types = (err.details.violation_types as string[] | undefined) ?? []
+        const restWorkOnly = types.length > 0 && types.every((t) => t === 'weekly_rest_work')
+        if (await confirm(restWorkOnly
+          ? {
+            title: 'Hafta tatilinde çalışma',
+            message: 'Bu gün çalışanın haftalık tatili:',
+            items: violations,
+            footer: 'Vardiya hafta tatilinde çalışma olarak kaydedilsin mi?',
+            confirmText: 'Çalışsın',
+          }
+          : {
+            title: 'İş Kanunu ihlali',
+            message: 'Bu vardiya şu kuralları ihlal ediyor:',
+            items: violations,
+            footer: 'Yine de kaydedilsin mi?',
+            confirmText: 'Yine de kaydet',
+          })) {
           setSaving(false)
           return handleSave(payload, true)
         }
@@ -735,6 +761,8 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
     statsMap,
     approvedLeaveMap,
     restDayMap,
+    restWorkMap,
+    leaveLabelMap,
   })
 
   const leaveKey = leaveDeleteDialog ? `${leaveDeleteDialog.employee.id}:${leaveDeleteDialog.date}` : ''
@@ -874,6 +902,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
             holidayMap={holidayMap}
             approvedLeaveMap={approvedLeaveMap}
             restDayMap={restDayMap}
+            restWorkMap={restWorkMap}
             leaveLabelMap={leaveLabelMap}
             availabilityMap={availabilityMap}
             maxDailyMins={config.maxDailyWorkHours * 60}
@@ -888,7 +917,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
           compact={isMobile}
           entries={visibleEntries} weekDays={weekDays} todayStr={todayStr} holidayMap={holidayMap}
           statsMap={statsMap} approvedLeaveMap={approvedLeaveMap} restDayMap={restDayMap} recurringRestMap={recurringRestMap}
-          leaveLabelMap={leaveLabelMap}
+          restWorkMap={restWorkMap} leaveLabelMap={leaveLabelMap}
           availabilityMap={availabilityMap} config={config} onCellClick={openAssignDialog} readOnly={readOnly}
           meId={readOnly ? authEmployee?.id : undefined}
           onCellPaint={editing ? paintCellWithStone : undefined}
@@ -937,8 +966,8 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
           onClose={() => setDialogOpen(false)}
           onSave={handleSave}
           onDelete={dialogExisting ? handleDelete : undefined}
-          onAssignRestDay={!dialogExisting ? handleAssignRestDay : undefined}
-          onAssignLeave={!dialogExisting ? handleAssignLeave : undefined}
+          onAssignRestDay={!dialogExisting && !dialogOnRest ? handleAssignRestDay : undefined}
+          onAssignLeave={!dialogExisting && !dialogOnRest ? handleAssignLeave : undefined}
           leaveTypes={leaveTypes}
           employee={dialogEmployee}
           workDate={dialogDate}
@@ -968,7 +997,7 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
                     {leaveIsRecurring
                       ? `Bu tatil ${everyWeekday(leaveDeleteDialog.date).toLocaleLowerCase('tr')} tekrarlanıyor. Yalnızca bu günü ya da bu ve sonraki haftaların tatilini kaldırabilirsiniz.`
                       : leaveIsRest
-                        ? 'Haftalık tatil kaldırılır; bu güne vardiya atanabilir.'
+                        ? 'Tatili kaldırabilir ya da tatil yerinde kalırken bu gün çalıştırabilirsiniz (hafta tatilinde çalışma, ek ücretli).'
                         : 'Bu günü kapsayan onaylı izin silinir.'}
                   </>
                 )}
@@ -984,6 +1013,12 @@ export function WeeklySchedulePage({ readOnly = false }: WeeklySchedulePageProps
               <Button type="button" variant="outline" onClick={() => setLeaveDeleteDialog(null)} disabled={leaveDeleting}>
                 Vazgeç
               </Button>
+              {leaveIsRest && (
+                <Button type="button" variant="outline" onClick={openRestWorkDialog} disabled={leaveDeleting}>
+                  <BriefcaseBusiness />
+                  Bu gün çalışsın
+                </Button>
+              )}
               {leaveIsRecurring ? (
                 <>
                   <Button type="button" variant="outline" onClick={() => handleLeaveDelete('single')} disabled={leaveDeleting}>

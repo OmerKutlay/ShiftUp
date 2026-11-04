@@ -3,19 +3,20 @@
  * Her rapor ekrandaki satırları (arama/filtre uygulanmış) dışa aktarır; CSV'de sayılar ondalık virgüllü
  * sayı olarak, PDF'te ekranla aynı biçimde yazılır.
  */
-import {
-  monthDays, TIMESHEET_CODE_COLORS, TIMESHEET_CODE_LABELS, timesheetDayValue, type TimesheetRow,
-} from '@/lib/timesheet'
+import { monthDays, TIMESHEET_CODE_COLORS, type TimesheetRow } from '@/lib/timesheet'
 import type { OvertimeSummary } from '@/lib/overtime'
 import type { PayrollRow } from '@/lib/payrollTimesheet'
 import { ANNUAL_OVERTIME_CAP_HOURS } from '@/lib/laborLaw'
 import { dayOfWeekFromDateString } from '@/lib/dateUtils'
 import type { PublicHoliday } from '@/types/holiday'
 import { toCsv } from '@/lib/export/csv'
+import {
+  buildExportTable, EXPORT_CODE_LEGEND, EXPORT_NOTES, exportDayValue, holidayWorkedMins, WEEKDAY_SHORT,
+} from '@/lib/timesheetExport'
 import { saveCsv } from '@/lib/export/download'
 import { storeFileSlug } from '@/lib/export/fileName'
 import { downloadPdf } from '@/lib/export/pdf'
-import { LEGEND_ORDER, monthLabel } from './timesheetSummary'
+import { monthLabel } from './timesheetSummary'
 
 type Cell = string | number
 /** Sayı biçimi: CSV için sayı (ondalık virgülü csvCell yazar), PDF için Türkçe metin */
@@ -31,39 +32,68 @@ export const WEEKDAY_INITIALS = ['Pz', 'Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct']
 
 // ─── Aylık puantaj ────────────────────────────────────────────
 
-const TIMESHEET_TOTALS = ['Net s', 'Fazla s', 'Gece s', 'RT gün', 'SGK gün']
+/**
+ * PDF: CSV/Excel ile aynı gün kodları (O, Y, R, Ü, Z, D, G, B) ve aynı hesaplar; A4 yatay sayfaya sığması için
+ * sayaç ve haftalık sütunlar yerine özet: %50 = haftalık 45 saat üstü, HT = hafta tatilinde çalışma, %100 = resmi tatil.
+ */
+const TIMESHEET_TOTALS = ['Çalışılan gün', 'Net s', '%50 s', 'HT s', '%100 s', 'Gece s', 'SGK gün']
 
-function timesheetBody(rows: TimesheetRow[], days: string[], fmt: NumFmt): Cell[][] {
+function timesheetPdfBody(rows: TimesheetRow[], days: string[]): Cell[][] {
   return rows.map((r) => [
     r.employee.full_name,
     ...days.map((d) => {
-      const v = timesheetDayValue(r, d)
-      return typeof v === 'number' ? fmt(v) : v
+      const v = exportDayValue(r, d)
+      return typeof v === 'number' ? pdfFmt(v) : v
     }),
-    fmt(h1(r.workedMins)),
-    fmt(h1(r.overtimeMins)),
-    fmt(h1(r.nightMins)),
-    r.holidayWorkedDays,
+    r.workedDays,
+    pdfFmt(h1(r.workedMins)),
+    pdfFmt(h1(r.overtimeMins)),
+    pdfFmt(h1(r.restWorkMins ?? 0)),
+    pdfFmt(h1(holidayWorkedMins(r, days))),
+    pdfFmt(h1(r.nightMins)),
     r.sgkDays,
   ])
 }
 
-const TIMESHEET_LEGEND = `Çalışılan günlerde hücrede net saat yazar (yeşil; resmi tatilde turuncu). Diğer kodlar: ${
-  LEGEND_ORDER.filter((c) => c !== 'Ç').map((c) => `${c} ${TIMESHEET_CODE_LABELS[c]}`).join(' · ')}`
+const TIMESHEET_LEGEND = `Kodlar: ${EXPORT_CODE_LEGEND.map((l) => `${l.code} ${l.label}`).join(' · ')}`
 
 /** "C6EFCE" → [198, 239, 206] */
 const rgb = (hex: string): [number, number, number] =>
   [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16)) as [number, number, number]
 
+/**
+ * Aylık puantaj CSV'si — klasik aylık puantaj çizelgesi düzeni (bkz. timesheetExport):
+ *   1. satır başlık ("EYLÜL 2026 - PUANTAJ · Mağaza"), 2. satır sütun grupları, 3. satır haftanın günleri,
+ *   4. satır sütun başlıkları; ardından çalışanlar, en altta kod açıklamaları.
+ */
+export function timesheetCsv(month: string, rows: TimesheetRow[], storeName: string): string {
+  const t = buildExportTable(month, rows, storeName)
+  const width = t.header.length
+  const blank = () => Array<string>(width).fill('')
+  const groupRow = blank()
+  for (const g of t.groups) groupRow[g.start] = g.label
+  const weekdayRow = blank()
+  weekdayRow[t.firstDayCol - 1] = 'Hafta Günü'
+  t.days.forEach((d, i) => { weekdayRow[t.firstDayCol + i] = WEEKDAY_SHORT[dayOfWeekFromDateString(d)] })
+  const legend = [
+    [],
+    ['', 'Kod', 'Açıklama'],
+    ...EXPORT_CODE_LEGEND.map((l) => ['', l.code, l.label]),
+    [],
+    ...EXPORT_NOTES.map((n) => ['', n]),
+  ]
+  return toCsv([storeName ? `${t.title} · ${storeName}` : t.title], [groupRow, weekdayRow, t.header, ...t.body, ...legend])
+}
+
 export function exportTimesheetCsv(month: string, rows: TimesheetRow[], storeName: string) {
-  const days = monthDays(month)
-  const head = ['Çalışan', ...days.map((d) => `${Number(d.slice(8))} ${WEEKDAY_INITIALS[dayOfWeekFromDateString(d)]}`), ...TIMESHEET_TOTALS]
-  saveCsv(toCsv(head, timesheetBody(rows, days, csvFmt)), `puantaj-${storeFileSlug(storeName)}-${month}.csv`)
+  saveCsv(timesheetCsv(month, rows, storeName), `puantaj-${storeFileSlug(storeName)}-${month}.csv`)
 }
 
 export function exportTimesheetPdf(month: string, rows: TimesheetRow[], holidays: PublicHoliday[], storeName: string, filter?: string) {
   const days = monthDays(month)
-  const holidayMap = new Map(holidays.map((x) => [x.date, x]))
+  // Puantaj verisi komşu ayların günlerini de kapsar: yalnızca bu ayın tatilleri listelenir
+  const monthHolidays = holidays.filter((x) => x.date.startsWith(month))
+  const holidayMap = new Map(monthHolidays.map((x) => [x.date, x]))
   const first = 1
   const lastDay = first + days.length
   return downloadPdf({
@@ -74,13 +104,13 @@ export function exportTimesheetPdf(month: string, rows: TimesheetRow[], holidays
       ...(filter ? [`Filtre: ${filter}`] : []),
     ],
     head: ['Çalışan', ...days.map((d) => `${Number(d.slice(8))}\n${WEEKDAY_INITIALS[dayOfWeekFromDateString(d)]}`), ...TIMESHEET_TOTALS],
-    body: timesheetBody(rows, days, pdfFmt),
+    body: timesheetPdfBody(rows, days),
     orientation: 'landscape',
     fontSize: 6.5,
     columnStyles: {
-      0: { cellWidth: 34, fontStyle: 'bold' },
+      0: { cellWidth: 32, fontStyle: 'bold' },
       ...Object.fromEntries(days.map((_, i) => [first + i, { halign: 'center', cellPadding: 0.6 }])),
-      ...Object.fromEntries(TIMESHEET_TOTALS.map((_, i) => [lastDay + i, { halign: 'right', cellWidth: 11 }])),
+      ...Object.fromEntries(TIMESHEET_TOTALS.map((_, i) => [lastDay + i, { halign: 'right', cellWidth: i === 0 ? 12 : 10 }])),
     },
     // Kodlu günler durum rengine boyanır; boş günlerde resmi tatil ve hafta sonu sütunları açık zeminli
     cellStyle: (row, col) => {
@@ -88,7 +118,7 @@ export function exportTimesheetPdf(month: string, rows: TimesheetRow[], holidays
       const d = days[col - first]
       const code = rows[row]?.days[d]
       const style = code === 'D' ? { fontStyle: 'bold' as const } : {}
-      if (code) {
+      if (code && code !== 'P') {
         const c = TIMESHEET_CODE_COLORS[code]
         return { ...style, fillColor: rgb(c.fill), textColor: rgb(c.text) }
       }
@@ -98,10 +128,10 @@ export function exportTimesheetPdf(month: string, rows: TimesheetRow[], holidays
     },
     notes: [
       TIMESHEET_LEGEND,
-      ...(holidays.length > 0
-        ? [`Resmi tatiller: ${holidays.map((x) => `${Number(x.date.slice(8))} ${x.name}${x.half_day ? ' (yarım gün)' : ''}`).join(' · ')}`]
+      ...(monthHolidays.length > 0
+        ? [`Resmi tatiller: ${monthHolidays.map((x) => `${Number(x.date.slice(8))} ${x.name}${x.half_day ? ' (yarım gün, normal gün sayılır)' : ''}`).join(' · ')}`]
         : []),
-      'Net s: net çalışma saati · Fazla s: haftalık 45 saati aşan çalışma · Gece s: 20:00–06:00 arası çalışma · RT gün: resmi tatilde çalışılan gün · SGK gün: prim günü.',
+      ...EXPORT_NOTES,
     ],
     filename: `puantaj-${storeFileSlug(storeName)}-${month}.pdf`,
   })
@@ -165,19 +195,19 @@ export function exportPayrollPdf(month: string, rows: PayrollRow[], storeName: s
     subtitle: subtitle(storeName, monthLabel(month)),
     meta: [`${rows.length} çalışan · Sicil ve TC kimlik no saklanmaz; muhasebe doldurur. Ay bitmeden alınan çıktı geçicidir.`],
     head: [
-      'Çalışan', 'Çalışılan gün', 'Normal s', 'Fazla s (%50)', 'Genel tatil çalışılan gün', 'Hafta tatili',
+      'Çalışan', 'Çalışılan gün', 'Normal s', 'Fazla s (%50)', 'Hafta tatili çalışma s (%50)', 'Genel tatil çalışılan gün', 'Hafta tatili',
       'Yıllık izin', 'Rapor', 'Ücretsiz izin', 'Devamsız', 'Eksik gün', 'Eksik gün nedeni', 'SGK gün',
     ],
     body: rows.map((r) => [
       r.noRecords ? `${r.fullName}\n(ay içinde kayıt yok)` : r.fullName,
-      n(r.workedDays), n(r.normalHours), n(r.overtimeHours), n(r.holidayWorkedDays), n(r.weeklyRestDays),
+      n(r.workedDays), n(r.normalHours), n(r.overtimeHours), n(r.restWorkedHours), n(r.holidayWorkedDays), n(r.weeklyRestDays),
       n(r.annualLeaveDays), n(r.sickDays), n(r.unpaidDays), n(r.absentDays), n(r.missingDays),
       r.missingReasonCode || '—', r.sgkDays,
     ]),
     orientation: 'landscape',
     columnStyles: {
       0: { fontStyle: 'bold', cellWidth: 48 },
-      ...Object.fromEntries(Array.from({ length: 12 }, (_, i) => [i + 1, { halign: 'right' }])),
+      ...Object.fromEntries(Array.from({ length: 13 }, (_, i) => [i + 1, { halign: 'right' }])),
     },
     filename: `bordro-puantaj-${month}-${storeFileSlug(storeName)}.pdf`,
   })

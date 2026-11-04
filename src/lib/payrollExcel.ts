@@ -15,7 +15,7 @@ const DOW_TR = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt']
 const safeText = (s: string) => (/^[=+\-@\t\r]/.test(s) ? `'${s}` : s)
 
 const TOTAL_HEADERS = [
-  'Çalışılan Gün', 'Normal Saat', 'Fazla Mesai Saat (%50)', 'Genel Tatil Çalışılan Gün', 'Genel Tatil Çalışılan Saat',
+  'Çalışılan Gün', 'Normal Saat', 'Fazla Mesai Saat (%50)', 'Hafta Tatili Çalışılan Gün', 'Hafta Tatili Çalışılan Saat (%50)', 'Genel Tatil Çalışılan Gün', 'Genel Tatil Çalışılan Saat',
   'Gece Çalışması Saat', 'Hafta Tatili Gün', 'Genel Tatil Gün (Çalışılmadı)', 'Yıllık İzin Gün', 'Raporlu Gün',
   'Ücretsiz İzin Gün', 'Mazeret İzni Gün', 'Devamsız Gün', 'Eksik Gün', 'Eksik Gün Nedeni Kodu', 'SGK Prim Günü', 'Not',
 ]
@@ -56,7 +56,7 @@ export async function buildPayrollWorkbook(
     const line = ws.addRow([
       r.sicilNo, r.tcKimlikNo, safeText(r.fullName),
       ...days.map((d) => r.days[d] ?? ''),
-      r.workedDays, r.normalHours, r.overtimeHours, r.holidayWorkedDays, r.holidayWorkedHours,
+      r.workedDays, r.normalHours, r.overtimeHours, r.restWorkedDays, r.restWorkedHours, r.holidayWorkedDays, r.holidayWorkedHours,
       r.nightHours, r.weeklyRestDays, r.holidayRestDays, r.annualLeaveDays, r.sickDays,
       r.unpaidDays, r.excuseDays, r.absentDays, r.missingDays, r.missingReasonCode, r.sgkDays,
       safeText(r.notes.join(' | ')),
@@ -65,7 +65,7 @@ export async function buildPayrollWorkbook(
     // Sicil / eksik gün kodu metin olarak kalsın ("01" → 1 olmasın)
     line.getCell(1).numFmt = '@'
     line.getCell(2).numFmt = '@'
-    line.getCell(FIXED + days.length + 15).numFmt = '@'
+    line.getCell(FIXED + days.length + TOTAL_HEADERS.indexOf('Eksik Gün Nedeni Kodu') + 1).numFmt = '@'
   }
 
   ws.getColumn(1).width = 12
@@ -94,8 +94,9 @@ export async function buildPayrollWorkbook(
   legend.addRow([])
   legend.addRow(['Hesaplama notları']).font = { bold: true }
   const notes: Array<[string, string]> = [
-    ['Normal saat', 'Net fiili çalışma (mola düşülmüş) − fazla mesai. Genel tatil çalışılan saat, normal saatin içinde ayrıca gösterilen bilgi sütunudur.'],
+    ['Normal saat', 'Net fiili çalışma (mola düşülmüş) − fazla mesai − hafta tatilinde çalışma. Genel tatil çalışılan saat, normal saatin içinde ayrıca gösterilen bilgi sütunudur.'],
     ['Fazla mesai', `Pazartesi–Pazar haftasında 45 saati aşan net süre (İş K. Md. 41), %50 zamlı. Hafta, Pazar günü hangi aydaysa o aya yazılır. Yıllık üst sınır ${ANNUAL_OVERTIME_CAP_HOURS} saat. Bu rapor yalnızca bu mağazadaki vardiyaları sayar; birden fazla mağazada çalışanın işveren düzeyindeki toplamı için Raporlar > Fazla çalışma bakın.`],
+    ['Hafta tatili çalışması', 'Haftalık tatil kaydı olan günde çalışma (HTÇ). Yönetici planda onaylayarak verir; tatil kaydı kalır. O günün saatleri haftalık 45 saat hesabına girmez, tamamı "Hafta Tatili Çalışılan Saat (%50)" sütunundadır (Pazar günü hangi aydaysa o aya). Resmi tatile denk gelirse genel tatil (GTÇ) sayılır.'],
     ['Genel tatil', 'Tam gün resmi tatilde çalışılan gün GTÇ, çalışılmayan gün GT. Yarım gün tatiller normal gün sayılır.'],
     ['SGK prim günü', 'Ay 30 gün kabul edilir (28/29/31 çeken aylarda da tam ay = 30). Prim günü = işte olunan gün − eksik gün. İşte olunan gün = takvim günü sayısı (en çok 30). 31 günlük ayda 31. gün yalnızca işte olunan gün 30 iken (tam ay veya 1.–2. gün giriş) eksik gün sayılmaz; gün sütunları ise gerçek günleri gösterir.'],
     ['Eksik gün', 'Rapor (01), ücretsiz izin (21) ve devamsızlık (15) günleri. Hafta tatili, genel tatil, yıllık izin ve mazeret izni ücretli sayılır, eksik gün değildir. Birden fazla neden varsa kod 12 (Birden fazla).'],

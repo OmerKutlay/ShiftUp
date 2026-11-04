@@ -130,8 +130,16 @@ export const ATTENDANCE_EXPORT_HEADERS = [
   'Çalışma Süresi', 'Toplam Mola', 'Doğrulama', 'Not',
 ] as const
 
-/** Devam raporu satırlarının dışa aktarma tablosu — CSV ve PDF aynı sütunları kullanır */
-export function attendanceExportRows(rows: AttendanceReportRow[]): string[][] {
+/**
+ * CSV başlıkları: süreler Excel'de toplanabilsin diye sayıdır (çalışma ondalık saat, mola dakika);
+ * PDF okunur metin kullanır ("7s 30d").
+ */
+export const ATTENDANCE_CSV_HEADERS = [
+  ...ATTENDANCE_EXPORT_HEADERS.slice(0, 8), 'Çalışma Süresi (saat)', 'Toplam Mola (dk)', ...ATTENDANCE_EXPORT_HEADERS.slice(10),
+] as const
+
+/** Devam raporu satırlarının dışa aktarma tablosu — CSV (numeric: süreler sayı) ve PDF aynı sütunları kullanır */
+export function attendanceExportRows(rows: AttendanceReportRow[], { numeric = false } = {}): Array<Array<string | number>> {
   const formatTime = (iso: string | null): string => {
     if (!iso) return ''
     try {
@@ -165,8 +173,8 @@ export function attendanceExportRows(rows: AttendanceReportRow[]): string[][] {
     STATUS_TR[r.status] ?? r.status,
     formatTime(r.clock_in_at),
     formatTime(r.clock_out_at),
-    formatMinutes(r.worked_minutes),
-    formatMinutes(r.break_minutes),
+    numeric ? (r.worked_minutes === null ? '' : Math.round((r.worked_minutes / 60) * 100) / 100) : formatMinutes(r.worked_minutes),
+    numeric ? (r.break_minutes ?? '') : formatMinutes(r.break_minutes),
     r.verification_method ? (VERIFICATION_TR[r.verification_method] ?? r.verification_method) : '',
     r.exception_note ?? '',
   ])
@@ -177,5 +185,5 @@ export function attendanceExportRows(rows: AttendanceReportRow[]): string[][] {
  * Tarayıcıda indirme için kullanılır.
  */
 export function exportReportToCsv(rows: AttendanceReportRow[]): string {
-  return toCsv(ATTENDANCE_EXPORT_HEADERS, attendanceExportRows(rows))
+  return toCsv(ATTENDANCE_CSV_HEADERS, attendanceExportRows(rows, { numeric: true }))
 }

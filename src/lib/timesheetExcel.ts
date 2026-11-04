@@ -1,42 +1,40 @@
 /**
  * timesheetExcel — aylık puantajı .xlsx olarak üretir (yalnızca tarayıcıda, indirme anında yüklenir).
  *
- * Sayfa 1 "Puantaj": (mağaza adı verilmişse üstte başlık satırı) çalışan × gün tablosu + toplam sütunları.
- *   Çalışılan günlerde hücrede net saat (sayı), diğer günlerde kod yazar; her durum kendi rengine boyanır,
- *   tablonun altında renk lejantı bulunur.
- * Sayfa 2 "Açıklama": renkli kod listesi ve hesaplama notları
+ * Düzen klasik aylık puantaj çizelgesidir (sütunlar ve kodlar: timesheetExport, CSV ile aynı tablo):
+ *   1. satır haftanın günleri, 2. satır gün numaraları (takvim haftasına göre renkli şerit),
+ *   3. satır sütun grupları ("EYLÜL 2026 - PUANTAJ", "PUANTAJ BİLGİLERİ", "FAZLA MESAİ BİLGİLERİ"),
+ *   4. satır sütun başlıkları; her çalışan bir satır, en altta toplam satırı.
+ * Gün hücreleri durum rengine boyanır. İkinci sayfa "Açıklamalar": kodlar, resmi tatiller, notlar.
  */
+import { TIMESHEET_CODE_COLORS, type TimesheetCode, type TimesheetRow } from '@/lib/timesheet'
 import {
-  monthDays, TIMESHEET_CODE_COLORS, TIMESHEET_CODE_LABELS, timesheetDayValue, type TimesheetCode, type TimesheetRow,
-} from '@/lib/timesheet'
-import { ANNUAL_OVERTIME_CAP_HOURS } from '@/lib/laborLaw'
+  buildExportTable, EXPORT_CODE_LEGEND, EXPORT_NOTES, monthName, WEEKDAY_SHORT, weekBand,
+} from '@/lib/timesheetExport'
+import { dayOfWeekFromDateString } from '@/lib/dateUtils'
 import type { PublicHoliday } from '@/types/holiday'
-import type { Cell } from 'exceljs'
-
-type DayCode = Exclude<TimesheetCode, ''>
-
-/** Lejant sırası: renk tablosunun sırası (Ç, RTÇ, HT, RT, Yİ, Rİ, Üİ, Mİ, D, P) */
-const LEGEND = Object.keys(TIMESHEET_CODE_COLORS) as DayCode[]
-
-/** Hücreyi durum rengine boyar (zemin + yazı rengi) */
-function paint(cell: Cell, code: DayCode, bold = false) {
-  const c = TIMESHEET_CODE_COLORS[code]
-  cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${c.fill}` } }
-  cell.font = { color: { argb: `FF${c.text}` }, bold: bold || code === 'D' }
-}
-
-/** Lejant metni: Ç ve RTÇ hücrelerinde kod yerine saat yazdığı belirtilir */
-const legendLabel = (code: DayCode) =>
-  code === 'Ç' || code === 'RTÇ' ? `${TIMESHEET_CODE_LABELS[code]} — hücrede net çalışma saati yazar` : TIMESHEET_CODE_LABELS[code]
-
-const DOW_TR = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt']
-
-const hours = (mins: number) => Math.round((mins / 60) * 100) / 100
+import type { Borders, Cell, Fill } from 'exceljs'
 
 export { storeFileSlug } from '@/lib/export/fileName'
 
 /** Excel'de formül olarak yorumlanabilecek metinleri kaçışlar */
 const safeText = (s: string) => (/^[=+\-@\t\r]/.test(s) ? `'${s}` : s)
+
+const solid = (argb: string): Fill => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } })
+const HEADER_FILL = solid('FFFFFF99')
+const NAME_FILL = solid('FFCCFFCC')
+const HOLIDAY_FILL = solid('FFFDE68A')
+/** Takvim haftası şeritleri (gün numarası başlığı ve haftalık fazla mesai sütunları) */
+const BAND_FILLS = ['FF9BC2E6', 'FFE0A886', 'FFA9D08E', 'FFD694BE', 'FFDBE975', 'FFB4C6E7'].map(solid)
+const thin = { style: 'thin' as const, color: { argb: 'FF808080' } }
+const BORDER: Partial<Borders> = { top: thin, bottom: thin, left: thin, right: thin }
+
+/** Hücreyi durum rengine boyar (zemin + yazı rengi) */
+function paint(cell: Cell, code: Exclude<TimesheetCode, ''>, bold = false, size?: number) {
+  const c = TIMESHEET_CODE_COLORS[code]
+  cell.fill = solid(`FF${c.fill}`)
+  cell.font = { color: { argb: `FF${c.text}` }, bold: bold || code === 'D', size }
+}
 
 export async function buildTimesheetWorkbook(
   month: string,
@@ -51,113 +49,140 @@ export async function buildTimesheetWorkbook(
   wb.created = new Date()
   if (storeName) wb.title = `Puantaj — ${storeName} — ${month}`
 
-  const days = monthDays(month)
+  const t = buildExportTable(month, rows, storeName ?? '')
   const holidaySet = new Set(holidays.filter((h) => !h.half_day).map((h) => h.date))
-  // Mağaza adı varsa tablonun üstüne bir başlık satırı eklenir; tablo satırları bir aşağı kayar
-  const top = storeName ? 1 : 0
-  const ws = wb.addWorksheet('Puantaj', { views: [{ state: 'frozen', xSplit: 2, ySplit: 2 + top }] })
+  const HEAD = 4
+  const ws = wb.addWorksheet(monthName(month), { views: [{ state: 'frozen', xSplit: t.firstDayCol, ySplit: HEAD }] })
+  const col = (i: number) => i + 1                     // 0-tabanlı tablo sütunu → Excel sütunu
+  const dayCol = (i: number) => col(t.firstDayCol + i)
+  const width = t.header.length
+  const [, info, overtime, extra] = t.groups
 
-  const totals = [
-    'Çalışılan Gün', 'Net Saat', 'Fazla Çalışma (s)', 'Gece Çalışması (s)', 'RT Çalışılan Gün',
-    'Yıllık İzin', 'Rapor', 'Ücretsiz İzin', 'Mazeret İzni', 'Hafta Tatili', 'Devamsız', 'SGK Gün', 'Not',
-  ]
-
-  // Başlık satırları
-  if (storeName) {
-    ws.addRow([safeText(`${storeName} — Aylık Puantaj — ${month}`)])
-    ws.getRow(1).font = { bold: true, size: 13 }
-    ws.mergeCells(1, 1, 1, 2 + days.length)
+  // ── Başlık satırları ──
+  ws.getCell(1, 1).value = 'S.NO'
+  ws.mergeCells(1, 1, HEAD, 1)
+  ws.getCell(1, 2).value = 'Hafta Günü'
+  ws.mergeCells(1, 2, 1, t.firstDayCol)
+  ws.getCell(2, 2).value = 'Gün'
+  ws.mergeCells(2, 2, 2, t.firstDayCol)
+  ;['Adı Soyadı', 'Birim/Şube', 'Görevi'].forEach((label, i) => {
+    ws.getCell(3, 2 + i).value = label
+    ws.mergeCells(3, 2 + i, HEAD, 2 + i)
+  })
+  t.days.forEach((d, i) => {
+    ws.getCell(1, dayCol(i)).value = WEEKDAY_SHORT[dayOfWeekFromDateString(d)]
+    const num = ws.getCell(2, dayCol(i))
+    num.value = Number(d.slice(8))
+    num.fill = BAND_FILLS[weekBand(month, d) % BAND_FILLS.length]
+    ws.getCell(HEAD, dayCol(i)).value = Number(d.slice(8))
+  })
+  for (const g of t.groups) {
+    ws.getCell(3, col(g.start)).value = g.label
+    ws.mergeCells(3, col(g.start), 3, col(g.start + g.span - 1))
   }
-  ws.addRow(['Çalışan', 'Pozisyon', ...days.map((d) => Number(d.slice(8))), ...totals])
-  ws.addRow(['', '', ...days.map((d) => DOW_TR[new Date(`${d}T00:00:00Z`).getUTCDay()]), ...totals.map(() => '')])
-  for (const r of [1 + top, 2 + top]) {
+  // Satır 1–2 gün dışı sütunlarda boş: grup başlıklarıyla birlikte 1–3 arası birleştirilir
+  for (const g of [info, overtime, extra]) ws.mergeCells(1, col(g.start), 2, col(g.start + g.span - 1))
+  for (let i = info.start; i < width; i++) ws.getCell(HEAD, col(i)).value = t.header[i]
+
+  for (let r = 1; r <= HEAD; r++) {
     const row = ws.getRow(r)
-    row.font = { bold: true }
-    row.alignment = { horizontal: 'center', vertical: 'middle' }
-  }
-  ws.mergeCells(1 + top, 1, 2 + top, 1)
-  ws.mergeCells(1 + top, 2, 2 + top, 2)
-  totals.forEach((_, i) => ws.mergeCells(1 + top, 3 + days.length + i, 2 + top, 3 + days.length + i))
-  ws.getRow(1 + top).height = 30
-
-  for (const r of rows) {
-    const notes: string[] = []
-    if (r.overtimeWithoutConsent) notes.push('Fazla çalışma onayı yok')
-    const line = ws.addRow([
-      safeText(r.employee.full_name),
-      safeText(r.employee.role_name),
-      ...days.map((d) => timesheetDayValue(r, d)),
-      r.workedDays,
-      hours(r.workedMins),
-      hours(r.overtimeMins),
-      hours(r.nightMins),
-      r.holidayWorkedDays,
-      r.leaveDays['Yİ'],
-      r.leaveDays['Rİ'],
-      r.leaveDays['Üİ'],
-      r.leaveDays['Mİ'],
-      r.leaveDays['HT'],
-      r.absentDays,
-      r.sgkDays,
-      notes.join('; '),
-    ])
-    days.forEach((d, i) => {
-      const cell = line.getCell(3 + i)
-      cell.alignment = { horizontal: 'center' }
-      const code = r.days[d]
-      if (code) paint(cell, code)
-    })
-    if (r.overtimeWithoutConsent) line.getCell(3 + days.length + totals.length - 1).font = { color: { argb: 'FFB91C1C' } }
-  }
-
-  // Resmi tatil sütunlarını başlıkta vurgula
-  days.forEach((d, i) => {
-    if (!holidaySet.has(d)) return
-    for (const r of [1 + top, 2 + top]) {
-      ws.getRow(r).getCell(3 + i).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFDE68A' } }
+    for (let c = 1; c <= width; c++) {
+      const cell = row.getCell(c)
+      cell.font = { bold: true, size: r === 3 ? 11 : 9 }
+      cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
+      cell.border = BORDER
+      if (!cell.fill || cell.fill.type !== 'pattern') cell.fill = HEADER_FILL
     }
+  }
+  // Resmi tatil sütunları başlıkta vurgulanır; haftalık %50 sütunları haftanın şerit rengini alır
+  t.days.forEach((d, i) => {
+    if (!holidaySet.has(d)) return
+    for (const r of [1, HEAD]) ws.getCell(r, dayCol(i)).fill = HOLIDAY_FILL
+  })
+  t.weeks.forEach((w, i) => {
+    const fill = BAND_FILLS[weekBand(month, w.sunday) % BAND_FILLS.length]
+    ws.getCell(HEAD, col(overtime.start + 2 * i)).fill = fill
+    ws.getCell(HEAD, col(overtime.start + 2 * i + 1)).fill = fill
+  })
+  ws.getCell(HEAD, col(info.start + info.span - 1)).fill = NAME_FILL   // Toplam Gün (SGK)
+  ws.getRow(HEAD).height = 48
+
+  // ── Çalışan satırları ──
+  t.body.forEach((values, ri) => {
+    const r = rows[ri]
+    const line = ws.addRow(values.map((v) => (typeof v === 'string' ? safeText(v) : v)))
+    line.font = { size: 10 }
+    for (let c = 1; c <= width; c++) {
+      const cell = line.getCell(c)
+      cell.border = BORDER
+      if (c > t.firstDayCol) cell.alignment = { horizontal: 'center' }
+    }
+    for (let c = 1; c <= 3; c++) line.getCell(c).fill = NAME_FILL
+    t.days.forEach((d, i) => {
+      const code = r.days[d]
+      if (code && code !== 'P') paint(line.getCell(dayCol(i)), code, false, 10)
+    })
+    line.getCell(col(info.start + info.span - 1)).fill = NAME_FILL
+    const note = line.getCell(col(width - 1))
+    note.alignment = { horizontal: 'left' }
+    if (r.overtimeWithoutConsent) note.font = { size: 10, color: { argb: 'FFB91C1C' } }
   })
 
-  ws.getColumn(1).width = 24
-  ws.getColumn(2).width = 18
-  days.forEach((_, i) => { ws.getColumn(3 + i).width = 5.5 })
-  totals.forEach((_, i) => { ws.getColumn(3 + days.length + i).width = i === totals.length - 1 ? 26 : 11 })
-  ws.eachRow((row) => row.eachCell((cell) => {
-    cell.border = {
-      top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-      bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-      left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-      right: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+  // ── Toplam satırı: fazla mesai ve saat sütunları ──
+  if (rows.length > 0) {
+    const first = HEAD + 1
+    const last = HEAD + rows.length
+    const total = ws.addRow([])
+    total.getCell(2).value = 'TOPLAM'
+    for (let i = overtime.start; i < width - 1; i++) {
+      const c = col(i)
+      const letter = ws.getColumn(c).letter
+      const sum = t.body.reduce((s, row) => s + (Number(row[i]) || 0), 0)
+      total.getCell(c).value = { formula: `SUM(${letter}${first}:${letter}${last})`, result: Math.round(sum * 100) / 100 }
     }
-  }))
-
-  // Renk lejantı tablonun altında (çerçeve döngüsünden sonra eklenir, çerçevesiz kalır)
-  ws.addRow([])
-  ws.addRow(['Renkler']).font = { bold: true }
-  for (const code of LEGEND) {
-    const line = ws.addRow([code, legendLabel(code)])
-    const cell = line.getCell(1)
-    cell.alignment = { horizontal: 'center' }
-    paint(cell, code, true)
+    for (let c = 1; c <= width; c++) {
+      const cell = total.getCell(c)
+      cell.font = { bold: true }
+      cell.border = BORDER
+      if (c > t.firstDayCol) cell.alignment = { horizontal: 'center' }
+    }
   }
 
-  // Açıklama sayfası
-  const legend = wb.addWorksheet('Açıklama')
-  if (storeName) legend.addRow(['Mağaza', safeText(storeName)]).font = { bold: true }
-  legend.addRow(['Kod', 'Anlamı']).font = { bold: true }
-  for (const code of LEGEND) {
-    const cell = legend.addRow([code, legendLabel(code)]).getCell(1)
+  // ── Sütun genişlikleri ──
+  ws.getColumn(1).width = 5.5
+  ws.getColumn(2).width = 24
+  ws.getColumn(3).width = 18
+  ws.getColumn(4).width = 18
+  t.days.forEach((_, i) => { ws.getColumn(dayCol(i)).width = 4.8 })
+  for (let i = info.start; i < info.start + info.span; i++) ws.getColumn(col(i)).width = 5
+  ws.getColumn(col(info.start)).width = 9.5
+  ws.getColumn(col(info.start + info.span - 1)).width = 10
+  for (let i = overtime.start; i < overtime.start + overtime.span; i++) ws.getColumn(col(i)).width = 13
+  ws.getColumn(col(extra.start)).width = 9.5
+  ws.getColumn(col(extra.start + 1)).width = 10
+  ws.getColumn(col(width - 1)).width = 32
+
+  // ── Açıklamalar sayfası ──
+  const legend = wb.addWorksheet('Açıklamalar')
+  legend.addRow(['İZİN KODLARI VE AÇIKLAMALARI']).font = { bold: true }
+  if (storeName) legend.addRow(['Birim/Şube', safeText(storeName)])
+  for (const l of EXPORT_CODE_LEGEND) {
+    const cell = legend.addRow([l.code, l.label]).getCell(1)
     cell.alignment = { horizontal: 'center' }
-    paint(cell, code, true)
+    paint(cell, l.screen, true)
+  }
+  const monthHolidays = holidays.filter((h) => h.date.startsWith(month))
+  if (monthHolidays.length > 0) {
+    legend.addRow([])
+    legend.addRow([`RESMİ TATİL GÜNLERİ - ${monthName(month).toLocaleUpperCase('tr-TR')}`]).font = { bold: true }
+    for (const h of monthHolidays) {
+      legend.addRow([Number(h.date.slice(8)), safeText(`${h.name}${h.half_day ? ' (yarım gün)' : ''}`)])
+    }
   }
   legend.addRow([])
-  legend.addRow(['Notlar']).font = { bold: true }
-  legend.addRow(['Net saat', 'Fiili giriş–çıkış süresinden molalar düşülerek hesaplanır.'])
-  legend.addRow(['Fazla çalışma', `Pazartesi–Pazar haftasında 45 saati aşan net süre (İş K. Md. 41). Hafta, Pazar günü hangi aydaysa o aya yazılır. Yıllık üst sınır ${ANNUAL_OVERTIME_CAP_HOURS} saattir.`])
-  legend.addRow(['Gece çalışması', '20:00–06:00 arasına düşen fiili çalışma süresi (İş K. Md. 69).'])
-  legend.addRow(['RT çalışılan gün', 'Resmi tatilde çalışılan tam günler — ek bir günlük ücret (İş K. Md. 47).'])
-  legend.addRow(['SGK gün', 'Ay 30 gün kabul edilir; ücretsiz izin ve devamsız günler düşülür. Ay içi giriş/çıkış için kontrol edin.'])
-  legend.getColumn(1).width = 18
+  legend.addRow(['NOTLAR']).font = { bold: true }
+  for (const n of EXPORT_NOTES) legend.addRow(['', n])
+  legend.getColumn(1).width = 12
   legend.getColumn(2).width = 110
 
   const buf = await wb.xlsx.writeBuffer()

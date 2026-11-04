@@ -118,6 +118,8 @@ export type ViolationType =
   | 'part_time_day_limit'
   | 'part_time_hour_limit'
   | 'night_work'
+  /** Haftalık tatil gününe vardiya (hafta tatilinde çalışma) — yönetici onayıyla */
+  | 'weekly_rest_work'
 
 export interface WorkingTimeViolation {
   type: ViolationType

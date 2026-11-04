@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
     }
 
     const admin = createAdminClient()
-    const { rows: tsRows } = await queryTimesheet(admin, storeId, month, { includeHireDate: true })
+    const { rows: tsRows } = await queryTimesheet(admin, storeId, month)
     const rows = toPayrollRows(month, tsRows)
 
     if (!format) return NextResponse.json({ month, rows })

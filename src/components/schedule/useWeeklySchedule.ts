@@ -7,6 +7,8 @@
  *   geç gelen yanıtı yeni haftanın verisinin üstüne yazamaz.
  * - İzinler yalnızca görüntülenen hafta aralığı için çekilir.
  * - Müsaitlik verisi yalnızca düzenleme modunda (yönetici) çekilir.
+ * - Haftalık tatil gününde (izinli işaretli olmayan) vardiya varsa o gün "hafta tatilinde çalışma"dır:
+ *   restWorkMap'e girer, tatil/izin haritalarından çıkarılır — tablo, sayaçlar ve çıktılar onu vardiya gibi gösterir.
  */
 import { useCallback, useMemo } from 'react'
 import useSWR from 'swr'
@@ -57,7 +59,8 @@ export function useWeeklySchedule(currentWeek: Date, { readOnly = false } = {}) 
 
   // "employee_id:YYYY-MM-DD" anahtarlı izin haritaları
   const {
-    approvedLeaveMap, leaveDayToId, restDayMap, recurringRestMap, multiDayLeaveIds, leaveLabelMap, leaveDefMap,
+    approvedLeaveMap: leaveMapAll, leaveDayToId, restDayMap: restMapAll, recurringRestMap: recurringMapAll,
+    multiDayLeaveIds, leaveLabelMap, leaveDefMap,
   } = useMemo(() => {
     const leaveSet = new Set<string>()
     const idMap = new Map<string, string>()
@@ -88,6 +91,23 @@ export function useWeeklySchedule(currentWeek: Date, { readOnly = false } = {}) 
       multiDayLeaveIds: multiDay, leaveLabelMap: labels, leaveDefMap: defs,
     }
   }, [leavesQ.data, from, to, leaveTypesById])
+
+  // Hafta tatilinde çalışma: tatil günündeki vardiya
+  const { approvedLeaveMap, restDayMap, recurringRestMap, restWorkMap } = useMemo(() => {
+    const restWork = new Set<string>()
+    for (const a of assignmentsQ.data ?? []) {
+      const key = `${a.employee_id}:${a.work_date}`
+      if (!a.is_on_leave && restMapAll.has(key)) restWork.add(key)
+    }
+    if (restWork.size === 0) {
+      return { approvedLeaveMap: leaveMapAll, restDayMap: restMapAll, recurringRestMap: recurringMapAll, restWorkMap: restWork }
+    }
+    const without = (s: Set<string>) => new Set([...s].filter((k) => !restWork.has(k)))
+    return {
+      approvedLeaveMap: without(leaveMapAll), restDayMap: without(restMapAll), recurringRestMap: without(recurringMapAll),
+      restWorkMap: restWork,
+    }
+  }, [assignmentsQ.data, leaveMapAll, restMapAll, recurringMapAll])
 
   // employeeId → DayOfWeek → kayıtlar
   const availabilityMap: AvailabilityMap = useMemo(() => {
@@ -128,6 +148,8 @@ export function useWeeklySchedule(currentWeek: Date, { readOnly = false } = {}) 
     restDayMap,
     /** Her hafta tekrarlayan tatil günleri (restDayMap alt kümesi) */
     recurringRestMap,
+    /** Haftalık tatil gününe verilmiş vardiyalar (hafta tatilinde çalışma); restDayMap / approvedLeaveMap'te yok */
+    restWorkMap,
     /** İzinli günlerin (haftalık tatil dışı) tür adı ve tür tanımı */
     leaveLabelMap,
     leaveDefMap,
