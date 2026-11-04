@@ -203,8 +203,8 @@ function OffCell({ kind, readOnly, onClick, tip, recurring, label: labelOverride
 
 // ─── Vardiya hücresi (masaüstü tablo) ─────────────────────────
 
-/** Hafta tatilinde çalışma işareti */
-function RestWorkMark() {
+/** Hafta tatilinde çalışma işareti (tablo hücresi ve mobil gün listesi) */
+export function RestWorkMark() {
   return (
     <span aria-label="Hafta tatilinde çalışma" className="shrink-0 rounded-sm bg-warning/15 px-1 text-[10px] font-semibold leading-4 text-warning">
       HT

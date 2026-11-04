@@ -23,7 +23,7 @@ import {
   DAY_LABELS, fmtDuration, fmtHoursTr, fmtRange, getAvailStatus, shiftDisplayName, shiftKindOf, shiftNetMins,
   type AvailabilityMap, type AvailStatus,
 } from './scheduleHelpers'
-import { OFF_META, type OffKind } from './ScheduleCells'
+import { OFF_META, RestWorkMark, type OffKind } from './ScheduleCells'
 
 export interface MobileDayBoardProps {
   entries: WeeklyScheduleEntry[]
@@ -294,9 +294,7 @@ export function MobileDayBoard({
                               {r.emp.employment_type === 'part_time' && (
                                 <Badge variant="secondary" className="shrink-0 px-1.5 py-0">PT</Badge>
                               )}
-                              {restWorkMap?.has(`${r.emp.id}:${selectedDay}`) && (
-                                <Badge tone="warning" className="shrink-0 px-1.5 py-0" title="Hafta tatilinde çalışma">HT</Badge>
-                              )}
+                              {restWorkMap?.has(`${r.emp.id}:${selectedDay}`) && <RestWorkMark />}
                               {r.warn && (
                                 <TriangleAlert
                                   aria-label={warnLabel}
